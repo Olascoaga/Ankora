@@ -1,0 +1,1054 @@
+{
+  "schema_version": 1,
+  "case_id": "SERPINE1_7AQF_RV2",
+  "title": "SERPINE1 7AQF / RV2 frozen validation evidence",
+  "frozen_on": "2026-08-28",
+  "scope": "Existing Ankora evidence for the exact recorded 7AQF receptor, crystallographic RV2 derivatives, co-crystal search space, Vina 1.2.7, AutoDock4 4.2.6 CPU, AutoDock-GPU 1.6, redocking, and pose-interaction records.",
+  "source": "explicit structured records and their referenced artifacts",
+  "record_count": 26,
+  "artifact_count": 54,
+  "records": [
+    {
+      "role": "structure.receptor_source",
+      "label": "7AQF source used for receptor and engine ligands",
+      "record_path": "projects/default/original/structures/76f5afae-1f5d-4baa-8359-a7335407abb8/record.json",
+      "identity": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+      "record_sha256": "ced6a1515f54d3fe02880c0f37adfb33b500b65a49da2588fcdfe789a410a49c",
+      "fields": {
+        "PDB entry": "7AQF",
+        "Experimental method": "X-RAY DIFFRACTION",
+        "Resolution (Å)": 1.77,
+        "Models": 1,
+        "Atoms": 6266,
+        "Residues": 1218,
+        "Missing residues": 22,
+        "Missing atoms": 123
+      },
+      "artifacts": [
+        {
+          "label": "Deposited 7AQF mmCIF",
+          "path": "projects/default/original/structures/76f5afae-1f5d-4baa-8359-a7335407abb8/7AQF.cif",
+          "size_bytes": 698639,
+          "sha256": "79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "structure.reference_source",
+      "label": "Independent 7AQF import used for the reference ligand",
+      "record_path": "projects/default/original/structures/90dfd005-25b7-442b-bd0d-1356ee2af1d3/record.json",
+      "identity": "90dfd005-25b7-442b-bd0d-1356ee2af1d3",
+      "record_sha256": "8d0a181097566fb8fc439713b15c5d24ee7491451c742060fce662a0ec83f894",
+      "fields": {
+        "PDB entry": "7AQF",
+        "Source URI": "https://files.rcsb.org/download/7AQF.cif",
+        "Deposited SHA-256": "79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac"
+      },
+      "artifacts": [
+        {
+          "label": "Second immutable 7AQF mmCIF import",
+          "path": "projects/default/original/structures/90dfd005-25b7-442b-bd0d-1356ee2af1d3/7AQF.cif",
+          "size_bytes": 698639,
+          "sha256": "79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "receptor.docking_ready",
+      "label": "Prepared receptor shared by the frozen engine records",
+      "record_path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/record.json",
+      "identity": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+      "record_sha256": "81e89d848d00296cc7ddd21a589ad7ea9cf5199068b3b748ecced5f6fabc0721",
+      "fields": {
+        "Source structure": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+        "Status": "docking_ready",
+        "Selected chains": [
+          "A"
+        ],
+        "Water action": "remove",
+        "Component decisions": [
+          {
+            "component_id": "ligand|A|RV2|401|",
+            "action": "remove"
+          }
+        ],
+        "Reference component": "ligand|A|RV2|401|",
+        "Relaxation": {
+          "enabled": true,
+          "restraint_force_constant_kcal_mol_a2": 50.0,
+          "max_iterations": 200
+        },
+        "Protonation": {
+          "enabled": true,
+          "ph": 7.4,
+          "force_field": "AMBER"
+        },
+        "Recorded outputs": 6
+      },
+      "artifacts": [
+        {
+          "label": "Selected receptor PDB",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/selected_receptor.pdb",
+          "size_bytes": 244377,
+          "sha256": "62987da61fe858e579a9dc85d1aac94258e9e13cee40117b681aac88f171cae6",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Repaired receptor PDB",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/repaired_receptor.pdb",
+          "size_bytes": 238940,
+          "sha256": "06913afbaa9dca42ebede1151f305b2e00d619ca0fa3d299e887cf96104c4f97",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Relaxed receptor PDB",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/relaxed_receptor.pdb",
+          "size_bytes": 238940,
+          "sha256": "fd6beba9054d96dca8df37860ab1d28792dae59e0181d392b96311cd82350ec3",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Protonated receptor PQR",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/protonated_receptor.pqr",
+          "size_bytes": 418127,
+          "sha256": "8be0def7f1f9f95335224ce48a131bbffde6080805f7b5c91e811a555c3f888a",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Protonated receptor PDB",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/protonated_receptor.pdb",
+          "size_bytes": 482906,
+          "sha256": "3fc201d458eeed347fd498d3173a0a1e8ae487c918f7669769b09c1223371799",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Docking receptor PDBQT",
+          "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/prepared_receptor.pdbqt",
+          "size_bytes": 289575,
+          "sha256": "83379bb5f78dcebc64df92e8b50c35bb81879913dc01e36024517a2be4604da0",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.crystal_reference",
+      "label": "Crystallographic RV2 used by redocking RMSD",
+      "record_path": "projects/default/original/ligands/12ebd97c-4302-4e0f-ad49-9b606edab666/record.json",
+      "identity": "12ebd97c-4302-4e0f-ad49-9b606edab666",
+      "record_sha256": "7efa917af38cb60c01f7f790102b70df2acb94305112843fbeaeaf3f00d96e12",
+      "fields": {
+        "Source structure": "90dfd005-25b7-442b-bd0d-1356ee2af1d3",
+        "Locator": {
+          "component_name": "RV2",
+          "chain_id": "A",
+          "sequence_number": 401,
+          "insertion_code": ""
+        },
+        "Formula": "C19H13ClN2O5",
+        "Formal charge": 0,
+        "Heavy atoms": 27,
+        "Molecular weight (g/mol)": 384.7750000000001
+      },
+      "artifacts": [
+        {
+          "label": "Observed crystallographic RV2 SDF",
+          "path": "projects/default/original/ligands/12ebd97c-4302-4e0f-ad49-9b606edab666/RV2_A_401.sdf",
+          "size_bytes": 2348,
+          "sha256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.vina_original",
+      "label": "RV2 extraction used for Vina",
+      "record_path": "projects/default/original/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/record.json",
+      "identity": "fa7e1bea-6f57-486f-a98a-e348c58cda4b",
+      "record_sha256": "3dcb1944054ef96e536cc7a03ef37ecd70d40c33a4e798658551b514d4095bbd",
+      "fields": {
+        "Source structure": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+        "Original SHA-256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+        "Formula": "C19H13ClN2O5",
+        "Formal charge": 0
+      },
+      "artifacts": [
+        {
+          "label": "Vina-lineage crystallographic RV2 SDF",
+          "path": "projects/default/original/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/RV2_A_401.sdf",
+          "size_bytes": 2348,
+          "sha256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.vina_state",
+      "label": "Explicit pH 7.4 RV2 state used for Vina",
+      "record_path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/states/1b02d9b6-53c0-4457-ac23-bd1f3246437e/record.json",
+      "identity": "1b02d9b6-53c0-4457-ac23-bd1f3246437e",
+      "record_sha256": "491610efb53cea1a2ffc588c0ccad65306eabfeb1441c2cccf7e5d6e8af8c3a3",
+      "fields": {
+        "Parent state": "a0714c3c-76aa-4c30-835b-f9ef8782f70d",
+        "Formula": "C19H12ClN2O5-",
+        "Formal charge": -1,
+        "Selection": {
+          "candidate_index": 0,
+          "candidate_count": 1,
+          "ph_min": 7.4,
+          "ph_max": 7.4,
+          "precision": 1.0
+        },
+        "Tool version": "2.0.2"
+      },
+      "artifacts": [
+        {
+          "label": "Vina-lineage explicit protonation state",
+          "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/states/1b02d9b6-53c0-4457-ac23-bd1f3246437e/RV2_protonated_state.sdf",
+          "size_bytes": 2366,
+          "sha256": "bdbefc5627a422a32666a9b0841f90e3fd6b1f29a40056ca0082d4766a2620e5",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.vina_conformer",
+      "label": "Independent minimized RV2 conformer used for Vina",
+      "record_path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/conformers/097feb6a-6a25-4fa6-b2d6-a96e18a6008c/record.json",
+      "identity": "097feb6a-6a25-4fa6-b2d6-a96e18a6008c",
+      "record_sha256": "6a1306191a05ac3906ba87dd5f9b79ad00647a0874fa35e5b7911e37d3295611",
+      "fields": {
+        "Formula": "C19H12ClN2O5-",
+        "Formal charge": -1,
+        "Embedding": "ETKDGv3",
+        "Force field": "MMFF94s",
+        "Random seed": 20260819,
+        "Selected conformer": 4,
+        "Final MMFF energy (kcal/mol)": 49.21192227209204
+      },
+      "artifacts": [
+        {
+          "label": "Vina-lineage minimized conformer",
+          "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/conformers/097feb6a-6a25-4fa6-b2d6-a96e18a6008c/RV2_ETKDGv3_MMFF94s_minimized.sdf",
+          "size_bytes": 3362,
+          "sha256": "8e0dc4618ef37456d064ecc5493d8b47eeeacb83d9e79b61b19d0edc9b7d6708",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.vina_pdbqt",
+      "label": "Meeko RV2 input used for Vina",
+      "record_path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/preparations/4021fc7d-a8e4-492b-8815-b2e30f9ca880/record.json",
+      "identity": "4021fc7d-a8e4-492b-8815-b2e30f9ca880",
+      "record_sha256": "e74a51250c642cdabbe527937426a9a3d1bbad1aa6330cc1bef14bcde21b1f84",
+      "fields": {
+        "Conformer": "097feb6a-6a25-4fa6-b2d6-a96e18a6008c",
+        "Charge model": "gasteiger",
+        "Tool": {
+          "name": "Meeko ligand preparation",
+          "version": "0.7.1"
+        },
+        "PDBQT SHA-256": "760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69"
+      },
+      "artifacts": [
+        {
+          "label": "Vina RV2 PDBQT",
+          "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/preparations/4021fc7d-a8e4-492b-8815-b2e30f9ca880/RV2_prepared.pdbqt",
+          "size_bytes": 2846,
+          "sha256": "760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "binding_site.vina",
+      "label": "Co-crystal box used for Vina",
+      "record_path": "projects/default/derived/binding_sites/b946e1d6-af18-431c-9fb0-a25891dda40d/record.json",
+      "identity": "b946e1d6-af18-431c-9fb0-a25891dda40d",
+      "record_sha256": "9dfba6bbdf426122876bcdf596d78b0bd6dc9fe43046018242458ea66c6ee093",
+      "fields": {
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Source": "co_crystallized_ligand",
+        "Ligand origin": {
+          "heterogen": {
+            "chain_id": "A",
+            "residue_name": "RV2",
+            "sequence_number": 401,
+            "insertion_code": ""
+          },
+          "padding_angstrom": 5.0
+        },
+        "Box": {
+          "center_x": 35.4305,
+          "center_y": -2.967,
+          "center_z": -0.7905,
+          "size_x": 21.596999999999998,
+          "size_y": 19.87,
+          "size_z": 19.317
+        },
+        "Stale": false
+      },
+      "artifacts": []
+    },
+    {
+      "role": "docking.vina",
+      "label": "Vina RV2 single-ligand job preserved in recoverable Trash",
+      "record_path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/campaigns/vina_job/ccb42404-e1ce-44a7-8fd6-71b1d2b38959/record.json",
+      "identity": "ccb42404-e1ce-44a7-8fd6-71b1d2b38959",
+      "record_sha256": "2b0661a11487612fd0530656a53eb78e6f9d80ad3134384e86b497013d8d7652",
+      "fields": {
+        "Status": "completed",
+        "Tool": {
+          "name": "AutoDock Vina",
+          "version": "1.2.7"
+        },
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Binding site": "b946e1d6-af18-431c-9fb0-a25891dda40d",
+        "Ligand": "fa7e1bea-6f57-486f-a98a-e348c58cda4b",
+        "Ligand preparation": "4021fc7d-a8e4-492b-8815-b2e30f9ca880",
+        "Parameters": {
+          "cpu_threads": 15,
+          "seed": 20260823,
+          "exhaustiveness": 8,
+          "num_modes": 9,
+          "min_rmsd_angstrom": 1.0,
+          "energy_range_kcal_mol": 3.0,
+          "timeout_minutes": 360
+        },
+        "Pose count": 9,
+        "Top Vina score (kcal/mol)": -7.073
+      },
+      "artifacts": [
+        {
+          "label": "Vina top pose",
+          "path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/campaigns/vina_job/ccb42404-e1ce-44a7-8fd6-71b1d2b38959/pose_1.pdbqt",
+          "size_bytes": 3121,
+          "sha256": "350b4a21f35df6aa9143dab3170c5078f3aacb31e5b08c6a6b5e4021c29baccc",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "interaction.vina_top_pose",
+      "label": "ProLIF analysis of the exact Vina top pose",
+      "record_path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/dependencies/pose_interactions/59ad4103-fb7a-4754-9188-ed2e79112a00/record.json",
+      "identity": "59ad4103-fb7a-4754-9188-ed2e79112a00",
+      "record_sha256": "cd86e37d44678d27f3e6ccfd65c62adfa4224f8316c0afba8169eef32df55fc8",
+      "fields": {
+        "Catalog result": "vina_job:ccb42404-e1ce-44a7-8fd6-71b1d2b38959",
+        "Pose artifact": "ccb42404-e1ce-44a7-8fd6-71b1d2b38959-pose-1",
+        "Pose SHA-256": "350b4a21f35df6aa9143dab3170c5078f3aacb31e5b08c6a6b5e4021c29baccc",
+        "Detector": {
+          "name": "ProLIF",
+          "version": "2.2.1"
+        },
+        "Profile": {
+          "profile_id": "ankora-default-v1",
+          "vicinity_cutoff_angstrom": 6.0,
+          "interactions": [
+            "Hydrophobic",
+            "HBDonor",
+            "HBAcceptor",
+            "FaceToFace",
+            "EdgeToFace",
+            "CationPi",
+            "PiCation",
+            "Anionic",
+            "Cationic",
+            "XBAcceptor",
+            "XBDonor",
+            "MetalAcceptor",
+            "MetalDonor"
+          ]
+        },
+        "Geometric contacts": 17
+      },
+      "artifacts": []
+    },
+    {
+      "role": "ligand.cpu_original",
+      "label": "RV2 extraction used for AutoDock4 CPU",
+      "record_path": "projects/default/original/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/record.json",
+      "identity": "b6da69d4-558a-494d-a7e3-243b06a89024",
+      "record_sha256": "e37d20ad8bcb403ed1e7debe7d24742e6ed8e4900e7df1d09a3a7e2c16c01e67",
+      "fields": {
+        "Source structure": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+        "Original SHA-256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+        "Formula": "C19H13ClN2O5",
+        "Formal charge": 0
+      },
+      "artifacts": [
+        {
+          "label": "CPU-lineage crystallographic RV2 SDF",
+          "path": "projects/default/original/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/RV2_A_401.sdf",
+          "size_bytes": 2348,
+          "sha256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.cpu_conformer",
+      "label": "Neutral minimized RV2 conformer used for AutoDock4 CPU",
+      "record_path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/conformers/5c7cf0e1-0d3d-476c-94b8-97e250bd3535/record.json",
+      "identity": "5c7cf0e1-0d3d-476c-94b8-97e250bd3535",
+      "record_sha256": "1f4ab6f0e53bc1444cc818549729b246b60b486592f957751a5697a1785fbfcb",
+      "fields": {
+        "Formula": "C19H13ClN2O5",
+        "Formal charge": 0,
+        "Embedding": "ETKDGv3",
+        "Force field": "MMFF94s",
+        "Random seed": 20260819,
+        "Selected conformer": 11,
+        "Final MMFF energy (kcal/mol)": 45.402079417259785
+      },
+      "artifacts": [
+        {
+          "label": "CPU-lineage neutral minimized conformer",
+          "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/conformers/5c7cf0e1-0d3d-476c-94b8-97e250bd3535/RV2_ETKDGv3_MMFF94s_minimized.sdf",
+          "size_bytes": 3427,
+          "sha256": "34adf54c631de34cf3d57c8c6b426a12ecf18053a3336071c148850ba245f48a",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.cpu_pdbqt",
+      "label": "Meeko neutral RV2 input used for AutoDock4 CPU",
+      "record_path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/preparations/c5002724-b9b5-4d0a-b762-b96ebf0f1a02/record.json",
+      "identity": "c5002724-b9b5-4d0a-b762-b96ebf0f1a02",
+      "record_sha256": "8142b4c91e523ad935b0256aa0b31e692d974bb5f2ceb6c9e460a259e2e09674",
+      "fields": {
+        "Conformer": "5c7cf0e1-0d3d-476c-94b8-97e250bd3535",
+        "Charge model": "gasteiger",
+        "Tool": {
+          "name": "Meeko ligand preparation",
+          "version": "0.7.1"
+        },
+        "PDBQT SHA-256": "e8da59c573890ca0a65b4b5503e54d0cd72815c612d0d72fdbeeba1d4cdb3830"
+      },
+      "artifacts": [
+        {
+          "label": "AutoDock4 CPU RV2 PDBQT",
+          "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/preparations/c5002724-b9b5-4d0a-b762-b96ebf0f1a02/RV2_prepared.pdbqt",
+          "size_bytes": 2965,
+          "sha256": "e8da59c573890ca0a65b4b5503e54d0cd72815c612d0d72fdbeeba1d4cdb3830",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "binding_site.cpu",
+      "label": "Co-crystal box recorded for AutoDock4 CPU",
+      "record_path": "projects/default/derived/binding_sites/4a839b60-46f5-47b9-92bb-16f4d3703874/record.json",
+      "identity": "4a839b60-46f5-47b9-92bb-16f4d3703874",
+      "record_sha256": "e93b677f0fd443a644378edf10b220c37d55b714f618d108ea2e4a0e80ce3340",
+      "fields": {
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Source": "co_crystallized_ligand",
+        "Box": {
+          "center_x": 35.4305,
+          "center_y": -2.967,
+          "center_z": -0.7905,
+          "size_x": 21.596999999999998,
+          "size_y": 19.87,
+          "size_z": 19.317
+        },
+        "Stale": false
+      },
+      "artifacts": []
+    },
+    {
+      "role": "maps.shared_autogrid",
+      "label": "AutoGrid map set reused by CPU and GPU",
+      "record_path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/record.json",
+      "identity": "96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b",
+      "record_sha256": "1539549f41a714d3f8f0b27a08e34c1687e231a04c2ceb1bd1299d0f6350e0fe",
+      "fields": {
+        "Identity key": "e45fe46d86fa6f09016e2d280d0f57381b88a13f3894af88c656ac36e2fbba60",
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Receptor SHA-256": "83379bb5f78dcebc64df92e8b50c35bb81879913dc01e36024517a2be4604da0",
+        "Recorded binding site": "b9620e02-bcaf-415c-a9b5-8c72cb768596",
+        "Box": {
+          "center_x": 35.4305,
+          "center_y": -2.967,
+          "center_z": -0.7905,
+          "size_x": 21.596999999999998,
+          "size_y": 19.87,
+          "size_z": 19.317
+        },
+        "Realized grid geometry": {
+          "spacing_angstrom": 0.375,
+          "npts": [
+            58,
+            54,
+            52
+          ],
+          "requested_size_angstrom": [
+            21.596999999999998,
+            19.87,
+            19.317
+          ],
+          "realized_size_angstrom": [
+            21.75,
+            20.25,
+            19.5
+          ]
+        },
+        "AutoGrid": {
+          "name": "AutoGrid",
+          "version": "4.2.6"
+        },
+        "AutoGrid executable SHA-256": "797efce687d1ae82df59726461e0e1966b3d8edb0f8b187f982fa1ab0c12da9e",
+        "Successful completion logged": true
+      },
+      "artifacts": [
+        {
+          "label": "A map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.A.map",
+          "size_bytes": 1382427,
+          "sha256": "21df914a4fca2682302342b8919067227f75f6c35dac8d5469ea18592c69b509",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "C map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.C.map",
+          "size_bytes": 1386217,
+          "sha256": "71ed0945b7ab5846183f39b6948df284c27a2a0744b22f453f11bbf0122bb665",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Cl map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.Cl.map",
+          "size_bytes": 1402792,
+          "sha256": "806807d5fe6f937072445e729030c978037dde9c83abecc31f6cb317ba22fb83",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "HD map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.HD.map",
+          "size_bytes": 1260240,
+          "sha256": "c8eec36373bce5df74c7dd1f0c93c1dd96adc3cd3977e1c681054a91c1337111",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "N map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.N.map",
+          "size_bytes": 1369422,
+          "sha256": "cb05754ec32615496b4b5da0e1dffad83a81d07fdc56e7309c14f07ef5f0fcbc",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "OA map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.OA.map",
+          "size_bytes": 1365438,
+          "sha256": "a8fa4252fd4b5f0f7fc0e6145c70d66d30914af8b12733d58053885ea23cc58f",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Desolvation map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.d.map",
+          "size_bytes": 1141918,
+          "sha256": "a9bdeb78c84b436b4bec70749a9fd4a8a0e8d541056505b2105f07af421e6ce5",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Electrostatic map",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.e.map",
+          "size_bytes": 1245642,
+          "sha256": "1ae09524af0ae9770a0e6b16fca35c4790bb8fe372225dc61964aa74dc143c80",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "AutoGrid log",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.glg",
+          "size_bytes": 460890,
+          "sha256": "b94e511fb3525337cb1c0ac6199ca1865898cef429feebbdb5065d17d11f0aa2",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Grid parameter file",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.gpf",
+          "size_bytes": 367,
+          "sha256": "c4e70685a4da47d5a472ab7b4fde8653ab623f760177364d778bdc549f26fa6d",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Field file",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.maps.fld",
+          "size_bytes": 1736,
+          "sha256": "444e39e22816c265c704419e8e77dc872f954da1f6195f843234deac4c8dee4c",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Grid origin",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.maps.xyz",
+          "size_bytes": 45,
+          "sha256": "489e336b78a22f82c73bddbed0a620a463c7b00f42a444df8c598e6a9a4e1509",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "Map-set receptor PDBQT",
+          "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.pdbqt",
+          "size_bytes": 289575,
+          "sha256": "83379bb5f78dcebc64df92e8b50c35bb81879913dc01e36024517a2be4604da0",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "docking.autodock4_cpu",
+      "label": "AutoDock4 CPU RV2 job judged by redocking",
+      "record_path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/record.json",
+      "identity": "bdef5443-02c1-4d67-9ea9-d6f32e8a9890",
+      "record_sha256": "f6937bbb115e984140c2704c5b664904118a4513065728e70530110676e8fc6d",
+      "fields": {
+        "Status": "completed",
+        "AutoDock": {
+          "name": "AutoDock",
+          "version": "4.2.6"
+        },
+        "Executable SHA-256": "36c0b16c04d7df8e6225737bae65bb04058d1f4c90accfaf2d230dbc913954bf",
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Binding site": "4a839b60-46f5-47b9-92bb-16f4d3703874",
+        "Map set": "96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b",
+        "Ligand preparation": "c5002724-b9b5-4d0a-b762-b96ebf0f1a02",
+        "Ligand PDBQT SHA-256": "e8da59c573890ca0a65b4b5503e54d0cd72815c612d0d72fdbeeba1d4cdb3830",
+        "Parameters": {
+          "ga_runs": 10,
+          "ga_population_size": 150,
+          "ga_energy_evaluations": 2500000,
+          "ga_generations": 27000,
+          "cluster_rmsd_tolerance_angstrom": 2.0,
+          "seed_1": 20260824,
+          "seed_2": 20260824,
+          "timeout_minutes": 360
+        },
+        "Runs": 10,
+        "Top binding energy (kcal/mol)": -4.96
+      },
+      "artifacts": [
+        {
+          "label": "CPU run 1",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_1.pdbqt",
+          "size_bytes": 4152,
+          "sha256": "4ab33f193ab53d6789e375b22ceda58dfccd2258f5ecda4c4678a4444f90f559",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 2",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_2.pdbqt",
+          "size_bytes": 4151,
+          "sha256": "779f21b7e452554e3e4a50f02ae26e331f58a957b97b3925b9e0be93d714add0",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 3",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_3.pdbqt",
+          "size_bytes": 4154,
+          "sha256": "3444a1e0816e6d28869e5b604809d8e7b117c900d64cad7d03375e5e1951f900",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 4",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_4.pdbqt",
+          "size_bytes": 4161,
+          "sha256": "7fa4e3f412cd41f9de241ffd144898dd602556ebcc14471075f1c3b9ff2cbd66",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 5",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_5.pdbqt",
+          "size_bytes": 4146,
+          "sha256": "cead2658dcd88c13763d6cdb7e93e8accd20ce705b956d9179176b1a4d09bf2c",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 6",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_6.pdbqt",
+          "size_bytes": 4151,
+          "sha256": "e60656df43d8aa87eff44dcdbed8124ea41238771cd23433242cfb67e8905c5f",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 7",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_7.pdbqt",
+          "size_bytes": 4154,
+          "sha256": "7753d14f2a7c4f11db9bcdf6af71fdc2cbd9d17e5b13832a8cbdf1ad123545ed",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 8",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_8.pdbqt",
+          "size_bytes": 4158,
+          "sha256": "8267a92b6297e661865e49700910fc412b25b522bae016f9a5d8150fb84d06a2",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 9",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_9.pdbqt",
+          "size_bytes": 4148,
+          "sha256": "dae4f4e240103eb016d7c58478e49881e727d5843f5743aa5dacc30ee1ce38b5",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "CPU run 10",
+          "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_10.pdbqt",
+          "size_bytes": 4155,
+          "sha256": "4b855971bf8a5310ac4d5922c9ad24e65de6bc99584e76584bc9fec3d200bbd2",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "redocking.autodock4_cpu",
+      "label": "In-place symmetry-aware RMSD verdict for CPU",
+      "record_path": "projects/default/validation/redocking/179484ac-a6cd-497c-8147-1333955813ff/record.json",
+      "identity": "179484ac-a6cd-497c-8147-1333955813ff",
+      "record_sha256": "25e4997eb79cef84e0fe4e7f0d103c45192edf154b4ae091a0a02c1388469a40",
+      "fields": {
+        "Reference case": "SERPINE1_7AQF_RV2",
+        "Source result": "bdef5443-02c1-4d67-9ea9-d6f32e8a9890",
+        "Engine": "AutoDock",
+        "Engine version": "4.2.6",
+        "Reference ligand": "12ebd97c-4302-4e0f-ad49-9b606edab666",
+        "Reference SHA-256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+        "Bitwise reproducible": true,
+        "Metrics": {
+          "threshold_angstrom": 2.0,
+          "pose_count": 10,
+          "top1_rmsd_angstrom": 3.139145661080651,
+          "best_top5_rmsd_angstrom": 0.4897538308322,
+          "best_overall_rmsd_angstrom": 0.45351956958878875,
+          "first_recovering_rank": 2,
+          "recovered_pose_count": 6,
+          "sampling_success": true,
+          "ranking_success": false,
+          "outcome": "recovered_but_misranked"
+        }
+      },
+      "artifacts": []
+    },
+    {
+      "role": "interaction.autodock4_cpu_run1",
+      "label": "ProLIF analysis of exact CPU run 1 (not top-ranked)",
+      "record_path": "projects/default/analysis/pose_interactions/4e0e6a5e-3cb2-4f15-af70-84e9c9dae398/record.json",
+      "identity": "4e0e6a5e-3cb2-4f15-af70-84e9c9dae398",
+      "record_sha256": "64c6cd12453ed6cc972c1d14c517cce4b82629bf7255af468f8ac84cb475ee17",
+      "fields": {
+        "Catalog result": "autodock4_job:bdef5443-02c1-4d67-9ea9-d6f32e8a9890",
+        "Pose artifact": "ab80593f-3881-46f6-9e3b-226cf2f03cf6",
+        "Pose label": "Cluster 1 · run 1",
+        "Pose SHA-256": "4ab33f193ab53d6789e375b22ceda58dfccd2258f5ecda4c4678a4444f90f559",
+        "Detector": {
+          "name": "ProLIF",
+          "version": "2.2.1"
+        },
+        "Geometric contacts": 33
+      },
+      "artifacts": []
+    },
+    {
+      "role": "ligand.gpu_original",
+      "label": "RV2 extraction used for AutoDock-GPU",
+      "record_path": "projects/default/original/ligands/7a65023d-418e-450a-9dbd-a390334bf377/record.json",
+      "identity": "7a65023d-418e-450a-9dbd-a390334bf377",
+      "record_sha256": "5268add9b04c306ec3256e05a58cbf17b843488bbe92f82954a3668c4cc9f3db",
+      "fields": {
+        "Source structure": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+        "Original SHA-256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+        "Formula": "C19H13ClN2O5",
+        "Formal charge": 0
+      },
+      "artifacts": [
+        {
+          "label": "GPU-lineage crystallographic RV2 SDF",
+          "path": "projects/default/original/ligands/7a65023d-418e-450a-9dbd-a390334bf377/RV2_A_401.sdf",
+          "size_bytes": 2348,
+          "sha256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.gpu_state",
+      "label": "Explicit pH 7.4 RV2 state used for AutoDock-GPU",
+      "record_path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/states/cb88050b-d4f4-442d-aad4-00d35959a233/record.json",
+      "identity": "cb88050b-d4f4-442d-aad4-00d35959a233",
+      "record_sha256": "000c9117ac648631f57c3dcc9262e64dd09c312ec8d4e1d700b90a2a374f9023",
+      "fields": {
+        "Parent state": "1ed26c4f-a363-4129-8bae-760879887fa8",
+        "Formula": "C19H12ClN2O5-",
+        "Formal charge": -1,
+        "Selection": {
+          "candidate_index": 0,
+          "candidate_count": 1,
+          "ph_min": 7.4,
+          "ph_max": 7.4,
+          "precision": 1.0
+        },
+        "Tool version": "2.0.2"
+      },
+      "artifacts": [
+        {
+          "label": "GPU-lineage explicit protonation state",
+          "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/states/cb88050b-d4f4-442d-aad4-00d35959a233/RV2_protonated_state.sdf",
+          "size_bytes": 2366,
+          "sha256": "bdbefc5627a422a32666a9b0841f90e3fd6b1f29a40056ca0082d4766a2620e5",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.gpu_conformer",
+      "label": "Independent minimized RV2 conformer used for AutoDock-GPU",
+      "record_path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/conformers/445fbd04-1d43-4b80-be62-f46cbe7f2623/record.json",
+      "identity": "445fbd04-1d43-4b80-be62-f46cbe7f2623",
+      "record_sha256": "03639437362d18221ff1b361ed28cac9b04608910396dbeb71cfcf61eb679a31",
+      "fields": {
+        "Formula": "C19H12ClN2O5-",
+        "Formal charge": -1,
+        "Embedding": "ETKDGv3",
+        "Force field": "MMFF94s",
+        "Random seed": 20260819,
+        "Selected conformer": 4,
+        "Final MMFF energy (kcal/mol)": 49.21192227209204
+      },
+      "artifacts": [
+        {
+          "label": "GPU-lineage anionic minimized conformer",
+          "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/conformers/445fbd04-1d43-4b80-be62-f46cbe7f2623/RV2_ETKDGv3_MMFF94s_minimized.sdf",
+          "size_bytes": 3362,
+          "sha256": "8e0dc4618ef37456d064ecc5493d8b47eeeacb83d9e79b61b19d0edc9b7d6708",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "ligand.gpu_pdbqt",
+      "label": "Meeko anionic RV2 input used for AutoDock-GPU",
+      "record_path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/preparations/3b0d4589-d711-4aa7-a34b-a62bb817b24d/record.json",
+      "identity": "3b0d4589-d711-4aa7-a34b-a62bb817b24d",
+      "record_sha256": "2493907ea2fd1adfbf8545d01c6dcc66719236b07552e62d535d3ead2bbee098",
+      "fields": {
+        "Conformer": "445fbd04-1d43-4b80-be62-f46cbe7f2623",
+        "Charge model": "gasteiger",
+        "Tool": {
+          "name": "Meeko ligand preparation",
+          "version": "0.7.1"
+        },
+        "PDBQT SHA-256": "760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69"
+      },
+      "artifacts": [
+        {
+          "label": "AutoDock-GPU RV2 PDBQT",
+          "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/preparations/3b0d4589-d711-4aa7-a34b-a62bb817b24d/RV2_prepared.pdbqt",
+          "size_bytes": 2846,
+          "sha256": "760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "binding_site.gpu",
+      "label": "Co-crystal box recorded for AutoDock-GPU",
+      "record_path": "projects/default/derived/binding_sites/5f27a393-ce10-4b61-a884-3d4ea842b638/record.json",
+      "identity": "5f27a393-ce10-4b61-a884-3d4ea842b638",
+      "record_sha256": "22e4be64f72c0bea9e3cae9ea451db4e30dfce45172b87fd6852cb21b4748cf7",
+      "fields": {
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Source": "co_crystallized_ligand",
+        "Box": {
+          "center_x": 35.4305,
+          "center_y": -2.967,
+          "center_z": -0.7905,
+          "size_x": 21.596999999999998,
+          "size_y": 19.87,
+          "size_z": 19.317
+        },
+        "Stale": false
+      },
+      "artifacts": []
+    },
+    {
+      "role": "docking.autodock_gpu",
+      "label": "AutoDock-GPU RV2 job judged by redocking",
+      "record_path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/record.json",
+      "identity": "d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94",
+      "record_sha256": "11973816e0e58bcb29b8ccb3d70cf7af553858b679b2a228ade535df207ab7a6",
+      "fields": {
+        "Status": "completed",
+        "AutoDock-GPU": {
+          "name": "AutoDock-GPU",
+          "version": "1.6"
+        },
+        "Executable SHA-256": "be21dd5dea36a391e3d77286cd8a5bf18b080306d32c7178c56f0a9e4f373bbf",
+        "Device": "NVIDIA GeForce RTX 5050 Laptop GPU",
+        "Bitwise reproducible": false,
+        "Receptor": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+        "Binding site": "5f27a393-ce10-4b61-a884-3d4ea842b638",
+        "Map set": "96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b",
+        "Ligand preparation": "3b0d4589-d711-4aa7-a34b-a62bb817b24d",
+        "Ligand PDBQT SHA-256": "760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69",
+        "Parameters": {
+          "runs": 10,
+          "population_size": 150,
+          "energy_evaluations": 2500000,
+          "heuristics": false,
+          "autostop": false,
+          "local_search_method": "ad",
+          "cluster_rmsd_tolerance_angstrom": 2.0,
+          "seed_1": 20260826,
+          "seed_2": 20260826,
+          "seed_3": 20260826,
+          "device_number": 1,
+          "timeout_minutes": 60
+        },
+        "Runs": 10,
+        "Top binding energy (kcal/mol)": -5.7
+      },
+      "artifacts": [
+        {
+          "label": "GPU run 1",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_1.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "98c3115d5d0b9514a9a3dfa1a7e8faf7f851bb560d6123d9a2560f79f1d18ace",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 2",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_2.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "983d695e4e9477cc8b88518a10aa10f5372822944ac5355dd8df93bf0b9868f0",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 3",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_3.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "1c58d33cb348434908517151bae6c64a15d3ca9b42f198110b91158e9e1cb092",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 4",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_4.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "f3cf6e6dc21cd308c3a3e93b66195b7f003111c12052a366c8ef9ee67daf9c6d",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 5",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_5.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "376f3d85281e878ef2cc83e63975d7434bf171572dffa1a1f0830154b0eab081",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 6",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_6.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "6d6eef88b7f11f0eadda2b9be3d94f35c06addc2aff19602c8a029d3e72055c7",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 7",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_7.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "61463e602cad199123f38b3d04dad470b743b2aaa27dcfaac9a06c8196e7bd6c",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 8",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_8.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "1f65409a2d3fb6633af6c763157f511aa397a4fc800ca27fa3fbd528e50bdd0f",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 9",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_9.pdbqt",
+          "size_bytes": 3632,
+          "sha256": "46d7d83f6472330cbf64df17ed1307bbbb7ce41b8550e9cc49b2070ec58987a9",
+          "verification": "matched structured record"
+        },
+        {
+          "label": "GPU run 10",
+          "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_10.pdbqt",
+          "size_bytes": 3634,
+          "sha256": "e25cc3751050be6d4a0ebaba5bb9b41c32f18ab029aa296ed052d2f2676d4c5b",
+          "verification": "matched structured record"
+        }
+      ]
+    },
+    {
+      "role": "redocking.autodock_gpu",
+      "label": "In-place symmetry-aware RMSD verdict for GPU",
+      "record_path": "projects/default/validation/redocking/58954905-324e-4c61-9766-ad6c18b77d6d/record.json",
+      "identity": "58954905-324e-4c61-9766-ad6c18b77d6d",
+      "record_sha256": "7d820ffc128019349a89614524695ad81fa258cdcc67f6b1ee3720667ec074df",
+      "fields": {
+        "Reference case": "SERPINE1_7AQF_RV2",
+        "Source result": "d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94",
+        "Engine": "AutoDock-GPU",
+        "Engine version": "1.6",
+        "Reference ligand": "12ebd97c-4302-4e0f-ad49-9b606edab666",
+        "Reference SHA-256": "6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4",
+        "Bitwise reproducible": false,
+        "Metrics": {
+          "threshold_angstrom": 2.0,
+          "pose_count": 10,
+          "top1_rmsd_angstrom": 10.717198780637771,
+          "best_top5_rmsd_angstrom": 1.3307721094941114,
+          "best_overall_rmsd_angstrom": 1.3307721094941114,
+          "first_recovering_rank": 2,
+          "recovered_pose_count": 9,
+          "sampling_success": true,
+          "ranking_success": false,
+          "outcome": "recovered_but_misranked"
+        },
+        "Warnings": [
+          {
+            "code": "DOCKING_MAPS_FROM_EQUIVALENT_SITE",
+            "message": "These maps were generated for a different binding-site record with an identical receptor and search space, so they apply unchanged to this one.",
+            "stage": "autodock_gpu_docking",
+            "details": {
+              "map_set_binding_site_id": "b9620e02-bcaf-415c-a9b5-8c72cb768596",
+              "requested_binding_site_id": "5f27a393-ce10-4b61-a884-3d4ea842b638"
+            },
+            "recoverable": true
+          },
+          {
+            "code": "DOCKING_BACKEND_NOT_REPRODUCIBLE",
+            "message": "AutoDock-GPU does not reproduce a run from its seed. Repeating this job with these exact inputs will give slightly different energies and a different cluster structure. The AutoDock4 CPU backend is bit-identical across repeats if an exactly reproducible result is required.",
+            "stage": "autodock_gpu_docking",
+            "details": {
+              "measured_spread_kcal_mol": 0.13,
+              "repeats": 6
+            },
+            "recoverable": true
+          }
+        ]
+      },
+      "artifacts": []
+    }
+  ],
+  "interpretations": [
+    "The two imported 7AQF mmCIF artifacts are byte-identical (SHA-256 79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac); the four crystallographic RV2 SDF records are also byte-identical (SHA-256 6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4). Independent record IDs are provenance identities, not different deposited molecules.",
+    "All three docking records use receptor 72ff70a2-b373-4f59-b162-5bbc3a471b6e and numerically equivalent co-crystal boxes: center (35.4305, -2.967, -0.7905) Å and size (21.597, 19.87, 19.317) Å. AutoDock4 CPU and GPU reuse the same verified AutoGrid map-set identity.",
+    "The prepared ligand state is not controlled across all engines. AutoDock4 CPU used a neutral C19H13ClN2O5 conformer and PDBQT e8da59c573890ca0a65b4b5503e54d0cd72815c612d0d72fdbeeba1d4cdb3830. Vina and AutoDock-GPU used the explicitly selected anion C19H12ClN2O5- and the same PDBQT 760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69. Their individual records remain valid, but this set is not a same-chemical-state CPU/GPU comparison.",
+    "AutoDock4 CPU sampled a crystallographic-like pose (best overall 0.454 Å; first recovering rank 2) but ranked a 3.139 Å pose first. AutoDock-GPU also sampled one (best overall 1.331 Å; first recovering rank 2) but ranked a 10.717 Å pose first. Both exact records therefore report recovered_but_misranked at the recorded 2.0 Å threshold.",
+    "The Vina record reports nine modes and a top score of -7.073 kcal/mol. Its per-mode RMSD bounds are relative to Vina's best mode, not to crystallographic RV2, so they provide no redocking sampling or ranking verdict.",
+    "The Vina top-pose and AutoDock4 CPU run-1 ProLIF records contain 17 and 33 geometric contacts respectively. They describe only those exact poses under the recorded profile; they are neither affinity measurements nor evidence that one engine is biologically superior.",
+    "The selected Vina job and its interaction analysis are recoverable Trash records. Their source bytes and operation provenance remain present, but they are intentionally absent from the active Results catalog."
+  ],
+  "gaps": [
+    "No structured in-place crystallographic RMSD validation exists for the Vina RV2 job, so Vina sampling and ranking cannot yet be claimed.",
+    "No M9 pose-interaction record exists for an exact pose from the frozen AutoDock-GPU RV2 job.",
+    "The CPU and GPU redocking inputs differ in ligand protonation/charge and minimized-conformer bytes; a controlled backend comparison requires a newly frozen common chemical state before execution.",
+    "The current evidence is one SERPINE1/7AQF system and does not establish transferability. The independent PIK3CD 6OCO/M5V case must be frozen before docking and completed before reference-grade claims.",
+    "The older placeholder box center (35.561, -4.298, -0.660) Å and size (12.585, 10.101, 11.617) Å are not the box used by these frozen runs and are superseded for this evidence set."
+  ],
+  "evidence_sha256": "03d525417e7455dc40354648877a050675fdd8d5fcd1275c547fd007873cdd00"
+}

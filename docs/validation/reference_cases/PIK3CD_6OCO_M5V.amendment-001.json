@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "case_id": "PIK3CD_6OCO_M5V",
+  "amendment_id": "terminal-oxt-val-a-1031",
+  "decision_date": "2026-08-30",
+  "status": "authorized_before_retry",
+  "trigger": {
+    "rejected_receptor_attempt_id": "0ca5c010-bc95-403a-9233-d802cc311dc3",
+    "failure_code": "PDB2PQR_UNAPPROVED_HEAVY_ATOM_CHANGE",
+    "failure_record": "projects/default/derived/receptors/0ca5c010-bc95-403a-9233-d802cc311dc3/failure.json",
+    "failure_record_sha256": "05a97c8f183d2d64cdb3dcb72dae87dd46d0a3f7145b4997803afa2eeef19597",
+    "observed_added_heavy_atoms": [
+      "A|VAL|1031||OXT"
+    ]
+  },
+  "authorization": {
+    "kind": "terminal_heavy_atom_addition",
+    "chain_id": "A",
+    "residue_name": "VAL",
+    "sequence_number": 1031,
+    "insertion_code": "",
+    "atom_name": "OXT",
+    "scientist_confirmed": true
+  },
+  "scientific_basis": [
+    "VAL A:1031 is the final observed polymer residue of selected chain A.",
+    "PDB2PQR 3.7.1 adds OXT while constructing the explicit pH 7.4 AMBER terminal state.",
+    "The residue is 24.780263719339224 angstrom from crystallographic M5V A:1101."
+  ],
+  "hard_limits": [
+    "Only the exact A|VAL|1031||OXT identity is authorized.",
+    "The input residue must still be the final polymer residue of chain A and must not already contain OXT.",
+    "Every other added or removed heavy atom remains a hard failure."
+  ],
+  "unchanged_frozen_protocol": [
+    "source structure and selected chain",
+    "water, component, missing-atom, and missing-residue decisions",
+    "restrained relaxation parameters",
+    "pH and force field",
+    "common M5V chemical state and prepared PDBQT",
+    "binding box, engine parameters, seeds, repeats, and RMSD interpretation"
+  ]
+}

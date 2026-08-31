@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "case_id": "PIK3CD_6OCO_M5V",
+  "title": "PIK3CD 6OCO / M5V frozen pre-run validation protocol",
+  "frozen_on": "2026-08-28",
+  "scope": "Independent pre-run reference inputs and fixed execution/interpretation criteria for 6OCO chain A, crystallographic M5V A:1101, Vina 1.2.7, AutoDock4 4.2.6 CPU, and AutoDock-GPU 1.6. No docking result is included or used to choose this protocol.",
+  "records": [
+    {
+      "role": "structure.reference_source",
+      "label": "Official RCSB 6OCO mmCIF imported through Ankora",
+      "path": "projects/default/original/structures/5ba86431-8abf-46ec-848f-18bd16b7dc7e/record.json",
+      "identity_pointer": "/artifact/artifact_id",
+      "identity_value": "5ba86431-8abf-46ec-848f-18bd16b7dc7e",
+      "fields": [
+        {"label": "PDB entry", "pointer": "/metadata/entry_id"},
+        {"label": "Title", "pointer": "/metadata/title"},
+        {"label": "Experimental method", "pointer": "/metadata/experimental_method"},
+        {"label": "Resolution (Å)", "pointer": "/metadata/resolution_angstrom"},
+        {"label": "Source URI", "pointer": "/artifact/source_uri"},
+        {"label": "Models", "pointer": "/metadata/model_count"},
+        {"label": "Atoms", "pointer": "/metadata/atom_count"},
+        {"label": "Residues", "pointer": "/metadata/residue_count"},
+        {"label": "Polymer chains", "pointer": "/metadata/chains", "operation": "length"},
+        {"label": "Heterogens", "pointer": "/metadata/heterogens", "operation": "length"},
+        {"label": "Alternate-location atoms", "pointer": "/metadata/alternate_location_atom_count"},
+        {"label": "Reported missing residues", "pointer": "/metadata/missing_residue_count"},
+        {"label": "Reported missing atoms", "pointer": "/metadata/missing_atom_count"}
+      ],
+      "artifacts": [
+        {
+          "label": "Deposited 6OCO mmCIF",
+          "path": "projects/default/original/structures/5ba86431-8abf-46ec-848f-18bd16b7dc7e/6OCO.cif",
+          "sha256_pointer": "/artifact/sha256",
+          "size_bytes_pointer": "/artifact/size_bytes"
+        }
+      ]
+    },
+    {
+      "role": "ligand.crystal_reference",
+      "label": "Corrected coordinate/deposition-consistent M5V extraction",
+      "path": "projects/default/original/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "9b2bea0c-e96f-472a-b987-3ec96c2a4e74",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Locator", "pointer": "/artifact/locator"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Heavy atoms", "pointer": "/inspection/heavy_atom_count"},
+        {"label": "Molecular weight (g/mol)", "pointer": "/inspection/molecular_weight_g_mol"},
+        {"label": "Assigned stereocenters", "pointer": "/inspection/stereocenter_count"},
+        {"label": "Undefined stereocenters", "pointer": "/inspection/undefined_stereocenter_count"},
+        {"label": "Canonical isomeric SMILES", "pointer": "/inspection/canonical_smiles"},
+        {"label": "Inspection warnings", "pointer": "/warnings", "operation": "length"},
+        {"label": "Inspected state identity", "pointer": "/state/state_id"}
+      ],
+      "artifacts": [
+        {
+          "label": "Observed crystallographic M5V SDF",
+          "path": "projects/default/original/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/M5V_A_1101.sdf",
+          "sha256_pointer": "/artifact/sha256",
+          "size_bytes_pointer": "/artifact/size_bytes"
+        },
+        {
+          "label": "Canonical inspected M5V state",
+          "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/states/7e9f0b74-4fc9-4338-975d-101d5b2c2620/inspected_state.sdf",
+          "sha256_pointer": "/state/sha256",
+          "size_bytes_pointer": "/state/size_bytes"
+        }
+      ]
+    }
+  ],
+  "interpretations": [
+    "Reference identity is fixed before execution: RCSB PDB 6OCO, model 1, catalytic PIK3CD chain A, and the exact crystallographic component M5V A:1101. The 2.58 Å source is X-ray diffraction and its imported mmCIF SHA-256 is 4c5eaee81a4719cfb96f3dee015f935b51036f3f8d8ee9caa28eb69991ace15b.",
+    "The immutable M5V reference is neutral C21H17ClN6 with deposited/coordinate-consistent C3=S and C5=S stereochemistry, 28 heavy atoms, and SHA-256 d1f7ec02ca9a2c1d1a70570db427bbcc4ce10c6be20a959acf2cd4aaf56f7f45. RCSB Chemical Component M5V also records formal charge 0. The source coordinate mmCIF omits atom formal-charge values, so Ankora retains that inference as a warning.",
+    "Dimorphite-DL 2.0.2 enumerates four candidates at exactly pH 7.4 and precision 1.0: charge 0, two alternative +1 microstates, and charge +2. No primary source reviewed here establishes which pH-derived microstate should be the benchmark. This crystallographic redocking protocol therefore uses the deposited neutral state unchanged for all three engines and does not claim it is the dominant physiological microstate.",
+    "Receptor preparation is fixed to PIK3CD chain A. Regulatory chain B is excluded; its nearest heavy atom is 23.292 Å from M5V in the frozen coordinates. M5V is removed from the receptor but preserved untouched as the RMSD reference. All 14 crystallographic waters are removed under the current global-water semantics; this explicitly removes HOH A:1207, whose nearest heavy-atom distance to M5V is 2.770 Å.",
+    "The chain-A inspection reports 120 observed-residue missing-atom issues and 85 missing-residue gaps. Missing atoms on observed residues are repaired with PDBFixer; missing-residue gaps are left unmodelled rather than invented. The two reported missing side chains within Ankora's 8 Å near-reference cutoff are LYS A:712 (7.421 Å) and ARG A:830 (7.599 Å). Repaired atoms receive the existing restrained clash-relaxation protocol; receptor protonation is PDB2PQR/PROPKA at pH 7.4 with AMBER, followed by Meeko receptor PDBQT generation.",
+    "Ligand preparation is one common lineage for every engine: exact inspected neutral state 7e9f0b74-4fc9-4338-975d-101d5b2c2620, coordinate-independent ETKDGv3 seed 20260819, MMFF94s with at most 500 iterations and required convergence, then Meeko 0.7.1 with Gasteiger charges. No engine receives a separately regenerated or differently protonated ligand.",
+    "The search space is fixed from the observed M5V heavy-atom bounds with 5.0 Å padding on each side: center (39.319, 13.427, 33.9225) Å and requested size (21.598, 17.002, 15.307) Å. The older placeholder center (39.024, 13.576, 35.174) Å and size (14.423, 9.405, 12.053) Å are superseded and must not be used or tuned after results are observed.",
+    "Vina uses Ankora's product defaults fixed in advance: version 1.2.7, seed 20260823, exhaustiveness 8, 9 modes, minimum inter-mode RMSD 1.0 Å, and energy range 3.0 kcal/mol. AutoGrid uses spacing 0.375 Å, smoothing 0.5 Å, and dielectric -0.1465. AutoDock4 CPU uses version 4.2.6, 10 LGA runs, population 150, 2,500,000 evaluations, 27,000 generations, 2.0 Å clustering, and seeds 20260824/20260824. AutoDock-GPU uses version 1.6, 10 runs, population 150, 2,500,000 evaluations, heuristics/autostop off, ADADELTA local search, 2.0 Å clustering, and seeds 20260826/20260826/20260826.",
+    "Primary redocking RMSD is symmetry-aware and measured in place against the immutable crystallographic SDF; poses are never superimposed first. For each engine, sampling succeeds if any retained pose is below 2.0 Å, ranking succeeds if the engine-ranked first pose is below 2.0 Å, and Ankora also reports top-1, best-of-top-5, best-overall, first recovering rank, and recovered-pose count. These are separate outcomes, not one pass/fail.",
+    "Result completeness, not a favorable RMSD, closes the case: every requested execution must end terminally with exact versions, commands/parameter files, raw stdout/stderr, hashes, and a structured redocking verdict. Engine scores remain on their own scales and are never compared as affinity. Protocol failure is evidence; changing chemistry, box, search effort, or seeds after seeing a result requires a new protocol version rather than rewriting this case.",
+    "Reproducibility is evaluated without pooling: Vina and AutoDock4 CPU each receive one exact same-seed repeat; AutoDock-GPU receives six same-seed repeats because its current backend is known not to be bitwise deterministic. GPU cluster populations, energy distribution, and redocking outcomes are reported per repeat. A seed narrows GPU variability but does not imply byte-identical output.",
+    "When an engine samples a pose below 2.0 Å, M9 analyzes both its top-ranked pose and its first recovering pose when those differ. Interaction records remain geometric descriptions of exact poses and are not used to redefine the box, choose a ligand state, tune search parameters, or infer affinity."
+  ],
+  "gaps": [
+    "No receptor derivative, minimized ligand conformer, PDBQT, binding-site record, AutoGrid map set, docking result, redocking record, or M9 analysis exists yet for this case. Their absence is intentional at the pre-run freeze.",
+    "The deposited formal charge is neutral, but the crystallographic coordinate file does not observe hydrogens and does not establish the dominant solution microstate at pH 7.4. This protocol tests one exact deposited-state redocking question, not protonation-state sensitivity.",
+    "Removing all waters includes one water 2.770 Å from M5V. The current receptor contract makes water retention a global decision; a future explicit structural-water benchmark would be a separate protocol, not an adjustment to this result.",
+    "Chain A contains extensive unresolved coordinate gaps. Repairing observed-residue side-chain atoms does not reconstruct the 85 missing residues; any failure caused by these gaps remains visible and may justify a separately versioned protocol only before new results are interpreted.",
+    "A 2.0 Å recovery threshold demonstrates only pose recovery for this exact 6OCO/M5V protocol. It does not validate cross-target screening enrichment, binding affinity, biological activity, or the general superiority of an engine."
+  ]
+}

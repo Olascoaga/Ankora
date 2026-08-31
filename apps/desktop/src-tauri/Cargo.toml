@@ -1,0 +1,20 @@
+[package]
+name = "ankora-desktop"
+version = "0.1.0"
+description = "Native Windows shell for Ankora"
+authors = ["Ankora contributors"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "ankora_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# Opening a folder chooser, and nothing else: the backend is still the only
+# thing that writes a file. `dialog:allow-open` grants no filesystem access.
+tauri-plugin-dialog = "2"

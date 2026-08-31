@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ankora-backend"
+version = "0.1.0"
+description = "Typed local scientific backend foundation for Ankora"
+readme = { text = "Ankora's typed localhost scientific backend foundation.", content-type = "text/markdown" }
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "dimorphite-dl>=2.0.2,<3",
+  "fastapi>=0.115,<1",
+  "gemmi>=0.7.3,<0.8",
+  "httpx>=0.28,<1",
+  "meeko>=0.7.1,<0.8",
+  "prolif>=2.2,<3",
+  # Load-bearing for the CPU and memory readout in the status bar.
+  "psutil>=5.9,<8",
+  "pydantic>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "rdkit>=2025.9,<2027",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.14,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
+receptor = [
+  "pdb2pqr>=3.7.1,<4",
+  "propka>=3.5.1,<4",
+  "scipy>=1.15,<2",
+  "tqdm>=4.67,<5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ankora_backend = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["ankora_backend"]
+
+[[tool.mypy.overrides]]
+module = "uvicorn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["rdkit", "rdkit.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["meeko", "meeko.*", "prolif", "prolif.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["openmm", "openmm.*", "pdbfixer", "pdbfixer.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

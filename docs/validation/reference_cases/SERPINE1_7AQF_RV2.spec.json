@@ -1,0 +1,526 @@
+{
+  "schema_version": 1,
+  "case_id": "SERPINE1_7AQF_RV2",
+  "title": "SERPINE1 7AQF / RV2 frozen validation evidence",
+  "frozen_on": "2026-08-28",
+  "scope": "Existing Ankora evidence for the exact recorded 7AQF receptor, crystallographic RV2 derivatives, co-crystal search space, Vina 1.2.7, AutoDock4 4.2.6 CPU, AutoDock-GPU 1.6, redocking, and pose-interaction records.",
+  "records": [
+    {
+      "role": "structure.receptor_source",
+      "label": "7AQF source used for receptor and engine ligands",
+      "path": "projects/default/original/structures/76f5afae-1f5d-4baa-8359-a7335407abb8/record.json",
+      "identity_pointer": "/artifact/artifact_id",
+      "identity_value": "76f5afae-1f5d-4baa-8359-a7335407abb8",
+      "fields": [
+        {"label": "PDB entry", "pointer": "/metadata/entry_id"},
+        {"label": "Experimental method", "pointer": "/metadata/experimental_method"},
+        {"label": "Resolution (Å)", "pointer": "/metadata/resolution_angstrom"},
+        {"label": "Models", "pointer": "/metadata/model_count"},
+        {"label": "Atoms", "pointer": "/metadata/atom_count"},
+        {"label": "Residues", "pointer": "/metadata/residue_count"},
+        {"label": "Missing residues", "pointer": "/metadata/missing_residue_count"},
+        {"label": "Missing atoms", "pointer": "/metadata/missing_atom_count"}
+      ],
+      "artifacts": [
+        {
+          "label": "Deposited 7AQF mmCIF",
+          "path": "projects/default/original/structures/76f5afae-1f5d-4baa-8359-a7335407abb8/7AQF.cif",
+          "sha256_pointer": "/artifact/sha256",
+          "size_bytes_pointer": "/artifact/size_bytes"
+        }
+      ]
+    },
+    {
+      "role": "structure.reference_source",
+      "label": "Independent 7AQF import used for the reference ligand",
+      "path": "projects/default/original/structures/90dfd005-25b7-442b-bd0d-1356ee2af1d3/record.json",
+      "identity_pointer": "/artifact/artifact_id",
+      "identity_value": "90dfd005-25b7-442b-bd0d-1356ee2af1d3",
+      "fields": [
+        {"label": "PDB entry", "pointer": "/metadata/entry_id"},
+        {"label": "Source URI", "pointer": "/artifact/source_uri"},
+        {"label": "Deposited SHA-256", "pointer": "/artifact/sha256"}
+      ],
+      "artifacts": [
+        {
+          "label": "Second immutable 7AQF mmCIF import",
+          "path": "projects/default/original/structures/90dfd005-25b7-442b-bd0d-1356ee2af1d3/7AQF.cif",
+          "sha256_pointer": "/artifact/sha256",
+          "size_bytes_pointer": "/artifact/size_bytes"
+        }
+      ]
+    },
+    {
+      "role": "receptor.docking_ready",
+      "label": "Prepared receptor shared by the frozen engine records",
+      "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/record.json",
+      "identity_pointer": "/receptor_id",
+      "identity_value": "72ff70a2-b373-4f59-b162-5bbc3a471b6e",
+      "fields": [
+        {"label": "Source structure", "pointer": "/source_artifact_id"},
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Selected chains", "pointer": "/decisions/selected_chains"},
+        {"label": "Water action", "pointer": "/decisions/water_action"},
+        {"label": "Component decisions", "pointer": "/decisions/component_decisions"},
+        {"label": "Reference component", "pointer": "/decisions/reference_component_id"},
+        {"label": "Relaxation", "pointer": "/decisions/relaxation"},
+        {"label": "Protonation", "pointer": "/decisions/protonation"},
+        {"label": "Recorded outputs", "pointer": "/outputs", "operation": "length"}
+      ],
+      "artifacts": [
+        {"label": "Selected receptor PDB", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/selected_receptor.pdb", "sha256_pointer": "/outputs/0/sha256", "size_bytes_pointer": "/outputs/0/size_bytes"},
+        {"label": "Repaired receptor PDB", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/repaired_receptor.pdb", "sha256_pointer": "/outputs/1/sha256", "size_bytes_pointer": "/outputs/1/size_bytes"},
+        {"label": "Relaxed receptor PDB", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/relaxed_receptor.pdb", "sha256_pointer": "/outputs/2/sha256", "size_bytes_pointer": "/outputs/2/size_bytes"},
+        {"label": "Protonated receptor PQR", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/protonated_receptor.pqr", "sha256_pointer": "/outputs/3/sha256", "size_bytes_pointer": "/outputs/3/size_bytes"},
+        {"label": "Protonated receptor PDB", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/protonated_receptor.pdb", "sha256_pointer": "/outputs/4/sha256", "size_bytes_pointer": "/outputs/4/size_bytes"},
+        {"label": "Docking receptor PDBQT", "path": "projects/default/derived/receptors/72ff70a2-b373-4f59-b162-5bbc3a471b6e/prepared_receptor.pdbqt", "sha256_pointer": "/outputs/5/sha256", "size_bytes_pointer": "/outputs/5/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.crystal_reference",
+      "label": "Crystallographic RV2 used by redocking RMSD",
+      "path": "projects/default/original/ligands/12ebd97c-4302-4e0f-ad49-9b606edab666/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "12ebd97c-4302-4e0f-ad49-9b606edab666",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Locator", "pointer": "/artifact/locator"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Heavy atoms", "pointer": "/inspection/heavy_atom_count"},
+        {"label": "Molecular weight (g/mol)", "pointer": "/inspection/molecular_weight_g_mol"}
+      ],
+      "artifacts": [
+        {"label": "Observed crystallographic RV2 SDF", "path": "projects/default/original/ligands/12ebd97c-4302-4e0f-ad49-9b606edab666/RV2_A_401.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.vina_original",
+      "label": "RV2 extraction used for Vina",
+      "path": "projects/default/original/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "fa7e1bea-6f57-486f-a98a-e348c58cda4b",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Original SHA-256", "pointer": "/artifact/sha256"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"}
+      ],
+      "artifacts": [
+        {"label": "Vina-lineage crystallographic RV2 SDF", "path": "projects/default/original/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/RV2_A_401.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.vina_state",
+      "label": "Explicit pH 7.4 RV2 state used for Vina",
+      "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/states/1b02d9b6-53c0-4457-ac23-bd1f3246437e/record.json",
+      "identity_pointer": "/artifact/state_id",
+      "identity_value": "1b02d9b6-53c0-4457-ac23-bd1f3246437e",
+      "fields": [
+        {"label": "Parent state", "pointer": "/parent_state_id"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Selection", "pointer": "/selection"},
+        {"label": "Tool version", "pointer": "/provenance/tool/version"}
+      ],
+      "artifacts": [
+        {"label": "Vina-lineage explicit protonation state", "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/states/1b02d9b6-53c0-4457-ac23-bd1f3246437e/RV2_protonated_state.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.vina_conformer",
+      "label": "Independent minimized RV2 conformer used for Vina",
+      "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/conformers/097feb6a-6a25-4fa6-b2d6-a96e18a6008c/record.json",
+      "identity_pointer": "/artifact/conformer_id",
+      "identity_value": "097feb6a-6a25-4fa6-b2d6-a96e18a6008c",
+      "fields": [
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Embedding", "pointer": "/minimization/embedding_method"},
+        {"label": "Force field", "pointer": "/minimization/force_field"},
+        {"label": "Random seed", "pointer": "/provenance/parameters/random_seed"},
+        {"label": "Selected conformer", "pointer": "/provenance/parameters/selected_conformer_id"},
+        {"label": "Final MMFF energy (kcal/mol)", "pointer": "/minimization/final_energy_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "Vina-lineage minimized conformer", "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/conformers/097feb6a-6a25-4fa6-b2d6-a96e18a6008c/RV2_ETKDGv3_MMFF94s_minimized.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.vina_pdbqt",
+      "label": "Meeko RV2 input used for Vina",
+      "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/preparations/4021fc7d-a8e4-492b-8815-b2e30f9ca880/record.json",
+      "identity_pointer": "/artifact/preparation_id",
+      "identity_value": "4021fc7d-a8e4-492b-8815-b2e30f9ca880",
+      "fields": [
+        {"label": "Conformer", "pointer": "/artifact/conformer_id"},
+        {"label": "Charge model", "pointer": "/charge_model"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "PDBQT SHA-256", "pointer": "/artifact/sha256"}
+      ],
+      "artifacts": [
+        {"label": "Vina RV2 PDBQT", "path": "projects/default/derived/ligands/fa7e1bea-6f57-486f-a98a-e348c58cda4b/preparations/4021fc7d-a8e4-492b-8815-b2e30f9ca880/RV2_prepared.pdbqt", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "binding_site.vina",
+      "label": "Co-crystal box used for Vina",
+      "path": "projects/default/derived/binding_sites/b946e1d6-af18-431c-9fb0-a25891dda40d/record.json",
+      "identity_pointer": "/binding_site_id",
+      "identity_value": "b946e1d6-af18-431c-9fb0-a25891dda40d",
+      "fields": [
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Source", "pointer": "/decisions/source"},
+        {"label": "Ligand origin", "pointer": "/decisions/ligand_origin"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Stale", "pointer": "/stale"}
+      ]
+    },
+    {
+      "role": "docking.vina",
+      "label": "Vina RV2 single-ligand job preserved in recoverable Trash",
+      "path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/campaigns/vina_job/ccb42404-e1ce-44a7-8fd6-71b1d2b38959/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "ccb42404-e1ce-44a7-8fd6-71b1d2b38959",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "Receptor", "pointer": "/request/receptor_id"},
+        {"label": "Binding site", "pointer": "/request/binding_site_id"},
+        {"label": "Ligand", "pointer": "/request/ligand_id"},
+        {"label": "Ligand preparation", "pointer": "/request/ligand_preparation_id"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Pose count", "pointer": "/poses", "operation": "length"},
+        {"label": "Top Vina score (kcal/mol)", "pointer": "/poses/0/affinity_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "Vina top pose", "path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/campaigns/vina_job/ccb42404-e1ce-44a7-8fd6-71b1d2b38959/pose_1.pdbqt", "sha256_pointer": "/poses/0/artifact/sha256", "size_bytes_pointer": "/poses/0/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "interaction.vina_top_pose",
+      "label": "ProLIF analysis of the exact Vina top pose",
+      "path": "projects/default/trash/result_campaigns/19d5b861-ef87-4473-b87e-273e0be11667/dependencies/pose_interactions/59ad4103-fb7a-4754-9188-ed2e79112a00/record.json",
+      "identity_pointer": "/analysis_id",
+      "identity_value": "59ad4103-fb7a-4754-9188-ed2e79112a00",
+      "fields": [
+        {"label": "Catalog result", "pointer": "/catalog_id"},
+        {"label": "Pose artifact", "pointer": "/pose/artifact_id"},
+        {"label": "Pose SHA-256", "pointer": "/pose/sha256"},
+        {"label": "Detector", "pointer": "/detector"},
+        {"label": "Profile", "pointer": "/profile"},
+        {"label": "Geometric contacts", "pointer": "/contacts", "operation": "length"}
+      ]
+    },
+    {
+      "role": "ligand.cpu_original",
+      "label": "RV2 extraction used for AutoDock4 CPU",
+      "path": "projects/default/original/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "b6da69d4-558a-494d-a7e3-243b06a89024",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Original SHA-256", "pointer": "/artifact/sha256"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"}
+      ],
+      "artifacts": [
+        {"label": "CPU-lineage crystallographic RV2 SDF", "path": "projects/default/original/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/RV2_A_401.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.cpu_conformer",
+      "label": "Neutral minimized RV2 conformer used for AutoDock4 CPU",
+      "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/conformers/5c7cf0e1-0d3d-476c-94b8-97e250bd3535/record.json",
+      "identity_pointer": "/artifact/conformer_id",
+      "identity_value": "5c7cf0e1-0d3d-476c-94b8-97e250bd3535",
+      "fields": [
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Embedding", "pointer": "/minimization/embedding_method"},
+        {"label": "Force field", "pointer": "/minimization/force_field"},
+        {"label": "Random seed", "pointer": "/provenance/parameters/random_seed"},
+        {"label": "Selected conformer", "pointer": "/provenance/parameters/selected_conformer_id"},
+        {"label": "Final MMFF energy (kcal/mol)", "pointer": "/minimization/final_energy_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "CPU-lineage neutral minimized conformer", "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/conformers/5c7cf0e1-0d3d-476c-94b8-97e250bd3535/RV2_ETKDGv3_MMFF94s_minimized.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.cpu_pdbqt",
+      "label": "Meeko neutral RV2 input used for AutoDock4 CPU",
+      "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/preparations/c5002724-b9b5-4d0a-b762-b96ebf0f1a02/record.json",
+      "identity_pointer": "/artifact/preparation_id",
+      "identity_value": "c5002724-b9b5-4d0a-b762-b96ebf0f1a02",
+      "fields": [
+        {"label": "Conformer", "pointer": "/artifact/conformer_id"},
+        {"label": "Charge model", "pointer": "/charge_model"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "PDBQT SHA-256", "pointer": "/artifact/sha256"}
+      ],
+      "artifacts": [
+        {"label": "AutoDock4 CPU RV2 PDBQT", "path": "projects/default/derived/ligands/b6da69d4-558a-494d-a7e3-243b06a89024/preparations/c5002724-b9b5-4d0a-b762-b96ebf0f1a02/RV2_prepared.pdbqt", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "binding_site.cpu",
+      "label": "Co-crystal box recorded for AutoDock4 CPU",
+      "path": "projects/default/derived/binding_sites/4a839b60-46f5-47b9-92bb-16f4d3703874/record.json",
+      "identity_pointer": "/binding_site_id",
+      "identity_value": "4a839b60-46f5-47b9-92bb-16f4d3703874",
+      "fields": [
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Source", "pointer": "/decisions/source"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Stale", "pointer": "/stale"}
+      ]
+    },
+    {
+      "role": "maps.shared_autogrid",
+      "label": "AutoGrid map set reused by CPU and GPU",
+      "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/record.json",
+      "identity_pointer": "/map_set_id",
+      "identity_value": "96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b",
+      "fields": [
+        {"label": "Identity key", "pointer": "/identity_key"},
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Receptor SHA-256", "pointer": "/receptor_sha256"},
+        {"label": "Recorded binding site", "pointer": "/binding_site_id"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Realized grid geometry", "pointer": "/geometry"},
+        {"label": "AutoGrid", "pointer": "/autogrid/tool"},
+        {"label": "AutoGrid executable SHA-256", "pointer": "/autogrid/sha256"},
+        {"label": "Successful completion logged", "pointer": "/execution/successful_completion_logged"}
+      ],
+      "artifacts": [
+        {"label": "A map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.A.map", "sha256_pointer": "/artifacts/0/sha256", "size_bytes_pointer": "/artifacts/0/size_bytes"},
+        {"label": "C map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.C.map", "sha256_pointer": "/artifacts/1/sha256", "size_bytes_pointer": "/artifacts/1/size_bytes"},
+        {"label": "Cl map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.Cl.map", "sha256_pointer": "/artifacts/2/sha256", "size_bytes_pointer": "/artifacts/2/size_bytes"},
+        {"label": "HD map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.HD.map", "sha256_pointer": "/artifacts/3/sha256", "size_bytes_pointer": "/artifacts/3/size_bytes"},
+        {"label": "N map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.N.map", "sha256_pointer": "/artifacts/4/sha256", "size_bytes_pointer": "/artifacts/4/size_bytes"},
+        {"label": "OA map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.OA.map", "sha256_pointer": "/artifacts/5/sha256", "size_bytes_pointer": "/artifacts/5/size_bytes"},
+        {"label": "Desolvation map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.d.map", "sha256_pointer": "/artifacts/6/sha256", "size_bytes_pointer": "/artifacts/6/size_bytes"},
+        {"label": "Electrostatic map", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.e.map", "sha256_pointer": "/artifacts/7/sha256", "size_bytes_pointer": "/artifacts/7/size_bytes"},
+        {"label": "AutoGrid log", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.glg", "sha256_pointer": "/artifacts/8/sha256", "size_bytes_pointer": "/artifacts/8/size_bytes"},
+        {"label": "Grid parameter file", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.gpf", "sha256_pointer": "/artifacts/9/sha256", "size_bytes_pointer": "/artifacts/9/size_bytes"},
+        {"label": "Field file", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.maps.fld", "sha256_pointer": "/artifacts/10/sha256", "size_bytes_pointer": "/artifacts/10/size_bytes"},
+        {"label": "Grid origin", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.maps.xyz", "sha256_pointer": "/artifacts/11/sha256", "size_bytes_pointer": "/artifacts/11/size_bytes"},
+        {"label": "Map-set receptor PDBQT", "path": "projects/default/derived/autogrid_maps/96bffc5a-6e5e-4d29-80ec-5a51a6c7e58b/receptor.pdbqt", "sha256_pointer": "/artifacts/12/sha256", "size_bytes_pointer": "/artifacts/12/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock4_cpu",
+      "label": "AutoDock4 CPU RV2 job judged by redocking",
+      "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "bdef5443-02c1-4d67-9ea9-d6f32e8a9890",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "AutoDock", "pointer": "/autodock4/tool"},
+        {"label": "Executable SHA-256", "pointer": "/autodock4/sha256"},
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Binding site", "pointer": "/binding_site_id"},
+        {"label": "Map set", "pointer": "/map_set_id"},
+        {"label": "Ligand preparation", "pointer": "/request/ligand_preparation_id"},
+        {"label": "Ligand PDBQT SHA-256", "pointer": "/ligand_sha256"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Runs", "pointer": "/runs", "operation": "length"},
+        {"label": "Top binding energy (kcal/mol)", "pointer": "/clusters/0/lowest_binding_energy_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "CPU run 1", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "CPU run 2", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "CPU run 3", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "CPU run 4", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "CPU run 5", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "CPU run 6", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "CPU run 7", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "CPU run 8", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "CPU run 9", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "CPU run 10", "path": "projects/default/results/autodock4_jobs/bdef5443-02c1-4d67-9ea9-d6f32e8a9890/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "redocking.autodock4_cpu",
+      "label": "In-place symmetry-aware RMSD verdict for CPU",
+      "path": "projects/default/validation/redocking/179484ac-a6cd-497c-8147-1333955813ff/record.json",
+      "identity_pointer": "/validation_id",
+      "identity_value": "179484ac-a6cd-497c-8147-1333955813ff",
+      "fields": [
+        {"label": "Reference case", "pointer": "/reference_case"},
+        {"label": "Source result", "pointer": "/source_id"},
+        {"label": "Engine", "pointer": "/engine"},
+        {"label": "Engine version", "pointer": "/engine_version"},
+        {"label": "Reference ligand", "pointer": "/reference_ligand_id"},
+        {"label": "Reference SHA-256", "pointer": "/reference_sha256"},
+        {"label": "Bitwise reproducible", "pointer": "/bitwise_reproducible"},
+        {"label": "Metrics", "pointer": "/metrics"}
+      ]
+    },
+    {
+      "role": "interaction.autodock4_cpu_run1",
+      "label": "ProLIF analysis of exact CPU run 1 (not top-ranked)",
+      "path": "projects/default/analysis/pose_interactions/4e0e6a5e-3cb2-4f15-af70-84e9c9dae398/record.json",
+      "identity_pointer": "/analysis_id",
+      "identity_value": "4e0e6a5e-3cb2-4f15-af70-84e9c9dae398",
+      "fields": [
+        {"label": "Catalog result", "pointer": "/catalog_id"},
+        {"label": "Pose artifact", "pointer": "/pose/artifact_id"},
+        {"label": "Pose label", "pointer": "/pose/label"},
+        {"label": "Pose SHA-256", "pointer": "/pose/sha256"},
+        {"label": "Detector", "pointer": "/detector"},
+        {"label": "Geometric contacts", "pointer": "/contacts", "operation": "length"}
+      ]
+    },
+    {
+      "role": "ligand.gpu_original",
+      "label": "RV2 extraction used for AutoDock-GPU",
+      "path": "projects/default/original/ligands/7a65023d-418e-450a-9dbd-a390334bf377/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "7a65023d-418e-450a-9dbd-a390334bf377",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Original SHA-256", "pointer": "/artifact/sha256"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"}
+      ],
+      "artifacts": [
+        {"label": "GPU-lineage crystallographic RV2 SDF", "path": "projects/default/original/ligands/7a65023d-418e-450a-9dbd-a390334bf377/RV2_A_401.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.gpu_state",
+      "label": "Explicit pH 7.4 RV2 state used for AutoDock-GPU",
+      "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/states/cb88050b-d4f4-442d-aad4-00d35959a233/record.json",
+      "identity_pointer": "/artifact/state_id",
+      "identity_value": "cb88050b-d4f4-442d-aad4-00d35959a233",
+      "fields": [
+        {"label": "Parent state", "pointer": "/parent_state_id"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Selection", "pointer": "/selection"},
+        {"label": "Tool version", "pointer": "/provenance/tool/version"}
+      ],
+      "artifacts": [
+        {"label": "GPU-lineage explicit protonation state", "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/states/cb88050b-d4f4-442d-aad4-00d35959a233/RV2_protonated_state.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.gpu_conformer",
+      "label": "Independent minimized RV2 conformer used for AutoDock-GPU",
+      "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/conformers/445fbd04-1d43-4b80-be62-f46cbe7f2623/record.json",
+      "identity_pointer": "/artifact/conformer_id",
+      "identity_value": "445fbd04-1d43-4b80-be62-f46cbe7f2623",
+      "fields": [
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Embedding", "pointer": "/minimization/embedding_method"},
+        {"label": "Force field", "pointer": "/minimization/force_field"},
+        {"label": "Random seed", "pointer": "/provenance/parameters/random_seed"},
+        {"label": "Selected conformer", "pointer": "/provenance/parameters/selected_conformer_id"},
+        {"label": "Final MMFF energy (kcal/mol)", "pointer": "/minimization/final_energy_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "GPU-lineage anionic minimized conformer", "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/conformers/445fbd04-1d43-4b80-be62-f46cbe7f2623/RV2_ETKDGv3_MMFF94s_minimized.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.gpu_pdbqt",
+      "label": "Meeko anionic RV2 input used for AutoDock-GPU",
+      "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/preparations/3b0d4589-d711-4aa7-a34b-a62bb817b24d/record.json",
+      "identity_pointer": "/artifact/preparation_id",
+      "identity_value": "3b0d4589-d711-4aa7-a34b-a62bb817b24d",
+      "fields": [
+        {"label": "Conformer", "pointer": "/artifact/conformer_id"},
+        {"label": "Charge model", "pointer": "/charge_model"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "PDBQT SHA-256", "pointer": "/artifact/sha256"}
+      ],
+      "artifacts": [
+        {"label": "AutoDock-GPU RV2 PDBQT", "path": "projects/default/derived/ligands/7a65023d-418e-450a-9dbd-a390334bf377/preparations/3b0d4589-d711-4aa7-a34b-a62bb817b24d/RV2_prepared.pdbqt", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "binding_site.gpu",
+      "label": "Co-crystal box recorded for AutoDock-GPU",
+      "path": "projects/default/derived/binding_sites/5f27a393-ce10-4b61-a884-3d4ea842b638/record.json",
+      "identity_pointer": "/binding_site_id",
+      "identity_value": "5f27a393-ce10-4b61-a884-3d4ea842b638",
+      "fields": [
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Source", "pointer": "/decisions/source"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Stale", "pointer": "/stale"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu",
+      "label": "AutoDock-GPU RV2 job judged by redocking",
+      "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "AutoDock-GPU", "pointer": "/autodock_gpu/tool"},
+        {"label": "Executable SHA-256", "pointer": "/autodock_gpu/sha256"},
+        {"label": "Device", "pointer": "/autodock_gpu/device_name"},
+        {"label": "Bitwise reproducible", "pointer": "/bitwise_reproducible"},
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Binding site", "pointer": "/binding_site_id"},
+        {"label": "Map set", "pointer": "/map_set_id"},
+        {"label": "Ligand preparation", "pointer": "/request/ligand_preparation_id"},
+        {"label": "Ligand PDBQT SHA-256", "pointer": "/ligand_sha256"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Runs", "pointer": "/runs", "operation": "length"},
+        {"label": "Top binding energy (kcal/mol)", "pointer": "/clusters/0/lowest_binding_energy_kcal_mol"}
+      ],
+      "artifacts": [
+        {"label": "GPU run 1", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU run 2", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU run 3", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU run 4", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU run 5", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU run 6", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU run 7", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU run 8", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU run 9", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU run 10", "path": "projects/default/results/autodock_gpu_jobs/d6cfdfd8-ac07-48f9-bc16-c3982ebe6d94/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "redocking.autodock_gpu",
+      "label": "In-place symmetry-aware RMSD verdict for GPU",
+      "path": "projects/default/validation/redocking/58954905-324e-4c61-9766-ad6c18b77d6d/record.json",
+      "identity_pointer": "/validation_id",
+      "identity_value": "58954905-324e-4c61-9766-ad6c18b77d6d",
+      "fields": [
+        {"label": "Reference case", "pointer": "/reference_case"},
+        {"label": "Source result", "pointer": "/source_id"},
+        {"label": "Engine", "pointer": "/engine"},
+        {"label": "Engine version", "pointer": "/engine_version"},
+        {"label": "Reference ligand", "pointer": "/reference_ligand_id"},
+        {"label": "Reference SHA-256", "pointer": "/reference_sha256"},
+        {"label": "Bitwise reproducible", "pointer": "/bitwise_reproducible"},
+        {"label": "Metrics", "pointer": "/metrics"},
+        {"label": "Warnings", "pointer": "/warnings"}
+      ]
+    }
+  ],
+  "interpretations": [
+    "The two imported 7AQF mmCIF artifacts are byte-identical (SHA-256 79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac); the four crystallographic RV2 SDF records are also byte-identical (SHA-256 6fa65e2d76adb3ba91d60a5747e4986d359766c965f29fdf3559203f26195fe4). Independent record IDs are provenance identities, not different deposited molecules.",
+    "All three docking records use receptor 72ff70a2-b373-4f59-b162-5bbc3a471b6e and numerically equivalent co-crystal boxes: center (35.4305, -2.967, -0.7905) Å and size (21.597, 19.87, 19.317) Å. AutoDock4 CPU and GPU reuse the same verified AutoGrid map-set identity.",
+    "The prepared ligand state is not controlled across all engines. AutoDock4 CPU used a neutral C19H13ClN2O5 conformer and PDBQT e8da59c573890ca0a65b4b5503e54d0cd72815c612d0d72fdbeeba1d4cdb3830. Vina and AutoDock-GPU used the explicitly selected anion C19H12ClN2O5- and the same PDBQT 760f3a289dd45e02ba71c6f04d66dd03c0cfaa6cc0873531fe562ea388cffc69. Their individual records remain valid, but this set is not a same-chemical-state CPU/GPU comparison.",
+    "AutoDock4 CPU sampled a crystallographic-like pose (best overall 0.454 Å; first recovering rank 2) but ranked a 3.139 Å pose first. AutoDock-GPU also sampled one (best overall 1.331 Å; first recovering rank 2) but ranked a 10.717 Å pose first. Both exact records therefore report recovered_but_misranked at the recorded 2.0 Å threshold.",
+    "The Vina record reports nine modes and a top score of -7.073 kcal/mol. Its per-mode RMSD bounds are relative to Vina's best mode, not to crystallographic RV2, so they provide no redocking sampling or ranking verdict.",
+    "The Vina top-pose and AutoDock4 CPU run-1 ProLIF records contain 17 and 33 geometric contacts respectively. They describe only those exact poses under the recorded profile; they are neither affinity measurements nor evidence that one engine is biologically superior.",
+    "The selected Vina job and its interaction analysis are recoverable Trash records. Their source bytes and operation provenance remain present, but they are intentionally absent from the active Results catalog."
+  ],
+  "gaps": [
+    "No structured in-place crystallographic RMSD validation exists for the Vina RV2 job, so Vina sampling and ranking cannot yet be claimed.",
+    "No M9 pose-interaction record exists for an exact pose from the frozen AutoDock-GPU RV2 job.",
+    "The CPU and GPU redocking inputs differ in ligand protonation/charge and minimized-conformer bytes; a controlled backend comparison requires a newly frozen common chemical state before execution.",
+    "The current evidence is one SERPINE1/7AQF system and does not establish transferability. The independent PIK3CD 6OCO/M5V case must be frozen before docking and completed before reference-grade claims.",
+    "The older placeholder box center (35.561, -4.298, -0.660) Å and size (12.585, 10.101, 11.617) Å are not the box used by these frozen runs and are superseded for this evidence set."
+  ]
+}

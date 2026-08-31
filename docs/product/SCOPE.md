@@ -1,0 +1,7 @@
+# Scope
+
+Version 0.1 covers structure import and inspection, user-controlled receptor and ligand-library preparation for local virtual-screening campaigns, binding-site editing, independent Vina and AutoDock4 execution, durable pose/cluster review, redocking validation, reproducible campaign export, and exact-pose interaction analysis. AutoDock4 entered CPU-first; AutoDock-GPU is implemented as optional acceleration of the same scoring family after the native CPU and map contracts were validated. GNINA remains deferred pending a viable native-Windows distribution.
+
+M1-M9 implement the trustworthy path from immutable input through explicitly controlled docking, durable Results, redocking validation, campaign export, and exact-pose interaction analysis. M9's create-only ProLIF record, skeletal 2D diagram, contact table, Mol* focus, recorded SVG/PNG/TIFF/PDF figure export, exact-pose PDB export, portable campaign evidence, responsive native review, and recoverable Results lifecycle were accepted on 2026-08-28. See `docs/validation/M9_POSE_INTERACTIONS.md`.
+
+Cloud, remote/HPC execution, million-compound screening, WSL, macOS, Linux, combined consensus scoring, molecular dynamics, and automated scientific decisions are out of v0.1 scope. P2Rank cavity prediction and AlphaFold DB input were added through explicit later decisions and remain local, inspectable suggestions rather than automatic scientific choices. Local batch controls may repeat an explicitly chosen preparation or docking protocol, but may not resolve chemical-state decisions silently.

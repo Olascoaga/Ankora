@@ -1,0 +1,48 @@
+data_SYN1
+_entry.id SYN1
+_struct.title 'Synthetic M1 mmCIF fixture; not experimental data'
+_exptl.method 'SYNTHETIC TEST DATA'
+#
+loop_
+_entity.id
+_entity.type
+1 polymer
+2 non-polymer
+#
+loop_
+_entity_poly.entity_id
+_entity_poly.type
+1 'polypeptide(L)'
+#
+loop_
+_struct_asym.id
+_struct_asym.entity_id
+A 1
+B 2
+#
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.label_alt_id
+_atom_site.label_comp_id
+_atom_site.label_asym_id
+_atom_site.label_entity_id
+_atom_site.label_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.auth_seq_id
+_atom_site.auth_comp_id
+_atom_site.auth_asym_id
+_atom_site.auth_atom_id
+_atom_site.pdbx_PDB_model_num
+ATOM   1 N  N  . ALA A 1 1 ? 11.104 13.207 8.100 1.00 20.00 1 ALA A N  1
+ATOM   2 C  CA . ALA A 1 1 ? 12.200 12.400 8.500 1.00 20.00 1 ALA A CA 1
+ATOM   3 C  C  . ALA A 1 1 ? 13.400 13.200 8.900 1.00 20.00 1 ALA A C  1
+HETATM 4 C  C1 . LIG B 2 . ? 15.000 15.000 10.000 1.00 20.00 101 LIG A C1 1
+#

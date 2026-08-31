@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1015" />
+    <title>Ankora</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #0b1015;
+        color: #ffffff;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+      .pre-splash {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #0b1015;
+      }
+      .pre-splash-card {
+        width: 100%;
+        max-width: 600px;
+        min-height: 380px;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 40px 48px;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        background: rgba(18, 22, 26, 0.8);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+      }
+      .pre-splash-mesh {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 65%;
+        height: 100%;
+        z-index: -1;
+        overflow: hidden;
+        border-radius: 0 12px 12px 0;
+      }
+      .pre-splash-mesh img {
+        position: absolute;
+        right: -20%;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 160%;
+        width: auto;
+        max-width: none;
+        object-fit: contain;
+        mix-blend-mode: screen;
+        opacity: 0.9;
+      }
+      .pre-splash-content {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .pre-splash-logo {
+        width: 72px;
+        height: 72px;
+        margin-bottom: 24px;
+        background: transparent;
+      }
+      .pre-splash-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        mix-blend-mode: screen;
+      }
+      .pre-splash h1 {
+        margin: 0 0 6px 0;
+        font-size: 32px;
+        font-weight: 300;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+      }
+      .pre-splash h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: 0.01em;
+        color: #e8f0ec;
+      }
+      .pre-splash p {
+        margin: 6px 0 0;
+        color: #8fa29a;
+        font-size: 13px;
+        font-weight: 400;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="pre-splash">
+        <div class="pre-splash-card">
+          <div class="pre-splash-mesh">
+            <img src="/src/assets/splash-bg-mesh-only.jpg" alt="" aria-hidden="true" />
+          </div>
+          <div class="pre-splash-content">
+            <div class="pre-splash-logo">
+              <img src="/src/assets/splash-logo.jpg" alt="Logo" />
+            </div>
+            <h1>ANKORA</h1>
+            <h2>Advanced Molecular Docking Suite</h2>
+            <p>Precision Drug Discovery Platform</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

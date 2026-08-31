@@ -1,0 +1,41 @@
+autodock_parameter_version 4.2
+outlev 1
+intelec
+seed 20260824 20260824
+ligand_types NA N A HD
+fld receptor.maps.fld
+map receptor.NA.map
+map receptor.N.map
+map receptor.A.map
+map receptor.HD.map
+elecmap receptor.e.map
+desolvmap receptor.d.map
+move ligand.pdbqt
+about -0.4971 -0.0833 -0.0233
+tran0 random
+quaternion0 random
+dihe0 random
+torsdof 0
+rmstol 2.00
+extnrg 1000.0
+e0max 0.0 10000
+ga_pop_size 150
+ga_num_evals 250000
+ga_num_generations 27000
+ga_elitism 1
+ga_mutation_rate 0.02
+ga_crossover_rate 0.8
+ga_window_size 10
+ga_cauchy_alpha 0.0
+ga_cauchy_beta 1.0
+set_ga
+sw_max_its 300
+sw_max_succ 4
+sw_max_fail 4
+sw_rho 1.0
+sw_lb_rho 0.01
+ls_search_freq 0.06
+set_psw1
+unbound_model bound
+ga_run 3
+analysis

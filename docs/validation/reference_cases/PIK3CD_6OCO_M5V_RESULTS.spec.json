@@ -1,0 +1,451 @@
+{
+  "schema_version": 1,
+  "case_id": "PIK3CD_6OCO_M5V_RESULTS",
+  "title": "PIK3CD 6OCO / M5V completed frozen validation evidence",
+  "frozen_on": "2026-08-30",
+  "scope": "Completed independent validation of exact 6OCO chain A and neutral crystallographic M5V A:1101 through one common receptor/ligand/box lineage, Vina 1.2.7 primary/repeat, AutoDock4 4.2.6 CPU primary/repeat, six AutoDock-GPU 1.6 repeats, ten in-place symmetry-aware redocking verdicts, and the two conditional CPU pose-interaction analyses required by the pre-run protocol.",
+  "records": [
+    {
+      "role": "structure.reference_source",
+      "label": "Official RCSB 6OCO mmCIF imported through Ankora",
+      "path": "projects/default/original/structures/5ba86431-8abf-46ec-848f-18bd16b7dc7e/record.json",
+      "identity_pointer": "/artifact/artifact_id",
+      "identity_value": "5ba86431-8abf-46ec-848f-18bd16b7dc7e",
+      "fields": [
+        {"label": "PDB entry", "pointer": "/metadata/entry_id"},
+        {"label": "Experimental method", "pointer": "/metadata/experimental_method"},
+        {"label": "Resolution (Å)", "pointer": "/metadata/resolution_angstrom"},
+        {"label": "Atoms", "pointer": "/metadata/atom_count"},
+        {"label": "Residues", "pointer": "/metadata/residue_count"},
+        {"label": "Reported missing residues", "pointer": "/metadata/missing_residue_count"},
+        {"label": "Reported missing atoms", "pointer": "/metadata/missing_atom_count"}
+      ],
+      "artifacts": [
+        {"label": "Deposited 6OCO mmCIF", "path": "projects/default/original/structures/5ba86431-8abf-46ec-848f-18bd16b7dc7e/6OCO.cif", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.crystal_reference",
+      "label": "Coordinate/deposition-consistent M5V crystallographic reference",
+      "path": "projects/default/original/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/record.json",
+      "identity_pointer": "/artifact/ligand_id",
+      "identity_value": "9b2bea0c-e96f-472a-b987-3ec96c2a4e74",
+      "fields": [
+        {"label": "Source structure", "pointer": "/artifact/source_structure_id"},
+        {"label": "Locator", "pointer": "/artifact/locator"},
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Heavy atoms", "pointer": "/inspection/heavy_atom_count"},
+        {"label": "Canonical isomeric SMILES", "pointer": "/inspection/canonical_smiles"},
+        {"label": "Inspected state", "pointer": "/state/state_id"}
+      ],
+      "artifacts": [
+        {"label": "Observed crystallographic M5V SDF", "path": "projects/default/original/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/M5V_A_1101.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"},
+        {"label": "Canonical neutral S/S M5V state", "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/states/7e9f0b74-4fc9-4338-975d-101d5b2c2620/inspected_state.sdf", "sha256_pointer": "/state/sha256", "size_bytes_pointer": "/state/size_bytes"}
+      ]
+    },
+    {
+      "role": "receptor.docking_ready",
+      "label": "Accepted chain-A receptor common to every engine",
+      "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/record.json",
+      "identity_pointer": "/receptor_id",
+      "identity_value": "33f431a3-73a9-4858-a3f0-0026bef9d2d6",
+      "fields": [
+        {"label": "Source structure", "pointer": "/source_artifact_id"},
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Selected chains", "pointer": "/decisions/selected_chains"},
+        {"label": "Water action", "pointer": "/decisions/water_action"},
+        {"label": "Component decisions", "pointer": "/decisions/component_decisions"},
+        {"label": "Issue decisions", "pointer": "/decisions/issue_decisions", "operation": "length"},
+        {"label": "Relaxation", "pointer": "/decisions/relaxation"},
+        {"label": "Protonation", "pointer": "/decisions/protonation"},
+        {"label": "Recorded outputs", "pointer": "/outputs", "operation": "length"},
+        {"label": "Warnings", "pointer": "/warnings"}
+      ],
+      "artifacts": [
+        {"label": "Selected receptor PDB", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/selected_receptor.pdb", "sha256_pointer": "/outputs/0/sha256", "size_bytes_pointer": "/outputs/0/size_bytes"},
+        {"label": "Repaired receptor PDB", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/repaired_receptor.pdb", "sha256_pointer": "/outputs/1/sha256", "size_bytes_pointer": "/outputs/1/size_bytes"},
+        {"label": "Restrained relaxed receptor PDB", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/relaxed_receptor.pdb", "sha256_pointer": "/outputs/2/sha256", "size_bytes_pointer": "/outputs/2/size_bytes"},
+        {"label": "Canonical protonated receptor PQR", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/protonated_receptor.pqr", "sha256_pointer": "/outputs/3/sha256", "size_bytes_pointer": "/outputs/3/size_bytes"},
+        {"label": "Analysis receptor PDB", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/protonated_receptor.pdb", "sha256_pointer": "/outputs/4/sha256", "size_bytes_pointer": "/outputs/4/size_bytes"},
+        {"label": "Exact Meeko-input PQR", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/meeko_input_receptor.pqr", "sha256_pointer": "/outputs/5/sha256", "size_bytes_pointer": "/outputs/5/size_bytes"},
+        {"label": "Rigid receptor PDBQT", "path": "projects/default/derived/receptors/33f431a3-73a9-4858-a3f0-0026bef9d2d6/prepared_receptor.pdbqt", "sha256_pointer": "/outputs/6/sha256", "size_bytes_pointer": "/outputs/6/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.common_conformer",
+      "label": "Coordinate-independent ETKDGv3/MMFF94s M5V conformer",
+      "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/conformers/69efca0b-3fc4-4fe4-be6e-8360dde51373/record.json",
+      "identity_pointer": "/artifact/conformer_id",
+      "identity_value": "69efca0b-3fc4-4fe4-be6e-8360dde51373",
+      "fields": [
+        {"label": "Formula", "pointer": "/inspection/formula"},
+        {"label": "Formal charge", "pointer": "/inspection/formal_charge"},
+        {"label": "Minimization", "pointer": "/minimization"},
+        {"label": "Random seed", "pointer": "/provenance/parameters/random_seed"},
+        {"label": "Selected conformer", "pointer": "/provenance/parameters/selected_conformer_id"}
+      ],
+      "artifacts": [
+        {"label": "Independent minimized M5V conformer", "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/conformers/69efca0b-3fc4-4fe4-be6e-8360dde51373/M5V_ETKDGv3_MMFF94s_minimized.sdf", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "ligand.common_pdbqt",
+      "label": "One common Meeko/Gasteiger M5V preparation",
+      "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/preparations/c303fdf4-a770-44c6-94ca-657b0b917591/record.json",
+      "identity_pointer": "/artifact/preparation_id",
+      "identity_value": "c303fdf4-a770-44c6-94ca-657b0b917591",
+      "fields": [
+        {"label": "Conformer", "pointer": "/artifact/conformer_id"},
+        {"label": "Charge model", "pointer": "/charge_model"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "Stderr", "pointer": "/stderr"}
+      ],
+      "artifacts": [
+        {"label": "Common M5V PDBQT", "path": "projects/default/derived/ligands/9b2bea0c-e96f-472a-b987-3ec96c2a4e74/preparations/c303fdf4-a770-44c6-94ca-657b0b917591/M5V_prepared.pdbqt", "sha256_pointer": "/artifact/sha256", "size_bytes_pointer": "/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "binding_site.crystal_m5v",
+      "label": "Pre-frozen 5 Å co-crystal search space",
+      "path": "projects/default/derived/binding_sites/3e327a7e-8824-4362-971f-fb63f9eb17c6/record.json",
+      "identity_pointer": "/binding_site_id",
+      "identity_value": "3e327a7e-8824-4362-971f-fb63f9eb17c6",
+      "fields": [
+        {"label": "Receptor", "pointer": "/receptor_id"},
+        {"label": "Source structure", "pointer": "/source_artifact_id"},
+        {"label": "Decisions", "pointer": "/decisions"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Stale", "pointer": "/stale"},
+        {"label": "Warnings", "pointer": "/warnings"}
+      ]
+    },
+    {
+      "role": "maps.common_autogrid",
+      "label": "Common AutoGrid map set reused by CPU and all GPU jobs",
+      "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/record.json",
+      "identity_pointer": "/map_set_id",
+      "identity_value": "fb6cfbce-de3d-40f6-8129-893bc825d265",
+      "fields": [
+        {"label": "Identity key", "pointer": "/identity_key"},
+        {"label": "Receptor SHA-256", "pointer": "/receptor_sha256"},
+        {"label": "Binding site", "pointer": "/binding_site_id"},
+        {"label": "Box", "pointer": "/box"},
+        {"label": "Geometry", "pointer": "/geometry"},
+        {"label": "Preflight", "pointer": "/preflight"},
+        {"label": "AutoGrid", "pointer": "/autogrid"},
+        {"label": "GPF SHA-256", "pointer": "/gpf_sha256"},
+        {"label": "Execution", "pointer": "/execution"},
+        {"label": "Warnings", "pointer": "/warnings"}
+      ],
+      "artifacts": [
+        {"label": "A affinity map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.A.map", "sha256_pointer": "/artifacts/0/sha256", "size_bytes_pointer": "/artifacts/0/size_bytes"},
+        {"label": "C affinity map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.C.map", "sha256_pointer": "/artifacts/1/sha256", "size_bytes_pointer": "/artifacts/1/size_bytes"},
+        {"label": "Cl affinity map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.Cl.map", "sha256_pointer": "/artifacts/2/sha256", "size_bytes_pointer": "/artifacts/2/size_bytes"},
+        {"label": "N affinity map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.N.map", "sha256_pointer": "/artifacts/3/sha256", "size_bytes_pointer": "/artifacts/3/size_bytes"},
+        {"label": "NA affinity map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.NA.map", "sha256_pointer": "/artifacts/4/sha256", "size_bytes_pointer": "/artifacts/4/size_bytes"},
+        {"label": "Desolvation map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.d.map", "sha256_pointer": "/artifacts/5/sha256", "size_bytes_pointer": "/artifacts/5/size_bytes"},
+        {"label": "Electrostatic map", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.e.map", "sha256_pointer": "/artifacts/6/sha256", "size_bytes_pointer": "/artifacts/6/size_bytes"},
+        {"label": "AutoGrid log", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.glg", "sha256_pointer": "/artifacts/7/sha256", "size_bytes_pointer": "/artifacts/7/size_bytes"},
+        {"label": "AutoGrid parameter file", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.gpf", "sha256_pointer": "/artifacts/8/sha256", "size_bytes_pointer": "/artifacts/8/size_bytes"},
+        {"label": "Field file", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.maps.fld", "sha256_pointer": "/artifacts/9/sha256", "size_bytes_pointer": "/artifacts/9/size_bytes"},
+        {"label": "Grid coordinates", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.maps.xyz", "sha256_pointer": "/artifacts/10/sha256", "size_bytes_pointer": "/artifacts/10/size_bytes"},
+        {"label": "Map receptor PDBQT", "path": "projects/default/derived/autogrid_maps/fb6cfbce-de3d-40f6-8129-893bc825d265/receptor.pdbqt", "sha256_pointer": "/artifacts/11/sha256", "size_bytes_pointer": "/artifacts/11/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.vina_primary",
+      "label": "Frozen Vina primary job",
+      "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "bad5d41e-a87a-4218-8064-57f6e9acc5a9",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "Receptor SHA-256", "pointer": "/receptor_sha256"},
+        {"label": "Ligand SHA-256", "pointer": "/ligand_sha256"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Execution", "pointer": "/execution"},
+        {"label": "Poses", "pointer": "/poses", "operation": "length"},
+        {"label": "Scores", "pointer": "/poses"}
+      ],
+      "artifacts": [
+        {"label": "Vina primary pose 1", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_1.pdbqt", "sha256_pointer": "/poses/0/artifact/sha256", "size_bytes_pointer": "/poses/0/artifact/size_bytes"},
+        {"label": "Vina primary pose 2", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_2.pdbqt", "sha256_pointer": "/poses/1/artifact/sha256", "size_bytes_pointer": "/poses/1/artifact/size_bytes"},
+        {"label": "Vina primary pose 3", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_3.pdbqt", "sha256_pointer": "/poses/2/artifact/sha256", "size_bytes_pointer": "/poses/2/artifact/size_bytes"},
+        {"label": "Vina primary pose 4", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_4.pdbqt", "sha256_pointer": "/poses/3/artifact/sha256", "size_bytes_pointer": "/poses/3/artifact/size_bytes"},
+        {"label": "Vina primary pose 5", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_5.pdbqt", "sha256_pointer": "/poses/4/artifact/sha256", "size_bytes_pointer": "/poses/4/artifact/size_bytes"},
+        {"label": "Vina primary pose 6", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_6.pdbqt", "sha256_pointer": "/poses/5/artifact/sha256", "size_bytes_pointer": "/poses/5/artifact/size_bytes"},
+        {"label": "Vina primary pose 7", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_7.pdbqt", "sha256_pointer": "/poses/6/artifact/sha256", "size_bytes_pointer": "/poses/6/artifact/size_bytes"},
+        {"label": "Vina primary pose 8", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_8.pdbqt", "sha256_pointer": "/poses/7/artifact/sha256", "size_bytes_pointer": "/poses/7/artifact/size_bytes"},
+        {"label": "Vina primary pose 9", "path": "projects/default/results/docking/bad5d41e-a87a-4218-8064-57f6e9acc5a9/pose_9.pdbqt", "sha256_pointer": "/poses/8/artifact/sha256", "size_bytes_pointer": "/poses/8/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.vina_repeat",
+      "label": "Frozen exact same-seed Vina repeat",
+      "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "7f36d5df-2708-418b-b164-3531f42441fa",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Tool", "pointer": "/tool"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Poses", "pointer": "/poses", "operation": "length"},
+        {"label": "Scores", "pointer": "/poses"}
+      ],
+      "artifacts": [
+        {"label": "Vina repeat pose 1", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_1.pdbqt", "sha256_pointer": "/poses/0/artifact/sha256", "size_bytes_pointer": "/poses/0/artifact/size_bytes"},
+        {"label": "Vina repeat pose 2", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_2.pdbqt", "sha256_pointer": "/poses/1/artifact/sha256", "size_bytes_pointer": "/poses/1/artifact/size_bytes"},
+        {"label": "Vina repeat pose 3", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_3.pdbqt", "sha256_pointer": "/poses/2/artifact/sha256", "size_bytes_pointer": "/poses/2/artifact/size_bytes"},
+        {"label": "Vina repeat pose 4", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_4.pdbqt", "sha256_pointer": "/poses/3/artifact/sha256", "size_bytes_pointer": "/poses/3/artifact/size_bytes"},
+        {"label": "Vina repeat pose 5", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_5.pdbqt", "sha256_pointer": "/poses/4/artifact/sha256", "size_bytes_pointer": "/poses/4/artifact/size_bytes"},
+        {"label": "Vina repeat pose 6", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_6.pdbqt", "sha256_pointer": "/poses/5/artifact/sha256", "size_bytes_pointer": "/poses/5/artifact/size_bytes"},
+        {"label": "Vina repeat pose 7", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_7.pdbqt", "sha256_pointer": "/poses/6/artifact/sha256", "size_bytes_pointer": "/poses/6/artifact/size_bytes"},
+        {"label": "Vina repeat pose 8", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_8.pdbqt", "sha256_pointer": "/poses/7/artifact/sha256", "size_bytes_pointer": "/poses/7/artifact/size_bytes"},
+        {"label": "Vina repeat pose 9", "path": "projects/default/results/docking/7f36d5df-2708-418b-b164-3531f42441fa/pose_9.pdbqt", "sha256_pointer": "/poses/8/artifact/sha256", "size_bytes_pointer": "/poses/8/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock4_cpu_primary",
+      "label": "Frozen AutoDock4 CPU primary job",
+      "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "e01e29a6-a956-47c2-813a-923dc1bcfd19",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Tool", "pointer": "/autodock4"},
+        {"label": "Map set", "pointer": "/map_set_id"},
+        {"label": "Ligand SHA-256", "pointer": "/ligand_sha256"},
+        {"label": "DPF SHA-256", "pointer": "/dpf_sha256"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Execution", "pointer": "/execution"},
+        {"label": "Clusters", "pointer": "/clusters"},
+        {"label": "Runs", "pointer": "/runs", "operation": "length"}
+      ],
+      "artifacts": [
+        {"label": "CPU primary run 1", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "CPU primary run 2", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "CPU primary run 3", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "CPU primary run 4", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "CPU primary run 5", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "CPU primary run 6", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "CPU primary run 7", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "CPU primary run 8", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "CPU primary run 9", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "CPU primary run 10", "path": "projects/default/results/autodock4_jobs/e01e29a6-a956-47c2-813a-923dc1bcfd19/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock4_cpu_repeat",
+      "label": "Frozen exact same-seed AutoDock4 CPU repeat",
+      "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/record.json",
+      "identity_pointer": "/job_id",
+      "identity_value": "f5edcfe7-613a-4f14-98b4-81e98c3211f4",
+      "fields": [
+        {"label": "Status", "pointer": "/status"},
+        {"label": "Parameters", "pointer": "/request/parameters"},
+        {"label": "Clusters", "pointer": "/clusters"},
+        {"label": "Runs", "pointer": "/runs", "operation": "length"}
+      ],
+      "artifacts": [
+        {"label": "CPU repeat run 1", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "CPU repeat run 2", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "CPU repeat run 3", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "CPU repeat run 4", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "CPU repeat run 5", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "CPU repeat run 6 (first recovering)", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "CPU repeat run 7", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "CPU repeat run 8", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "CPU repeat run 9", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "CPU repeat run 10 (top ranked)", "path": "projects/default/results/autodock4_jobs/f5edcfe7-613a-4f14-98b4-81e98c3211f4/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_1",
+      "label": "Frozen AutoDock-GPU repeat 1",
+      "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/record.json",
+      "identity_pointer": "/job_id", "identity_value": "e59074fc-220b-4b12-9e4a-d83637c2f506",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 1 run 1", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 1 run 2", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 1 run 3", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 1 run 4", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 1 closest run 5", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 1 run 6", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 1 run 7", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 1 run 8", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 1 top-ranked run 9", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 1 run 10", "path": "projects/default/results/autodock_gpu_jobs/e59074fc-220b-4b12-9e4a-d83637c2f506/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_2",
+      "label": "Frozen AutoDock-GPU repeat 2",
+      "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/record.json",
+      "identity_pointer": "/job_id", "identity_value": "8a410345-5aca-4ab8-859c-7fc4b5b53e4d",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 2 run 1", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 2 run 2", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 2 run 3", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 2 run 4", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 2 run 5", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 2 run 6", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 2 run 7", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 2 closest run 8", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 2 run 9", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 2 top-ranked run 10", "path": "projects/default/results/autodock_gpu_jobs/8a410345-5aca-4ab8-859c-7fc4b5b53e4d/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_3",
+      "label": "Frozen AutoDock-GPU repeat 3",
+      "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/record.json",
+      "identity_pointer": "/job_id", "identity_value": "0e272735-7a8f-4509-a5ed-f5aca16b352d",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 3 run 1", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 3 top-ranked run 2", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 3 closest run 3", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 3 run 4", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 3 run 5", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 3 run 6", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 3 run 7", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 3 run 8", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 3 run 9", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 3 run 10", "path": "projects/default/results/autodock_gpu_jobs/0e272735-7a8f-4509-a5ed-f5aca16b352d/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_4",
+      "label": "Frozen AutoDock-GPU repeat 4",
+      "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/record.json",
+      "identity_pointer": "/job_id", "identity_value": "4b79460a-32a0-44a1-a768-456a57ec7d45",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 4 run 1", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 4 run 2", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 4 run 3", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 4 run 4", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 4 run 5", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 4 run 6", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 4 top-ranked run 7", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 4 run 8", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 4 closest run 9", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 4 run 10", "path": "projects/default/results/autodock_gpu_jobs/4b79460a-32a0-44a1-a768-456a57ec7d45/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_5",
+      "label": "Frozen AutoDock-GPU repeat 5",
+      "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/record.json",
+      "identity_pointer": "/job_id", "identity_value": "202a115d-7821-4ddb-a567-9232b2f42a1d",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 5 run 1", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 5 run 2", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 5 run 3", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 5 run 4", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 5 closest run 5", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 5 run 6", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 5 run 7", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 5 run 8", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 5 top-ranked run 9", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 5 run 10", "path": "projects/default/results/autodock_gpu_jobs/202a115d-7821-4ddb-a567-9232b2f42a1d/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "docking.autodock_gpu_6",
+      "label": "Frozen AutoDock-GPU repeat 6",
+      "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/record.json",
+      "identity_pointer": "/job_id", "identity_value": "0d7e3fc3-d767-484e-a629-f9d56ce79d09",
+      "fields": [{"label": "Tool/device", "pointer": "/autodock_gpu"}, {"label": "Parameters", "pointer": "/request/parameters"}, {"label": "Clusters", "pointer": "/clusters"}, {"label": "Warnings", "pointer": "/warnings"}],
+      "artifacts": [
+        {"label": "GPU 6 run 1", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_1.pdbqt", "sha256_pointer": "/runs/0/artifact/sha256", "size_bytes_pointer": "/runs/0/artifact/size_bytes"},
+        {"label": "GPU 6 run 2", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_2.pdbqt", "sha256_pointer": "/runs/1/artifact/sha256", "size_bytes_pointer": "/runs/1/artifact/size_bytes"},
+        {"label": "GPU 6 run 3", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_3.pdbqt", "sha256_pointer": "/runs/2/artifact/sha256", "size_bytes_pointer": "/runs/2/artifact/size_bytes"},
+        {"label": "GPU 6 top-ranked run 4", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_4.pdbqt", "sha256_pointer": "/runs/3/artifact/sha256", "size_bytes_pointer": "/runs/3/artifact/size_bytes"},
+        {"label": "GPU 6 run 5", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_5.pdbqt", "sha256_pointer": "/runs/4/artifact/sha256", "size_bytes_pointer": "/runs/4/artifact/size_bytes"},
+        {"label": "GPU 6 run 6", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_6.pdbqt", "sha256_pointer": "/runs/5/artifact/sha256", "size_bytes_pointer": "/runs/5/artifact/size_bytes"},
+        {"label": "GPU 6 run 7", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_7.pdbqt", "sha256_pointer": "/runs/6/artifact/sha256", "size_bytes_pointer": "/runs/6/artifact/size_bytes"},
+        {"label": "GPU 6 run 8", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_8.pdbqt", "sha256_pointer": "/runs/7/artifact/sha256", "size_bytes_pointer": "/runs/7/artifact/size_bytes"},
+        {"label": "GPU 6 run 9", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_9.pdbqt", "sha256_pointer": "/runs/8/artifact/sha256", "size_bytes_pointer": "/runs/8/artifact/size_bytes"},
+        {"label": "GPU 6 closest run 10", "path": "projects/default/results/autodock_gpu_jobs/0d7e3fc3-d767-484e-a629-f9d56ce79d09/run_10.pdbqt", "sha256_pointer": "/runs/9/artifact/sha256", "size_bytes_pointer": "/runs/9/artifact/size_bytes"}
+      ]
+    },
+    {
+      "role": "redocking.vina_primary", "label": "M7 verdict for Vina primary", "path": "projects/default/validation/redocking/7616172a-672b-4fa7-8865-1e1f7a29ae5c/record.json", "identity_pointer": "/validation_id", "identity_value": "7616172a-672b-4fa7-8865-1e1f7a29ae5c",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Reference SHA-256", "pointer": "/reference_sha256"}, {"label": "Metrics", "pointer": "/metrics"}]
+    },
+    {
+      "role": "redocking.vina_repeat", "label": "M7 verdict for Vina repeat", "path": "projects/default/validation/redocking/78090f86-e1b2-4a43-b58b-6c101db1753f/record.json", "identity_pointer": "/validation_id", "identity_value": "78090f86-e1b2-4a43-b58b-6c101db1753f",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}]
+    },
+    {
+      "role": "redocking.cpu_primary", "label": "M7 verdict for CPU primary", "path": "projects/default/validation/redocking/9e7c2949-9091-4079-b53c-9ee87ff8503d/record.json", "identity_pointer": "/validation_id", "identity_value": "9e7c2949-9091-4079-b53c-9ee87ff8503d",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Reference SHA-256", "pointer": "/reference_sha256"}, {"label": "Metrics", "pointer": "/metrics"}]
+    },
+    {
+      "role": "redocking.cpu_repeat", "label": "M7 verdict for CPU repeat", "path": "projects/default/validation/redocking/1ef8db6d-785e-4714-84e3-b92a272eedeb/record.json", "identity_pointer": "/validation_id", "identity_value": "1ef8db6d-785e-4714-84e3-b92a272eedeb",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}]
+    },
+    {
+      "role": "redocking.gpu_1", "label": "M7 verdict for GPU repeat 1", "path": "projects/default/validation/redocking/f57dd240-0949-4609-9d2c-ff381e70d0ed/record.json", "identity_pointer": "/validation_id", "identity_value": "f57dd240-0949-4609-9d2c-ff381e70d0ed",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "redocking.gpu_2", "label": "M7 verdict for GPU repeat 2", "path": "projects/default/validation/redocking/7389b525-40ce-4ee2-96d6-2caab7f9ac9e/record.json", "identity_pointer": "/validation_id", "identity_value": "7389b525-40ce-4ee2-96d6-2caab7f9ac9e",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "redocking.gpu_3", "label": "M7 verdict for GPU repeat 3", "path": "projects/default/validation/redocking/efed35eb-57ec-4ea7-98cf-ebd300ba126b/record.json", "identity_pointer": "/validation_id", "identity_value": "efed35eb-57ec-4ea7-98cf-ebd300ba126b",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "redocking.gpu_4", "label": "M7 verdict for GPU repeat 4", "path": "projects/default/validation/redocking/fb7bae51-2a60-474e-b235-b26dccf6d459/record.json", "identity_pointer": "/validation_id", "identity_value": "fb7bae51-2a60-474e-b235-b26dccf6d459",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "redocking.gpu_5", "label": "M7 verdict for GPU repeat 5", "path": "projects/default/validation/redocking/a7bc7949-5f40-4774-acc2-7ea3df1cd07d/record.json", "identity_pointer": "/validation_id", "identity_value": "a7bc7949-5f40-4774-acc2-7ea3df1cd07d",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "redocking.gpu_6", "label": "M7 verdict for GPU repeat 6", "path": "projects/default/validation/redocking/ea79fd0f-1db6-4012-851d-09717c2fec9c/record.json", "identity_pointer": "/validation_id", "identity_value": "ea79fd0f-1db6-4012-851d-09717c2fec9c",
+      "fields": [{"label": "Source", "pointer": "/source_id"}, {"label": "Metrics", "pointer": "/metrics"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "interaction.cpu_top_ranked",
+      "label": "Conditional M9 analysis of CPU top-ranked pose",
+      "path": "projects/default/analysis/pose_interactions/f0b40692-4088-42eb-998f-99f51a53e137/record.json",
+      "identity_pointer": "/analysis_id", "identity_value": "f0b40692-4088-42eb-998f-99f51a53e137",
+      "fields": [{"label": "Catalog result", "pointer": "/catalog_id"}, {"label": "Exact pose", "pointer": "/pose"}, {"label": "Detector", "pointer": "/detector"}, {"label": "Profile", "pointer": "/profile"}, {"label": "Contacts", "pointer": "/contacts", "operation": "length"}, {"label": "Warnings", "pointer": "/warnings"}]
+    },
+    {
+      "role": "interaction.cpu_first_recovered",
+      "label": "Conditional M9 analysis of CPU first-recovering pose",
+      "path": "projects/default/analysis/pose_interactions/4cfe1c68-ad02-4d03-8314-d7067d31867e/record.json",
+      "identity_pointer": "/analysis_id", "identity_value": "4cfe1c68-ad02-4d03-8314-d7067d31867e",
+      "fields": [{"label": "Catalog result", "pointer": "/catalog_id"}, {"label": "Exact pose", "pointer": "/pose"}, {"label": "Detector", "pointer": "/detector"}, {"label": "Profile", "pointer": "/profile"}, {"label": "Contacts", "pointer": "/contacts", "operation": "length"}, {"label": "Warnings", "pointer": "/warnings"}]
+    }
+  ],
+  "interpretations": [
+    "The pre-run protocol remains immutable at evidence SHA-256 7fe1ac4cc8aa1fb46569d5e8bce77b376fab3138e01238efa4d23197e25e8cfb. This separate post-run case names the resulting records; it does not rewrite inputs, thresholds, parameters, seeds, or conditional analysis rules after observing results.",
+    "Every engine used accepted receptor 33f431a3-73a9-4858-a3f0-0026bef9d2d6, common ligand preparation c303fdf4-a770-44c6-94ca-657b0b917591, and the same frozen numerical co-crystal box. AutoDock4 CPU and all six GPU jobs reused exact AutoGrid map set fb6cfbce-de3d-40f6-8129-893bc825d265.",
+    "Vina primary and repeat are byte-identical across all nine pose artifacts and scores. Both redocking verdicts are not_recovered: the top-ranked and closest mode is 2.059622581584167 Å, 0.059622581584167 Å outside the threshold fixed before docking.",
+    "AutoDock4 CPU primary and repeat reproduce ten pose artifacts, energies, clusters, and RMSDs exactly. They sample three poses below 2.0 Å, first at rank 5/run 6 (1.9284209398957932 Å), and reach 1.2274341995747535 Å overall, but rank a 3.7639854210663466 Å pose first; both verdicts are recovered_but_misranked.",
+    "All six AutoDock-GPU jobs complete with the same executable, device, maps, inputs, parameters, and explicit seeds but different pose bytes and cluster populations. Best-cluster lowest energies span -6.89 to -6.86 kcal/mol; every redocking verdict is not_recovered, with best overall RMSD spanning 3.7301000225961007 to 3.7401585336911674 Å.",
+    "Per the pre-run conditional rule, M9 analyzes only CPU's top-ranked pose and its different first-recovering pose. The immutable records report 33 and 41 geometric contacts respectively. They do not measure affinity or establish a biological binding mode.",
+    "Vina scores and AutoDock4 binding energies remain separate scoring functions. This evidence does not rank engines by numerical score, and successful completion or pose recovery is not a claim of experimental affinity, activity, enrichment, or general superiority.",
+    "Completeness closes this case: all requested engine executions are terminal, all ten redocking verdicts are structured, both conditionally required M9 analyses exist, raw tool streams remain in their exact source records, and no protocol element was tuned from a result."
+  ],
+  "gaps": [
+    "This is one target and one neutral crystallographic ligand state. It does not validate virtual-screening enrichment, cross-target performance, affinity prediction, or biological activity.",
+    "The deposited state is neutral, while pH 7.4 enumeration produced four candidate microstates. The benchmark intentionally does not determine the dominant physiological state or test protonation sensitivity.",
+    "Global water removal excludes HOH A:1207 at 2.770 Å from M5V, and 85 unresolved chain-A residues remain unmodelled. A structural-water or gap-modeling study requires a separately frozen protocol.",
+    "PDBFixer missing-atom placement was not byte-deterministic across pre-acceptance retries. Downstream comparison is controlled by the exact accepted receptor artifacts, not by a claim that receptor reconstruction itself is bitwise reproducible.",
+    "Vina's closest pose misses the fixed recovery threshold by 0.0596 Å. It remains not recovered; changing the threshold after seeing this result would be a new protocol rather than a correction.",
+    "No required result, redocking verdict, or conditional interaction analysis remains missing from this case."
+  ]
+}

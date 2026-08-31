@@ -1,0 +1,16 @@
+HEADER    SYNTHETIC TEST STRUCTURE                 19-AUG-26  TST1
+TITLE     SYNTHETIC M1 STRUCTURE FIXTURE; NOT EXPERIMENTAL DATA
+EXPDTA    SYNTHETIC TEST DATA
+REMARK 465     GLY A   2
+REMARK 470     ALA A   1    CB
+ATOM      1  N   ALA A   1      11.104  13.207   8.100  1.00 20.00           N
+ATOM      2  CA AALA A   1      12.200  12.400   8.500  0.50 20.00           C
+ATOM      3  CA BALA A   1      12.300  12.500   8.600  0.50 20.00           C
+ATOM      4  C   ALA A   1      13.400  13.200   8.900  1.00 20.00           C
+ATOM      5  O   ALA A   1      14.500  12.700   9.000  1.00 20.00           O
+HETATM    6  C1  LIG A 101      15.000  15.000  10.000  1.00 20.00           C
+HETATM    7  O1  LIG A 101      16.000  15.000  10.000  1.00 20.00           O
+HETATM    8  O   HOH A 201      10.000  10.000  10.000  1.00 20.00           O
+HETATM    9 ZN    ZN A 301       9.000   9.000   9.000  1.00 20.00          ZN
+TER
+END

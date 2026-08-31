@@ -1,0 +1,21 @@
+{
+  "name": "ankora",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @ankora/desktop run dev:web",
+    "build": "npm --workspace @ankora/desktop run build:web",
+    "test": "npm --workspace @ankora/desktop run test",
+    "test:frontend": "npm --workspace @ankora/desktop run test",
+    "typecheck": "npm --workspace @ankora/desktop run typecheck",
+    "tauri:dev": "npm --workspace @ankora/desktop run tauri:dev",
+    "tauri:build": "npm --workspace @ankora/desktop run tauri:build"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  }
+}

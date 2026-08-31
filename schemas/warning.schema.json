@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ankora.local/schemas/warning.schema.json",
+  "title": "Ankora structured warning",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "message", "stage", "details", "recoverable"],
+  "properties": {
+    "code": {
+      "enum": [
+        "REC_MISSING_SIDECHAIN",
+        "REC_REMOTE_INCOMPLETE_RESIDUE",
+        "REC_NEAR_POCKET_GAP",
+        "REC_PROTONATION_AMBIGUOUS",
+        "MEEKO_CONNECTIVITY_FAILURE",
+        "LIG_STEREOCHEMISTRY_UNDEFINED",
+        "DOCKING_ENGINE_FAILED",
+        "VALIDATION_RMSD_FAIL"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "stage": { "type": "string", "minLength": 1 },
+    "details": { "type": "object" },
+    "recoverable": { "type": "boolean" }
+  }
+}

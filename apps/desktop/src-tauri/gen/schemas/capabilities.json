@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Minimal capability set for the Ankora M1 structure workspace","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open"]}}

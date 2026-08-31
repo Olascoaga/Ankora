@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ankora.local/schemas/provenance_event.schema.json",
+  "title": "Ankora provenance event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_type", "timestamp", "input_artifacts", "output_artifacts", "tool", "parameters", "warnings", "command"],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "input_artifacts": { "type": "array", "items": { "type": "string" } },
+    "output_artifacts": { "type": "array", "items": { "type": "string" } },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "parameters": { "type": "object" },
+    "warnings": { "type": "array", "items": { "$ref": "warning.schema.json" } },
+    "command": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    }
+  }
+}

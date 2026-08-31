@@ -1,0 +1,34 @@
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# Rust / Tauri
+target/
+
+# Editors and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local application state
+.ankora-data/
+*.db
+*.sqlite
+*.sqlite3
+logs/
+
+# Local agent continuity state
+memory/

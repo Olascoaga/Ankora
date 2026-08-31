@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ankora",
+  "version": "0.1.0",
+  "identifier": "science.ankora.workbench",
+  "build": {
+    "beforeDevCommand": "npm run dev:tauri-prereq",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Ankora",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 680,
+        "resizable": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu-compositing"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8765; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all"
+  }
+}

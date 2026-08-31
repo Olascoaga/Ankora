@@ -1,0 +1,256 @@
+"""Storage for AutoDock4 job state, raw evidence, and immutable pose artifacts."""
+
+import json
+import os
+import threading
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.schemas.autodock4 import (
+    AutoDock4BatchRecord,
+    AutoDock4DockingJobRecord,
+)
+
+
+class AutoDock4JobStore:
+    def __init__(self, root: Path) -> None:
+        self._root = root.resolve()
+        self._record_lock = threading.RLock()
+
+    @classmethod
+    def from_environment(cls) -> "AutoDock4JobStore":
+        configured = os.getenv("ANKORA_DATA_DIR")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+
+    def new_job_id(self) -> str:
+        return str(uuid4())
+
+    def create_job(self, record: AutoDock4DockingJobRecord) -> Path:
+        directory = self._job_dir(record.job_id)
+        directory.mkdir(parents=True, exist_ok=False)
+        path = directory / "record.json"
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
+            stream.write("\n")
+        return directory
+
+    def update_job(self, record: AutoDock4DockingJobRecord) -> None:
+        with self._record_lock:
+            directory = self._job_dir(record.job_id)
+            if not directory.is_dir():
+                raise self._not_found(record.job_id)
+            temporary = directory / "record.json.tmp"
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                json.dump(
+                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
+                )
+                stream.write("\n")
+            os.replace(temporary, directory / "record.json")
+
+    def load_job(self, job_id: str) -> AutoDock4DockingJobRecord:
+        with self._record_lock:
+            try:
+                raw = (self._job_dir(job_id) / "record.json").read_text(encoding="utf-8")
+            except FileNotFoundError as error:
+                raise self._not_found(job_id) from error
+        return AutoDock4DockingJobRecord.model_validate_json(raw)
+
+    def job_directory(self, job_id: str) -> Path:
+        return self._job_dir(job_id)
+
+    def output_path(self, job_id: str, filename: str) -> Path:
+        if not filename or Path(filename).name != filename:
+            raise ValueError("An AutoDock4 artifact filename must be a plain filename")
+        return self._job_dir(job_id) / filename
+
+    def write_pose(self, job_id: str, filename: str, content: bytes) -> Path:
+        """Poses are create-only: a run's conformation is never rewritten."""
+        path = self.output_path(job_id, filename)
+        with path.open("xb") as stream:
+            stream.write(content)
+        return path
+
+    def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
+        record = self.load_job(job_id)
+        artifact = next(
+            (
+                item.artifact
+                for item in record.runs
+                if item.artifact.artifact_id == artifact_id
+            ),
+            None,
+        )
+        if artifact is None:
+            raise self._not_found(job_id, artifact_id)
+        path = self.output_path(job_id, artifact.filename)
+        if not path.is_file():
+            raise self._not_found(job_id, artifact_id)
+        return path
+
+    # --- library campaigns ---
+
+    def list_jobs(self) -> list[AutoDock4DockingJobRecord]:
+        """Every single-ligand job this project holds."""
+        directory = self._jobs_dir()
+        if not directory.is_dir():
+            return []
+        records: list[AutoDock4DockingJobRecord] = []
+        for candidate in sorted(directory.iterdir(), key=lambda item: item.name):
+            if not candidate.is_dir():
+                continue
+            try:
+                records.append(self.load_job(candidate.name))
+            except (AnkoraDomainError, ValueError):
+                continue
+        return records
+
+    def new_batch_id(self) -> str:
+        return str(uuid4())
+
+    def create_batch(self, record: AutoDock4BatchRecord) -> Path:
+        directory = self._batch_dir(record.batch_id)
+        directory.mkdir(parents=True, exist_ok=False)
+        for entry in record.entries:
+            self.batch_ligand_directory(record.batch_id, entry.ligand_id).mkdir(
+                parents=True, exist_ok=False
+            )
+        path = directory / "record.json"
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
+            stream.write("\n")
+        return directory
+
+    def update_batch(self, record: AutoDock4BatchRecord) -> None:
+        with self._record_lock:
+            directory = self._batch_dir(record.batch_id)
+            if not directory.is_dir():
+                raise self._not_found(record.batch_id)
+            temporary = directory / "record.json.tmp"
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                json.dump(
+                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
+                )
+                stream.write("\n")
+            os.replace(temporary, directory / "record.json")
+
+    def load_batch(self, batch_id: str) -> AutoDock4BatchRecord:
+        with self._record_lock:
+            try:
+                raw = (self._batch_dir(batch_id) / "record.json").read_text(
+                    encoding="utf-8"
+                )
+            except FileNotFoundError as error:
+                raise self._not_found(batch_id) from error
+        return AutoDock4BatchRecord.model_validate_json(raw)
+
+    def list_batches(self) -> list[AutoDock4BatchRecord]:
+        """Every campaign persisted for this project, newest last.
+
+        A campaign outlives the session that started it, so the interface can
+        reconnect to one instead of only remembering what it launched itself.
+        """
+        directory = self._batches_dir()
+        if not directory.is_dir():
+            return []
+        records: list[AutoDock4BatchRecord] = []
+        for candidate in sorted(directory.iterdir(), key=lambda item: item.name):
+            if not candidate.is_dir():
+                continue
+            try:
+                records.append(self.load_batch(candidate.name))
+            except (AnkoraDomainError, ValueError):
+                continue
+        return records
+
+    def batch_ligand_directory(self, batch_id: str, ligand_id: str) -> Path:
+        try:
+            normalized = str(UUID(ligand_id))
+        except ValueError as error:
+            raise self._not_found(batch_id, ligand_id) from error
+        path = self._batch_dir(batch_id) / "ligands" / normalized
+        resolved = path.resolve()
+        if self._root not in resolved.parents:
+            raise self._not_found(batch_id, ligand_id)
+        return resolved
+
+    def write_batch_pose(
+        self, batch_id: str, ligand_id: str, filename: str, content: bytes
+    ) -> Path:
+        if not filename or Path(filename).name != filename:
+            raise ValueError("An AutoDock4 artifact filename must be a plain filename")
+        path = self.batch_ligand_directory(batch_id, ligand_id) / filename
+        with path.open("xb") as stream:
+            stream.write(content)
+        return path
+
+    def batch_pose_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path:
+        record = self.load_batch(batch_id)
+        entry = next(
+            (item for item in record.entries if item.ligand_id == ligand_id), None
+        )
+        artifact = next(
+            (
+                item.artifact
+                for item in (entry.runs if entry is not None else [])
+                if item.artifact.artifact_id == artifact_id
+            ),
+            None,
+        )
+        if artifact is None:
+            raise self._not_found(batch_id, artifact_id)
+        path = self.batch_ligand_directory(batch_id, ligand_id) / artifact.filename
+        if not path.is_file():
+            raise self._not_found(batch_id, artifact_id)
+        return path
+
+    def _batches_dir(self) -> Path:
+        path = self._root / "projects" / "default" / "results" / "autodock4_batches"
+        resolved = path.resolve()
+        if self._root not in resolved.parents and resolved != self._root:
+            raise self._not_found("autodock4_batches")
+        return resolved
+
+    def _batch_dir(self, batch_id: str) -> Path:
+        try:
+            normalized = str(UUID(batch_id))
+        except ValueError as error:
+            raise self._not_found(batch_id) from error
+        path = self._batches_dir() / normalized
+        resolved = path.resolve()
+        if self._root not in resolved.parents:
+            raise self._not_found(batch_id)
+        return resolved
+
+    def _jobs_dir(self) -> Path:
+        path = self._root / "projects" / "default" / "results" / "autodock4_jobs"
+        resolved = path.resolve()
+        if self._root not in resolved.parents and resolved != self._root:
+            raise self._not_found("autodock4_jobs")
+        return resolved
+
+    def _job_dir(self, job_id: str) -> Path:
+        try:
+            normalized = str(UUID(job_id))
+        except ValueError as error:
+            raise self._not_found(job_id) from error
+        path = self._jobs_dir() / normalized
+        resolved = path.resolve()
+        if self._root not in resolved.parents:
+            raise self._not_found(job_id)
+        return resolved
+
+    @staticmethod
+    def _not_found(job_id: str, artifact_id: str | None = None) -> AnkoraDomainError:
+        details: dict[str, object] = {"job_id": job_id}
+        if artifact_id is not None:
+            details["artifact_id"] = artifact_id
+        return AnkoraDomainError(
+            code="AUTODOCK4_JOB_NOT_FOUND",
+            stage="autodock4_storage",
+            message="The requested AutoDock4 job or pose is not available in this project.",
+            status_code=404,
+            details=details,
+        )
