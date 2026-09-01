@@ -166,6 +166,15 @@ function renderMarkdown(markdown: string) {
       .filter((row) => !/^\|[\s|:-]+\|$/.test(row))
       .map((row) => row.split("|").slice(1, -1).map((cell) => cell.trim()));
     const [head, ...body] = rows;
+    if (!head) {
+      // Nothing but separators is not a table. Rendering the lines as text
+      // keeps whatever the campaign recorded on screen; throwing here would
+      // blank the whole workbench, since nothing above catches it.
+      table.forEach((row) => paragraph.push(row));
+      table = [];
+      flushParagraph();
+      return;
+    }
     blocks.push(
       <table key={`t${blocks.length}`} className="methods-table">
         <thead><tr>{head.map((cell) => <th key={cell}>{cell}</th>)}</tr></thead>

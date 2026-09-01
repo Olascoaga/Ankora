@@ -150,3 +150,15 @@ it("does not ask the backend until the author opens it", () => {
 
   expect(fetched).not.toHaveBeenCalled();
 });
+
+it("survives a table it cannot read rather than blanking the workbench", async () => {
+  // Found by adversarial audit: a table of nothing but separator rows left the
+  // header undefined and threw inside render. Nothing above catches that, so
+  // the whole window went blank.
+  serve(report({ markdown: "## Software\n\n| --- | --- |\n" }));
+
+  await openDialog();
+
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(screen.getByText(/\| --- \| --- \|/)).toBeInTheDocument();
+});
