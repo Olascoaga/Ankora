@@ -9,6 +9,7 @@ from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligands import (
     GenerateLigandConformerRequest,
+    LigandChemicalStateRecord,
     MinimizeLigandRequest,
     ResolveLigandStateRequest,
 )
@@ -257,6 +258,10 @@ def test_explicit_component_and_stereoisomer_selection_creates_resolved_state(
     assert resolved.inspection.undefined_stereocenter_count == 0
     assert resolved.selection.component_index == 0
     assert resolved.selection.stereoisomer_index == 1
+    assert isinstance(
+        store.load_state_record(ligand.artifact.ligand_id, resolved.artifact.state_id),
+        LigandChemicalStateRecord,
+    )
 
     conformer = generate_ligand_conformer(
         ligand_id=ligand.artifact.ligand_id,

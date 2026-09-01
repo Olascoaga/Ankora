@@ -12,6 +12,7 @@ from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligands import (
     GenerateLigandConformerRequest,
+    LigandProtonationRecord,
     ResolveLigandProtonationRequest,
 )
 from ankora_backend.services.ligand_import import import_local_ligand
@@ -124,6 +125,10 @@ def test_resolve_creates_a_reproducible_immutable_protonated_state(
     assert first.selection.candidate_count == len(options.candidates)
     assert first.parent_state_id == ligand.state.state_id
     assert first.artifact.state_id != ligand.state.state_id
+    assert isinstance(
+        store.load_state_record(ligand_id, first.artifact.state_id),
+        LigandProtonationRecord,
+    )
 
     second = resolve_ligand_protonation(ligand_id=ligand_id, request=request, store=store)
     assert second.artifact.state_id != first.artifact.state_id

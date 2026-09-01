@@ -92,8 +92,19 @@ class _ExactPreparation:
                 embedding_method="ETKDGv3",
                 force_field="MMFF94s",
                 max_iterations=500,
+                random_seed=20260819,
+                conformer_pool_size=20,
+                independent_from_source_coordinates=True,
+            ),
+            provenance=SimpleNamespace(
+                input_artifacts=["state-exact"],
+                tool=SimpleNamespace(name="RDKit ETKDG/MMFF", version="2025.09.6"),
             ),
         )
+
+    def load_record(self, ligand_id: str) -> Any:
+        assert ligand_id == "ligand-exact"
+        return SimpleNamespace(state=SimpleNamespace(state_id="state-exact"))
 
 
 @pytest.mark.parametrize(
@@ -144,11 +155,266 @@ def test_single_jobs_describe_the_exact_ligand_preparation(
     assert "up to 500 iterations" in report.markdown
     assert "Meeko 0.7.1" in report.markdown
     assert "Gasteiger partial charges" in report.markdown
+    assert "seed 20260819" in report.markdown
+    assert "20-conformer pool" in report.markdown
+    assert "initial imported or extracted chemical state" in report.markdown
+    assert "No pH-based ligand protonation enumeration was recorded" in report.markdown
+    assert "No ligand tautomer enumeration was recorded" in report.markdown
     assert "ligand conformer and PDBQT records" not in report.gaps
+    assert "complete ligand chemical-state lineage" not in report.gaps
     assert preparation.lookups == [
         ("ligand-exact", "preparation-exact"),
         ("ligand-exact", "conformer-exact"),
     ]
+
+
+class _BatchLigands:
+    def __init__(
+        self,
+        protocols: dict[str, dict[str, Any]],
+        state_records: dict[tuple[str, str], Any] | None = None,
+    ) -> None:
+        self.protocols = protocols
+        self.state_records = state_records or {}
+        self.preparation_lookups: list[tuple[str, str]] = []
+
+    def load_library_record(self, library_id: str) -> Any:
+        assert library_id == "library-1"
+        count = len(self.protocols)
+        return SimpleNamespace(
+            artifact=SimpleNamespace(
+                record_count=count,
+                filename="synthetic_library.sdf",
+                format="sdf",
+            ),
+            imported_count=count,
+            failed_count=0,
+        )
+
+    def load_filter_run(self, library_id: str, filter_run_id: str) -> Any:
+        assert (library_id, filter_run_id) == ("library-1", "filter-1")
+        count = len(self.protocols)
+        return SimpleNamespace(
+            rdkit_version="2025.09.6",
+            plan=SimpleNamespace(
+                require_lipinski=False,
+                max_lipinski_violations=1,
+                require_veber=False,
+                require_ghose=False,
+                require_muegge=False,
+                minimum_qed=None,
+                custom_rules=[],
+                pains_policy="ignore",
+                brenk_policy="ignore",
+                duplicate_policy="keep",
+            ),
+            summary=SimpleNamespace(
+                pains_match_count=0,
+                brenk_match_count=0,
+                duplicate_count=0,
+                needs_decision_count=0,
+                imported_count=count,
+                eligible_count=count,
+                excluded_count=0,
+            ),
+        )
+
+    def load_pdbqt_record(self, ligand_id: str, preparation_id: str) -> Any:
+        self.preparation_lookups.append((ligand_id, preparation_id))
+        protocol = self.protocols.get(ligand_id)
+        if protocol is None or protocol.get("unavailable"):
+            raise AnkoraDomainError(
+                code="NOT_FOUND", stage="test", message="gone", status_code=404,
+            )
+        assert preparation_id == protocol["preparation_id"]
+        return SimpleNamespace(
+            artifact=SimpleNamespace(conformer_id=protocol["conformer_id"]),
+            charge_model=protocol.get("charge_model", "gasteiger"),
+            tool=SimpleNamespace(
+                name=protocol.get("meeko_name", "Meeko"),
+                version=protocol.get("meeko_version", "0.7.1"),
+            ),
+        )
+
+    def load_conformer_record(self, ligand_id: str, conformer_id: str) -> Any:
+        protocol = self.protocols[ligand_id]
+        assert conformer_id == protocol["conformer_id"]
+        return SimpleNamespace(
+            minimization=SimpleNamespace(
+                embedding_method=protocol.get("embedding_method", "ETKDGv3"),
+                force_field=protocol.get("force_field", "MMFF94s"),
+                max_iterations=protocol.get("max_iterations", 500),
+                random_seed=protocol.get("random_seed", 20260819),
+                conformer_pool_size=protocol.get("conformer_pool_size", 20),
+                independent_from_source_coordinates=True,
+            ),
+            provenance=SimpleNamespace(
+                input_artifacts=[protocol.get("state_id", f"state-{ligand_id}")],
+                tool=SimpleNamespace(name="RDKit ETKDG/MMFF", version="2025.09.6"),
+            ),
+        )
+
+    def load_record(self, ligand_id: str) -> Any:
+        return SimpleNamespace(state=SimpleNamespace(state_id=f"state-{ligand_id}"))
+
+    def load_state_record(self, ligand_id: str, state_id: str) -> Any:
+        try:
+            return self.state_records[(ligand_id, state_id)]
+        except KeyError as error:
+            raise AnkoraDomainError(
+                code="NOT_FOUND", stage="test", message="gone", status_code=404,
+            ) from error
+
+
+def _batch_report(
+    ligands: _BatchLigands, entries: list[Any], selected_count: int,
+) -> MethodsReport:
+    record = SimpleNamespace(
+        request=SimpleNamespace(
+            parameters=SimpleNamespace(model_dump=lambda mode: {}),
+        ),
+        entries=entries,
+    )
+    return _service(
+        _entry(
+            library_id="library-1",
+            filter_run_id="filter-1",
+            selected_count=selected_count,
+            succeeded_count=len(entries),
+            failed_count=0,
+        ),
+        ligands=ligands,
+        autodock_gpu=SimpleNamespace(load_batch=lambda _: record),
+    ).render("autodock_gpu_batch:batch-1")
+
+
+def _protocol(ligand_id: str, **overrides: Any) -> dict[str, Any]:
+    values = {
+        "preparation_id": f"preparation-{ligand_id}",
+        "conformer_id": f"conformer-{ligand_id}",
+    }
+    values.update(overrides)
+    return values
+
+
+def _batch_entry(ligand_id: str, preparation_id: str | None) -> Any:
+    return SimpleNamespace(
+        ligand_id=ligand_id,
+        ligand_preparation_id=preparation_id,
+    )
+
+
+def test_uniform_batch_protocol_is_claimed_only_after_every_entry_is_read() -> None:
+    protocols = {
+        "ligand-1": _protocol("ligand-1"),
+        "ligand-2": _protocol("ligand-2"),
+    }
+    ligands = _BatchLigands(protocols)
+    report = _batch_report(
+        ligands,
+        [
+            _batch_entry("ligand-1", "preparation-ligand-1"),
+            _batch_entry("ligand-2", "preparation-ligand-2"),
+        ],
+        selected_count=2,
+    )
+
+    assert "All 2 docked ligands were prepared" in report.markdown
+    assert "2 distinct recorded protocols" not in report.markdown
+    assert "All 2 verified ligands used the initial imported" in report.markdown
+    assert ligands.preparation_lookups == [
+        ("ligand-1", "preparation-ligand-1"),
+        ("ligand-2", "preparation-ligand-2"),
+    ]
+
+
+def test_batch_reports_heterogeneous_protocols_and_state_lineages() -> None:
+    initial_state = "state-ligand-2"
+    manual_state = "manual-ligand-2"
+    protonated_state = "protonated-ligand-2"
+    manual = SimpleNamespace(
+        parent_state_id=initial_state,
+        provenance=SimpleNamespace(
+            event_type="ligand_chemical_state_resolved",
+            tool=SimpleNamespace(name="RDKit state resolver", version="2025.09.6"),
+        ),
+    )
+    protonated = SimpleNamespace(
+        parent_state_id=manual_state,
+        selection=SimpleNamespace(
+            ph_min=7.4, ph_max=7.4, candidate_count=3,
+        ),
+        provenance=SimpleNamespace(
+            event_type="ligand_protonation_resolved",
+            tool=SimpleNamespace(name="Dimorphite-DL", version="2.0.2"),
+        ),
+    )
+    protocols = {
+        "ligand-1": _protocol("ligand-1", random_seed=11),
+        "ligand-2": _protocol(
+            "ligand-2", random_seed=22, state_id=protonated_state,
+        ),
+    }
+    ligands = _BatchLigands(
+        protocols,
+        {
+            ("ligand-2", manual_state): manual,
+            ("ligand-2", protonated_state): protonated,
+        },
+    )
+    report = _batch_report(
+        ligands,
+        [
+            _batch_entry("ligand-1", "preparation-ligand-1"),
+            _batch_entry("ligand-2", "preparation-ligand-2"),
+        ],
+        selected_count=2,
+    )
+
+    assert "2 distinct recorded protocols" in report.markdown
+    assert "seed 11" in report.markdown
+    assert "seed 22" in report.markdown
+    assert "2 chemical-state lineages" in report.markdown
+    assert "explicit component/stereochemistry resolution" in report.markdown
+    assert "3 enumerated by Dimorphite-DL 2.0.2 at pH 7.4" in report.markdown
+    assert "No pH-based ligand protonation enumeration" not in report.markdown
+    assert "No ligand tautomer enumeration was recorded" in report.markdown
+
+
+def test_incomplete_batch_preparation_stays_a_visible_methods_gap() -> None:
+    protocols = {
+        "ligand-1": _protocol("ligand-1"),
+        "ligand-2": _protocol("ligand-2", unavailable=True),
+    }
+    report = _batch_report(
+        _BatchLigands(protocols),
+        [
+            _batch_entry("ligand-1", "preparation-ligand-1"),
+            _batch_entry("ligand-2", "preparation-ligand-2"),
+            _batch_entry("ligand-3", None),
+        ],
+        selected_count=3,
+    )
+
+    assert "available for 1 of 3 campaign entries" in report.markdown
+    assert "2 did not name an available conformer and PDBQT lineage" in report.markdown
+    assert "complete batch ligand preparation records" in report.gaps
+
+
+def test_incomplete_chemical_state_lineage_stays_a_visible_methods_gap() -> None:
+    protocols = {
+        "ligand-1": _protocol("ligand-1", state_id="missing-derived-state"),
+    }
+    report = _batch_report(
+        _BatchLigands(protocols),
+        [_batch_entry("ligand-1", "preparation-ligand-1")],
+        selected_count=1,
+    )
+
+    assert "Chemical-state lineage was available for 0 of 1" in report.markdown
+    assert "complete ligand chemical-state lineage" in report.gaps
+    assert "No pH-based ligand protonation enumeration" not in report.markdown
+    assert "No ligand tautomer enumeration" not in report.markdown
 
 
 def test_a_campaign_whose_records_are_gone_reports_holes_not_prose() -> None:

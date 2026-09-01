@@ -369,6 +369,28 @@ class LigandArtifactStore:
         payload = self._read_state_record_json(ligand_id, state_id)
         return LigandInspection.model_validate(payload["inspection"])
 
+    def load_state_record(
+        self, ligand_id: str, state_id: str
+    ) -> LigandChemicalStateRecord | LigandProtonationRecord:
+        """Load the exact scientist-recorded decision that produced a state."""
+        payload = self._read_state_record_json(ligand_id, state_id)
+        event_type = payload.get("provenance", {}).get("event_type")
+        if event_type == "ligand_protonation_resolved":
+            return LigandProtonationRecord.model_validate(payload)
+        if event_type == "ligand_chemical_state_resolved":
+            return LigandChemicalStateRecord.model_validate(payload)
+        raise AnkoraDomainError(
+            code="LIGAND_STATE_RECORD_UNRECOGNIZED",
+            stage="ligand_store",
+            message="The ligand chemical-state record has an unknown decision type.",
+            status_code=422,
+            details={
+                "ligand_id": ligand_id,
+                "state_id": state_id,
+                "event_type": event_type,
+            },
+        )
+
     def create_conformer(
         self,
         ligand_id: str,

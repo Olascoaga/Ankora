@@ -89,6 +89,54 @@ class _Draft:
         ))
 
 
+@dataclass(frozen=True)
+class _PreparationProtocol:
+    embedding_method: str | None
+    force_field: str
+    max_iterations: int
+    random_seed: int | None
+    conformer_pool_size: int | None
+    independent_from_source_coordinates: bool
+    conformer_tool_name: str | None
+    conformer_tool_version: str | None
+    pdbqt_tool_name: str
+    pdbqt_tool_version: str
+    charge_model: str
+
+
+@dataclass(frozen=True)
+class _StateDecision:
+    kind: str
+    tool_name: str | None = None
+    tool_version: str | None = None
+    ph_min: float | None = None
+    ph_max: float | None = None
+    candidate_count: int | None = None
+
+
+@dataclass(frozen=True)
+class _StateLineage:
+    decisions: tuple[_StateDecision, ...]
+
+
+@dataclass
+class _PreparedLigand:
+    ligand_id: str
+    preparation_id: str
+    conformer: Any
+    pdbqt: Any
+    protocol: _PreparationProtocol
+    state_lineage: _StateLineage | None
+
+
+@dataclass
+class _PreparationSet:
+    items: list[_PreparedLigand]
+    total_entries: int
+    entries_without_preparation: int
+    unavailable_preparations: int
+
+
 class MethodsReportService:
     def __init__(
         self,
@@ -392,49 +440,46 @@ class MethodsReportService:
         draft.say("")
 
     def _preparation(self, draft: _Draft, entry: CatalogEntry) -> None:
-        """Read one prepared compound rather than describe the pipeline.
+        """Describe every exact preparation used by this campaign.
 
-        Ankora always minimizes and converts, but the force field, the
-        iteration budget and the Meeko version are decisions this campaign
-        recorded, and a Methods section that recited the pipeline instead
-        would be describing the software, not the experiment.
+        A library campaign may contain multiple preparation protocols. A
+        sentence in the plural is allowed only after every referenced record
+        has been read and its protocol compared.
         """
-        sample = _sample_preparation(self._ligands, self._record(entry))
-        if sample is None:
+        preparations = _load_preparations(self._ligands, self._record(entry))
+        if not preparations.items:
             draft.say(
-                "How the selected compounds were converted to three-dimensional "
-                "structures is "
+                "How the selected ligand compounds were converted to "
+                "three-dimensional structures is "
                 f"{draft.missing('ligand conformer and PDBQT records')}."
             )
             return
-        conformer, pdbqt = sample
-        minimization = conformer.minimization
-        embedding = (
-            f" from coordinates generated with {minimization.embedding_method}"
-            if minimization.embedding_method
-            else ""
-        )
-        subject = (
-            "The selected ligand"
-            if entry.library_id is None
-            else "Each selected compound"
-        )
-        draft.say(
-            f"{subject} was converted to a three-dimensional conformer{embedding} "
-            f"and energy-minimized with the {minimization.force_field} force field "
-            f"(up to {minimization.max_iterations} iterations)."
-        )
-        draft.tool(pdbqt.tool.name, pdbqt.tool.version, "ligand PDBQT conversion")
-        pdbqt_subject = (
-            "The minimized conformer" if entry.library_id is None
-            else "Minimized conformers"
-        )
-        draft.say(
-            f"{pdbqt_subject} {'was' if entry.library_id is None else 'were'} "
-            "written to PDBQT with "
-            f"{pdbqt.tool.name} {pdbqt.tool.version}, applying "
-            f"{str(pdbqt.charge_model).replace('_', ' ').title()} partial charges."
-        )
+
+        for item in preparations.items:
+            protocol = item.protocol
+            draft.tool(
+                protocol.conformer_tool_name,
+                protocol.conformer_tool_version,
+                "ligand conformer generation and minimization",
+            )
+            draft.tool(
+                protocol.pdbqt_tool_name,
+                protocol.pdbqt_tool_version,
+                "ligand PDBQT conversion",
+            )
+            if item.state_lineage is not None:
+                for decision in item.state_lineage.decisions:
+                    draft.tool(
+                        decision.tool_name,
+                        decision.tool_version,
+                        "ligand chemical-state resolution",
+                    )
+
+        if entry.library_id is None:
+            draft.say(_single_preparation_sentence(preparations.items[0].protocol))
+        else:
+            _batch_preparation_prose(draft, preparations)
+        _chemical_state_prose(draft, preparations, single=entry.library_id is None)
 
     def _docking_section(self, draft: _Draft, entry: CatalogEntry) -> None:
         draft.say("## Molecular docking\n")
@@ -581,8 +626,8 @@ def _engine_prose(entry: CatalogEntry, name: str, version: str) -> str:
     return f"{name} {version}"
 
 
-def _sample_preparation(ligands: Any, record: Any) -> tuple[Any, Any] | None:
-    """The preparation this campaign actually used, not one of the ligand's.
+def _load_preparations(ligands: Any, record: Any) -> _PreparationSet:
+    """Load every preparation this campaign actually used.
 
     A single job records the exact identifiers on its request; each batch
     entry records them beside its result. Looking a ligand's preparations up
@@ -590,32 +635,266 @@ def _sample_preparation(ligands: Any, record: Any) -> tuple[Any, Any] | None:
     more than once, and only one of those runs is the protocol being written
     about.
     """
+    references: list[tuple[str, str]] = []
     request = getattr(record, "request", None)
-    ligand_id = getattr(request, "ligand_id", None)
-    preparation_id = getattr(request, "ligand_preparation_id", None)
-    if ligand_id and preparation_id:
-        return _load_preparation(ligands, ligand_id, preparation_id)
+    request_ligand_id = getattr(request, "ligand_id", None)
+    request_preparation_id = getattr(request, "ligand_preparation_id", None)
+    if request_ligand_id and request_preparation_id:
+        references.append((request_ligand_id, request_preparation_id))
+        total_entries = 1
+        entries_without_preparation = 0
+    else:
+        entries = list(getattr(record, "entries", []))
+        total_entries = len(entries)
+        for campaign_entry in entries:
+            preparation_id = getattr(campaign_entry, "ligand_preparation_id", None)
+            if preparation_id:
+                references.append((campaign_entry.ligand_id, preparation_id))
+        entries_without_preparation = total_entries - len(references)
 
-    for entry in getattr(record, "entries", []):
-        preparation_id = getattr(entry, "ligand_preparation_id", None)
-        if not preparation_id:
-            continue
-        prepared = _load_preparation(ligands, entry.ligand_id, preparation_id)
+    items: list[_PreparedLigand] = []
+    for ligand_id, preparation_id in references:
+        prepared = _load_preparation(ligands, ligand_id, preparation_id)
         if prepared is not None:
-            return prepared
-    return None
+            items.append(prepared)
+    return _PreparationSet(
+        items=items,
+        total_entries=total_entries,
+        entries_without_preparation=entries_without_preparation,
+        unavailable_preparations=len(references) - len(items),
+    )
 
 
 def _load_preparation(
     ligands: Any, ligand_id: str, preparation_id: str,
-) -> tuple[Any, Any] | None:
+) -> _PreparedLigand | None:
     pdbqt = _load2(ligands.load_pdbqt_record, ligand_id, preparation_id)
     if pdbqt is None:
         return None
     conformer = _load2(
         ligands.load_conformer_record, ligand_id, pdbqt.artifact.conformer_id,
     )
-    return (conformer, pdbqt) if conformer is not None else None
+    if conformer is None:
+        return None
+    minimization = conformer.minimization
+    conformer_tool = getattr(getattr(conformer, "provenance", None), "tool", None)
+    protocol = _PreparationProtocol(
+        embedding_method=getattr(minimization, "embedding_method", None),
+        force_field=_text(minimization.force_field),
+        max_iterations=minimization.max_iterations,
+        random_seed=getattr(minimization, "random_seed", None),
+        conformer_pool_size=getattr(minimization, "conformer_pool_size", None),
+        independent_from_source_coordinates=getattr(
+            minimization, "independent_from_source_coordinates", False
+        ),
+        conformer_tool_name=getattr(conformer_tool, "name", None),
+        conformer_tool_version=getattr(conformer_tool, "version", None),
+        pdbqt_tool_name=pdbqt.tool.name,
+        pdbqt_tool_version=pdbqt.tool.version,
+        charge_model=_text(pdbqt.charge_model),
+    )
+    return _PreparedLigand(
+        ligand_id=ligand_id,
+        preparation_id=preparation_id,
+        conformer=conformer,
+        pdbqt=pdbqt,
+        protocol=protocol,
+        state_lineage=_state_lineage(ligands, ligand_id, conformer),
+    )
+
+
+def _single_preparation_sentence(protocol: _PreparationProtocol) -> str:
+    return (
+        "The selected ligand was converted to a three-dimensional conformer "
+        f"using {_protocol_description(protocol)}."
+    )
+
+
+def _batch_preparation_prose(draft: _Draft, preparations: _PreparationSet) -> None:
+    missing = (
+        preparations.entries_without_preparation
+        + preparations.unavailable_preparations
+    )
+    if missing:
+        draft.say(
+            f"Preparation evidence was available for {len(preparations.items)} of "
+            f"{preparations.total_entries} campaign entries; {missing} did not "
+            "name an available conformer and PDBQT lineage. "
+            f"{draft.missing('complete batch ligand preparation records')}"
+        )
+
+    groups: dict[_PreparationProtocol, int] = {}
+    for item in preparations.items:
+        groups[item.protocol] = groups.get(item.protocol, 0) + 1
+    if len(groups) == 1:
+        protocol, count = next(iter(groups.items()))
+        scope = "docked" if not missing else "available"
+        draft.say(
+            f"All {count} {scope} ligand{'s' if count != 1 else ''} were prepared "
+            f"with {_protocol_description(protocol)}."
+        )
+        return
+
+    draft.say(
+        f"The {len(preparations.items)} available ligand preparations used "
+        f"{len(groups)} distinct recorded protocol{'s' if len(groups) != 1 else ''}:"
+    )
+    for protocol, count in sorted(
+        groups.items(), key=lambda pair: (_protocol_description(pair[0]), pair[1])
+    ):
+        draft.say(
+            f"- {count} ligand{'s' if count != 1 else ''}: "
+            f"{_protocol_description(protocol)}."
+        )
+
+
+def _protocol_description(protocol: _PreparationProtocol) -> str:
+    coordinate_source = (
+        f"independent {protocol.embedding_method} coordinates"
+        if protocol.independent_from_source_coordinates and protocol.embedding_method
+        else (
+            f"{protocol.embedding_method} coordinates"
+            if protocol.embedding_method
+            else "the recorded source coordinates"
+        )
+    )
+    details = []
+    if protocol.conformer_pool_size is not None:
+        details.append(f"a {protocol.conformer_pool_size}-conformer pool")
+    if protocol.random_seed is not None:
+        details.append(f"seed {protocol.random_seed}")
+    generation = coordinate_source
+    if details:
+        generation += f" ({', '.join(details)})"
+    minimizer = (
+        f"{protocol.conformer_tool_name} {protocol.conformer_tool_version}"
+        if protocol.conformer_tool_name and protocol.conformer_tool_version
+        else "the recorded conformer tool"
+    )
+    charge = protocol.charge_model.replace("_", " ").title()
+    return (
+        f"{generation}, {protocol.force_field} minimization with {minimizer} "
+        f"(up to {protocol.max_iterations} iterations), and "
+        f"{protocol.pdbqt_tool_name} {protocol.pdbqt_tool_version} PDBQT "
+        f"conversion with {charge} partial charges"
+    )
+
+
+def _state_lineage(ligands: Any, ligand_id: str, conformer: Any) -> _StateLineage | None:
+    provenance = getattr(conformer, "provenance", None)
+    inputs = list(getattr(provenance, "input_artifacts", []))
+    if len(inputs) != 1:
+        return None
+    current_state_id = inputs[0]
+    ligand = _load(ligands.load_record, ligand_id)
+    if ligand is None:
+        return None
+    initial_state = getattr(ligand, "state", None)
+    initial_state_id = getattr(initial_state, "state_id", ligand_id)
+    if current_state_id == initial_state_id:
+        return _StateLineage(decisions=())
+
+    decisions: list[_StateDecision] = []
+    visited: set[str] = set()
+    while current_state_id != initial_state_id:
+        if current_state_id in visited:
+            return None
+        visited.add(current_state_id)
+        state = _load2(ligands.load_state_record, ligand_id, current_state_id)
+        if state is None:
+            return None
+        event = state.provenance
+        if event.event_type == "ligand_protonation_resolved":
+            decisions.append(
+                _StateDecision(
+                    kind="protonation",
+                    tool_name=event.tool.name,
+                    tool_version=event.tool.version,
+                    ph_min=state.selection.ph_min,
+                    ph_max=state.selection.ph_max,
+                    candidate_count=state.selection.candidate_count,
+                )
+            )
+        elif event.event_type == "ligand_chemical_state_resolved":
+            decisions.append(
+                _StateDecision(
+                    kind="component/stereochemistry",
+                    tool_name=event.tool.name,
+                    tool_version=event.tool.version,
+                )
+            )
+        else:
+            return None
+        current_state_id = state.parent_state_id
+    decisions.reverse()
+    return _StateLineage(decisions=tuple(decisions))
+
+
+def _chemical_state_prose(
+    draft: _Draft, preparations: _PreparationSet, *, single: bool,
+) -> None:
+    known = [item.state_lineage for item in preparations.items if item.state_lineage]
+    unknown = len(preparations.items) - len(known)
+    if unknown:
+        draft.say(
+            f"Chemical-state lineage was available for {len(known)} of "
+            f"{len(preparations.items)} prepared ligand records. "
+            f"{draft.missing('complete ligand chemical-state lineage')}"
+        )
+    if not known:
+        return
+
+    groups: dict[_StateLineage, int] = {}
+    for lineage in known:
+        groups[lineage] = groups.get(lineage, 0) + 1
+    if len(groups) == 1:
+        lineage, count = next(iter(groups.items()))
+        subject = "The selected ligand" if single else f"All {count} verified ligands"
+        draft.say(f"{subject} {_state_description(lineage)}.")
+    else:
+        draft.say(
+            f"The {len(known)} verified ligands comprised "
+            f"{len(groups)} chemical-state lineages:"
+        )
+        for lineage, count in sorted(
+            groups.items(), key=lambda pair: (_state_description(pair[0]), pair[1])
+        ):
+            draft.say(
+                f"- {count} ligand{'s' if count != 1 else ''} "
+                f"{_state_description(lineage)}."
+            )
+    if all(
+        decision.kind != "protonation"
+        for lineage in known
+        for decision in lineage.decisions
+    ):
+        draft.say("No pH-based ligand protonation enumeration was recorded.")
+    draft.say("No ligand tautomer enumeration was recorded.")
+
+
+def _state_description(lineage: _StateLineage) -> str:
+    if not lineage.decisions:
+        return "used the initial imported or extracted chemical state"
+    descriptions = []
+    for decision in lineage.decisions:
+        if decision.kind == "component/stereochemistry":
+            descriptions.append("underwent explicit component/stereochemistry resolution")
+            continue
+        ph = (
+            f"pH {decision.ph_min:g}"
+            if decision.ph_min == decision.ph_max
+            else f"pH {decision.ph_min:g}-{decision.ph_max:g}"
+        )
+        descriptions.append(
+            "used an explicitly selected protonation candidate "
+            f"({decision.candidate_count} enumerated by {decision.tool_name} "
+            f"{decision.tool_version} at {ph})"
+        )
+    return " and ".join(descriptions)
+
+
+def _text(value: Any) -> str:
+    return str(getattr(value, "value", value))
 
 
 def _engine_identity(entry: CatalogEntry) -> tuple[str, str]:
