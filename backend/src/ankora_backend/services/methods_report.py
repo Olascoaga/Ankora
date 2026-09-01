@@ -55,10 +55,10 @@ _SITE_SOURCE = {
     "pocket_detected": "a computationally detected pocket",
 }
 _LOCAL_SEARCH = {"ad": "ADADELTA", "sw": "Solis-Wets", "fire": "FIRE"}
-_ALERT_POLICY = {
-    "review": "flagged for review",
-    "exclude": "excluded",
-    "ignore": "not applied",
+_ALERT_POLICY_EFFECT = {
+    "review": "those matches were flagged for review",
+    "exclude": "compounds with those matches were excluded",
+    "ignore": "those matches were recorded but did not affect selection",
 }
 _DUPLICATE_POLICY = {
     "exclude": "excluded", "review": "flagged for review", "keep": "retained",
@@ -414,27 +414,38 @@ class MethodsReportService:
                 f"{_join([_custom_rule(rule) for rule in plan.custom_rules])}."
             )
         draft.say(
-            "Compounds matching PAINS and Brenk structural alerts were "
-            f"{_ALERT_POLICY.get(str(plan.pains_policy), str(plan.pains_policy))} "
-            "and "
-            f"{_ALERT_POLICY.get(str(plan.brenk_policy), str(plan.brenk_policy))} "
-            f"respectively ({summary.pains_match_count} and "
-            f"{summary.brenk_match_count} compounds matched); exact "
-            "canonical-SMILES duplicates were "
+            f"{_alert_policy_sentence('PAINS', summary.pains_match_count, plan.pains_policy)} "
+            f"{_alert_policy_sentence('Brenk', summary.brenk_match_count, plan.brenk_policy)} "
+            "Exact canonical-SMILES duplicates were "
             f"{_DUPLICATE_POLICY.get(str(plan.duplicate_policy), str(plan.duplicate_policy))} "
             f"({summary.duplicate_count} found)."
         )
-        if summary.needs_decision_count:
+        classified_count = (
+            summary.eligible_count
+            + summary.excluded_count
+            + summary.needs_decision_count
+        )
+        census = (
+            f"Of {summary.imported_count} compounds evaluated, "
+            f"{summary.eligible_count} were eligible for selection, "
+            f"{summary.excluded_count} were excluded, and "
+            f"{summary.needs_decision_count} required an explicit chemical-state "
+            "decision (undefined stereochemistry or multiple fragments)."
+        )
+        if classified_count == summary.imported_count:
             draft.say(
-                f"{summary.needs_decision_count} compounds required an explicit "
-                "chemical-state decision (undefined stereochemistry or multiple "
-                "fragments) and were not included unless resolved."
+                f"{census} These mutually exclusive outcomes account for all "
+                f"{summary.imported_count} compounds."
+            )
+        else:
+            census_gap = draft.missing("internally consistent library filter census")
+            draft.say(
+                f"{census} The categories account for {classified_count} compounds; "
+                f"the discrepancy is {census_gap}."
             )
         draft.say(
-            f"Of {summary.imported_count} compounds evaluated, "
-            f"{summary.eligible_count} met every required criterion and "
-            f"{summary.excluded_count} were excluded. "
-            f"{entry.selected_count} compounds were carried forward to docking."
+            f"The recorded campaign carried {entry.selected_count} compound entries "
+            "forward to docking."
         )
         self._preparation(draft, entry)
         draft.say("")
@@ -933,6 +944,12 @@ def _custom_rule(rule: Any) -> str:
     else:
         body = f"{label} {symbol} {rule.value:g}"
     return body if rule.required else f"{body} (recorded only)"
+
+
+def _alert_policy_sentence(label: str, count: int, policy: Any) -> str:
+    noun = "compound" if count == 1 else "compounds"
+    effect = _ALERT_POLICY_EFFECT.get(str(policy), f"policy {policy} was recorded")
+    return f"{label} alerts matched {count} {noun}; {effect}."
 
 
 def _join(items: list[str]) -> str:

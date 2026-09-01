@@ -173,9 +173,13 @@ class _BatchLigands:
         self,
         protocols: dict[str, dict[str, Any]],
         state_records: dict[tuple[str, str], Any] | None = None,
+        filter_plan: dict[str, Any] | None = None,
+        filter_summary: dict[str, int] | None = None,
     ) -> None:
         self.protocols = protocols
         self.state_records = state_records or {}
+        self.filter_plan = filter_plan or {}
+        self.filter_summary = filter_summary or {}
         self.preparation_lookups: list[tuple[str, str]] = []
 
     def load_library_record(self, library_id: str) -> Any:
@@ -194,29 +198,33 @@ class _BatchLigands:
     def load_filter_run(self, library_id: str, filter_run_id: str) -> Any:
         assert (library_id, filter_run_id) == ("library-1", "filter-1")
         count = len(self.protocols)
+        plan = {
+            "require_lipinski": False,
+            "max_lipinski_violations": 1,
+            "require_veber": False,
+            "require_ghose": False,
+            "require_muegge": False,
+            "minimum_qed": None,
+            "custom_rules": [],
+            "pains_policy": "ignore",
+            "brenk_policy": "ignore",
+            "duplicate_policy": "keep",
+        }
+        plan.update(self.filter_plan)
+        summary = {
+            "pains_match_count": 0,
+            "brenk_match_count": 0,
+            "duplicate_count": 0,
+            "needs_decision_count": 0,
+            "imported_count": count,
+            "eligible_count": count,
+            "excluded_count": 0,
+        }
+        summary.update(self.filter_summary)
         return SimpleNamespace(
             rdkit_version="2025.09.6",
-            plan=SimpleNamespace(
-                require_lipinski=False,
-                max_lipinski_violations=1,
-                require_veber=False,
-                require_ghose=False,
-                require_muegge=False,
-                minimum_qed=None,
-                custom_rules=[],
-                pains_policy="ignore",
-                brenk_policy="ignore",
-                duplicate_policy="keep",
-            ),
-            summary=SimpleNamespace(
-                pains_match_count=0,
-                brenk_match_count=0,
-                duplicate_count=0,
-                needs_decision_count=0,
-                imported_count=count,
-                eligible_count=count,
-                excluded_count=0,
-            ),
+            plan=SimpleNamespace(**plan),
+            summary=SimpleNamespace(**summary),
         )
 
     def load_pdbqt_record(self, ligand_id: str, preparation_id: str) -> Any:
@@ -326,6 +334,59 @@ def test_uniform_batch_protocol_is_claimed_only_after_every_entry_is_read() -> N
         ("ligand-1", "preparation-ligand-1"),
         ("ligand-2", "preparation-ligand-2"),
     ]
+
+
+def test_filter_census_names_every_mutually_exclusive_outcome() -> None:
+    protocols = {f"ligand-{index}": _protocol(f"ligand-{index}") for index in range(5)}
+    ligands = _BatchLigands(
+        protocols,
+        filter_plan={"pains_policy": "exclude", "brenk_policy": "review"},
+        filter_summary={
+            "eligible_count": 2,
+            "excluded_count": 2,
+            "needs_decision_count": 1,
+            "pains_match_count": 1,
+            "brenk_match_count": 2,
+        },
+    )
+    report = _batch_report(
+        ligands,
+        [_batch_entry("ligand-1", "preparation-ligand-1")],
+        selected_count=1,
+    )
+
+    assert (
+        "PAINS alerts matched 1 compound; compounds with those matches were excluded"
+        in report.markdown
+    )
+    assert (
+        "Brenk alerts matched 2 compounds; those matches were flagged for review"
+        in report.markdown
+    )
+    assert "2 were eligible for selection, 2 were excluded, and 1 required" in report.markdown
+    assert "mutually exclusive outcomes account for all 5 compounds" in report.markdown
+    assert "internally consistent library filter census" not in report.gaps
+    assert "excluded and excluded respectively" not in report.markdown
+
+
+def test_inconsistent_filter_census_stays_a_visible_methods_gap() -> None:
+    protocols = {f"ligand-{index}": _protocol(f"ligand-{index}") for index in range(5)}
+    report = _batch_report(
+        _BatchLigands(
+            protocols,
+            filter_summary={
+                "eligible_count": 2,
+                "excluded_count": 2,
+                "needs_decision_count": 0,
+            },
+        ),
+        [_batch_entry("ligand-1", "preparation-ligand-1")],
+        selected_count=1,
+    )
+
+    assert "The categories account for 4 compounds" in report.markdown
+    assert "[not recorded: internally consistent library filter census]" in report.markdown
+    assert "internally consistent library filter census" in report.gaps
 
 
 def test_batch_reports_heterogeneous_protocols_and_state_lineages() -> None:
