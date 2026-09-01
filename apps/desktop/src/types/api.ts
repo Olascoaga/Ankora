@@ -1567,6 +1567,24 @@ export interface RedockingValidationRequest {
   reference_case?: string | null;
 }
 
+export type ReproducibilityStatus =
+  | "measured_reproducible"
+  | "measured_variable"
+  | "not_assessed";
+
+export interface ReproducibilityExecution {
+  catalog_id: string;
+  output_fingerprint_sha256: string;
+}
+
+export interface ReproducibilityAssessment {
+  status: ReproducibilityStatus;
+  protocol: string;
+  scope: string;
+  input_fingerprint_sha256: string | null;
+  executions: ReproducibilityExecution[];
+}
+
 export interface CampaignExport {
   export_id: string;
   exported_at: string;
@@ -1574,8 +1592,7 @@ export interface CampaignExport {
   source_id: string;
   engine: string;
   engine_version: string;
-  /** False for AutoDock-GPU: repeating the campaign will not reproduce it. */
-  bitwise_reproducible: boolean;
+  reproducibility: ReproducibilityAssessment;
   row_count: number;
   interaction_analysis_count: number;
   figure_count: number;
@@ -1613,8 +1630,7 @@ export interface CatalogEntry {
   engine_version: string;
   executable_sha256: string | null;
   device_name: string | null;
-  /** False for AutoDock-GPU: repeating this run will not reproduce it. */
-  bitwise_reproducible: boolean;
+  reproducibility: ReproducibilityAssessment;
   status: string;
   created_at: string;
   completed_at: string | null;
@@ -1887,6 +1903,8 @@ export interface ExportEntry {
   source_id: string | null;
   analysis_id: string | null;
   ligand_id: string | null;
+  reproducibility: ReproducibilityAssessment | null;
+  /** Legacy campaign manifests only; never interpreted as measured evidence. */
   bitwise_reproducible: boolean | null;
   directory: string;
   outside_project: boolean;

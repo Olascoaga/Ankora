@@ -17,7 +17,16 @@ it("offers the portable campaign bundle and states its existing M9 evidence", as
     source_id: "batch-1",
     engine: "AutoDock Vina",
     engine_version: "1.2.7",
-    bitwise_reproducible: true,
+    reproducibility: {
+      status: "measured_reproducible",
+      protocol: "ankora-reproducibility-v1",
+      scope: "parsed scientific outputs and retained pose-artifact bytes",
+      input_fingerprint_sha256: "a".repeat(64),
+      executions: [
+        { catalog_id: "vina_batch:batch-1", output_fingerprint_sha256: "b".repeat(64) },
+        { catalog_id: "vina_batch:batch-2", output_fingerprint_sha256: "b".repeat(64) },
+      ],
+    },
     row_count: 283,
     interaction_analysis_count: 2,
     figure_count: 3,

@@ -13,9 +13,10 @@ Three rules the format enforces rather than documents:
   score and AutoDock4's semi-empirical binding energy are on different scales,
   and `DOCKING_POLICY.md` forbids merging them; a header is where that either
   holds or quietly stops holding.
-* **Reproducibility is stated per bundle.** An AutoDock-GPU campaign cannot be
-  reproduced from its seed - measured, six repeats of one seed gave six
-  different rankings - so its manifest says so and its README repeats it.
+* **Reproducibility is stated per exact comparison.** Engine family and seed
+  are not evidence. A claim is made only when at least two completed records
+  share one input fingerprint and their scientific-output fingerprints have
+  actually been compared.
 * **Molecules that were never docked stay in the table.** A selection of 259
   that produced 257 results is not a table of 257 rows; the two that failed and
   why are part of the result.
@@ -27,7 +28,7 @@ import json
 import os
 import shutil
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -44,11 +45,13 @@ from ankora_backend.schemas.autodock_gpu import AutoDockGpuBatchRecord
 from ankora_backend.schemas.docking import VinaBatchDockingRecord
 from ankora_backend.schemas.figures import FigureManifest
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 from ankora_backend.services.export_destinations import (
     free_directory,
     slug,
     validated_destination,
 )
+from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "campaign_export"
 
@@ -75,7 +78,7 @@ class ExportedCampaign:
     value_column: str
     """The engine's own measure, named so two engines never share a column."""
 
-    bitwise_reproducible: bool
+    reproducibility: ReproducibilityAssessment
     receptor_id: str
     receptor_sha256: str | None
     binding_site_id: str
@@ -129,9 +132,8 @@ def results_csv(campaign: ExportedCampaign) -> str:
     """
     columns = [*_HEADER_COMMON, campaign.value_column]
     if campaign.engine != "AutoDock Vina":
-        # Cluster population is AutoDock's reproducibility evidence, and it is
-        # what predicts where two backends disagree. Dropping it would discard
-        # the most useful column in the file.
+        # Cluster population describes sampling concentration within this
+        # execution; it is not evidence that a separate execution will match.
         columns += ["clusters", "top_cluster_runs"]
 
     buffer = io.StringIO()
@@ -165,17 +167,8 @@ def manifest(
             "device": campaign.device_name,
         },
         "reproducibility": {
-            "bitwise_reproducible": campaign.bitwise_reproducible,
-            "note": (
-                "Repeating this campaign with these exact inputs reproduces these numbers."
-                if campaign.bitwise_reproducible
-                else (
-                    "Repeating this campaign with these exact inputs will NOT "
-                    "reproduce these numbers. This backend does not reproduce a "
-                    "run from its seed; six repeats of one seed gave six "
-                    "different rankings."
-                )
-            ),
+            **campaign.reproducibility.model_dump(mode="json"),
+            "note": _reproducibility_note(campaign.reproducibility),
         },
         "inputs": {
             "receptor_id": campaign.receptor_id,
@@ -244,15 +237,28 @@ def readme(campaign: ExportedCampaign, *, evidence: RecordedEvidence | None = No
         "merged or averaged into a consensus score.",
         "",
     ]
-    if campaign.bitwise_reproducible:
-        lines.append("Repeating this campaign with these exact inputs reproduces these\nnumbers.")
-    else:
-        lines.append(
-            "WARNING: repeating this campaign with these exact inputs will NOT\n"
-            "reproduce these numbers. This backend does not reproduce a run from\n"
-            "its seed."
-        )
+    lines.append(_reproducibility_note(campaign.reproducibility))
     return "\n".join(lines) + "\n"
+
+
+def _reproducibility_note(assessment: ReproducibilityAssessment) -> str:
+    if assessment.status.value == "measured_reproducible":
+        return (
+            f"Measured reproducible across {len(assessment.executions)} exact "
+            "recorded executions: parsed scientific outputs and retained "
+            "pose-artifact bytes had one output fingerprint."
+        )
+    if assessment.status.value == "measured_variable":
+        return (
+            f"Measured variable across {len(assessment.executions)} exact "
+            "recorded executions: parsed scientific outputs or retained "
+            "pose-artifact bytes had different output fingerprints."
+        )
+    return (
+        "Repeat reproducibility was not assessed for this exact combination of "
+        "inputs, recorded tool identity and protocol. A recorded seed is a rerun parameter, "
+        "not evidence that outputs will match."
+    )
 
 
 # --- adapting each campaign kind ------------------------------------------
@@ -277,7 +283,11 @@ def _common_row(entry: Any, rank: int) -> dict[str, Any]:
     }
 
 
-def from_vina_batch(record: VinaBatchDockingRecord) -> ExportedCampaign:
+def from_vina_batch(
+    record: VinaBatchDockingRecord,
+    *,
+    reproducibility: ReproducibilityAssessment | None = None,
+) -> ExportedCampaign:
     scored: list[tuple[float | None, Any]] = [
         (entry.poses[0].affinity_kcal_mol if entry.poses else None, entry)
         for entry in record.entries
@@ -295,8 +305,7 @@ def from_vina_batch(record: VinaBatchDockingRecord) -> ExportedCampaign:
         engine_version=record.tool.version,
         backend=None,
         value_column="vina_score_kcal_mol",
-        # AutoDock Vina repeats a seed deterministically.
-        bitwise_reproducible=True,
+        reproducibility=reproducibility or ReproducibilityAssessment(),
         receptor_id=record.request.receptor_id,
         receptor_sha256=record.receptor_sha256,
         binding_site_id=record.request.binding_site_id,
@@ -333,20 +342,24 @@ def _autodock_rows(entries: list[Any]) -> list[dict[str, Any]]:
         row["autodock4_binding_energy_kcal_mol"] = f"{value:.3f}" if value is not None else ""
         row["clusters"] = len(entry.clusters)
         top = next((c for c in entry.clusters if c.cluster_rank == 1), None)
-        # The population of the top cluster is how reproducible AutoDock's own
-        # answer was, and it predicts where two backends disagree.
+        # The top-cluster population records sampling concentration within this
+        # execution and must not be promoted to repeat reproducibility.
         row["top_cluster_runs"] = top.run_count if top else ""
         rows.append(row)
     return rows
 
 
-def from_autodock4_batch(record: AutoDock4BatchRecord) -> ExportedCampaign:
+def from_autodock4_batch(
+    record: AutoDock4BatchRecord,
+    *,
+    reproducibility: ReproducibilityAssessment | None = None,
+) -> ExportedCampaign:
     return ExportedCampaign(
         engine=record.autodock4.tool.name,
         engine_version=record.autodock4.tool.version,
         backend="autodock4_cpu",
         value_column="autodock4_binding_energy_kcal_mol",
-        bitwise_reproducible=True,
+        reproducibility=reproducibility or ReproducibilityAssessment(),
         receptor_id=record.receptor_id,
         receptor_sha256=None,
         binding_site_id=record.binding_site_id,
@@ -366,13 +379,17 @@ def from_autodock4_batch(record: AutoDock4BatchRecord) -> ExportedCampaign:
     )
 
 
-def from_autodock_gpu_batch(record: AutoDockGpuBatchRecord) -> ExportedCampaign:
+def from_autodock_gpu_batch(
+    record: AutoDockGpuBatchRecord,
+    *,
+    reproducibility: ReproducibilityAssessment | None = None,
+) -> ExportedCampaign:
     return ExportedCampaign(
         engine=record.autodock_gpu.tool.name,
         engine_version=record.autodock_gpu.tool.version,
         backend=record.backend.value,
         value_column="autodock4_binding_energy_kcal_mol",
-        bitwise_reproducible=record.bitwise_reproducible,
+        reproducibility=reproducibility or ReproducibilityAssessment(),
         receptor_id=record.receptor_id,
         receptor_sha256=None,
         binding_site_id=record.binding_site_id,
@@ -608,6 +625,11 @@ class CampaignExportService:
         self._autodock4_store = autodock4_store
         self._autodock_gpu_store = autodock_gpu_store
         self._binding_site_store = binding_site_store
+        self._reproducibility = ReproducibilityService(
+            docking_store=docking_store,
+            autodock4_store=autodock4_store,
+            autodock_gpu_store=autodock_gpu_store,
+        )
 
     @classmethod
     def from_environment(cls) -> "CampaignExportService":
@@ -625,6 +647,12 @@ class CampaignExportService:
         self, *, source_kind: str, batch_id: str, destination: str | None = None
     ) -> dict[str, Any]:
         campaign = self._load(source_kind, batch_id)
+        campaign = replace(
+            campaign,
+            reproducibility=self._reproducibility.assessment(
+                f"{source_kind}:{batch_id}"
+            ),
+        )
         campaign = self._with_box(campaign)
         export_id = str(uuid4())
         directory = self._export_dir(export_id)
@@ -674,7 +702,7 @@ class CampaignExportService:
             "source_id": batch_id,
             "engine": campaign.engine,
             "engine_version": campaign.engine_version,
-            "bitwise_reproducible": campaign.bitwise_reproducible,
+            "reproducibility": campaign.reproducibility.model_dump(mode="json"),
             "row_count": len(campaign.rows),
             "interaction_analysis_count": len(evidence.analyses),
             "figure_count": len(evidence.figures),
@@ -715,8 +743,6 @@ class CampaignExportService:
 
     def _with_box(self, campaign: ExportedCampaign) -> ExportedCampaign:
         """The search space belongs in the manifest, not only its identifier."""
-        from dataclasses import replace
-
         try:
             site = self._binding_site_store.load_record(campaign.binding_site_id)
         except AnkoraDomainError:

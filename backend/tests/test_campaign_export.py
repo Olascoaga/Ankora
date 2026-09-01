@@ -20,6 +20,11 @@ from ankora_backend.schemas.figures import (
     FigureManifestResult,
 )
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.results_catalog import (
+    ReproducibilityAssessment,
+    ReproducibilityExecution,
+    ReproducibilityStatus,
+)
 from ankora_backend.services.campaign_export import (
     ExportedCampaign,
     _write_portable_bundle,
@@ -36,7 +41,7 @@ def _campaign(**overrides: Any) -> ExportedCampaign:
         "engine_version": "4.2.6",
         "backend": "autodock4_cpu",
         "value_column": "autodock4_binding_energy_kcal_mol",
-        "bitwise_reproducible": True,
+        "reproducibility": ReproducibilityAssessment(),
         "receptor_id": "receptor-1",
         "receptor_sha256": None,
         "binding_site_id": "site-1",
@@ -128,11 +133,7 @@ def test_the_value_column_is_named_after_the_engine_that_produced_it() -> None:
 
 
 def test_autodock_carries_its_cluster_population_and_vina_does_not() -> None:
-    """Cluster population is AutoDock's reproducibility evidence.
-
-    It is also what predicts where two backends disagree, so dropping it would
-    remove the most useful column in the file. Vina has no clusters to report.
-    """
+    """Sampling concentration stays visible without becoming repeat evidence."""
     autodock = _rows(results_csv(_campaign()))
     vina_header = results_csv(
         _campaign(
@@ -170,32 +171,64 @@ def test_the_manifest_carries_what_it_would_take_to_ask_again() -> None:
     assert payload["protocol"] == {"ga_runs": 10, "seed_1": 20260824}
 
 
-def test_an_irreproducible_backend_says_so_in_the_bundle() -> None:
-    """Someone reading the folder without Ankora must not assume determinism."""
+def _assessment(status: ReproducibilityStatus, *outputs: str) -> ReproducibilityAssessment:
+    return ReproducibilityAssessment(
+        status=status,
+        input_fingerprint_sha256="a" * 64,
+        executions=[
+            ReproducibilityExecution(
+                catalog_id=f"autodock_gpu_batch:batch-{index}",
+                output_fingerprint_sha256=output,
+            )
+            for index, output in enumerate(outputs, start=1)
+        ],
+    )
+
+
+def test_measured_variability_carries_its_evidence_into_the_bundle() -> None:
     gpu = _campaign(
         engine="AutoDock-GPU",
         engine_version="1.6",
         backend="autodock_gpu",
-        bitwise_reproducible=False,
+        reproducibility=_assessment(
+            ReproducibilityStatus.MEASURED_VARIABLE,
+            "b" * 64,
+            "c" * 64,
+        ),
         device_name="NVIDIA RTX 5050",
     )
 
     payload = json.loads(manifest(gpu))
     note = readme(gpu)
 
-    assert payload["reproducibility"]["bitwise_reproducible"] is False
-    assert "will NOT" in payload["reproducibility"]["note"]
+    assert payload["reproducibility"]["status"] == "measured_variable"
+    assert len(payload["reproducibility"]["executions"]) == 2
+    assert "Measured variable" in payload["reproducibility"]["note"]
     assert payload["engine"]["device"] == "NVIDIA RTX 5050"
-    assert "WARNING" in note
+    assert "Measured variable" in note
     assert "NVIDIA RTX 5050" in note
 
 
-def test_a_reproducible_backend_says_that_instead() -> None:
+def test_an_unassessed_backend_is_not_promoted_to_reproducible() -> None:
     payload = json.loads(manifest(_campaign()))
 
-    assert payload["reproducibility"]["bitwise_reproducible"] is True
-    assert "will NOT" not in payload["reproducibility"]["note"]
-    assert "WARNING" not in readme(_campaign())
+    assert payload["reproducibility"]["status"] == "not_assessed"
+    assert "not assessed" in payload["reproducibility"]["note"]
+    assert "not assessed" in readme(_campaign())
+
+
+def test_measured_reproducibility_requires_recorded_equal_outputs() -> None:
+    campaign = _campaign(
+        reproducibility=_assessment(
+            ReproducibilityStatus.MEASURED_REPRODUCIBLE,
+            "b" * 64,
+            "b" * 64,
+        )
+    )
+    payload = json.loads(manifest(campaign))
+
+    assert payload["reproducibility"]["status"] == "measured_reproducible"
+    assert "Measured reproducible across 2" in payload["reproducibility"]["note"]
 
 
 def test_every_bundle_states_that_the_number_is_not_an_affinity() -> None:

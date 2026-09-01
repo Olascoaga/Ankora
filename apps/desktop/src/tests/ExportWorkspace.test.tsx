@@ -31,6 +31,7 @@ const exports: ExportPage = {
       source_id: null,
       analysis_id: "analysis-1",
       ligand_id: "ligand-1",
+      reproducibility: null,
       bitwise_reproducible: null,
       directory: "selected-output",
       outside_project: true,
@@ -49,6 +50,16 @@ const exports: ExportPage = {
       source_id: "batch-1",
       analysis_id: null,
       ligand_id: null,
+      reproducibility: {
+        status: "measured_variable",
+        protocol: "ankora-reproducibility-v1",
+        scope: "parsed scientific outputs and retained pose-artifact bytes",
+        input_fingerprint_sha256: "a".repeat(64),
+        executions: [
+          { catalog_id: "autodock_gpu_batch:batch-1", output_fingerprint_sha256: "b".repeat(64) },
+          { catalog_id: "autodock_gpu_batch:batch-2", output_fingerprint_sha256: "c".repeat(64) },
+        ],
+      },
       bitwise_reproducible: false,
       directory: "project-data/projects/default/exports/bundle-1",
       outside_project: false,
@@ -76,7 +87,16 @@ const campaigns = {
       engine_version: "1.6",
       executable_sha256: null,
       device_name: null,
-      bitwise_reproducible: false,
+      reproducibility: {
+        status: "measured_variable",
+        protocol: "ankora-reproducibility-v1",
+        scope: "parsed scientific outputs and retained pose-artifact bytes",
+        input_fingerprint_sha256: "a".repeat(64),
+        executions: [
+          { catalog_id: "autodock_gpu_batch:batch-1", output_fingerprint_sha256: "b".repeat(64) },
+          { catalog_id: "autodock_gpu_batch:batch-2", output_fingerprint_sha256: "c".repeat(64) },
+        ],
+      },
       status: "completed",
       created_at: "2026-08-26T15:47:00Z",
       completed_at: "2026-08-26T16:00:00Z",
@@ -143,15 +163,15 @@ it("offers the files the project holds and only names the rest", async () => {
   expect(figure).toHaveTextContent("selected-output");
 });
 
-it("carries the irreproducibility warning into the export record", async () => {
+it("carries measured variability into the export record", async () => {
   mock();
   render(<ExportWorkspace />);
 
   const list = await screen.findByRole("list", { name: "Recorded exports" });
   const cards = within(list).getAllByRole("listitem");
 
-  expect(cards[1]).toHaveTextContent("will not reproduce its numbers");
-  expect(cards[0]).not.toHaveTextContent("will not reproduce");
+  expect(cards[1]).toHaveTextContent("Exact recorded repeats produced different outputs");
+  expect(cards[0]).not.toHaveTextContent("Repeat reproducibility");
 });
 
 it("narrows the catalog to one kind of export", async () => {

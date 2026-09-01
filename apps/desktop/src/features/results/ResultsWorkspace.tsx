@@ -4,6 +4,7 @@ import { ankoraApi, ApiError } from "../../api/client";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
+import { reproducibilityDetail, reproducibilityTitle } from "./reproducibility";
 
 /**
  * Every durable result in the project, in one place (M6).
@@ -576,8 +577,12 @@ function CampaignBrowser({
                 </small>
               </p>
             )}
-            {!entry.bitwise_reproducible ? (
-              <p className="results-card-warning">Repeating this run will not reproduce it</p>
+            {entry.reproducibility.status !== "measured_reproducible" ? (
+              <p className="results-card-warning">
+                {entry.reproducibility.status === "measured_variable"
+                  ? "Exact repeats produced different outputs"
+                  : "Repeat reproducibility not assessed"}
+              </p>
             ) : null}
             {selectionMode && !deletable ? (
               <p className="results-card-warning">Finish or cancel before deleting</p>
@@ -768,18 +773,18 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
       <section className="receptor-section">
         <div className="filter-heading"><span>Reproducibility</span></div>
         <div className="state-resolved-note">
-          <strong>
-            {entry.bitwise_reproducible
-              ? "Repeating this run reproduces these numbers"
-              : "Repeating this run will NOT reproduce these numbers"}
-          </strong>
-          <small>
-            {entry.bitwise_reproducible
-              ? "The same inputs, protocol and seeds produce a bit-identical ranking."
-              : `Measured on this project: six repeats of one seed on ${
-                entry.device_name ?? "the GPU"
-              } produced six different ranking tables. Cluster population is the evidence to read instead.`}
-          </small>
+          <strong>{reproducibilityTitle(entry.reproducibility)}</strong>
+          <small>{reproducibilityDetail(entry.reproducibility)}</small>
+          {entry.reproducibility.input_fingerprint_sha256 ? (
+            <small>
+              Input fingerprint {entry.reproducibility.input_fingerprint_sha256.slice(0, 12)}… · {entry.reproducibility.protocol}
+            </small>
+          ) : null}
+          {entry.reproducibility.executions.map((execution) => (
+            <small key={execution.catalog_id}>
+              {execution.catalog_id} · output {execution.output_fingerprint_sha256.slice(0, 12)}…
+            </small>
+          ))}
         </div>
       </section>
       <section className="receptor-section">

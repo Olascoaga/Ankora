@@ -13,9 +13,8 @@ Three rules the renderer follows, in order of importance:
   here is worse than an obvious hole.
 * **A docking score is never described as an affinity**, and no sentence
   claims a biological result. The section describes what was done.
-* **Reproducibility is stated as it was measured.** AutoDock-GPU does not
-  reproduce a run from its seeds, so its Methods says so rather than listing
-  seeds as if they settled it.
+* **Reproducibility is stated only when exact repeats were compared.** Engine
+  type and the presence of a seed are never treated as repeat evidence.
 """
 
 from dataclasses import dataclass, field
@@ -32,7 +31,11 @@ from ankora_backend.persistence.docking_store import DockingArtifactStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.methods import MethodsReport, MethodsSoftware
-from ankora_backend.schemas.results_catalog import CatalogEntry, ScoringFamily
+from ankora_backend.schemas.results_catalog import (
+    CatalogEntry,
+    ReproducibilityStatus,
+    ScoringFamily,
+)
 from ankora_backend.services.result_catalog import (
     AUTODOCK4_BATCH,
     AUTODOCK4_JOB,
@@ -565,18 +568,28 @@ class MethodsReportService:
             "from an empirical scoring function and are not measured binding "
             "affinities."
         )
-        if entry.bitwise_reproducible:
+        assessment = entry.reproducibility
+        if assessment.status is ReproducibilityStatus.MEASURED_REPRODUCIBLE:
             draft.say(
-                "Repeating this campaign with the same inputs, protocol and "
-                "seeds reproduces the reported values."
+                f"Repeat behavior was measured across {len(assessment.executions)} "
+                "exactly comparable recorded executions. Their parsed scientific "
+                "outputs and retained pose-artifact bytes were identical."
             )
+            draft.say(_reproducibility_evidence(assessment))
+        elif assessment.status is ReproducibilityStatus.MEASURED_VARIABLE:
+            draft.say(
+                f"Repeat behavior was measured across {len(assessment.executions)} "
+                "exactly comparable recorded executions. At least two parsed "
+                "scientific-output or retained pose-artifact fingerprints differed; "
+                "the values reported here belong to this exact recorded execution."
+            )
+            draft.say(_reproducibility_evidence(assessment))
         else:
             draft.say(
-                "This backend does not reproduce a run from its seeds: repeating "
-                "the campaign with identical inputs yields different rankings, "
-                "so the reported values are those of the single recorded run. "
-                "Cluster population is reported as the reproducibility evidence "
-                "for each pose."
+                "Repeat reproducibility was not assessed for this exact combination "
+                "of inputs, recorded tool identity and protocol. Recorded seeds "
+                "support an exact "
+                "rerun request but do not establish that its outputs will match."
             )
         draft.say("")
 
@@ -621,6 +634,19 @@ class MethodsReportService:
         if entry.engine_key == "vina_batch":
             return _load(self._docking.load_batch_record, entry.record_id)
         return _load(self._docking.load_record, entry.record_id)
+
+
+def _reproducibility_evidence(assessment: Any) -> str:
+    executions = "; ".join(
+        f"{execution.catalog_id} (output fingerprint SHA-256 "
+        f"{execution.output_fingerprint_sha256})"
+        for execution in assessment.executions
+    )
+    return (
+        f"The comparison used {assessment.protocol}, input fingerprint SHA-256 "
+        f"{assessment.input_fingerprint_sha256}, and covered {assessment.scope}. "
+        f"The exact recorded executions were {executions}."
+    )
 
 
 def _cite(name: str, version: str) -> str:

@@ -20,6 +20,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
+
 
 class ExportKind(StrEnum):
     CAMPAIGN = "campaign"
@@ -53,7 +55,10 @@ class ExportEntry(BaseModel):
     source_id: str | None = None
     analysis_id: str | None = None
     ligand_id: str | None = None
-    # Campaigns only: whether repeating the run would reproduce these numbers.
+    # New campaign manifests carry comparison evidence. The boolean remains
+    # readable only so pre-assessment exports can still be catalogued; it is
+    # never promoted into a measured claim.
+    reproducibility: ReproducibilityAssessment | None = None
     bitwise_reproducible: bool | None = None
 
     directory: str = Field(min_length=1)

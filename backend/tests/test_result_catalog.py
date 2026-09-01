@@ -46,7 +46,11 @@ from ankora_backend.schemas.docking import (
     VinaDockingRequest,
 )
 from ankora_backend.schemas.provenance import ToolIdentity
-from ankora_backend.schemas.results_catalog import ResultMode, ScoringFamily
+from ankora_backend.schemas.results_catalog import (
+    ReproducibilityStatus,
+    ResultMode,
+    ScoringFamily,
+)
 from ankora_backend.services.result_catalog import ResultCatalogService
 
 RECEPTOR = "receptor-1"
@@ -496,7 +500,7 @@ def test_each_engine_names_its_own_quantity() -> None:
 
 
 def test_the_backend_is_part_of_the_engines_name() -> None:
-    """Same scoring family, different execution - and only one reproducible."""
+    """Same scoring family, different execution; neither type is evidence."""
     service = _service(
         autodock4=[_autodock4_batch("cpu", [-5.0])],
         gpu=[_gpu_batch("gpu", [-5.1])],
@@ -508,11 +512,68 @@ def test_the_backend_is_part_of_the_engines_name() -> None:
 
     assert cpu.engine_label == "AutoDock 4.2.6 · CPU"
     assert gpu.engine_label == "AutoDock4 · AutoDock-GPU 1.6"
-    assert cpu.bitwise_reproducible is True
-    assert gpu.bitwise_reproducible is False
+    assert cpu.reproducibility.status is ReproducibilityStatus.NOT_ASSESSED
+    assert gpu.reproducibility.status is ReproducibilityStatus.NOT_ASSESSED
     assert gpu.device_name == "NVIDIA GeForce RTX 5050"
     # One scoring family, so a reader is never told these are different scales.
     assert cpu.scoring_family is gpu.scoring_family is ScoringFamily.AUTODOCK4
+
+
+def test_exact_vina_repeats_are_measured_reproducible() -> None:
+    service = _service(
+        vina=[
+            _vina_batch("first", [-7.5, -6.2]),
+            _vina_batch("second", [-7.5, -6.2], minutes=1),
+        ]
+    )
+
+    entries = service.list_campaigns().entries
+    for entry in entries:
+        assessment = entry.reproducibility
+        assert assessment.status is ReproducibilityStatus.MEASURED_REPRODUCIBLE
+        assert assessment.input_fingerprint_sha256 is not None
+        assert {item.catalog_id for item in assessment.executions} == {
+            "vina_batch:first",
+            "vina_batch:second",
+        }
+        assert len({item.output_fingerprint_sha256 for item in assessment.executions}) == 1
+
+
+def test_exact_gpu_repeats_with_different_outputs_are_measured_variable() -> None:
+    service = _service(
+        gpu=[
+            _gpu_batch("first", [-5.1]),
+            _gpu_batch("second", [-5.4], minutes=1),
+        ]
+    )
+
+    entries = service.list_campaigns().entries
+    for entry in entries:
+        assessment = entry.reproducibility
+        assert assessment.status is ReproducibilityStatus.MEASURED_VARIABLE
+        assert {item.catalog_id for item in assessment.executions} == {
+            "autodock_gpu_batch:first",
+            "autodock_gpu_batch:second",
+        }
+        assert len({item.output_fingerprint_sha256 for item in assessment.executions}) == 2
+
+
+def test_different_binding_sites_are_not_compared_even_when_outputs_match() -> None:
+    service = _service(
+        vina=[
+            _vina_batch("first", [-7.5]),
+            _vina_batch("second", [-7.5], site=OTHER_SITE, minutes=1),
+        ]
+    )
+
+    entries = service.list_campaigns().entries
+    assert all(
+        entry.reproducibility.status is ReproducibilityStatus.NOT_ASSESSED
+        for entry in entries
+    )
+    assert len({
+        entry.reproducibility.input_fingerprint_sha256 for entry in entries
+    }) == 2
 
 
 # --- compounds --------------------------------------------------------------

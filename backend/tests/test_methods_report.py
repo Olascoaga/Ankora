@@ -12,6 +12,11 @@ import pytest
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.schemas.methods import MethodsReport
+from ankora_backend.schemas.results_catalog import (
+    ReproducibilityAssessment,
+    ReproducibilityExecution,
+    ReproducibilityStatus,
+)
 from ankora_backend.services.methods_report import MethodsReportService
 
 
@@ -45,7 +50,7 @@ def _entry(**overrides: Any) -> Any:
         "selected_count": 3,
         "succeeded_count": 2,
         "failed_count": 1,
-        "bitwise_reproducible": False,
+        "reproducibility": ReproducibilityAssessment(),
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -516,23 +521,58 @@ def test_a_single_ligand_campaign_says_no_library_was_screened() -> None:
     assert "compounds were imported" not in report.markdown
 
 
-def test_an_irreproducible_backend_says_so_instead_of_listing_seeds() -> None:
-    """Seeds would imply a determinism this backend does not have."""
-    report = _service(_entry(bitwise_reproducible=False)).render(
-        "autodock_gpu_batch:batch-1"
+def _assessment(status: ReproducibilityStatus, *outputs: str) -> ReproducibilityAssessment:
+    return ReproducibilityAssessment(
+        status=status,
+        input_fingerprint_sha256="a" * 64,
+        executions=[
+            ReproducibilityExecution(
+                catalog_id=f"autodock_gpu_batch:batch-{index}",
+                output_fingerprint_sha256=output,
+            )
+            for index, output in enumerate(outputs, start=1)
+        ],
     )
 
-    assert "does not reproduce a run from its seeds" in report.markdown
-    assert "reproduces the reported values" not in report.markdown
+
+def test_unassessed_repeat_behavior_is_not_promoted_from_an_engine_or_seed() -> None:
+    report = _service(_entry()).render("autodock_gpu_batch:batch-1")
+
+    assert "Repeat reproducibility was not assessed" in report.markdown
+    assert "do not establish that its outputs will match" in report.markdown
+    assert "were identical" not in report.markdown
 
 
-def test_a_reproducible_backend_says_that_instead() -> None:
-    report = _service(_entry(bitwise_reproducible=True)).render(
-        "autodock_gpu_batch:batch-1"
-    )
+def test_measured_variability_names_the_exact_compared_executions_and_hashes() -> None:
+    report = _service(
+        _entry(
+            reproducibility=_assessment(
+                ReproducibilityStatus.MEASURED_VARIABLE,
+                "b" * 64,
+                "c" * 64,
+            )
+        )
+    ).render("autodock_gpu_batch:batch-1")
 
-    assert "reproduces the reported values" in report.markdown
-    assert "does not reproduce a run from its seeds" not in report.markdown
+    assert "Repeat behavior was measured across 2 exactly comparable" in report.markdown
+    assert "batch-1 (output fingerprint SHA-256" in report.markdown
+    assert "batch-2 (output fingerprint SHA-256" in report.markdown
+    assert "input fingerprint SHA-256 " + "a" * 64 in report.markdown
+
+
+def test_measured_reproducibility_requires_equal_output_fingerprints() -> None:
+    report = _service(
+        _entry(
+            reproducibility=_assessment(
+                ReproducibilityStatus.MEASURED_REPRODUCIBLE,
+                "b" * 64,
+                "b" * 64,
+            )
+        )
+    ).render("autodock_gpu_batch:batch-1")
+
+    assert "retained pose-artifact bytes were identical" in report.markdown
+    assert report.markdown.count("output fingerprint SHA-256 " + "b" * 64) == 2
 
 
 def test_the_score_is_never_called_an_affinity() -> None:

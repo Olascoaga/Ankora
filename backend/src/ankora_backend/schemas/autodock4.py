@@ -109,8 +109,8 @@ class AutoDock4RunResult(BaseModel):
 class AutoDock4ClusterResult(BaseModel):
     """A group of runs that converged on the same pose.
 
-    `run_count` is evidence of reproducibility, not a score: a large tight
-    cluster means the search kept finding the same solution.
+    `run_count` is evidence of sampling concentration within this execution,
+    not a score and not proof that a separate execution will reproduce it.
     """
 
     model_config = ConfigDict(extra="forbid")

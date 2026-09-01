@@ -27,7 +27,16 @@ const baseEntry: CatalogEntry = {
   engine_version: "1.2.7",
   executable_sha256: null,
   device_name: null,
-  bitwise_reproducible: true,
+  reproducibility: {
+    status: "measured_reproducible",
+    protocol: "ankora-reproducibility-v1",
+    scope: "parsed scientific outputs and retained pose-artifact bytes",
+    input_fingerprint_sha256: "a".repeat(64),
+    executions: [
+      { catalog_id: "vina_batch:vina-1", output_fingerprint_sha256: "b".repeat(64) },
+      { catalog_id: "vina_batch:vina-2", output_fingerprint_sha256: "b".repeat(64) },
+    ],
+  },
   status: "completed",
   created_at: "2026-08-24T02:00:00Z",
   completed_at: "2026-08-24T02:30:00Z",
@@ -62,7 +71,16 @@ const gpuEntry: CatalogEntry = {
   engine_version: "1.6",
   executable_sha256: "2".repeat(64),
   device_name: "NVIDIA GeForce RTX 5050",
-  bitwise_reproducible: false,
+  reproducibility: {
+    status: "measured_variable",
+    protocol: "ankora-reproducibility-v1",
+    scope: "parsed scientific outputs and retained pose-artifact bytes",
+    input_fingerprint_sha256: "c".repeat(64),
+    executions: [
+      { catalog_id: "autodock_gpu_batch:gpu-1", output_fingerprint_sha256: "d".repeat(64) },
+      { catalog_id: "autodock_gpu_batch:gpu-2", output_fingerprint_sha256: "e".repeat(64) },
+    ],
+  },
   created_at: "2026-08-26T15:47:00Z",
   map_set_id: "map-set-1",
   map_set_identity_key: "f".repeat(64),
@@ -150,15 +168,15 @@ it("never shows a result without the engine that produced it", async () => {
   expect(cards[1]).toHaveTextContent("best Vina score");
 });
 
-it("says plainly when repeating a run would not reproduce it", async () => {
+it("distinguishes measured variability from measured reproducibility", async () => {
   mock();
   render(<ResultsWorkspace />);
 
   const browser = await screen.findByRole("list", { name: "Recorded results" });
   const cards = within(browser).getAllByRole("listitem");
 
-  expect(cards[0]).toHaveTextContent("Repeating this run will not reproduce it");
-  expect(cards[1]).not.toHaveTextContent("will not reproduce");
+  expect(cards[0]).toHaveTextContent("Exact repeats produced different outputs");
+  expect(cards[1]).not.toHaveTextContent("Repeat reproducibility not assessed");
 });
 
 it("loads a campaign's molecules only when it is opened", async () => {

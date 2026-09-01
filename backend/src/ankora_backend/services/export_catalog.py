@@ -24,6 +24,7 @@ from ankora_backend.schemas.exports import (
     ExportKind,
     ExportPage,
 )
+from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 
 _STAGE = "export_catalog"
 
@@ -74,6 +75,7 @@ class ExportCatalogService:
             engine = manifest.get("engine") or {}
             counts = manifest.get("counts") or {}
             reproducibility = manifest.get("reproducibility") or {}
+            assessment = _assessment(reproducibility)
             entries.append(
                 ExportEntry(
                     export_id=directory.name,
@@ -86,6 +88,7 @@ class ExportCatalogService:
                     ),
                     source_kind=manifest.get("source_kind"),
                     source_id=manifest.get("source_id"),
+                    reproducibility=assessment,
                     bitwise_reproducible=reproducibility.get("bitwise_reproducible"),
                     directory=str(directory),
                     files=_files(
@@ -192,6 +195,17 @@ def _manifest(path: Path) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return None
     return loaded if isinstance(loaded, dict) else None
+
+
+def _assessment(value: Any) -> ReproducibilityAssessment | None:
+    """Read evidence-aware manifests without upgrading legacy booleans."""
+    if not isinstance(value, dict) or "status" not in value:
+        return None
+    evidence = {key: item for key, item in value.items() if key != "note"}
+    try:
+        return ReproducibilityAssessment.model_validate(evidence)
+    except ValueError:
+        return None
 
 
 def _names(manifest: dict[str, Any]) -> set[str]:

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ankora_backend.schemas.exports import ExportKind
+from ankora_backend.schemas.results_catalog import ReproducibilityStatus
 from ankora_backend.services.export_catalog import ExportCatalogService
 
 CAMPAIGN = "11111111-1111-1111-1111-111111111111"
@@ -29,7 +30,9 @@ def _write(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _campaign(root: Path, *, minute: int = 0, reproducible: bool = True) -> Path:
+def _campaign(
+    root: Path, *, minute: int = 0, evidence_aware: bool = True
+) -> Path:
     directory = _exports(root) / CAMPAIGN
     _write(directory / "manifest.json", {
         "exported_at": datetime(2026, 8, 28, 5, minute, tzinfo=UTC).isoformat(),
@@ -40,7 +43,27 @@ def _campaign(root: Path, *, minute: int = 0, reproducible: bool = True) -> Path
             "name": "AutoDock-GPU", "version": "1.6",
             "device": "NVIDIA GeForce RTX 5050 Laptop GPU",
         },
-        "reproducibility": {"bitwise_reproducible": reproducible, "note": "…"},
+        "reproducibility": (
+            {
+                "status": "measured_variable",
+                "protocol": "ankora-reproducibility-v1",
+                "scope": "parsed scientific outputs and retained pose-artifact bytes",
+                "input_fingerprint_sha256": "a" * 64,
+                "executions": [
+                    {
+                        "catalog_id": "autodock_gpu_batch:batch-1",
+                        "output_fingerprint_sha256": "b" * 64,
+                    },
+                    {
+                        "catalog_id": "autodock_gpu_batch:batch-2",
+                        "output_fingerprint_sha256": "c" * 64,
+                    },
+                ],
+                "note": "Measured variable.",
+            }
+            if evidence_aware
+            else {"bitwise_reproducible": True, "note": "Legacy assumption."}
+        ),
         "counts": {"selected": 25, "succeeded": 25, "failed": 0},
     })
     (directory / "results.csv").write_text("rank,molecule\n", encoding="utf-8")
@@ -121,13 +144,23 @@ def test_every_export_says_what_it_came_from(tmp_path: Path) -> None:
     assert entries[ExportKind.FIGURE].analysis_id == "analysis-1"
 
 
-def test_a_bundle_from_an_irreproducible_run_still_says_so(tmp_path: Path) -> None:
-    """The warning has to survive into the record of the export, not only the run."""
-    _campaign(tmp_path, reproducible=False)
+def test_measured_variability_survives_into_the_export_catalog(tmp_path: Path) -> None:
+    _campaign(tmp_path)
 
     entry = _service(tmp_path).list_exports().entries[0]
 
-    assert entry.bitwise_reproducible is False
+    assert entry.reproducibility is not None
+    assert entry.reproducibility.status is ReproducibilityStatus.MEASURED_VARIABLE
+    assert len(entry.reproducibility.executions) == 2
+
+
+def test_a_legacy_boolean_is_read_but_not_upgraded_into_evidence(tmp_path: Path) -> None:
+    _campaign(tmp_path, evidence_aware=False)
+
+    entry = _service(tmp_path).list_exports().entries[0]
+
+    assert entry.bitwise_reproducible is True
+    assert entry.reproducibility is None
 
 
 def test_files_the_project_holds_are_offered_and_the_rest_are_named(

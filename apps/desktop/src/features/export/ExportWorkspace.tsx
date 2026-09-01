@@ -4,6 +4,7 @@ import { ankoraApi } from "../../api/client";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import { MethodsPanel } from "./MethodsPanel";
 import type { CatalogEntry, ExportEntry, ExportKind } from "../../types/api";
+import { reproducibilityTitle } from "../results/reproducibility";
 
 /**
  * Everything this project has sent out of Ankora (workflow step 8).
@@ -220,9 +221,9 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
         <span>{formatMoment(entry.exported_at)}</span>
         {entry.subtitle ? <span>{entry.subtitle}</span> : null}
       </div>
-      {entry.bitwise_reproducible === false ? (
+      {entry.kind === "campaign" && entry.reproducibility?.status !== "measured_reproducible" ? (
         <p className="results-card-warning">
-          Repeating the run behind this bundle will not reproduce its numbers
+          {reproducibilityTitle(entry.reproducibility)}
         </p>
       ) : null}
       {servable.length ? (

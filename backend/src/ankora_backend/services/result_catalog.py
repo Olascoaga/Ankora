@@ -25,6 +25,7 @@ from ankora_backend.schemas.results_catalog import (
     ResultMode,
     ScoringFamily,
 )
+from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "results_catalog"
 
@@ -56,6 +57,11 @@ class ResultCatalogService:
         self._autodock_gpu_store = autodock_gpu_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
+        self._reproducibility = ReproducibilityService(
+            docking_store=docking_store,
+            autodock4_store=autodock4_store,
+            autodock_gpu_store=autodock_gpu_store,
+        )
 
     @classmethod
     def from_environment(cls) -> "ResultCatalogService":
@@ -111,7 +117,12 @@ class ResultCatalogService:
 
     def get_campaign(self, catalog_id: str) -> CatalogEntry:
         engine_key, record_id = self._split(catalog_id)
-        return self._with_box(self._project(engine_key, record_id))
+        entry = self._project(engine_key, record_id)
+        return self._with_box(
+            entry.model_copy(
+                update={"reproducibility": self._reproducibility.assessment(catalog_id)}
+            )
+        )
 
     def _all(self) -> list[CatalogEntry]:
         """Projected from whatever is on disk; a store that fails is skipped.
@@ -133,7 +144,17 @@ class ResultCatalogService:
             except (AnkoraDomainError, OSError):
                 continue
             entries.extend(project(record) for record in records)
-        return entries
+        assessments = self._reproducibility.all_assessments()
+        return [
+            entry.model_copy(
+                update={
+                    "reproducibility": assessments.get(
+                        entry.catalog_id, entry.reproducibility
+                    )
+                }
+            )
+            for entry in entries
+        ]
 
     # --- compounds --------------------------------------------------------
 
@@ -337,7 +358,6 @@ class ResultCatalogService:
             scoring_family=ScoringFamily.VINA,
             engine_label=f"{record.tool.name} {record.tool.version}",
             engine_version=record.tool.version,
-            bitwise_reproducible=True,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -366,7 +386,6 @@ class ResultCatalogService:
             engine_label=_cpu_label(record.autodock4),
             engine_version=record.autodock4.tool.version,
             executable_sha256=record.autodock4.sha256,
-            bitwise_reproducible=True,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -399,7 +418,6 @@ class ResultCatalogService:
             engine_version=record.autodock_gpu.tool.version,
             executable_sha256=record.autodock_gpu.sha256,
             device_name=record.autodock_gpu.device_name,
-            bitwise_reproducible=record.bitwise_reproducible,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -427,7 +445,6 @@ class ResultCatalogService:
             scoring_family=ScoringFamily.VINA,
             engine_label=f"{record.tool.name} {record.tool.version}",
             engine_version=record.tool.version,
-            bitwise_reproducible=True,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -449,7 +466,6 @@ class ResultCatalogService:
             engine_label=_cpu_label(record.autodock4),
             engine_version=record.autodock4.tool.version,
             executable_sha256=record.autodock4.sha256,
-            bitwise_reproducible=True,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -474,7 +490,6 @@ class ResultCatalogService:
             engine_version=record.autodock_gpu.tool.version,
             executable_sha256=record.autodock_gpu.sha256,
             device_name=record.autodock_gpu.device_name,
-            bitwise_reproducible=record.bitwise_reproducible,
             status=record.status.value,
             created_at=record.created_at,
             completed_at=record.completed_at,
@@ -523,7 +538,7 @@ def _cpu_label(identity: Any) -> str:
     """`AutoDock 4.2.6 · CPU` - the backend is part of the engine's name.
 
     Two backends of one scoring family produce numbers on the same scale from
-    different executions, and only one of them is reproducible.
+    different executions. Repeat behavior is assessed from records, not type.
     """
     return f"{identity.tool.name} {identity.tool.version} · CPU"
 

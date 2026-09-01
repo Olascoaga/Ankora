@@ -8,6 +8,7 @@ import {
   rememberedFolder,
 } from "../results/chooseFolder";
 import type { CampaignExport } from "../../types/api";
+import { reproducibilityTitle } from "../results/reproducibility";
 
 /**
  * Export a finished campaign as a bundle someone else could act on.
@@ -117,9 +118,7 @@ export function CampaignExportPanel({
           <strong>{bundle.row_count} molecules exported</strong>
           <small>
             {bundle.engine} {bundle.engine_version}
-            {bundle.bitwise_reproducible
-              ? " · repeating this campaign reproduces these numbers"
-              : " · repeating this campaign will NOT reproduce these numbers"}
+            {` · ${reproducibilityTitle(bundle.reproducibility).toLowerCase()}`}
           </small>
           <small>
             {bundle.interaction_analysis_count} pose analyses · {bundle.figure_count} saved figures

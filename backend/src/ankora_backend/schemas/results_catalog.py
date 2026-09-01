@@ -19,7 +19,7 @@ Two boundaries the shapes enforce:
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ResultMode(StrEnum):
@@ -32,6 +32,62 @@ class ScoringFamily(StrEnum):
 
     VINA = "vina"
     AUTODOCK4 = "autodock4"
+
+
+class ReproducibilityStatus(StrEnum):
+    """What exact recorded repeats established for one protocol fingerprint."""
+
+    MEASURED_REPRODUCIBLE = "measured_reproducible"
+    MEASURED_VARIABLE = "measured_variable"
+    NOT_ASSESSED = "not_assessed"
+
+
+class ReproducibilityExecution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    catalog_id: str = Field(min_length=1)
+    output_fingerprint_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ReproducibilityAssessment(BaseModel):
+    """A comparison result, never an engine-level assumption.
+
+    The input fingerprint groups only the same engine/backend, exact recorded
+    inputs, tool identity, and protocol. Output fingerprints cover parsed
+    scientific values plus retained pose-artifact byte hashes; logs and timing
+    are deliberately outside this scope.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ReproducibilityStatus = ReproducibilityStatus.NOT_ASSESSED
+    protocol: str = "ankora-reproducibility-v1"
+    scope: str = "parsed scientific outputs and retained pose-artifact bytes"
+    input_fingerprint_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    executions: list[ReproducibilityExecution] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_measured_evidence(self) -> "ReproducibilityAssessment":
+        fingerprints = {
+            execution.output_fingerprint_sha256 for execution in self.executions
+        }
+        if self.status is ReproducibilityStatus.NOT_ASSESSED:
+            return self
+        if self.input_fingerprint_sha256 is None or len(self.executions) < 2:
+            raise ValueError("A measured status requires two exact comparable executions.")
+        if (
+            self.status is ReproducibilityStatus.MEASURED_REPRODUCIBLE
+            and len(fingerprints) != 1
+        ):
+            raise ValueError("Measured reproducibility requires equal output fingerprints.")
+        if (
+            self.status is ReproducibilityStatus.MEASURED_VARIABLE
+            and len(fingerprints) < 2
+        ):
+            raise ValueError("Measured variability requires different output fingerprints.")
+        return self
 
 
 class CatalogEntry(BaseModel):
@@ -59,7 +115,9 @@ class CatalogEntry(BaseModel):
     engine_version: str = Field(min_length=1)
     executable_sha256: str | None = None
     device_name: str | None = None
-    bitwise_reproducible: bool = True
+    reproducibility: ReproducibilityAssessment = Field(
+        default_factory=ReproducibilityAssessment
+    )
 
     status: str = Field(min_length=1)
     created_at: datetime
