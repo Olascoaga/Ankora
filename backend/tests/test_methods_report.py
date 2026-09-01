@@ -69,6 +69,88 @@ def _service(entry: Any, **stores: Any) -> MethodsReportService:
     return MethodsReportService(catalog=_Catalog(entry), **defaults)  # type: ignore[arg-type]
 
 
+class _ExactPreparation:
+    """Only the preparation named by the docking request may be described."""
+
+    def __init__(self) -> None:
+        self.lookups: list[tuple[str, str]] = []
+
+    def load_pdbqt_record(self, ligand_id: str, preparation_id: str) -> Any:
+        self.lookups.append((ligand_id, preparation_id))
+        assert (ligand_id, preparation_id) == ("ligand-exact", "preparation-exact")
+        return SimpleNamespace(
+            artifact=SimpleNamespace(conformer_id="conformer-exact"),
+            charge_model="gasteiger",
+            tool=SimpleNamespace(name="Meeko", version="0.7.1"),
+        )
+
+    def load_conformer_record(self, ligand_id: str, conformer_id: str) -> Any:
+        self.lookups.append((ligand_id, conformer_id))
+        assert (ligand_id, conformer_id) == ("ligand-exact", "conformer-exact")
+        return SimpleNamespace(
+            minimization=SimpleNamespace(
+                embedding_method="ETKDGv3",
+                force_field="MMFF94s",
+                max_iterations=500,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("engine_key", "store_name", "loader_name", "engine_label", "scoring_name"),
+    [
+        ("vina_job", "docking", "load_record", "AutoDock Vina 1.2.7", "VINA"),
+        ("autodock4_job", "autodock4", "load_job", "AutoDock 4.2.6", "AUTODOCK4"),
+        (
+            "autodock_gpu_job", "autodock_gpu", "load_job",
+            "AutoDock4 · AutoDock-GPU 1.6", "AUTODOCK4",
+        ),
+    ],
+)
+def test_single_jobs_describe_the_exact_ligand_preparation(
+    engine_key: str,
+    store_name: str,
+    loader_name: str,
+    engine_label: str,
+    scoring_name: str,
+) -> None:
+    preparation = _ExactPreparation()
+    record = SimpleNamespace(
+        request=SimpleNamespace(
+            ligand_id="ligand-exact",
+            ligand_preparation_id="preparation-exact",
+            parameters=SimpleNamespace(model_dump=lambda mode: {}),
+        ),
+    )
+    engine_store = SimpleNamespace(**{loader_name: lambda _: record})
+    report = _service(
+        _entry(
+            engine_key=engine_key,
+            engine_label=engine_label,
+            scoring_family=SimpleNamespace(name=scoring_name),
+            library_id=None,
+            selected_count=1,
+            succeeded_count=1,
+            failed_count=0,
+        ),
+        ligands=preparation,
+        **{store_name: engine_store},
+    ).render(f"{engine_key}:job-1")
+
+    assert "A single ligand was docked" in report.markdown
+    assert "The selected ligand was converted" in report.markdown
+    assert "ETKDGv3" in report.markdown
+    assert "MMFF94s" in report.markdown
+    assert "up to 500 iterations" in report.markdown
+    assert "Meeko 0.7.1" in report.markdown
+    assert "Gasteiger partial charges" in report.markdown
+    assert "ligand conformer and PDBQT records" not in report.gaps
+    assert preparation.lookups == [
+        ("ligand-exact", "preparation-exact"),
+        ("ligand-exact", "conformer-exact"),
+    ]
+
+
 def test_a_campaign_whose_records_are_gone_reports_holes_not_prose() -> None:
     """The failure Ankora exists to prevent is text that reads as verified.
 

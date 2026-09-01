@@ -315,9 +315,9 @@ class MethodsReportService:
     def _ligands_section(self, draft: _Draft, entry: CatalogEntry) -> None:
         draft.say("## Ligand preparation\n")
         if entry.library_id is None:
-            draft.say(
-                "A single ligand was docked; no compound library was screened.\n"
-            )
+            draft.say("A single ligand was docked; no compound library was screened.")
+            self._preparation(draft, entry)
+            draft.say("")
             return
 
         library = _load(self._ligands.load_library_record, entry.library_id)
@@ -414,15 +414,24 @@ class MethodsReportService:
             if minimization.embedding_method
             else ""
         )
+        subject = (
+            "The selected ligand"
+            if entry.library_id is None
+            else "Each selected compound"
+        )
         draft.say(
-            "Each selected compound was converted to a three-dimensional "
-            f"conformer{embedding} and energy-minimized with the "
-            f"{minimization.force_field} force field "
+            f"{subject} was converted to a three-dimensional conformer{embedding} "
+            f"and energy-minimized with the {minimization.force_field} force field "
             f"(up to {minimization.max_iterations} iterations)."
         )
         draft.tool(pdbqt.tool.name, pdbqt.tool.version, "ligand PDBQT conversion")
+        pdbqt_subject = (
+            "The minimized conformer" if entry.library_id is None
+            else "Minimized conformers"
+        )
         draft.say(
-            "Minimized conformers were written to PDBQT with "
+            f"{pdbqt_subject} {'was' if entry.library_id is None else 'were'} "
+            "written to PDBQT with "
             f"{pdbqt.tool.name} {pdbqt.tool.version}, applying "
             f"{str(pdbqt.charge_model).replace('_', ' ').title()} partial charges."
         )
@@ -575,25 +584,38 @@ def _engine_prose(entry: CatalogEntry, name: str, version: str) -> str:
 def _sample_preparation(ligands: Any, record: Any) -> tuple[Any, Any] | None:
     """The preparation this campaign actually used, not one of the ligand's.
 
-    Each campaign entry records the exact `ligand_preparation_id` that was
-    docked. Looking a ligand's preparations up by hand would answer a
-    different question - a compound can be prepared more than once, and only
-    one of those runs is the protocol being written about.
+    A single job records the exact identifiers on its request; each batch
+    entry records them beside its result. Looking a ligand's preparations up
+    by hand would answer a different question - a compound can be prepared
+    more than once, and only one of those runs is the protocol being written
+    about.
     """
+    request = getattr(record, "request", None)
+    ligand_id = getattr(request, "ligand_id", None)
+    preparation_id = getattr(request, "ligand_preparation_id", None)
+    if ligand_id and preparation_id:
+        return _load_preparation(ligands, ligand_id, preparation_id)
+
     for entry in getattr(record, "entries", []):
         preparation_id = getattr(entry, "ligand_preparation_id", None)
         if not preparation_id:
             continue
-        pdbqt = _load2(ligands.load_pdbqt_record, entry.ligand_id, preparation_id)
-        if pdbqt is None:
-            continue
-        conformer = _load2(
-            ligands.load_conformer_record, entry.ligand_id,
-            pdbqt.artifact.conformer_id,
-        )
-        if conformer is not None:
-            return conformer, pdbqt
+        prepared = _load_preparation(ligands, entry.ligand_id, preparation_id)
+        if prepared is not None:
+            return prepared
     return None
+
+
+def _load_preparation(
+    ligands: Any, ligand_id: str, preparation_id: str,
+) -> tuple[Any, Any] | None:
+    pdbqt = _load2(ligands.load_pdbqt_record, ligand_id, preparation_id)
+    if pdbqt is None:
+        return None
+    conformer = _load2(
+        ligands.load_conformer_record, ligand_id, pdbqt.artifact.conformer_id,
+    )
+    return (conformer, pdbqt) if conformer is not None else None
 
 
 def _engine_identity(entry: CatalogEntry) -> tuple[str, str]:
