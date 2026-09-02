@@ -43,15 +43,15 @@ def prepare_ligand_pdbqt(
             error_message=error.message,
         )
         raise
+    conformer = store.load_conformer_record(ligand_id, conformer_id)
     record_library_status(
         store,
         original,
         status=LigandPreparationStatus.PREPARED,
         conformer_id=conformer_id,
         pdbqt_preparation_id=record.artifact.preparation_id,
-        final_energy_kcal_mol=store.load_conformer_record(
-            ligand_id, conformer_id
-        ).minimization.final_energy_kcal_mol,
+        initial_energy_kcal_mol=conformer.minimization.initial_energy_kcal_mol,
+        final_energy_kcal_mol=conformer.minimization.final_energy_kcal_mol,
     )
     return record
 

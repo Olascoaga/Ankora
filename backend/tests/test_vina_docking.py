@@ -28,6 +28,7 @@ from ankora_backend.schemas.docking import (
     DockingJobStatus,
     VinaBatchDockingParameters,
     VinaBatchDockingRequest,
+    VinaBatchLigandResult,
     VinaDockingParameters,
     VinaDockingRequest,
 )
@@ -419,6 +420,20 @@ def test_vina_library_batch_coordinates_cpu_and_preserves_source_order(
     assert record.succeeded_count == 2
     assert record.failed_count == 0
     assert all(entry.poses[0].affinity_kcal_mol == -6.5 for entry in record.entries)
+    assert all(entry.preparation_initial_energy_kcal_mol is not None for entry in record.entries)
+    assert all(entry.preparation_energy_kcal_mol is not None for entry in record.entries)
+    for entry in record.entries:
+        assert entry.preparation_initial_energy_kcal_mol is not None
+        assert entry.preparation_energy_kcal_mol is not None
+        assert entry.preparation_energy_kcal_mol < entry.preparation_initial_energy_kcal_mol
+    historical_payload = record.entries[0].model_dump()
+    historical_payload.pop("preparation_initial_energy_kcal_mol")
+    assert (
+        VinaBatchLigandResult.model_validate(
+            historical_payload
+        ).preparation_initial_energy_kcal_mol
+        is None
+    )
     first = record.entries[0].poses[0].artifact
     assert service.batch_pose_content_path(
         record.batch_id, record.entries[0].ligand_id, first.artifact_id

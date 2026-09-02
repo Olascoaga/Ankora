@@ -24,7 +24,7 @@ M3 begins by preserving a ligand reference before generating any state or confor
 - Parse or sanitization failure is recorded per source record. One invalid molecule does not erase valid records or abort their later processing.
 - The local file bytes are immutable and retain their own filename, format, size, and hash.
 - RDKit parsing/sanitization produces a separate canonical inspected-state SDF with its own UUID and hash. This state does not replace the original file.
-- The library table reports record index, source name, canonical isomeric SMILES, formula, average molecular weight, MMFF final energy when available, and per-molecule status. MMFF energy is preparation evidence in `kcal/mol`; it is not a docking score or binding-energy prediction.
+- The library table reports record index, source name, canonical isomeric SMILES, formula, average molecular weight, MMFF minimization change when available, and per-molecule status. The primary value is `ΔE = final - initial` for that molecule and is labeled as internal geometry QC. It is not sortable, a docking score, a binding-energy prediction, or a basis for ranking compounds.
 - Files without authoritative 3D coordinates are labeled as such; a 2D connectivity preview is not described as a 3D conformer.
 - Undefined tetrahedral stereocenters and disconnected components are structured blockers. Ankora enumerates the inspected choices, requires the scientist to retain an exact component and select an exact stereoisomer when applicable, and writes the result as a new immutable state.
 - Component order, formulas, formal charges, heavy-atom counts, canonical SMILES, selected indices, and the parent state are recorded. Ankora never silently retains the largest fragment or chooses a stereoisomer.
@@ -54,6 +54,7 @@ Library inputs pass through an explicit 2D cleaning stage before any 3D generati
 - MMFF94 and MMFF94s are separate visible choices. Ankora never silently falls back to UFF or another force field when MMFF parameters are unavailable.
 - Explicit hydrogens are added to the derivative and recorded in provenance.
 - The starting ligand remains immutable. Every minimization creates a new conformer artifact with its own UUID, SDF, SHA-256, method, RDKit version, iteration limit, initial/final energy, and convergence state.
+- Absolute initial and final MMFF energies remain preserved as technical evidence for the exact conformer. The primary interface reports their within-molecule change and explicitly prevents cross-compound interpretation; force-field potential energies from different molecular compositions are not on a common ranking scale.
 - For an independently embedded pool, convergence is evaluated before energy. Ankora selects the lowest-final-energy conformer only among converged outcomes; a lower-energy nonconverged geometry cannot displace a converged one.
 - If no member of the pool converges, the lowest-final-energy nonconverged outcome may be preserved for inspection only. Its pool size, zero converged count, fallback policy, selected conformer, and warning are recorded, and it is not eligible for Meeko.
 - Historical conformer records without pool-level selection evidence remain readable, but the interface does not infer a pool-wide convergence claim from their selected outcome.

@@ -243,6 +243,9 @@ class VinaDockingService:
                 )
                 continue
             source_index, ligand = source
+            preparation_initial_energy = (
+                status.initial_energy_kcal_mol if status is not None else None
+            )
             preparation_energy = (
                 status.final_energy_kcal_mol if status is not None else None
             )
@@ -259,6 +262,9 @@ class VinaDockingService:
                         canonical_smiles=ligand.inspection.canonical_smiles,
                         molecular_weight_g_mol=(
                             ligand.inspection.molecular_weight_g_mol
+                        ),
+                        preparation_initial_energy_kcal_mol=(
+                            preparation_initial_energy
                         ),
                         preparation_energy_kcal_mol=preparation_energy,
                         message=(
@@ -277,10 +283,20 @@ class VinaDockingService:
                     ligand_id, status.pdbqt_preparation_id
                 )
                 self._verify_hash(ligand_path, pdbqt.artifact.sha256, "ligand")
-                if preparation_energy is None:
-                    preparation_energy = self._ligand_store.load_conformer_record(
+                if preparation_initial_energy is None or preparation_energy is None:
+                    conformer = self._ligand_store.load_conformer_record(
                         ligand_id, pdbqt.artifact.conformer_id
-                    ).minimization.final_energy_kcal_mol
+                    )
+                    preparation_initial_energy = (
+                        preparation_initial_energy
+                        if preparation_initial_energy is not None
+                        else conformer.minimization.initial_energy_kcal_mol
+                    )
+                    preparation_energy = (
+                        preparation_energy
+                        if preparation_energy is not None
+                        else conformer.minimization.final_energy_kcal_mol
+                    )
             except AnkoraDomainError as error:
                 entries.append(
                     self._unavailable_batch_entry(
@@ -290,6 +306,9 @@ class VinaDockingService:
                         canonical_smiles=ligand.inspection.canonical_smiles,
                         molecular_weight_g_mol=(
                             ligand.inspection.molecular_weight_g_mol
+                        ),
+                        preparation_initial_energy_kcal_mol=(
+                            preparation_initial_energy
                         ),
                         preparation_energy_kcal_mol=preparation_energy,
                         message=error.message,
@@ -305,6 +324,9 @@ class VinaDockingService:
                     name=ligand.inspection.name,
                     canonical_smiles=ligand.inspection.canonical_smiles,
                     molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                    preparation_initial_energy_kcal_mol=(
+                        preparation_initial_energy
+                    ),
                     preparation_energy_kcal_mol=preparation_energy,
                     ligand_preparation_id=status.pdbqt_preparation_id,
                     ligand_sha256=pdbqt.artifact.sha256,
@@ -930,6 +952,7 @@ class VinaDockingService:
         completed_at: datetime,
         canonical_smiles: str | None = None,
         molecular_weight_g_mol: float | None = None,
+        preparation_initial_energy_kcal_mol: float | None = None,
         preparation_energy_kcal_mol: float | None = None,
     ) -> VinaBatchLigandResult:
         return VinaBatchLigandResult(
@@ -938,6 +961,9 @@ class VinaDockingService:
             name=name,
             canonical_smiles=canonical_smiles,
             molecular_weight_g_mol=molecular_weight_g_mol,
+            preparation_initial_energy_kcal_mol=(
+                preparation_initial_energy_kcal_mol
+            ),
             preparation_energy_kcal_mol=preparation_energy_kcal_mol,
             status=DockingJobStatus.FAILED,
             phase=DockingJobPhase.COMPLETE,

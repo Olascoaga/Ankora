@@ -29,6 +29,7 @@ class LigandPreparationEntry(BaseModel):
     status: LigandPreparationStatus
     conformer_id: str | None = None
     pdbqt_preparation_id: str | None = None
+    initial_energy_kcal_mol: float | None = None
     final_energy_kcal_mol: float | None = None
     error_message: str | None = None
     updated_at: datetime

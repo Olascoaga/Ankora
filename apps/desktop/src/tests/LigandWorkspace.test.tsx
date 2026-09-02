@@ -234,8 +234,10 @@ it("imports and processes every eligible molecule while showing a screening tabl
   expect(screen.getByText(/2 parallel workers/)).toBeInTheDocument();
   releaseFirst(new Response(JSON.stringify(conformer(first, -1.25)), { status: 201, headers: { "Content-Type": "application/json" } }));
   releaseSecond(new Response(JSON.stringify(conformer(second, -3.5)), { status: 201, headers: { "Content-Type": "application/json" } }));
-  await waitFor(() => expect(screen.getByText("-1.250")).toBeInTheDocument());
-  expect(screen.getByText("-3.500")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getAllByText("-10.000").length).toBeGreaterThanOrEqual(2));
+  expect(screen.getByText("MMFF ΔE (kcal/mol) · QC")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /MMFF ΔE/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/MMFF ΔE is within-molecule geometry QC/)).toBeInTheDocument();
   expect(screen.getAllByText("Minimized")).toHaveLength(2);
   await waitFor(() => expect(onLibraryStatusChange).toHaveBeenLastCalledWith({
     total: 2,

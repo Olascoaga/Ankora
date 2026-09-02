@@ -29,12 +29,13 @@ export interface LigandBatchResult {
   // demand once the ligand is actually selected for inspection.
   conformerId?: string | null;
   pdbqtPreparationId?: string | null;
+  initialEnergyKcalMol?: number;
   finalEnergyKcalMol?: number;
   error?: string;
 }
 
 type ColumnKey = "formula" | "mw" | "clogp" | "qed" | "rules" | "alerts" | "energy";
-type SortKey = "source" | "name" | "mw" | "qed" | "energy" | "status";
+type SortKey = "source" | "name" | "mw" | "qed" | "status";
 
 const optionalColumns: { key: ColumnKey; label: string }[] = [
   { key: "formula", label: "Formula" },
@@ -43,7 +44,7 @@ const optionalColumns: { key: ColumnKey; label: string }[] = [
   { key: "qed", label: "QED" },
   { key: "rules", label: "Rules" },
   { key: "alerts", label: "Alerts" },
-  { key: "energy", label: "MMFF energy" },
+  { key: "energy", label: "MMFF minimization change (QC)" },
 ];
 
 interface LigandLibraryTableProps {
@@ -141,6 +142,7 @@ export function LigandLibraryTable({ library, preview, selectedLigandId, results
       <details className="column-menu"><summary><AppIcon name="layout" />Columns</summary><div>{optionalColumns.map((column) => <label key={column.key}><input type="checkbox" checked={visibleColumns.has(column.key)} onChange={() => toggleColumn(column.key)} />{column.label}</label>)}</div></details>
       <span className="visible-row-count">{rows.length} visible</span>
     </div>
+    <p className="field-note">MMFF ΔE is within-molecule geometry QC, not a score for ranking compounds.</p>
     {checkedIds.size > 0 ? <div className="data-panel-toolbar ligand-bulk-toolbar">
       <span className="bulk-selection-count">{checkedIds.size} selected</span>
       <div className="bulk-actions" role="toolbar" aria-label="Bulk actions">
@@ -168,7 +170,7 @@ export function LigandLibraryTable({ library, preview, selectedLigandId, results
           {visibleColumns.has("qed") ? <SortableHeader label="QED" active={sortKey === "qed"} ascending={sortAscending} onClick={() => changeSort("qed")} /> : null}
           {visibleColumns.has("rules") ? <th>Rules</th> : null}
           {visibleColumns.has("alerts") ? <th>Alerts</th> : null}
-          {visibleColumns.has("energy") ? <SortableHeader label="Final MMFF E (kcal/mol)" active={sortKey === "energy"} ascending={sortAscending} onClick={() => changeSort("energy")} /> : null}
+          {visibleColumns.has("energy") ? <th title="Final minus initial MMFF energy for this molecule. Internal geometry QC only; do not compare compounds.">MMFF ΔE (kcal/mol) · QC</th> : null}
           <SortableHeader label="Status" active={sortKey === "status"} ascending={sortAscending} onClick={() => changeSort("status")} />
         </tr></thead>
         <tbody>{rows.map(({ entry, ligandId, evaluation, result, status }) => {
@@ -192,7 +194,7 @@ export function LigandLibraryTable({ library, preview, selectedLigandId, results
             {visibleColumns.has("qed") ? <td>{descriptors?.qed.toFixed(3) ?? "—"}</td> : null}
             {visibleColumns.has("rules") ? <td>{evaluation ? <RuleBadges evaluation={evaluation} /> : "—"}</td> : null}
             {visibleColumns.has("alerts") ? <td>{evaluation ? <AlertBadges evaluation={evaluation} preview={preview} /> : "—"}</td> : null}
-            {visibleColumns.has("energy") ? <td>{formatEnergy(result)}</td> : null}
+            {visibleColumns.has("energy") ? <td><span title={energyDeltaEvidence(result)}>{formatEnergyDelta(result)}</span></td> : null}
             <td><StatusBadge status={status} title={result?.error ?? evaluation?.reasons.join(", ")} /></td>
           </tr>;
         })}</tbody>
@@ -206,19 +208,29 @@ function SortableHeader({ label, active, ascending, onClick }: { label: string; 
   return <th><button type="button" className={active ? "active" : ""} onClick={onClick}>{label}<span aria-hidden="true">{active ? ascending ? "↑" : "↓" : "↕"}</span></button></th>;
 }
 
-function numericSortValue(row: { entry: LigandLibraryRecord["entries"][number]; evaluation?: LigandFilterEvaluation; result?: LigandBatchResult }, key: "mw" | "qed" | "energy"): number {
+function numericSortValue(row: { entry: LigandLibraryRecord["entries"][number]; evaluation?: LigandFilterEvaluation }, key: "mw" | "qed"): number {
   if (key === "mw") return row.evaluation?.descriptors?.molecular_weight_g_mol ?? row.entry.ligand?.inspection.molecular_weight_g_mol ?? Number.POSITIVE_INFINITY;
-  if (key === "qed") return row.evaluation?.descriptors?.qed ?? Number.POSITIVE_INFINITY;
-  return finalEnergyOf(row.result) ?? Number.POSITIVE_INFINITY;
+  return row.evaluation?.descriptors?.qed ?? Number.POSITIVE_INFINITY;
 }
 
-function finalEnergyOf(result: LigandBatchResult | undefined): number | null {
-  return result?.finalEnergyKcalMol ?? result?.conformer?.minimization.final_energy_kcal_mol ?? null;
+function energyPair(result: LigandBatchResult | undefined): { initial: number; final: number } | null {
+  const initial = result?.initialEnergyKcalMol ?? result?.conformer?.minimization.initial_energy_kcal_mol;
+  const final = result?.finalEnergyKcalMol ?? result?.conformer?.minimization.final_energy_kcal_mol;
+  return initial === undefined || final === undefined ? null : { initial, final };
 }
 
-function formatEnergy(result: LigandBatchResult | undefined): string {
-  const energy = finalEnergyOf(result);
-  return energy === null ? "—" : energy.toFixed(3);
+function formatEnergyDelta(result: LigandBatchResult | undefined): string {
+  const pair = energyPair(result);
+  if (!pair) return "—";
+  const delta = pair.final - pair.initial;
+  return `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`;
+}
+
+function energyDeltaEvidence(result: LigandBatchResult | undefined): string {
+  const pair = energyPair(result);
+  return pair
+    ? `Initial ${pair.initial.toFixed(3)} → final ${pair.final.toFixed(3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
+    : "Initial MMFF energy was not recorded for this historical row, so ΔE cannot be calculated.";
 }
 
 function RuleBadges({ evaluation }: { evaluation: LigandFilterEvaluation }) {

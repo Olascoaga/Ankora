@@ -151,6 +151,7 @@ def minimize_ligand(
         if record.minimization.converged
         else LigandPreparationStatus.NONCONVERGED,
         conformer_id=record.artifact.conformer_id,
+        initial_energy_kcal_mol=record.minimization.initial_energy_kcal_mol,
         final_energy_kcal_mol=record.minimization.final_energy_kcal_mol,
     )
     return record
@@ -225,6 +226,7 @@ def generate_ligand_conformer(
         if record.minimization.converged
         else LigandPreparationStatus.NONCONVERGED,
         conformer_id=record.artifact.conformer_id,
+        initial_energy_kcal_mol=record.minimization.initial_energy_kcal_mol,
         final_energy_kcal_mol=record.minimization.final_energy_kcal_mol,
     )
     return record

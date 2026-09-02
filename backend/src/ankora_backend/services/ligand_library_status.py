@@ -23,6 +23,7 @@ def record_library_status(
     status: LigandPreparationStatus,
     conformer_id: str | None = None,
     pdbqt_preparation_id: str | None = None,
+    initial_energy_kcal_mol: float | None = None,
     final_energy_kcal_mol: float | None = None,
     error_message: str | None = None,
 ) -> None:
@@ -36,6 +37,7 @@ def record_library_status(
             status=status,
             conformer_id=conformer_id,
             pdbqt_preparation_id=pdbqt_preparation_id,
+            initial_energy_kcal_mol=initial_energy_kcal_mol,
             final_energy_kcal_mol=final_energy_kcal_mol,
             error_message=error_message,
             updated_at=datetime.now(UTC),

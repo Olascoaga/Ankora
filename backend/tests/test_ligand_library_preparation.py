@@ -11,6 +11,7 @@ from ankora_backend.api.app import create_app
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
+from ankora_backend.schemas.ligand_library_preparation import LigandPreparationEntry
 from ankora_backend.schemas.ligands import (
     GenerateLigandConformerRequest,
     LigandLibraryRecord,
@@ -57,10 +58,19 @@ def test_successful_conformer_records_minimized_status(tmp_path: Path) -> None:
     entry = status.entries[ligand_id]
     assert entry.status.value == "minimized"
     assert entry.conformer_id == conformer.artifact.conformer_id
+    assert entry.initial_energy_kcal_mol == pytest.approx(
+        conformer.minimization.initial_energy_kcal_mol
+    )
     assert entry.final_energy_kcal_mol == pytest.approx(
         conformer.minimization.final_energy_kcal_mol
     )
     assert entry.error_message is None
+    historical_payload = entry.model_dump()
+    historical_payload.pop("initial_energy_kcal_mol")
+    assert (
+        LigandPreparationEntry.model_validate(historical_payload).initial_energy_kcal_mol
+        is None
+    )
 
 
 def test_multicomponent_ligand_records_needs_decision_not_failed(
@@ -125,6 +135,9 @@ def test_prepared_pdbqt_updates_status_to_prepared(
     assert entry.status.value == "prepared"
     assert entry.conformer_id == conformer.artifact.conformer_id
     assert entry.pdbqt_preparation_id == pdbqt.artifact.preparation_id
+    assert entry.initial_energy_kcal_mol == pytest.approx(
+        conformer.minimization.initial_energy_kcal_mol
+    )
     assert entry.final_energy_kcal_mol == pytest.approx(
         conformer.minimization.final_energy_kcal_mol
     )

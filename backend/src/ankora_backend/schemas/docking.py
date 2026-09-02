@@ -173,6 +173,7 @@ class VinaBatchLigandResult(BaseModel):
     name: str = Field(min_length=1)
     canonical_smiles: str | None = None
     molecular_weight_g_mol: float | None = Field(default=None, ge=0)
+    preparation_initial_energy_kcal_mol: float | None = None
     preparation_energy_kcal_mol: float | None = None
     ligand_preparation_id: str | None = None
     ligand_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

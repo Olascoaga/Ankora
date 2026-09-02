@@ -34,7 +34,6 @@ type ResultSortKey =
   | "name"
   | "canonical_smiles"
   | "molecular_weight_g_mol"
-  | "preparation_energy_kcal_mol"
   | "top_score"
   | "pose_count"
   | "status";
@@ -487,14 +486,14 @@ function LibraryResults({ batch, selectedLigandId, selectedMode, onSelect, onSel
   }
 
   return <section className="docking-results library-docking-results" aria-label="Virtual-screening docking results">
-    <div className="docking-results-heading"><div><span className="eyebrow">Compound results</span><h3>AutoDock Vina library results</h3></div><p>{bestEntry ? <><strong>{bestEntry.name}</strong> currently ranks first at <strong>{bestEntry.poses[0].affinity_kcal_mol.toFixed(3)} kcal/mol</strong>. </> : null}Lower scores rank more favorably only within this recorded campaign.</p></div>
+    <div className="docking-results-heading"><div><span className="eyebrow">Compound results</span><h3>AutoDock Vina library results</h3></div><p>{bestEntry ? <><strong>{bestEntry.name}</strong> currently ranks first at <strong>{bestEntry.poses[0].affinity_kcal_mol.toFixed(3)} kcal/mol</strong>. </> : null}Lower Vina scores rank more favorably only within this recorded campaign. MMFF ΔE is geometry QC and is not used for ranking.</p></div>
     <div className="docking-results-horizontal-scroll" ref={horizontalScrollRef} tabIndex={0} aria-label="Horizontal compound results scroll" onScroll={(event) => syncHorizontalScroll(event.currentTarget, tableScrollRef.current)}><div /></div>
     <div className="docking-results-scroll" ref={tableScrollRef} tabIndex={0} aria-label="Scrollable compound results table" onScroll={(event) => syncHorizontalScroll(event.currentTarget, horizontalScrollRef.current)}><table><thead><tr>
       <SortHeader label="#" sortKey="source_index" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
       <SortHeader label="Name" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
       <SortHeader label="Canonical isomeric SMILES" sortKey="canonical_smiles" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
       <SortHeader label="MW (g/mol)" sortKey="molecular_weight_g_mol" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
-      <SortHeader label="MMFF E (kcal/mol)" sortKey="preparation_energy_kcal_mol" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
+      <th title="Final minus initial MMFF energy for this molecule. Internal geometry QC only; do not compare compounds.">MMFF ΔE (kcal/mol) · QC</th>
       <SortHeader label="Top Vina score (kcal/mol)" sortKey="top_score" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
       <SortHeader label="Poses" sortKey="pose_count" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
       <SortHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
@@ -502,7 +501,7 @@ function LibraryResults({ batch, selectedLigandId, selectedMode, onSelect, onSel
       const topScore = entry.poses[0]?.affinity_kcal_mol;
       const expanded = entry.ligand_id === expandedLigandId;
       const classes = [entry.ligand_id === selectedLigandId ? "selected" : "", entry.ligand_id === bestEntry?.ligand_id ? "best-ranked" : ""].filter(Boolean).join(" ");
-      return <Fragment key={entry.ligand_id}><tr className={classes} onClick={() => toggleEntry(entry)} aria-expanded={expanded}><td>{entry.source_index + 1}</td><td><button type="button" className="compound-expand" aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); toggleEntry(entry); }}><span aria-hidden="true">{expanded ? "▾" : "▸"}</span>{entry.name}{entry.ligand_id === bestEntry?.ligand_id ? <small>Current best</small> : null}</button></td><td><code title={entry.canonical_smiles ?? undefined}>{entry.canonical_smiles ?? "—"}</code></td><td>{entry.molecular_weight_g_mol?.toFixed(2) ?? "—"}</td><td>{entry.preparation_energy_kcal_mol?.toFixed(3) ?? "—"}</td><td>{topScore?.toFixed(3) ?? "—"}</td><td>{entry.poses.length}</td><td><span className={`docking-status ${entry.status}`}>{entry.status.replaceAll("_", " ")}</span>{entry.failure ? <small title={entry.failure.message}>{entry.failure.code}</small> : null}</td></tr>
+      return <Fragment key={entry.ligand_id}><tr className={classes} onClick={() => toggleEntry(entry)} aria-expanded={expanded}><td>{entry.source_index + 1}</td><td><button type="button" className="compound-expand" aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); toggleEntry(entry); }}><span aria-hidden="true">{expanded ? "▾" : "▸"}</span>{entry.name}{entry.ligand_id === bestEntry?.ligand_id ? <small>Current best</small> : null}</button></td><td><code title={entry.canonical_smiles ?? undefined}>{entry.canonical_smiles ?? "—"}</code></td><td>{entry.molecular_weight_g_mol?.toFixed(2) ?? "—"}</td><td><span title={preparationDeltaEvidence(entry)}>{formatPreparationDelta(entry)}</span></td><td>{topScore?.toFixed(3) ?? "—"}</td><td>{entry.poses.length}</td><td><span className={`docking-status ${entry.status}`}>{entry.status.replaceAll("_", " ")}</span>{entry.failure ? <small title={entry.failure.message}>{entry.failure.code}</small> : null}</td></tr>
         {expanded ? <tr className="pose-expansion"><td colSpan={8}>{entry.poses.length ? <div className="compound-poses"><div className="compound-poses-heading"><strong>{entry.name} · ranked poses</strong><small>Click a pose to display it in the 3D viewer.</small></div><table><thead><tr><th>Pose</th><th>Vina score (kcal/mol)</th><th>RMSD lower bound (Å)</th><th>RMSD upper bound (Å)</th><th>Artifact SHA-256</th></tr></thead><tbody>{entry.poses.map((pose) => <tr key={pose.mode} className={entry.ligand_id === selectedLigandId && pose.mode === selectedMode ? "selected" : ""}><td><button type="button" className="pose-select" aria-pressed={entry.ligand_id === selectedLigandId && pose.mode === selectedMode} onClick={(event) => { event.stopPropagation(); onSelectPose(entry, pose.mode); }}>Pose {pose.mode}</button></td><td>{pose.affinity_kcal_mol.toFixed(3)}</td><td>{pose.rmsd_lower_bound_angstrom.toFixed(3)}</td><td>{pose.rmsd_upper_bound_angstrom.toFixed(3)}</td><td><code>{pose.artifact.sha256.slice(0, 16)}…</code></td></tr>)}</tbody></table></div> : <p className="field-note">{entry.failure ? `${entry.failure.code} · ${entry.failure.message}` : "No poses are available while this molecule is still queued or running."}</p>}</td></tr> : null}</Fragment>;
     })}</tbody></table></div>
   </section>;
@@ -545,10 +544,29 @@ function resultSortValue(entry: VinaBatchLigandResult, key: ResultSortKey): numb
   if (key === "name") return entry.name;
   if (key === "canonical_smiles") return entry.canonical_smiles;
   if (key === "molecular_weight_g_mol") return entry.molecular_weight_g_mol;
-  if (key === "preparation_energy_kcal_mol") return entry.preparation_energy_kcal_mol;
   if (key === "top_score") return entry.poses[0]?.affinity_kcal_mol ?? null;
   if (key === "pose_count") return entry.poses.length;
   return entry.status;
+}
+
+function preparationEnergyPair(entry: VinaBatchLigandResult): { initial: number; final: number } | null {
+  return entry.preparation_initial_energy_kcal_mol == null || entry.preparation_energy_kcal_mol == null
+    ? null
+    : { initial: entry.preparation_initial_energy_kcal_mol, final: entry.preparation_energy_kcal_mol };
+}
+
+function formatPreparationDelta(entry: VinaBatchLigandResult): string {
+  const pair = preparationEnergyPair(entry);
+  if (!pair) return "—";
+  const delta = pair.final - pair.initial;
+  return `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`;
+}
+
+function preparationDeltaEvidence(entry: VinaBatchLigandResult): string {
+  const pair = preparationEnergyPair(entry);
+  return pair
+    ? `Initial ${pair.initial.toFixed(3)} → final ${pair.final.toFixed(3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
+    : "Initial MMFF energy was not recorded for this historical campaign, so ΔE cannot be calculated.";
 }
 
 function InputState({ ready, label, detail }: { ready: boolean; label: string; detail: string }) {

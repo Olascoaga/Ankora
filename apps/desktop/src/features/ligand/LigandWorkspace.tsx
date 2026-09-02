@@ -186,6 +186,7 @@ export function LigandWorkspace({
           if (next[entry.ligand_id]) continue;
           next[entry.ligand_id] = {
             status: batchStatusFromPreparation(entry.status),
+            initialEnergyKcalMol: entry.initial_energy_kcal_mol ?? undefined,
             finalEnergyKcalMol: entry.final_energy_kcal_mol ?? undefined,
             error: entry.error_message ?? undefined,
             conformerId: entry.conformer_id,
@@ -1523,7 +1524,20 @@ function LigandSummary({ record, inspection, resolved }: { record: LigandRecord;
 
 function ConformerResult({ conformer }: { conformer: LigandConformerRecord }) {
   const pool = conformer.minimization.conformer_pool_size;
-  return <section className={`minimization-result ${conformer.minimization.converged ? "converged" : "warning"}`}><strong>{conformer.minimization.converged ? "Conformer preparation converged" : "Iteration limit reached"}</strong><dl><div><dt>Origin</dt><dd>{conformer.minimization.embedding_method ? `${conformer.minimization.embedding_method} · seed ${conformer.minimization.random_seed}` : "Source geometry"}</dd></div>{pool ? <div><dt>Conformer pool</dt><dd>Best of {pool}</dd></div> : null}<div><dt>Method</dt><dd>{conformer.minimization.force_field}</dd></div><div><dt>Initial energy</dt><dd>{conformer.minimization.initial_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div><div><dt>Final energy</dt><dd>{conformer.minimization.final_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div></dl><small>Derivative SHA-256 · {conformer.artifact.sha256.slice(0, 16)}…</small></section>;
+  const delta = conformer.minimization.final_energy_kcal_mol - conformer.minimization.initial_energy_kcal_mol;
+  return <section className={`minimization-result ${conformer.minimization.converged ? "converged" : "warning"}`}>
+    <strong>{conformer.minimization.converged ? "Conformer preparation converged" : "Iteration limit reached"}</strong>
+    <dl>
+      <div><dt>Origin</dt><dd>{conformer.minimization.embedding_method ? `${conformer.minimization.embedding_method} · seed ${conformer.minimization.random_seed}` : "Source geometry"}</dd></div>
+      {pool ? <div><dt>Conformer pool</dt><dd>Best of {pool}</dd></div> : null}
+      <div><dt>Method</dt><dd>{conformer.minimization.force_field}</dd></div>
+      <div><dt>Energy change (QC)</dt><dd>{delta > 0 ? "+" : ""}{delta.toFixed(3)} kcal/mol</dd></div>
+      <div><dt>Initial energy</dt><dd>{conformer.minimization.initial_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div>
+      <div><dt>Final energy</dt><dd>{conformer.minimization.final_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div>
+    </dl>
+    <small>MMFF energies describe this prepared geometry only; do not compare them across compounds.</small>
+    <small>Derivative SHA-256 · {conformer.artifact.sha256.slice(0, 16)}…</small>
+  </section>;
 }
 
 function ErrorBanner({ error }: { error: Error }) {

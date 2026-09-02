@@ -108,7 +108,8 @@ function vinaRecord(overrides: Partial<VinaBatchDockingRecord> = {}): VinaBatchD
       {
         ligand_id: "ligand-0", source_index: 0, name: "Restored Compound",
         canonical_smiles: "CC", molecular_weight_g_mol: 30,
-        preparation_energy_kcal_mol: null, ligand_preparation_id: "prep-0",
+        preparation_initial_energy_kcal_mol: null, preparation_energy_kcal_mol: null,
+        ligand_preparation_id: "prep-0",
         ligand_sha256: "d".repeat(64), status: "completed", phase: "complete",
         started_at: null, completed_at: null, command: [], execution: null,
         poses: [{

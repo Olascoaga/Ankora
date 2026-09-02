@@ -20,7 +20,7 @@ Authoritative platform: Windows 11 x64
 - [x] Select the lowest-energy converged member of each conformer pool and preserve a visibly blocked nonconverged fallback only when none converge.
 - [x] Generate ligand PDBQT from a converged conformer through a versioned Meeko adapter.
 - [x] Import multi-record SDF/SD-style MOL and multiline SMILES libraries without losing valid neighbors when one record is invalid.
-- [x] Display per-molecule name, canonical SMILES, formula, molecular weight, MMFF energy, and preparation status.
+- [x] Display per-molecule name, canonical SMILES, formula, molecular weight, non-sortable MMFF minimization ΔE as geometry QC, and preparation status while retaining absolute initial/final energy evidence.
 - [x] Process every eligible member under one explicitly confirmed parameter set while retaining unresolved and failed members as independent rows.
 - [x] Preview Lipinski, Veber, Ghose, Muegge, QED, PAINS, Brenk, and duplicate results before 3D generation.
 - [x] Require a separate confirmation that writes an immutable selection manifest before a library batch can begin.
@@ -57,7 +57,7 @@ Synthetic state-resolution coverage uses the explicitly synthetic `CC(O)F.[Na+]`
 
 `backend/tests/fixtures/synthetic_ligand_library.sdf` is explicitly synthetic and contains ethanol and acetone records. The same bytes are tested with both `.sdf` and `.mol` names to cover SD-style multi-record inputs. Tests verify immutable library-source preservation, record order, separate compound/state UUIDs, source indices, canonical SMILES (`CCO` and `CC(C)=O`), average molecular weights (46.069 and 58.080 g/mol), and converged independent ETKDGv3/MMFF derivatives for every eligible row. A separate multiline SMILES case places an invalid record between two valid compounds and verifies two imports plus one preserved row-level failure.
 
-The frontend contract displays names, SMILES, formulas, masses, MMFF final energies, and row statuses. A batch test includes two eligible molecules and one unresolved multicomponent molecule: both eligible members finish while the unresolved member remains `Needs decision`. These energies are explicitly MMFF preparation energies in kcal/mol, not Vina/GNINA scores or binding-affinity claims.
+The frontend contract displays names, SMILES, formulas, masses, non-sortable MMFF `ΔE = final - initial`, and row statuses. A batch test includes two eligible molecules and one unresolved multicomponent molecule: both eligible members finish while the unresolved member remains `Needs decision`. The UI labels ΔE as within-molecule geometry QC and retains absolute initial/final energies only as technical evidence; neither representation is a Vina/GNINA score, binding-affinity claim, or valid basis for ranking different compounds.
 
 ## Library-filtering contract
 

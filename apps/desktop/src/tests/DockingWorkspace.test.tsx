@@ -93,8 +93,8 @@ function job(status: VinaDockingJobRecord["status"]): VinaDockingJobRecord {
 function batch(status: VinaBatchDockingRecord["status"]): VinaBatchDockingRecord {
   const completed = status === "completed";
   const entries = [
-    { ligand_id: "ligand-alpha", source_index: 0, name: "Synthetic alpha", canonical_smiles: "CCO", molecular_weight_g_mol: 46.07, preparation_energy_kcal_mol: 12.345 },
-    { ligand_id: "ligand-beta", source_index: 1, name: "Synthetic beta", canonical_smiles: "CCN", molecular_weight_g_mol: 45.08, preparation_energy_kcal_mol: 10.111 },
+    { ligand_id: "ligand-alpha", source_index: 0, name: "Synthetic alpha", canonical_smiles: "CCO", molecular_weight_g_mol: 46.07, preparation_initial_energy_kcal_mol: 22.345, preparation_energy_kcal_mol: 12.345 },
+    { ligand_id: "ligand-beta", source_index: 1, name: "Synthetic beta", canonical_smiles: "CCN", molecular_weight_g_mol: 45.08, preparation_initial_energy_kcal_mol: 15.111, preparation_energy_kcal_mol: 10.111 },
   ].map((entry, index) => ({
     ...entry,
     ligand_preparation_id: `preparation-${index}`,
@@ -230,7 +230,7 @@ it("docks the complete applied library and renders compound-level results", asyn
   });
   expect(screen.getByText("CCO")).toBeInTheDocument();
   expect(screen.getByText("46.07")).toBeInTheDocument();
-  expect(screen.getByText("12.345")).toBeInTheDocument();
+  expect(screen.getByText("-10.000")).toBeInTheDocument();
   expect(screen.getByText("2 / 2")).toBeInTheDocument();
 });
 
@@ -255,6 +255,11 @@ it("updates the best result live, sorts columns, and expands every pose for a co
   const horizontalScroll = within(results).getByLabelText("Horizontal compound results scroll");
   expect(scrollRegion).toHaveAttribute("tabindex", "0");
   expect(horizontalScroll).toHaveAttribute("tabindex", "0");
+  expect(within(results).getByText("MMFF ΔE (kcal/mol) · QC")).toBeInTheDocument();
+  expect(within(results).queryByRole("button", { name: /MMFF ΔE/ })).not.toBeInTheDocument();
+  expect(within(results).getByText(/MMFF ΔE is geometry QC and is not used for ranking/)).toBeInTheDocument();
+  expect(within(results).getByText("-10.000")).toBeInTheDocument();
+  expect(within(results).getByText("-5.000")).toBeInTheDocument();
   horizontalScroll.scrollLeft = 280;
   fireEvent.scroll(horizontalScroll);
   expect(scrollRegion.scrollLeft).toBe(280);

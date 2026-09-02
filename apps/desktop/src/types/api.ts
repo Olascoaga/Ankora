@@ -428,6 +428,7 @@ export interface LigandPreparationEntry {
   status: LigandPreparationStatus;
   conformer_id: string | null;
   pdbqt_preparation_id: string | null;
+  initial_energy_kcal_mol: number | null;
   final_energy_kcal_mol: number | null;
   error_message: string | null;
   updated_at: string;
@@ -868,6 +869,7 @@ export interface VinaBatchLigandResult {
   name: string;
   canonical_smiles: string | null;
   molecular_weight_g_mol: number | null;
+  preparation_initial_energy_kcal_mol: number | null;
   preparation_energy_kcal_mol: number | null;
   ligand_preparation_id: string | null;
   ligand_sha256: string | null;

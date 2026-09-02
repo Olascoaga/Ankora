@@ -288,7 +288,10 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
 
   // The one click carried the ligand all the way to a docking-ready PDBQT.
   expect(await screen.findByText("Conformer preparation converged")).toBeInTheDocument();
+  expect(screen.getByText("Energy change (QC)")).toBeInTheDocument();
+  expect(screen.getByText("-16.875 kcal/mol")).toBeInTheDocument();
   expect(screen.getByText("-4.125 kcal/mol")).toBeInTheDocument();
+  expect(screen.getByText(/MMFF energies describe this prepared geometry only/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "minimized" })).toHaveClass("selected");
   // Meeko is not configured in this fixture, so the chain stops at the
   // conformer instead of blocking the chemistry that does not need it.
