@@ -1,6 +1,6 @@
 """Explicit immutable 3D conformer generation and MMFF minimization."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import import_module
@@ -14,6 +14,7 @@ from ankora_backend.schemas.ligands import (
     GenerateLigandConformerRequest,
     LigandConformerArtifact,
     LigandConformerRecord,
+    LigandConformerSelectionPolicy,
     LigandMinimizationResult,
     LigandRecord,
     MinimizeLigandRequest,
@@ -42,6 +43,54 @@ _NEEDS_DECISION_ERROR_CODES = {
     WarningCode.LIG_STEREOCHEMISTRY_UNDEFINED.value,
     "LIGAND_MULTICOMPONENT_REQUIRES_DECISION",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class _MinimizationOutcome:
+    conf_id: int
+    initial_energy_kcal_mol: float
+    final_energy_kcal_mol: float
+    converged: bool
+    warnings: list[StructuredWarning]
+
+
+def _select_pool_outcome(
+    outcomes: list[_MinimizationOutcome], *, max_iterations: int
+) -> _MinimizationOutcome:
+    """Prefer convergence before comparing energies within one MMFF pool."""
+    if not outcomes:
+        raise ValueError("A conformer pool selection requires at least one outcome.")
+    converged = [outcome for outcome in outcomes if outcome.converged]
+    candidates = converged or outcomes
+    selected = min(
+        candidates,
+        key=lambda outcome: (outcome.final_energy_kcal_mol, outcome.conf_id),
+    )
+    if converged:
+        return selected
+    return replace(
+        selected,
+        warnings=[
+            StructuredWarning(
+                code=WarningCode.LIG_MINIMIZATION_NOT_CONVERGED,
+                message=(
+                    f"None of the {len(outcomes)} embedded conformers converged "
+                    "within the configured MMFF iteration limit. The lowest-energy "
+                    "nonconverged outcome is preserved for review and cannot be sent "
+                    "to Meeko."
+                ),
+                stage="ligand_minimization",
+                details={
+                    "max_iterations": max_iterations,
+                    "conformer_pool_size": len(outcomes),
+                    "converged_count": 0,
+                    "selected_conformer_id": selected.conf_id,
+                    "selection_policy": "lowest_energy_nonconverged_fallback",
+                },
+                recoverable=True,
+            )
+        ],
+    )
 
 
 def _status_for_conformer_error(code: str) -> LigandPreparationStatus:
@@ -137,7 +186,10 @@ def generate_ligand_conformer(
         outcomes = [
             _run_mmff_minimization(molecule, conf_id, request) for conf_id in conformer_ids
         ]
-        best_outcome = min(outcomes, key=lambda outcome: outcome.final_energy_kcal_mol)
+        best_outcome = _select_pool_outcome(
+            outcomes, max_iterations=request.max_iterations
+        )
+        converged_count = sum(outcome.converged for outcome in outcomes)
         record = _minimize_and_store(
             ligand_id=ligand_id,
             original=original,
@@ -151,6 +203,12 @@ def generate_ligand_conformer(
             independent=True,
             outcome=best_outcome,
             conformer_pool_size=len(conformer_ids),
+            conformer_pool_converged_count=converged_count,
+            conformer_selection_policy=(
+                LigandConformerSelectionPolicy.LOWEST_ENERGY_CONVERGED
+                if converged_count
+                else LigandConformerSelectionPolicy.LOWEST_ENERGY_NONCONVERGED_FALLBACK
+            ),
         )
     except AnkoraDomainError as error:
         record_library_status(
@@ -220,15 +278,6 @@ def _load_confirmed_state(
     return state_id, molecule
 
 
-@dataclass(frozen=True, slots=True)
-class _MinimizationOutcome:
-    conf_id: int
-    initial_energy_kcal_mol: float
-    final_energy_kcal_mol: float
-    converged: bool
-    warnings: list[StructuredWarning]
-
-
 def _run_mmff_minimization(
     molecule: Any, conf_id: int, request: MinimizeLigandRequest
 ) -> _MinimizationOutcome:
@@ -290,6 +339,8 @@ def _minimize_and_store(
     independent: bool,
     outcome: _MinimizationOutcome,
     conformer_pool_size: int | None = None,
+    conformer_pool_converged_count: int | None = None,
+    conformer_selection_policy: LigandConformerSelectionPolicy | None = None,
 ) -> LigandConformerRecord:
     for conformer in list(molecule.GetConformers()):
         if conformer.GetId() != outcome.conf_id:
@@ -325,6 +376,8 @@ def _minimize_and_store(
         random_seed=random_seed,
         independent_from_source_coordinates=independent,
         conformer_pool_size=conformer_pool_size,
+        conformer_pool_converged_count=conformer_pool_converged_count,
+        conformer_selection_policy=conformer_selection_policy,
     )
     parameters: dict[str, object] = {
         **request.model_dump(mode="json"),
@@ -333,6 +386,16 @@ def _minimize_and_store(
             "independent_ETKDGv3" if independent else "parent_ligand_conformer_0"
         ),
         "conformer_pool_size": conformer_pool_size,
+        "conformer_pool_converged_count": conformer_pool_converged_count,
+        "conformer_pool_nonconverged_count": (
+            conformer_pool_size - conformer_pool_converged_count
+            if conformer_pool_size is not None
+            and conformer_pool_converged_count is not None
+            else None
+        ),
+        "conformer_selection_policy": (
+            conformer_selection_policy.value if conformer_selection_policy else None
+        ),
         "selected_conformer_id": outcome.conf_id,
     }
     warnings = outcome.warnings

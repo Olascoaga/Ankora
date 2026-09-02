@@ -709,6 +709,11 @@ export interface LigandMinimizationResult {
   random_seed: number | null;
   independent_from_source_coordinates: boolean;
   conformer_pool_size: number | null;
+  conformer_pool_converged_count?: number | null;
+  conformer_selection_policy?:
+    | "lowest_energy_converged"
+    | "lowest_energy_nonconverged_fallback"
+    | null;
 }
 
 export interface LigandConformerRecord {

@@ -17,6 +17,7 @@ Authoritative platform: Windows 11 x64
 - [x] Resolve disconnected components and undefined tetrahedral stereocenters through explicit recorded choices.
 - [ ] Enumerate protonation and tautomer states.
 - [x] Generate and MMFF-optimize independent conformers with a recorded ETKDGv3 seed.
+- [x] Select the lowest-energy converged member of each conformer pool and preserve a visibly blocked nonconverged fallback only when none converge.
 - [x] Generate ligand PDBQT from a converged conformer through a versioned Meeko adapter.
 - [x] Import multi-record SDF/SD-style MOL and multiline SMILES libraries without losing valid neighbors when one record is invalid.
 - [x] Display per-molecule name, canonical SMILES, formula, molecular weight, MMFF energy, and preparation status.
@@ -47,6 +48,8 @@ The immutable crystallographic SDF remains unchanged and linked as the sole pare
 ## Local import contract
 
 Synthetic ethanol fixtures in SDF, MOL, and SMILES form are labeled synthetic and encode the same `C2H6O` graph. Tests verify exact preservation of each original byte stream, distinct compound/state storage, matching molecular weight, absence of authoritative 3D coordinates, and canonical SDF serving. Repeated ETKDGv3 generation with seed `73191` produces distinct conformer UUIDs with identical SDF hashes. Separate synthetic inputs verify that undefined stereocenters and multicomponent salts block generation.
+
+Explicitly synthetic mixed-outcome tests fix the pool-selection boundary: a converged conformer is selected even when a nonconverged member reports a lower final MMFF energy. A second pool in which no member converges preserves only the lowest-energy fallback for review, records zero converged members plus the exact fallback policy in the typed result and provenance, shows a pool-level warning, and remains blocked from Meeko. Historical records lacking those pool-level fields retain only their original selected-outcome statement; Ankora does not invent a retrospective pool census.
 
 Synthetic state-resolution coverage uses the explicitly synthetic `CC(O)F.[Na+]` graph. It verifies that no component is selected before the scientist chooses one, that two tetrahedral stereoisomers are enumerated for the organic component, that the chosen component/isomer creates a new state UUID with one fragment and no undefined stereocenter, and that downstream provenance names that exact state as the conformer parent.
 

@@ -289,9 +289,13 @@ export function SingleLigandPreparation({
       ) : null}
       {nonConverged ? (
         <p className="protonation-blocker" role="alert">
-          Minimization reached the iteration limit without converging, so Meeko was not run
-          on it. Raise the iteration limit below and prepare again, or review the recorded
-          energies before accepting this geometry.
+          {conformer.minimization.conformer_selection_policy
+            === "lowest_energy_nonconverged_fallback"
+            && conformer.minimization.conformer_pool_size
+            ? `None of the ${conformer.minimization.conformer_pool_size} embedded conformers converged. The lowest-energy nonconverged outcome was preserved for review, and Meeko was not run on it.`
+            : "Minimization reached the iteration limit without converging, so Meeko was not run on it."}
+          {" "}Raise the iteration limit below and prepare again, or review the recorded
+          energy change before accepting this geometry.
         </p>
       ) : null}
 

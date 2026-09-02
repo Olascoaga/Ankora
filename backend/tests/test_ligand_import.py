@@ -13,6 +13,7 @@ from ankora_backend.schemas.ligands import (
     MinimizeLigandRequest,
     ResolveLigandStateRequest,
 )
+from ankora_backend.services import ligand_minimization as minimization_service
 from ankora_backend.services.ligand_import import (
     import_local_ligand,
     import_local_ligand_library,
@@ -162,6 +163,121 @@ def test_independent_etkdg_conformer_is_reproducible_and_create_only(
     assert first.inspection.has_3d_coordinates is True
     assert first.inspection.molecular_weight_g_mol == pytest.approx(46.069, abs=0.001)
     assert store.content_path(ligand.artifact.ligand_id).read_bytes() == source
+
+
+def test_synthetic_pool_prefers_the_lowest_energy_converged_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lower-energy nonconverged geometry cannot displace a usable one."""
+    store = LigandArtifactStore(tmp_path)
+    ligand = import_local_ligand(
+        content=(FIXTURES / "synthetic_ethanol.smi").read_bytes(),
+        filename="synthetic_ethanol.smi",
+        store=store,
+    )
+    observed_ids: list[int] = []
+
+    def synthetic_outcome(
+        _molecule: object, conf_id: int, _request: object
+    ) -> minimization_service._MinimizationOutcome:
+        index = len(observed_ids)
+        observed_ids.append(conf_id)
+        if index == 0:
+            energy, converged = -100.0, False
+        elif index == 1:
+            energy, converged = -5.0, True
+        else:
+            energy, converged = float(index), True
+        return minimization_service._MinimizationOutcome(
+            conf_id=conf_id,
+            initial_energy_kcal_mol=energy + 10.0,
+            final_energy_kcal_mol=energy,
+            converged=converged,
+            warnings=[],
+        )
+
+    monkeypatch.setattr(
+        minimization_service, "_run_mmff_minimization", synthetic_outcome
+    )
+    record = generate_ligand_conformer(
+        ligand_id=ligand.artifact.ligand_id,
+        request=GenerateLigandConformerRequest(
+            acknowledge_current_chemical_state=True,
+            random_seed=73191,
+        ),
+        store=store,
+    )
+
+    assert len(observed_ids) > 1
+    assert record.minimization.converged is True
+    assert record.minimization.final_energy_kcal_mol == -5.0
+    assert record.minimization.conformer_pool_converged_count == len(observed_ids) - 1
+    assert record.minimization.conformer_selection_policy.value == (
+        "lowest_energy_converged"
+    )
+    assert record.provenance.parameters["selected_conformer_id"] == observed_ids[1]
+    assert record.provenance.parameters["conformer_selection_policy"] == (
+        "lowest_energy_converged"
+    )
+    assert record.provenance.parameters["conformer_pool_converged_count"] == (
+        len(observed_ids) - 1
+    )
+    assert record.warnings == []
+
+
+def test_synthetic_pool_preserves_an_explicit_fallback_when_none_converge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LigandArtifactStore(tmp_path)
+    ligand = import_local_ligand(
+        content=(FIXTURES / "synthetic_ethanol.smi").read_bytes(),
+        filename="synthetic_ethanol.smi",
+        store=store,
+    )
+    observed_ids: list[int] = []
+
+    def synthetic_outcome(
+        _molecule: object, conf_id: int, _request: object
+    ) -> minimization_service._MinimizationOutcome:
+        index = len(observed_ids)
+        observed_ids.append(conf_id)
+        energy = -float(index)
+        return minimization_service._MinimizationOutcome(
+            conf_id=conf_id,
+            initial_energy_kcal_mol=energy + 10.0,
+            final_energy_kcal_mol=energy,
+            converged=False,
+            warnings=[],
+        )
+
+    monkeypatch.setattr(
+        minimization_service, "_run_mmff_minimization", synthetic_outcome
+    )
+    record = generate_ligand_conformer(
+        ligand_id=ligand.artifact.ligand_id,
+        request=GenerateLigandConformerRequest(
+            acknowledge_current_chemical_state=True,
+            random_seed=73191,
+        ),
+        store=store,
+    )
+
+    assert record.minimization.converged is False
+    assert record.minimization.final_energy_kcal_mol == -float(len(observed_ids) - 1)
+    assert record.minimization.conformer_pool_converged_count == 0
+    assert record.minimization.conformer_selection_policy.value == (
+        "lowest_energy_nonconverged_fallback"
+    )
+    assert record.provenance.parameters["conformer_selection_policy"] == (
+        "lowest_energy_nonconverged_fallback"
+    )
+    assert record.provenance.parameters["conformer_pool_converged_count"] == 0
+    warning = record.warnings[0]
+    assert warning.code.value == "LIG_MINIMIZATION_NOT_CONVERGED"
+    assert f"None of the {len(observed_ids)} embedded conformers converged" in (
+        warning.message
+    )
+    assert warning.details["selected_conformer_id"] == observed_ids[-1]
 
 
 def test_two_dimensional_state_requires_generation_not_direct_minimization(

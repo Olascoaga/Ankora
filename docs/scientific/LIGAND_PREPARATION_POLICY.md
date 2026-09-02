@@ -54,7 +54,9 @@ Library inputs pass through an explicit 2D cleaning stage before any 3D generati
 - MMFF94 and MMFF94s are separate visible choices. Ankora never silently falls back to UFF or another force field when MMFF parameters are unavailable.
 - Explicit hydrogens are added to the derivative and recorded in provenance.
 - The starting ligand remains immutable. Every minimization creates a new conformer artifact with its own UUID, SDF, SHA-256, method, RDKit version, iteration limit, initial/final energy, and convergence state.
-- A non-converged result may be preserved for inspection but is visibly warned and is not represented as converged.
+- For an independently embedded pool, convergence is evaluated before energy. Ankora selects the lowest-final-energy conformer only among converged outcomes; a lower-energy nonconverged geometry cannot displace a converged one.
+- If no member of the pool converges, the lowest-final-energy nonconverged outcome may be preserved for inspection only. Its pool size, zero converged count, fallback policy, selected conformer, and warning are recorded, and it is not eligible for Meeko.
+- Historical conformer records without pool-level selection evidence remain readable, but the interface does not infer a pool-wide convergence claim from their selected outcome.
 
 ## Meeko ligand preparation
 

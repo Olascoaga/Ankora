@@ -495,6 +495,13 @@ class LigandForceField(StrEnum):
     MMFF94S = "MMFF94s"
 
 
+class LigandConformerSelectionPolicy(StrEnum):
+    LOWEST_ENERGY_CONVERGED = "lowest_energy_converged"
+    LOWEST_ENERGY_NONCONVERGED_FALLBACK = (
+        "lowest_energy_nonconverged_fallback"
+    )
+
+
 class MinimizeLigandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -544,6 +551,39 @@ class LigandMinimizationResult(BaseModel):
     random_seed: int | None = None
     independent_from_source_coordinates: bool = False
     conformer_pool_size: int | None = Field(default=None, ge=1)
+    conformer_pool_converged_count: int | None = Field(default=None, ge=0)
+    conformer_selection_policy: LigandConformerSelectionPolicy | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_pool_selection(self) -> "LigandMinimizationResult":
+        count = self.conformer_pool_converged_count
+        policy = self.conformer_selection_policy
+        if count is None and policy is None:
+            # Historical conformer records predate pool-level selection evidence.
+            return self
+        if count is None or policy is None or self.conformer_pool_size is None:
+            raise ValueError(
+                "Pool selection policy, converged count, and pool size must be "
+                "recorded together."
+            )
+        if not self.independent_from_source_coordinates:
+            raise ValueError(
+                "Pool selection metadata requires an independent conformer pool."
+            )
+        if count > self.conformer_pool_size:
+            raise ValueError("Converged conformer count cannot exceed the pool size.")
+        if policy is LigandConformerSelectionPolicy.LOWEST_ENERGY_CONVERGED:
+            if count == 0 or not self.converged:
+                raise ValueError(
+                    "A lowest-energy converged selection requires at least one "
+                    "converged conformer and a converged selected outcome."
+                )
+        elif count != 0 or self.converged:
+            raise ValueError(
+                "A nonconverged fallback requires zero converged conformers and "
+                "a nonconverged selected outcome."
+            )
+        return self
 
 
 class LigandConformerRecord(BaseModel):

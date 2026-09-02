@@ -53,6 +53,10 @@ function conformerRecord(converged: boolean): LigandConformerRecord {
       initial_energy_kcal_mol: 12.75, final_energy_kcal_mol: -4.125,
       embedding_method: "ETKDGv3", random_seed: 20260819,
       independent_from_source_coordinates: true, conformer_pool_size: 20,
+      conformer_pool_converged_count: converged ? 18 : 0,
+      conformer_selection_policy: converged
+        ? "lowest_energy_converged"
+        : "lowest_energy_nonconverged_fallback",
     },
     warnings: [], provenance: null, content_url: "/conf",
   } as unknown as LigandConformerRecord;
@@ -209,8 +213,24 @@ it("refuses to hand an unconverged geometry to Meeko", () => {
   render(<Harness conformer={conformerRecord(false)} />);
 
   expect(
+    screen.getByText(/None of the 20 embedded conformers converged/),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "lowest-energy nonconverged outcome was preserved",
+  );
+});
+
+it("does not invent pool-wide convergence evidence for a historical record", () => {
+  const historical = conformerRecord(false);
+  historical.minimization.conformer_pool_converged_count = undefined;
+  historical.minimization.conformer_selection_policy = undefined;
+
+  render(<Harness conformer={historical} />);
+
+  expect(
     screen.getByText(/reached the iteration limit without converging, so Meeko was not run/),
   ).toBeInTheDocument();
+  expect(screen.queryByText(/None of the 20 embedded conformers converged/)).not.toBeInTheDocument();
 });
 
 it("still prepares the conformer when Meeko is unavailable", () => {
