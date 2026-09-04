@@ -12,7 +12,7 @@ from typing import cast
 from ankora_backend.adapters.tools.discovery import discover_python_package, discover_tool
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
-from ankora_backend.schemas.receptors import ResidueLocator
+from ankora_backend.schemas.receptors import ProtonationOverride, ResidueLocator
 
 PqrResidueParser = Callable[[str], object]
 PqrBondFinder = Callable[[dict[str, tuple[object, str]]], object]
@@ -181,21 +181,38 @@ def run_pdb2pqr_propka(
     pdb_output_path: Path,
     ph: float,
     force_field: str,
-) -> tuple[ToolExecution, str]:
+    overrides: list[ProtonationOverride] | None = None,
+) -> tuple[ToolExecution, str, dict[str, object]]:
     discovered = discover_tool("pdb2pqr", os.getenv("ANKORA_PDB2PQR_PATH"))
     if not discovered.available or discovered.path is None:
         raise _unavailable("PDB2PQR", "pdb2pqr", "receptor_protonation")
     arguments = [
-        f"--ff={force_field}",
-        "--keep-chain",
-        "--titration-state-method=propka",
-        f"--with-ph={ph:g}",
-        f"--pdb-output={pdb_output_path}",
+        "-m",
+        "ankora_backend.adapters.tools.pdb2pqr_worker",
+        "--input",
         str(input_path),
+        "--pqr-output",
         str(pqr_output_path),
+        "--pdb-output",
+        str(pdb_output_path),
+        "--ph",
+        f"{ph:g}",
+        "--force-field",
+        force_field,
     ]
+    for override in overrides or []:
+        arguments.extend(
+            [
+                "--override",
+                json.dumps(
+                    override.model_dump(mode="json"),
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            ]
+        )
     execution = run_tool(
-        executable=discovered.path,
+        executable=sys.executable,
         arguments=arguments,
         cwd=pqr_output_path.parent,
         stage="receptor_protonation",
@@ -206,8 +223,39 @@ def run_pdb2pqr_propka(
         "PDB2PQR/PROPKA could not protonate the selected receptor.",
         "receptor_protonation",
     )
+    report = _pdb2pqr_report(execution)
     version = f"pdb2pqr {package_version('pdb2pqr')}; propka {package_version('propka')}"
-    return execution, version
+    return execution, version, report
+
+
+def _pdb2pqr_report(execution: ToolExecution) -> dict[str, object]:
+    details: dict[str, object] = {
+        "command": execution.command,
+        "exit_code": execution.exit_code,
+        "stdout": execution.stdout,
+        "stderr": execution.stderr,
+    }
+    try:
+        report = json.loads(execution.stdout)
+    except json.JSONDecodeError as error:
+        details["parse_error"] = str(error)
+        raise AnkoraDomainError(
+            code="PDB2PQR_STRUCTURED_OUTPUT_INVALID",
+            stage="receptor_protonation",
+            message="PDB2PQR did not return its required structured pKa report.",
+            status_code=422,
+            details=details,
+        ) from error
+    if not isinstance(report, dict) or not isinstance(report.get("predictions"), list):
+        details["reported_value"] = report
+        raise AnkoraDomainError(
+            code="PDB2PQR_STRUCTURED_OUTPUT_INVALID",
+            stage="receptor_protonation",
+            message="PDB2PQR returned an invalid structured pKa report.",
+            status_code=422,
+            details=details,
+        )
+    return cast(dict[str, object], report)
 
 
 def run_meeko_receptor(

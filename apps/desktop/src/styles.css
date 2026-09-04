@@ -232,6 +232,23 @@ button { font: inherit; }
 .protonation-blocker-actions button { padding: 7px 8px; border: 1px solid rgba(240, 180, 90, 0.38); border-radius: 6px; color: #e7c285; background: rgba(240, 180, 90, 0.08); font-size: 12px; font-weight: 650; text-align: left; cursor: pointer; }
 .protonation-blocker-actions button:hover { border-color: rgba(240, 180, 90, 0.7); background: rgba(240, 180, 90, 0.14); }
 .protonation-blocker-actions button.remove { border-color: rgba(235, 105, 120, 0.35); color: #ef9ca6; background: rgba(235, 105, 120, 0.07); }
+.protonation-analysis-action { width: 100%; margin-top: 10px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent); border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-size: 12px; font-weight: 700; cursor: pointer; }
+.protonation-analysis-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.protonation-analysis { margin-top: 10px; padding: 9px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel)); }
+.protonation-analysis-summary { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.protonation-analysis-summary strong { width: 100%; color: var(--accent); font-size: 12px; }
+.protonation-analysis-summary span, .protonation-proposal-flags span { padding: 2px 5px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel); font-size: 10px; }
+.protonation-proposal-list { display: grid; gap: 6px; max-height: 380px; margin-top: 8px; padding-right: 3px; overflow-y: auto; scrollbar-gutter: stable; }
+.protonation-proposal { padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+.protonation-proposal.attention { border-color: rgba(229, 184, 107, 0.34); }
+.protonation-proposal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.protonation-proposal-heading .residue-focus { padding: 0; text-align: left; }
+.protonation-proposal-heading .residue-focus span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.protonation-prediction { max-width: 48%; color: var(--muted); font-size: 10px; line-height: 1.25; text-align: right; }
+.protonation-proposal select { padding: 6px 7px; font-size: 11px; }
+.protonation-proposal-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.protonation-proposal-flags span.warning { border-color: rgba(229, 184, 107, 0.34); color: #e7c285; background: rgba(229, 184, 107, 0.07); }
+.protonation-evidence { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .decision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .decision-grid button, .decision-row button, .bulk-actions button, .altloc-actions button { padding: 6px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: transparent; font-size: 12px; cursor: pointer; }
 .decision-grid button.selected, .decision-row button.selected, .altloc-actions button.selected { border-color: color-mix(in srgb, var(--accent) 46%, transparent); color: var(--accent); background: var(--accent-soft); }

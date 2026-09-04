@@ -135,6 +135,71 @@ class TerminalHeavyAtomAddition(BaseModel):
     atom_name: Literal["OXT"] = "OXT"
 
 
+class ProtonationDecisionSource(StrEnum):
+    PROPKA_PREDICTION = "propka_prediction"
+    SCIENTIST_OVERRIDE = "scientist_override"
+
+
+class ProtonationOverride(BaseModel):
+    """One explicit residue-state decision that differs from PROPKA's default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    residue: ResidueLocator
+    state: str = Field(min_length=2, max_length=32, pattern=r"^[A-Z0-9_+-]+$")
+
+
+class ProtonationMetalContact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    chain_id: str
+    sequence_number: int | None
+    insertion_code: str = ""
+    distance_angstrom: float = Field(ge=0)
+
+
+class ReceptorProtonationProposal(BaseModel):
+    """PROPKA evidence and the exact state Ankora asked PDB2PQR to use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str = Field(min_length=1)
+    residue: ResidueLocator
+    group_label: str = Field(min_length=1)
+    group_type: str | None = None
+    predicted_pka: float
+    model_pka: float | None = None
+    buried_fraction: float | None = Field(default=None, ge=0)
+    coupled_group: str | None = None
+    predicted_state: str = Field(min_length=1)
+    default_state: str = Field(min_length=1)
+    selected_state: str = Field(min_length=1)
+    allowed_states: list[str] = Field(min_length=1)
+    decision_source: ProtonationDecisionSource
+    distance_to_reference_angstrom: float | None = Field(default=None, ge=0)
+    near_reference: bool = False
+    nearby_metals: list[ProtonationMetalContact] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ReceptorProtonationAnalysis(BaseModel):
+    """Structured, immutable interpretation of one exact PROPKA execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    generated_at: datetime
+    input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_ph: float = Field(ge=0, le=14)
+    force_field: str = Field(min_length=1)
+    tool_version: str = Field(min_length=1)
+    proposals: list[ReceptorProtonationProposal]
+    reference_component_id: str | None = None
+    near_reference_cutoff_angstrom: float = Field(gt=0)
+    metal_warning_cutoff_angstrom: float = Field(gt=0)
+
+
 class ProtonationSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,6 +209,7 @@ class ProtonationSettings(BaseModel):
     authorized_terminal_heavy_atom_additions: list[TerminalHeavyAtomAddition] = Field(
         default_factory=list
     )
+    overrides: list[ProtonationOverride] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def terminal_additions_require_protonation(self) -> "ProtonationSettings":
@@ -161,6 +227,19 @@ class ProtonationSettings(BaseModel):
         }
         if len(identities) != len(self.authorized_terminal_heavy_atom_additions):
             raise ValueError("Terminal heavy-atom additions must not contain duplicates")
+        override_identities = {
+            (
+                item.residue.chain_id,
+                item.residue.residue_name,
+                item.residue.sequence_number,
+                item.residue.insertion_code,
+            )
+            for item in self.overrides
+        }
+        if len(override_identities) != len(self.overrides):
+            raise ValueError("Protonation overrides must not contain duplicate residues")
+        if self.overrides and not self.enabled:
+            raise ValueError("Protonation overrides require protonation")
         return self
 
 
@@ -237,3 +316,4 @@ class ReceptorPreparationRecord(BaseModel):
     warnings: list[StructuredWarning]
     provenance: list[ProvenanceEvent]
     display_output_artifact_id: str = Field(min_length=1)
+    protonation_analysis: ReceptorProtonationAnalysis | None = None

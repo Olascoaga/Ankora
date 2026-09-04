@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import tempfile
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -32,6 +33,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationRecord,
     ReceptorPreparationRequest,
     ReceptorPreparationStatus,
+    ReceptorProtonationAnalysis,
     TerminalHeavyAtomAddition,
 )
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
@@ -41,6 +43,49 @@ from ankora_backend.services.receptor_inspection import (
     component_id,
     inspect_receptor,
 )
+from ankora_backend.services.receptor_protonation import (
+    build_protonation_analysis,
+    validate_protonation_overrides,
+)
+
+
+def preview_receptor_protonation(
+    *,
+    source_artifact_id: str,
+    request: ReceptorPreparationRequest,
+    structure_store: StructureArtifactStore,
+) -> ReceptorProtonationAnalysis:
+    """Run the exact structural plan in an isolated workspace for review.
+
+    The preview is intentionally not a scientific result. The final receptor
+    reruns the same calculation and preserves its own raw logs and structured
+    prediction/decision record.
+    """
+    if not request.protonation.enabled:
+        raise AnkoraDomainError(
+            code="RECEPTOR_PROTONATION_PREVIEW_DISABLED",
+            stage="receptor_protonation",
+            message="Enable protonation before asking PROPKA for proposals.",
+            status_code=422,
+            details={},
+        )
+    preview_request = request.model_copy(update={"generate_pdbqt": False})
+    with tempfile.TemporaryDirectory(prefix="ankora-protonation-preview-") as directory:
+        record = prepare_receptor(
+            source_artifact_id=source_artifact_id,
+            request=preview_request,
+            structure_store=structure_store,
+            receptor_store=ReceptorArtifactStore(Path(directory)),
+        )
+    if record.protonation_analysis is None:
+        raise AnkoraDomainError(
+            code="RECEPTOR_PROTONATION_PREVIEW_MISSING",
+            stage="receptor_protonation",
+            message="PROPKA completed without producing a protonation analysis.",
+            status_code=422,
+            details={},
+        )
+    return record.protonation_analysis
 
 
 def prepare_receptor(
@@ -63,6 +108,7 @@ def prepare_receptor(
     created_at = datetime.now(UTC)
     outputs: list[ReceptorOutputArtifact] = []
     provenance: list[ProvenanceEvent] = []
+    protonation_analysis: ReceptorProtonationAnalysis | None = None
 
     try:
         selected_content = _build_selected_receptor(
@@ -218,12 +264,18 @@ def prepare_receptor(
             protonated_pdb_path = receptor_store.output_path(
                 receptor_id, "protonated_receptor.pdb"
             )
-            execution, tool_version = run_pdb2pqr_propka(
+            validate_protonation_overrides(
+                input_path=current_pdb,
+                force_field=request.protonation.force_field,
+                overrides=request.protonation.overrides,
+            )
+            execution, tool_version, worker_report = run_pdb2pqr_propka(
                 input_path=current_pdb,
                 pqr_output_path=pqr_path,
                 pdb_output_path=protonated_pdb_path,
                 ph=request.protonation.ph,
                 force_field=request.protonation.force_field,
+                overrides=request.protonation.overrides,
             )
             log_files = _save_execution_logs(
                 receptor_store,
@@ -255,6 +307,17 @@ def prepare_receptor(
                 created_at=datetime.now(UTC),
             )
             outputs.extend((pqr_output, pdb_output))
+            protonation_analysis = build_protonation_analysis(
+                source_artifact_id=source_artifact_id,
+                input_path=current_pdb,
+                inspection=report,
+                structure_store=structure_store,
+                worker_report=worker_report,
+                ph=request.protonation.ph,
+                force_field=request.protonation.force_field,
+                tool_version=tool_version,
+                overrides=request.protonation.overrides,
+            )
             provenance.append(
                 _tool_event(
                     receptor_id=receptor_id,
@@ -267,6 +330,14 @@ def prepare_receptor(
                     parameters={
                         "ph": request.protonation.ph,
                         "force_field": request.protonation.force_field,
+                        "propka_proposals": [
+                            item.model_dump(mode="json")
+                            for item in protonation_analysis.proposals
+                        ],
+                        "scientist_overrides": [
+                            item.model_dump(mode="json")
+                            for item in request.protonation.overrides
+                        ],
                         "authorized_terminal_heavy_atom_additions": [
                             item.model_dump(mode="json")
                             for item in (
@@ -387,6 +458,7 @@ def prepare_receptor(
             warnings=report.warnings,
             provenance=provenance,
             display_output_artifact_id=display_output.artifact_id,
+            protonation_analysis=protonation_analysis,
         )
         receptor_store.save_record(record)
         return record

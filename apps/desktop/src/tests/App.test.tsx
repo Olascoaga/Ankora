@@ -141,6 +141,35 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
     warnings: [], provenance: [], display_output_artifact_id: "20000000-0000-0000-0000-000000000001",
     outputs: [{ artifact_id: "20000000-0000-0000-0000-000000000001", stage: "selected", filename: "selected_receptor.pdb", format: "pdb", sha256: "c".repeat(64), size_bytes: 500, created_at: "2026-08-19T12:02:00Z", content_url: "/receptors/result/content" }],
   };
+  const protonationAnalysis = {
+    generated_at: "2026-08-19T12:01:30Z",
+    input_sha256: "d".repeat(64),
+    target_ph: 7.4,
+    force_field: "AMBER",
+    tool_version: "pdb2pqr synthetic; propka synthetic",
+    proposals: [{
+      proposal_id: "A|HIS|5||HIS   5 A",
+      residue: { chain_id: "A", residue_name: "HIS", sequence_number: 5, insertion_code: "" },
+      group_label: "HIS   5 A",
+      group_type: "HIS",
+      predicted_pka: 6.4,
+      model_pka: 6.5,
+      buried_fraction: 0.2,
+      coupled_group: null,
+      predicted_state: "HIS_NEUTRAL_AUTO",
+      default_state: "HIS_NEUTRAL_AUTO",
+      selected_state: "HIS_NEUTRAL_AUTO",
+      allowed_states: ["HIS_NEUTRAL_AUTO", "HIP"],
+      decision_source: "propka_prediction",
+      distance_to_reference_angstrom: 4.2,
+      near_reference: true,
+      nearby_metals: [],
+      warnings: ["ACTIVE_SITE_REVIEW", "PKA_NEAR_TARGET_PH"],
+    }],
+    reference_component_id: null,
+    near_reference_cutoff_angstrom: 8,
+    metal_warning_cutoff_angstrom: 4,
+  };
   const ligand = {
     artifact: { ligand_id: "50000000-0000-0000-0000-000000000001", source: "crystallographic", source_structure_id: structure.artifact.artifact_id, locator: { component_name: "LIG", chain_id: "A", sequence_number: 101, insertion_code: "" }, filename: "LIG_A_101.sdf", format: "sdf", sha256: "f".repeat(64), size_bytes: 400, created_at: "2026-08-19T12:03:00Z" },
     state: { state_id: "51000000-0000-0000-0000-000000000001", ligand_id: "50000000-0000-0000-0000-000000000001", filename: "inspected_state.sdf", format: "sdf", sha256: "8".repeat(64), size_bytes: 400, created_at: "2026-08-19T12:03:00Z" },
@@ -178,6 +207,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
     const url = String(input);
     if (url.endsWith("/receptors/latest")) return noSavedReceptor();
     if (url.includes("receptor-inspection")) return new Response(JSON.stringify(report), { status: 200, headers: { "Content-Type": "application/json" } });
+    if (url.includes("receptor-protonation-preview") && init?.method === "POST") return new Response(JSON.stringify(protonationAnalysis), { status: 200, headers: { "Content-Type": "application/json" } });
     if (url.includes("/conformers/generate") && init?.method === "POST") return new Response(JSON.stringify(minimizedLigand), { status: 201, headers: { "Content-Type": "application/json" } });
     if (url.includes("/protonation-options")) return new Response(JSON.stringify(protonationOptions), { status: 200, headers: { "Content-Type": "application/json" } });
     if (url.includes("/states/protonate") && init?.method === "POST") return new Response(JSON.stringify(protonatedState), { status: 201, headers: { "Content-Type": "application/json" } });
@@ -231,17 +261,24 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   expect(screen.getByText(/must be resolved before protonation/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Repair 1 missing-atom residue with PDBFixer" }));
   fireEvent.click(screen.getByRole("checkbox", { name: /Generate receptor PDBQT/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await screen.findByText("1 pKa proposals");
   expect(apply).not.toBeDisabled();
   fireEvent.click(apply);
   await screen.findByText("PDB2PQR proposed exact terminal oxygen completion:");
   fireEvent.click(screen.getByRole("button", { name: "Authorize 1 exact terminal OXT addition" }));
   expect(screen.getByRole("button", { name: "1 terminal addition authorized" })).toBeDisabled();
   expect(screen.getByText(/Only these identities may be added by PDB2PQR/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await waitFor(() => expect(apply).not.toBeDisabled());
   fireEvent.click(apply);
   await screen.findByText("Invalid connectivity remained in these repaired residues:");
   fireEvent.click(screen.getByRole("button", { name: "Mark 1 affected residue for removal" }));
   expect(screen.getByRole("combobox", { name: "Decision for ALA 1" })).toHaveValue("remove");
   expect(screen.getByRole("button", { name: "1 affected residue marked for removal" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await waitFor(() => expect(apply).not.toBeDisabled());
+  fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIP" } });
   fireEvent.click(apply);
   await screen.findByText(/1 immutable outputs/);
   expect(screen.getByRole("button", { name: "Prepared" })).toHaveClass("selected");
@@ -267,6 +304,10 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
         sequence_number: 1,
         insertion_code: "",
         atom_name: "OXT",
+      }],
+      overrides: [{
+        residue: { chain_id: "A", residue_name: "HIS", sequence_number: 5, insertion_code: "" },
+        state: "HIP",
       }],
     }),
   }));

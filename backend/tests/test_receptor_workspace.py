@@ -174,7 +174,7 @@ def test_repair_removes_reported_zero_occupancy_atoms_before_pdbfixer(
 
     def fake_run_pdbfixer(
         *, input_path: Path, output_path: Path, **_kwargs: object
-    ) -> tuple[ToolExecution, str]:
+        ) -> tuple[ToolExecution, str, dict[str, object]]:
         selected = input_path.read_text()
         assert " CB  ALA A   1" not in selected
         output_path.write_text(selected)
@@ -293,9 +293,10 @@ def test_prepare_receptor_preserves_and_traces_exact_meeko_pqr_input(
                 exit_code=0,
                 stdout="explicitly synthetic PDB2PQR stdout",
                 stderr="",
-            ),
-            "pdb2pqr synthetic; propka synthetic",
-        )
+                ),
+                "pdb2pqr synthetic; propka synthetic",
+                {"predictions": [], "applied_overrides": []},
+            )
 
     def fake_run_meeko_receptor(
         *, input_pqr_path: Path, output_pdbqt_path: Path

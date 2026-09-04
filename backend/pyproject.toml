@@ -74,6 +74,13 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [[tool.mypy.overrides]]
-module = ["openmm", "openmm.*", "pdbfixer", "pdbfixer.*"]
+module = [
+  "openmm",
+  "openmm.*",
+  "pdb2pqr",
+  "pdb2pqr.*",
+  "pdbfixer",
+  "pdbfixer.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"

@@ -4,12 +4,13 @@ import { ankoraApi, ApiError } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
 import type {
   ComponentAction,
-  IssueDecision,
+  ProtonationOverride,
   ReceptorDecisionAction,
   ReceptorInspectionReport,
   ReceptorIssue,
   ReceptorPreparationRecord,
   ReceptorPreparationRequest,
+  ReceptorProtonationAnalysis,
   ResidueLocator,
   StructureRecord,
   TerminalHeavyAtomAddition,
@@ -65,8 +66,15 @@ export function ReceptorWorkspace({
     restoredRecord?.decisions.protonation.authorized_terminal_heavy_atom_additions ?? [],
   );
   const [generatePdbqt, setGeneratePdbqt] = useState(restoredRecord?.decisions.generate_pdbqt ?? false);
+  const [protonationPreview, setProtonationPreview] = useState<{
+    signature: string;
+    analysis: ReceptorProtonationAnalysis;
+  } | null>(() => restoredProtonationPreview(restoredRecord));
+  const [protonationOverrides, setProtonationOverrides] = useState<Record<string, string>>(
+    () => protonationOverrideMap(restoredRecord),
+  );
   const [record, setRecord] = useState<ReceptorPreparationRecord | null>(restoredRecord);
-  const [operation, setOperation] = useState<"inspecting" | "idle" | "applying">("inspecting");
+  const [operation, setOperation] = useState<"inspecting" | "idle" | "analyzing" | "applying">("inspecting");
   const [error, setError] = useState<Error | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(restoredRecord ? "prepared" : "original");
   const [issueFilter, setIssueFilter] = useState<IssueFilter>("all");
@@ -87,6 +95,8 @@ export function ReceptorWorkspace({
       restored?.decisions.protonation.authorized_terminal_heavy_atom_additions ?? [],
     );
     setGeneratePdbqt(restored?.decisions.generate_pdbqt ?? false);
+    setProtonationPreview(restoredProtonationPreview(restored));
+    setProtonationOverrides(protonationOverrideMap(restored));
     setRecord(restored);
     setViewMode(restored ? "prepared" : "original");
     onRecordChange(restored);
@@ -120,9 +130,15 @@ export function ReceptorWorkspace({
     if (!onActivityChange) return;
     if (operation === "idle") onActivityChange(null);
     else onActivityChange({
-      title: operation === "inspecting" ? "Inspecting receptor" : "Preparing receptor",
+      title: operation === "inspecting"
+        ? "Inspecting receptor"
+        : operation === "analyzing"
+          ? "Analyzing protonation"
+          : "Preparing receptor",
       detail: operation === "inspecting"
         ? "Building the read-only component and structural-issue report."
+        : operation === "analyzing"
+          ? "Running the exact structural plan through PROPKA for residue-level review."
         : "Applying the confirmed plan and preserving every generated artifact.",
     });
     return () => onActivityChange(null);
@@ -158,7 +174,7 @@ export function ReceptorWorkspace({
   });
   const meekoRecoveryApplied = meekoAffectedIssues.length > 0
     && meekoAffectedIssues.every((issue) => issueDecisions[issue.issue_id]?.action === "remove");
-  const planComplete = selectedChains.length > 0
+  const structuralPlanComplete = selectedChains.length > 0
     && waterAction !== null
     && selectedComponents.every((item) => componentActions[item.component_id] !== undefined)
     && selectedIssues.every((issue) => {
@@ -170,6 +186,44 @@ export function ReceptorWorkspace({
     })
     && protonationBlockingIssues.length === 0
     && (!relax || plannedRepairCount > 0);
+
+  function buildRequest(overrides: ProtonationOverride[]): ReceptorPreparationRequest | null {
+    if (!report || !waterAction || !structuralPlanComplete) return null;
+    return {
+      selected_chains: selectedChains,
+      water_action: waterAction,
+      component_decisions: selectedComponents.map((component) => ({
+        component_id: component.component_id,
+        action: componentActions[component.component_id],
+      })),
+      issue_decisions: selectedIssues.map((issue) => ({
+        issue_id: issue.issue_id,
+        action: issueDecisions[issue.issue_id].action!,
+        selected_altloc: issueDecisions[issue.issue_id].selectedAltloc ?? null,
+      })),
+      reference_component_id: referenceComponentId,
+      relaxation: {
+        enabled: relax,
+        restraint_force_constant_kcal_mol_a2: restraintForceConstant,
+        max_iterations: relaxationMaxIterations,
+      },
+      protonation: {
+        enabled: protonate,
+        ph,
+        force_field: "AMBER",
+        authorized_terminal_heavy_atom_additions: authorizedTerminalAdditions,
+        overrides,
+      },
+      generate_pdbqt: protonate && generatePdbqt,
+    };
+  }
+
+  const unsignedRequest = buildRequest([]);
+  const protonationSignature = unsignedRequest ? protonationPlanSignature(unsignedRequest) : null;
+  const activeProtonationAnalysis = protonationPreview?.signature === protonationSignature
+    ? protonationPreview.analysis
+    : null;
+  const planComplete = structuralPlanComplete && (!protonate || activeProtonationAnalysis !== null);
 
   const displayOutput = record?.outputs.find((item) => item.artifact_id === record.display_output_artifact_id);
   const removedIssueCount = record?.decisions.issue_decisions.filter((item) => item.action === "remove").length ?? 0;
@@ -238,35 +292,13 @@ export function ReceptorWorkspace({
   }
 
   async function applyPlan() {
-    if (!report || !planComplete || !waterAction) return;
-    const componentDecisions = selectedComponents.map((component) => ({
-      component_id: component.component_id,
-      action: componentActions[component.component_id],
-    }));
-    const decisions: IssueDecision[] = selectedIssues.map((issue) => ({
-      issue_id: issue.issue_id,
-      action: issueDecisions[issue.issue_id].action!,
-      selected_altloc: issueDecisions[issue.issue_id].selectedAltloc ?? null,
-    }));
-    const request: ReceptorPreparationRequest = {
-      selected_chains: selectedChains,
-      water_action: waterAction,
-      component_decisions: componentDecisions,
-      issue_decisions: decisions,
-      reference_component_id: referenceComponentId,
-      relaxation: {
-        enabled: relax,
-        restraint_force_constant_kcal_mol_a2: restraintForceConstant,
-        max_iterations: relaxationMaxIterations,
-      },
-      protonation: {
-        enabled: protonate,
-        ph,
-        force_field: "AMBER",
-        authorized_terminal_heavy_atom_additions: authorizedTerminalAdditions,
-      },
-      generate_pdbqt: protonate && generatePdbqt,
-    };
+    if (!planComplete || !activeProtonationAnalysis && protonate) return;
+    const overrides = activeProtonationAnalysis?.proposals.flatMap((proposal) => {
+      const state = protonationOverrides[proposal.proposal_id] ?? proposal.default_state;
+      return state === proposal.default_state ? [] : [{ residue: proposal.residue, state }];
+    }) ?? [];
+    const request = buildRequest(overrides);
+    if (!request) return;
     setOperation("applying");
     setError(null);
     try {
@@ -274,8 +306,34 @@ export function ReceptorWorkspace({
       setRecord(nextRecord);
       onRecordChange(nextRecord);
       setViewMode("prepared");
+      if (nextRecord.protonation_analysis) {
+        setProtonationPreview({
+          signature: protonationPlanSignature(nextRecord.decisions),
+          analysis: nextRecord.protonation_analysis,
+        });
+      }
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason : new Error("Receptor preparation failed"));
+    } finally {
+      setOperation("idle");
+    }
+  }
+
+  async function analyzeProtonation() {
+    if (!structuralPlanComplete) return;
+    const request = buildRequest([]);
+    if (!request || !protonationSignature) return;
+    setOperation("analyzing");
+    setError(null);
+    try {
+      const analysis = await ankoraApi.previewReceptorProtonation(
+        structure.artifact.artifact_id,
+        request,
+      );
+      setProtonationOverrides({});
+      setProtonationPreview({ signature: protonationSignature, analysis });
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason : new Error("Protonation analysis failed"));
     } finally {
       setOperation("idle");
     }
@@ -301,7 +359,7 @@ export function ReceptorWorkspace({
             </div> : null}
           </div>
         </div>
-        {operation !== "idle" ? <div className="operation-progress" role="progressbar"><span /><p>{operation === "inspecting" ? "Building the read-only receptor report…" : "Applying explicit decisions and preserving every output…"}</p></div> : null}
+        {operation !== "idle" ? <div className="operation-progress" role="progressbar"><span /><p>{operation === "inspecting" ? "Building the read-only receptor report…" : operation === "analyzing" ? "Computing residue-level pKa proposals for review…" : "Applying explicit decisions and preserving every output…"}</p></div> : null}
         {error ? <ReceptorErrorNotice
           error={error}
           affectedIssues={meekoAffectedIssues}
@@ -411,10 +469,64 @@ export function ReceptorWorkspace({
                 <button type="button" onClick={() => { setProtonate(false); setGeneratePdbqt(false); }}>Disable protonation</button>
               </div>
             </div> : null}
+            {protonate && !protonationBlockingIssues.length ? <>
+              <button
+                type="button"
+                className="protonation-analysis-action"
+                disabled={!structuralPlanComplete || operation !== "idle"}
+                onClick={() => void analyzeProtonation()}
+              >{activeProtonationAnalysis ? "Refresh pKa proposals" : "Analyze pKa proposals"}</button>
+              <p className="field-note">This review runs the exact chain, component, repair, relaxation, force-field, and pH plan in an isolated workspace. The final derivative reruns and records its own evidence.</p>
+            </> : null}
+            {protonate && activeProtonationAnalysis ? <div className="protonation-analysis" role="region" aria-label="PROPKA protonation proposals">
+              <div className="protonation-analysis-summary">
+                <strong>{activeProtonationAnalysis.proposals.length} pKa proposals</strong>
+                <span>{activeProtonationAnalysis.proposals.filter((item) => item.near_reference).length} near reference</span>
+                <span>{activeProtonationAnalysis.proposals.filter((item) => item.nearby_metals.length).length} near metals</span>
+                <span>{Object.keys(protonationOverrides).length} overrides</span>
+              </div>
+              <p className="field-note">PROPKA predicts; the selected state is Ankora's recorded decision. Amber-incompatible states remain visible as warnings but cannot be selected.</p>
+              <div className="protonation-proposal-list">
+                {activeProtonationAnalysis.proposals.map((proposal) => {
+                  const selectedState = protonationOverrides[proposal.proposal_id] ?? proposal.default_state;
+                  return <article className={`protonation-proposal ${proposal.warnings.length ? "attention" : ""}`} key={proposal.proposal_id}>
+                    <div className="protonation-proposal-heading">
+                      <button type="button" className="residue-focus" onClick={() => onSelect({ kind: "residue", residue: { chainId: proposal.residue.chain_id, residueName: proposal.residue.residue_name, sequenceNumber: proposal.residue.sequence_number, insertionCode: proposal.residue.insertion_code } })}>
+                        <strong>{proposal.group_label}</strong>
+                        <span>pKa {proposal.predicted_pka.toFixed(2)} · pH {activeProtonationAnalysis.target_ph.toFixed(1)}</span>
+                      </button>
+                      <span className="protonation-prediction">PROPKA {protonationStateLabel(proposal.predicted_state)}</span>
+                    </div>
+                    <select
+                      aria-label={`Protonation decision for ${proposal.group_label}`}
+                      value={selectedState}
+                      disabled={proposal.allowed_states.length < 2}
+                      onChange={(event) => setProtonationOverrides((current) => {
+                        const next = { ...current };
+                        if (event.target.value === proposal.default_state) delete next[proposal.proposal_id];
+                        else next[proposal.proposal_id] = event.target.value;
+                        return next;
+                      })}
+                    >
+                      {proposal.allowed_states.map((state) => <option value={state} key={state}>{state === proposal.default_state ? "Use tool default · " : "Override · "}{protonationStateLabel(state)}</option>)}
+                    </select>
+                    <div className="protonation-proposal-flags">
+                      {proposal.default_state !== proposal.predicted_state ? <span className="warning">Amber limitation</span> : null}
+                      {proposal.near_reference ? <span>Near reference · {formatDistanceCompact(proposal.distance_to_reference_angstrom)}</span> : null}
+                      {proposal.nearby_metals.map((metal) => <span className="warning" key={metal.component_id}>Near {metal.name} · {metal.distance_angstrom.toFixed(1)} Å</span>)}
+                      {proposal.warnings.includes("PKA_NEAR_TARGET_PH") ? <span className="warning">pKa near target pH</span> : null}
+                      {proposal.coupled_group ? <span>Coupled · {proposal.coupled_group}</span> : null}
+                    </div>
+                  </article>;
+                })}
+              </div>
+              <small className="protonation-evidence">{activeProtonationAnalysis.tool_version} · input {activeProtonationAnalysis.input_sha256.slice(0, 12)}…</small>
+            </div> : null}
           </ReceptorSection>
 
           <button type="button" className="apply-plan" disabled={!planComplete || operation !== "idle"} onClick={() => void applyPlan()}>{record ? "Create another immutable derivative" : "Apply explicit preparation plan"}</button>
-          {!planComplete && protonationBlockingIssues.length === 0 && (!relax || plannedRepairCount > 0) ? <p className="plan-status">Complete every chain, component, and residue decision to continue.</p> : null}
+          {!structuralPlanComplete && protonationBlockingIssues.length === 0 && (!relax || plannedRepairCount > 0) ? <p className="plan-status">Complete every chain, component, and residue decision to continue.</p> : null}
+          {structuralPlanComplete && protonate && !activeProtonationAnalysis ? <p className="plan-status">Review the PROPKA pKa proposals before creating the receptor derivative.</p> : null}
           {!planComplete && relax && plannedRepairCount === 0 ? <p className="plan-status">Relaxation is enabled but no residue is marked Repair. Mark one, or disable relaxation, to continue.</p> : null}
           {record ? <section className="prepared-summary">
             <strong>{record.status.replaceAll("_", " ")}</strong>
@@ -584,4 +696,64 @@ function issueDecisionMap(record: ReceptorPreparationRecord | null): Record<stri
     action: item.action,
     selectedAltloc: item.selected_altloc ?? undefined,
   }]) ?? []);
+}
+
+function protonationPlanSignature(request: ReceptorPreparationRequest): string {
+  return JSON.stringify({
+    ...request,
+    component_decisions: [...request.component_decisions].sort((left, right) => left.component_id.localeCompare(right.component_id)),
+    issue_decisions: [...request.issue_decisions].sort((left, right) => left.issue_id.localeCompare(right.issue_id)),
+    protonation: {
+      ...request.protonation,
+      overrides: [],
+    },
+    generate_pdbqt: false,
+  });
+}
+
+function restoredProtonationPreview(record: ReceptorPreparationRecord | null): {
+  signature: string;
+  analysis: ReceptorProtonationAnalysis;
+} | null {
+  if (!record?.protonation_analysis) return null;
+  return {
+    signature: protonationPlanSignature(record.decisions),
+    analysis: record.protonation_analysis,
+  };
+}
+
+function protonationOverrideMap(record: ReceptorPreparationRecord | null): Record<string, string> {
+  if (!record?.protonation_analysis) return {};
+  const overrides = record.decisions.protonation.overrides ?? [];
+  return Object.fromEntries(overrides.flatMap((override) => {
+    const proposal = record.protonation_analysis?.proposals.find((candidate) => (
+      sameResidue(candidate.residue, override.residue)
+      && candidate.allowed_states.includes(override.state)
+    ));
+    return proposal ? [[proposal.proposal_id, override.state]] : [];
+  }));
+}
+
+function protonationStateLabel(state: string): string {
+  const labels: Record<string, string> = {
+    ARG: "ARG · protonated",
+    AR0: "ARG · neutral",
+    ASP: "ASP · deprotonated",
+    ASH: "ASH · protonated",
+    CYS: "CYS · neutral",
+    CYM: "CYM · deprotonated",
+    GLU: "GLU · deprotonated",
+    GLH: "GLH · protonated",
+    HIP: "HIP · doubly protonated",
+    HIS_NEUTRAL_AUTO: "HIS · neutral tautomer optimized",
+    LYS: "LYS · protonated",
+    LYN: "LYN · neutral",
+    TYR: "TYR · neutral",
+    TYM: "TYR · deprotonated",
+    NTERM_CHARGED: "N-terminus · charged",
+    NTERM_NEUTRAL: "N-terminus · neutral",
+    CTERM_CHARGED: "C-terminus · charged",
+    CTERM_NEUTRAL: "C-terminus · neutral",
+  };
+  return labels[state] ?? state.replaceAll("_", " ").toLowerCase();
 }

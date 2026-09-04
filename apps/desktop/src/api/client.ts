@@ -41,6 +41,7 @@ import type {
   ReceptorInspectionReport,
   ReceptorPreparationRecord,
   ReceptorPreparationRequest,
+  ReceptorProtonationAnalysis,
   ResolveLigandProtonationRequest,
   ResolveLigandMicrostateRequest,
   ResolveLigandStateRequest,
@@ -296,6 +297,18 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(request),
     }),
+  previewReceptorProtonation: (
+    structureId: string,
+    request: ReceptorPreparationRequest,
+  ): Promise<ReceptorProtonationAnalysis> =>
+    requestJson<ReceptorProtonationAnalysis>(
+      `/structures/${structureId}/receptor-protonation-preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(request),
+      },
+    ),
   ligandMicrostateOptions: (
     ligandId: string,
     parentStateId: string,

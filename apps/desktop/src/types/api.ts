@@ -176,11 +176,60 @@ export interface TerminalHeavyAtomAddition {
   atom_name: "OXT";
 }
 
+export type ProtonationDecisionSource = "propka_prediction" | "scientist_override";
+
+export interface ProtonationOverride {
+  residue: ResidueLocator;
+  state: string;
+}
+
+export interface ProtonationMetalContact {
+  component_id: string;
+  name: string;
+  chain_id: string;
+  sequence_number: number | null;
+  insertion_code: string;
+  distance_angstrom: number;
+}
+
+export interface ReceptorProtonationProposal {
+  proposal_id: string;
+  residue: ResidueLocator;
+  group_label: string;
+  group_type: string | null;
+  predicted_pka: number;
+  model_pka: number | null;
+  buried_fraction: number | null;
+  coupled_group: string | null;
+  predicted_state: string;
+  default_state: string;
+  selected_state: string;
+  allowed_states: string[];
+  decision_source: ProtonationDecisionSource;
+  distance_to_reference_angstrom: number | null;
+  near_reference: boolean;
+  nearby_metals: ProtonationMetalContact[];
+  warnings: string[];
+}
+
+export interface ReceptorProtonationAnalysis {
+  generated_at: string;
+  input_sha256: string;
+  target_ph: number;
+  force_field: string;
+  tool_version: string;
+  proposals: ReceptorProtonationProposal[];
+  reference_component_id: string | null;
+  near_reference_cutoff_angstrom: number;
+  metal_warning_cutoff_angstrom: number;
+}
+
 export interface ProtonationSettings {
   enabled: boolean;
   ph: number;
   force_field: string;
   authorized_terminal_heavy_atom_additions?: TerminalHeavyAtomAddition[];
+  overrides?: ProtonationOverride[];
 }
 
 export interface RelaxationSettings {
@@ -221,6 +270,7 @@ export interface ReceptorPreparationRecord {
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent[];
   display_output_artifact_id: string;
+  protonation_analysis?: ReceptorProtonationAnalysis | null;
 }
 
 export type BindingSiteSource = "co_crystallized_ligand" | "selected_residues" | "manual" | "full_protein_blind" | "pocket_detected";

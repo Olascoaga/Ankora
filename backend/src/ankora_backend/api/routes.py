@@ -102,6 +102,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorInspectionReport,
     ReceptorPreparationRecord,
     ReceptorPreparationRequest,
+    ReceptorProtonationAnalysis,
 )
 from ankora_backend.schemas.redocking import (
     RedockingRunRecord,
@@ -173,7 +174,10 @@ from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
 from ankora_backend.services.pose_interactions import PoseInteractionService
 from ankora_backend.services.receptor_inspection import inspect_receptor
-from ankora_backend.services.receptor_preparation import prepare_receptor
+from ankora_backend.services.receptor_preparation import (
+    prepare_receptor,
+    preview_receptor_protonation,
+)
 from ankora_backend.services.redocking_validation import RedockingValidationService
 from ankora_backend.services.result_catalog import ResultCatalogService
 from ankora_backend.services.result_deletion import ResultDeletionService
@@ -767,6 +771,20 @@ def get_receptor_inspection(
         artifact_id=artifact_id,
         store=StructureArtifactStore.from_environment(),
         reference_component_id=reference_component_id,
+    )
+
+
+@router.post(
+    "/structures/{artifact_id}/receptor-protonation-preview",
+    response_model=ReceptorProtonationAnalysis,
+)
+def create_receptor_protonation_preview(
+    artifact_id: str, request: ReceptorPreparationRequest
+) -> ReceptorProtonationAnalysis:
+    return preview_receptor_protonation(
+        source_artifact_id=artifact_id,
+        request=request,
+        structure_store=StructureArtifactStore.from_environment(),
     )
 
 

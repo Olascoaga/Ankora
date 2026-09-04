@@ -11,6 +11,10 @@ Authoritative platform: Windows 11 x64
 - [x] Create unique immutable derivatives while leaving the source byte-identical.
 - [x] Integrate selective PDBFixer repair without automatic loop building.
 - [x] Integrate PDB2PQR/PROPKA with explicit pH and force field.
+- [x] Expose residue-level PROPKA pKa proposals before final protonation.
+- [x] Keep predicted, tool-default, and scientist-selected states distinct.
+- [x] Flag binding-site, metal-proximal, near-pH, and coupled-group proposals.
+- [x] Apply only tool-validated explicit residue overrides and record them.
 - [x] Integrate Meeko receptor preparation while preserving PQR charges.
 - [x] Record output hashes, tool versions, exact commands, provenance, and raw logs.
 - [x] Preserve structured diagnostics and raw output when an external tool fails.
@@ -31,6 +35,34 @@ An isolated real PDBFixer 1.12.0/OpenMM 8.5.2 smoke repaired the explicitly sele
 The dedicated `ankora-dev` environment contains PDBFixer 1.12.0, OpenMM 8.5.2, PDB2PQR 3.7.1, PROPKA 3.5.1, Meeko 0.7.1, and RDKit 2026.3.5. PDB2PQR/PROPKA and Meeko were exercised on the upstream PDBFixer test structure `1BHL.pdb`, not on the Ankora reference case. PDB2PQR produced a 158,551-byte PQR and a 184,590-byte protonated PDB. Meeko, invoked with `--charge_model read`, confirmed that it read structures and partial charges from PQR and produced a 115,182-byte PDBQT. Temporary outputs were removed after inspection.
 
 This smoke establishes executable compatibility and exposed a real adapter defect: without `--charge_model read`, Meeko reported its default Gasteiger model. The adapter and command-contract test now require `read` explicitly.
+
+## Residue-level protonation review
+
+Ankora now requires a PROPKA proposal review before creating a protonated
+receptor. The preview executes the exact current structural plan in an isolated
+temporary store and becomes stale whenever a chain, component, issue decision,
+repair-relaxation setting, reference, pH, force field, or terminal-addition
+authorization changes. The final derivative reruns the plan and retains its own
+structured prediction/decision record and raw tool evidence; preview output is
+never promoted into an immutable receptor record.
+
+Each row separately records the PROPKA pKa-derived state, the PDB2PQR/AMBER
+default, the selected state, and whether the scientist overrode the default.
+The UI flags residues near the selected reference, within 4.0 A of a retained
+metal, within one pKa unit of the target pH, or in a coupled titration group.
+These flags request review and never change a state automatically. States that
+PDB2PQR 3.7.1 cannot apply through AMBER remain visible as limitations and are
+not selectable. See ADR-017.
+
+Synthetic regressions verify prediction/decision separation, active-site and
+metal warnings, terminal AMBER restrictions, and every supported pKa-branch
+direction. A real isolated Windows run on the saved 365-residue 7AQF receptor
+used PDB2PQR 3.7.1 and PROPKA 3.5.1, returned 95 structured prediction rows,
+and preserved its PQR, protonated PDB, and raw log for inspection. A second
+temporary run explicitly selected HIP for HIS A:3 and recorded both the
+original predicted pKa and the forced branch used by PDB2PQR. Both temporary
+workspaces were inspected and removed; they are adapter-integration evidence,
+not accepted receptor derivatives or experimental protonation assignments.
 
 ## Recorded 7AQF inspection
 

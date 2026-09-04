@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ from ankora_backend.adapters.tools.receptor_preparation import (
 )
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution
-from ankora_backend.schemas.receptors import ResidueLocator
+from ankora_backend.schemas.receptors import ProtonationOverride, ResidueLocator
 
 
 def _successful_execution(
@@ -184,31 +185,71 @@ def test_pdb2pqr_adapter_records_explicit_propka_parameters(
         "ankora_backend.adapters.tools.receptor_preparation.discover_tool",
         lambda *_args: DiscoveredTool(True, executable),
     )
+    def successful_worker(
+        *, executable: str, arguments: list[str], **_kwargs: object
+    ) -> ToolExecution:
+        return ToolExecution(
+            command=[executable, *arguments],
+            exit_code=0,
+            stdout=json.dumps({"predictions": [], "applied_overrides": []}),
+            stderr="synthetic PDB2PQR log",
+        )
+
     monkeypatch.setattr(
         "ankora_backend.adapters.tools.receptor_preparation.run_tool",
-        _successful_execution,
+        successful_worker,
     )
 
-    execution, tool_version = run_pdb2pqr_propka(
+    execution, tool_version, report = run_pdb2pqr_propka(
         input_path=tmp_path / "selected.pdb",
         pqr_output_path=tmp_path / "protonated.pqr",
         pdb_output_path=tmp_path / "protonated.pdb",
         ph=7.4,
         force_field="AMBER",
+        overrides=[
+            ProtonationOverride(
+                residue=ResidueLocator(
+                    chain_id="A",
+                    residue_name="ASP",
+                    sequence_number=17,
+                ),
+                state="ASH",
+            )
+        ],
     )
 
     assert execution.command == [
-        executable,
-        "--ff=AMBER",
-        "--keep-chain",
-        "--titration-state-method=propka",
-        "--with-ph=7.4",
-        f"--pdb-output={tmp_path / 'protonated.pdb'}",
+        sys.executable,
+        "-m",
+        "ankora_backend.adapters.tools.pdb2pqr_worker",
+        "--input",
         str(tmp_path / "selected.pdb"),
+        "--pqr-output",
         str(tmp_path / "protonated.pqr"),
+        "--pdb-output",
+        str(tmp_path / "protonated.pdb"),
+        "--ph",
+        "7.4",
+        "--force-field",
+        "AMBER",
+        "--override",
+        json.dumps(
+            {
+                "residue": {
+                    "chain_id": "A",
+                    "insertion_code": "",
+                    "residue_name": "ASP",
+                    "sequence_number": 17,
+                },
+                "state": "ASH",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
     ]
     assert tool_version.startswith("pdb2pqr ")
     assert "; propka " in tool_version
+    assert report == {"predictions": [], "applied_overrides": []}
 
 
 def test_meeko_adapter_reads_pqr_and_writes_named_pdbqt(
