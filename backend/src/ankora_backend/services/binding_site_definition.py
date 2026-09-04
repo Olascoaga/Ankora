@@ -44,6 +44,20 @@ def define_binding_site(
     pocket_detection_store: PocketDetectionArtifactStore,
 ) -> BindingSiteRecord:
     receptor_record = _load_docking_ready_receptor(receptor_id, receptor_store)
+    if (
+        request.source is BindingSiteSource.FULL_PROTEIN_BLIND
+        and not request.acknowledge_exploratory_full_protein
+    ):
+        raise AnkoraDomainError(
+            code="BINDING_SITE_FULL_PROTEIN_ACKNOWLEDGEMENT_REQUIRED",
+            stage="binding_site_definition",
+            message=(
+                "A full-protein search space is exploratory and must be "
+                "acknowledged explicitly before it is finalized."
+            ),
+            status_code=422,
+            details={"source": request.source.value},
+        )
     source_artifact_id = receptor_record.source_artifact_id
     input_artifacts = [source_artifact_id, receptor_id]
     if request.parent_binding_site_id is not None:
@@ -141,8 +155,7 @@ def _load_docking_ready_receptor(
             code="BINDING_SITE_RECEPTOR_NOT_READY",
             stage="binding_site_definition",
             message=(
-                "Define a binding site only for a receptor that has reached "
-                "docking-ready status."
+                "Define a binding site only for a receptor that has reached docking-ready status."
             ),
             status_code=422,
             details={"receptor_id": receptor_id, "status": receptor_record.status.value},
@@ -174,8 +187,7 @@ def _resolve_box(
                 code="BINDING_SITE_HETEROGEN_NOT_FOUND",
                 stage="binding_site_definition",
                 message=(
-                    "The selected co-crystallized ligand is not present in the "
-                    "original structure."
+                    "The selected co-crystallized ligand is not present in the original structure."
                 ),
                 status_code=422,
                 details=heterogen_details,
@@ -197,8 +209,7 @@ def _resolve_box(
         )
         selection_details: dict[str, object] = {
             "residues": [
-                residue.model_dump(mode="json")
-                for residue in request.residue_selection.residues
+                residue.model_dump(mode="json") for residue in request.residue_selection.residues
             ]
         }
         if missing:
@@ -206,8 +217,7 @@ def _resolve_box(
                 code="BINDING_SITE_SELECTED_RESIDUE_NOT_FOUND",
                 stage="binding_site_definition",
                 message=(
-                    "One or more selected residues are not present in the "
-                    "docking-ready receptor."
+                    "One or more selected residues are not present in the docking-ready receptor."
                 ),
                 status_code=422,
                 details={

@@ -120,7 +120,7 @@ function batch(status: VinaBatchDockingRecord["status"]): VinaBatchDockingRecord
     tool: { name: "AutoDock Vina", version: "1.2.7" }, receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64),
     selection_manifest_artifact_id: libraryInput.filter_run_id, selection_manifest_sha256: libraryInput.selection_manifest_sha256,
     selected_count: 2, worker_count: 2, threads_per_ligand: 3, completed_count: completed ? 2 : 0, succeeded_count: completed ? 2 : 0, failed_count: 0, canceled_count: 0,
-    entries, failure: null, provenance: null, revision: completed ? 3 : 1,
+    entries, warnings: [], failure: null, provenance: null, revision: completed ? 3 : 1,
   };
 }
 

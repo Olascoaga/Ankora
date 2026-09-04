@@ -332,6 +332,7 @@ export interface BindingSiteRequest {
   residue_selection: ResidueSelectionOrigin | null;
   manual_box: BindingBox | null;
   blind_margin_angstrom: number;
+  acknowledge_exploratory_full_protein?: boolean;
   pocket_selection: PocketSelection | null;
   parent_binding_site_id: string | null;
 }
@@ -1026,6 +1027,7 @@ export interface VinaBatchDockingRecord {
   failed_count: number;
   canceled_count: number;
   entries: VinaBatchLigandResult[];
+  warnings: StructuredWarning[];
   failure: { code: string; message: string; details: Record<string, unknown> } | null;
   provenance: ProvenanceEvent | null;
   revision: number;

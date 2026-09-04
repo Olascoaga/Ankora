@@ -108,6 +108,7 @@ class BindingSiteRequest(BaseModel):
     residue_selection: ResidueSelectionOrigin | None = None
     manual_box: BindingBox | None = None
     blind_margin_angstrom: float = Field(default=6.0, ge=0)
+    acknowledge_exploratory_full_protein: bool = False
     pocket_selection: PocketSelection | None = None
     parent_binding_site_id: str | None = Field(default=None, min_length=1)
 

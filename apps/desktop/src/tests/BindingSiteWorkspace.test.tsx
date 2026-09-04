@@ -85,7 +85,13 @@ it("opens on a non-persistent full-protein box and finalizes it before continuin
   const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
   const continued = vi.fn();
   const finalRecord = bindingSiteRecord({
-    decisions: { ...bindingSiteRecord().decisions, source: "full_protein_blind", ligand_origin: null }, box: blindBox,
+    decisions: {
+      ...bindingSiteRecord().decisions,
+      source: "full_protein_blind",
+      ligand_origin: null,
+      acknowledge_exploratory_full_protein: true,
+    },
+    box: blindBox,
   });
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const path = String(input);
@@ -102,10 +108,18 @@ it("opens on a non-persistent full-protein box and finalizes it before continuin
   expect(requests).toHaveLength(1);
   expect(requests[0].body).toMatchObject({ source: "full_protein_blind", blind_margin_angstrom: 6 });
 
-  fireEvent.click(screen.getByRole("button", { name: "Define this binding site and continue to Docking" }));
+  expect(screen.getByText("Vina large search-space warning")).toBeInTheDocument();
+  const finalize = screen.getByRole("button", { name: "Define this binding site and continue to Docking" });
+  expect(finalize).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Acknowledge exploratory full-protein search/i }));
+  expect(finalize).toBeEnabled();
+  fireEvent.click(finalize);
   await waitFor(() => expect(continued).toHaveBeenCalledWith(finalRecord));
   expect(requests).toHaveLength(2);
-  expect(requests[1].body).toMatchObject({ source: "full_protein_blind" });
+  expect(requests[1].body).toMatchObject({
+    source: "full_protein_blind",
+    acknowledge_exploratory_full_protein: true,
+  });
 });
 
 it("previews a co-crystallized ligand without writing, then finalizes its exact locator", async () => {

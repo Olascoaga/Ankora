@@ -151,9 +151,7 @@ def test_binding_site_from_selected_residues_fits_the_exact_prepared_atoms(
         source_artifact_id=artifact_id,
         status=ReceptorPreparationStatus.DOCKING_READY,
     )
-    ala = ResidueLocator(
-        chain_id="A", residue_name="ALA", sequence_number=1, insertion_code=""
-    )
+    ala = ResidueLocator(chain_id="A", residue_name="ALA", sequence_number=1, insertion_code="")
 
     record = define_binding_site(
         receptor_id=receptor.receptor_id,
@@ -205,9 +203,7 @@ def test_binding_site_from_selected_residues_rejects_a_missing_locator(
             receptor_id=receptor.receptor_id,
             request=BindingSiteRequest(
                 source=BindingSiteSource.SELECTED_RESIDUES,
-                residue_selection=ResidueSelectionOrigin(
-                    residues=[missing], padding_angstrom=5.0
-                ),
+                residue_selection=ResidueSelectionOrigin(residues=[missing], padding_angstrom=5.0),
             ),
             structure_store=structure_store,
             receptor_store=receptor_store,
@@ -427,6 +423,34 @@ def test_binding_site_rejects_degenerate_box_from_zero_padding(tmp_path: Path) -
     assert captured.value.code == "BINDING_SITE_BOX_DEGENERATE"
 
 
+def test_binding_site_full_protein_blind_requires_explicit_acknowledgement(
+    tmp_path: Path,
+) -> None:
+    structure_store = StructureArtifactStore(tmp_path)
+    receptor_store = ReceptorArtifactStore(tmp_path)
+    binding_site_store = BindingSiteArtifactStore(tmp_path)
+    pocket_detection_store = PocketDetectionArtifactStore(tmp_path)
+    artifact_id = _import_synthetic(structure_store)
+    receptor = _receptor_record(
+        receptor_store=receptor_store,
+        source_artifact_id=artifact_id,
+        status=ReceptorPreparationStatus.DOCKING_READY,
+    )
+
+    with pytest.raises(AnkoraDomainError) as captured:
+        define_binding_site(
+            receptor_id=receptor.receptor_id,
+            request=BindingSiteRequest(source=BindingSiteSource.FULL_PROTEIN_BLIND),
+            structure_store=structure_store,
+            receptor_store=receptor_store,
+            binding_site_store=binding_site_store,
+            pocket_detection_store=pocket_detection_store,
+        )
+
+    assert captured.value.code == "BINDING_SITE_FULL_PROTEIN_ACKNOWLEDGEMENT_REQUIRED"
+    assert not (tmp_path / "projects" / "default" / "derived" / "binding_sites").exists()
+
+
 def test_binding_site_full_protein_blind_computes_bounding_box_over_the_whole_receptor(
     tmp_path: Path,
 ) -> None:
@@ -443,7 +467,10 @@ def test_binding_site_full_protein_blind_computes_bounding_box_over_the_whole_re
 
     record = define_binding_site(
         receptor_id=receptor.receptor_id,
-        request=BindingSiteRequest(source=BindingSiteSource.FULL_PROTEIN_BLIND),
+        request=BindingSiteRequest(
+            source=BindingSiteSource.FULL_PROTEIN_BLIND,
+            acknowledge_exploratory_full_protein=True,
+        ),
         structure_store=structure_store,
         receptor_store=receptor_store,
         binding_site_store=binding_site_store,
@@ -477,7 +504,9 @@ def test_binding_site_full_protein_blind_respects_custom_margin(tmp_path: Path) 
     record = define_binding_site(
         receptor_id=receptor.receptor_id,
         request=BindingSiteRequest(
-            source=BindingSiteSource.FULL_PROTEIN_BLIND, blind_margin_angstrom=0.0
+            source=BindingSiteSource.FULL_PROTEIN_BLIND,
+            blind_margin_angstrom=0.0,
+            acknowledge_exploratory_full_protein=True,
         ),
         structure_store=structure_store,
         receptor_store=receptor_store,

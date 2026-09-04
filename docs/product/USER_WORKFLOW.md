@@ -13,6 +13,12 @@ The persistent workflow is:
 
 Every scientific stage follows `Inspect -> Decide -> Apply -> Review -> Continue`. Users may inspect prior stages without automatically deleting later artifacts. Changing an upstream decision marks dependent outputs stale.
 
+Binding Site opens with a full-protein box for immediate visual orientation,
+but that preview is not a saved scientific decision. Finalizing a blind
+whole-receptor search requires an explicit exploratory-use acknowledgement.
+Docking then shows the exact box volume and sampling guidance beside Vina's
+unchanged, scientist-controlled exhaustiveness.
+
 M1-M8 are implemented. Later milestone numbering follows the visible workflow rather than the original bootstrap numbering:
 
 - M6 Results: durable project-level campaign, compound, pose, cluster/run, comparison, and evidence review.

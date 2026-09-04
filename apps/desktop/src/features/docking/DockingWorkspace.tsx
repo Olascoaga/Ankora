@@ -22,6 +22,7 @@ import { AutoDock4Workspace } from "./AutoDock4Workspace";
 import { DockingModeSwitch } from "./DockingModeSwitch";
 import type { DockingMode } from "./DockingModeSwitch";
 import { LibraryDockingWorkspace } from "./LibraryDockingWorkspace";
+import { VinaSamplingGuidance } from "./VinaSamplingGuidance";
 
 interface DockingWorkspaceProps {
   receptor: ReceptorPreparationRecord;
@@ -281,6 +282,7 @@ function SingleLigandDockingWorkspace({
             <NumberField label="Energy range (kcal/mol)" value={parameters.energy_range_kcal_mol} min={0} max={100} step={0.5} disabled={active} onChange={(value) => updateParameter("energy_range_kcal_mol", value)} />
             <NumberField label="Timeout (minutes)" value={parameters.timeout_minutes} min={1} max={2880} disabled={active} onChange={(value) => updateParameter("timeout_minutes", value)} />
           </div>
+          <VinaSamplingGuidance box={bindingSite.box} exhaustiveness={parameters.exhaustiveness} showWithinBoundary />
         </section>
         <section className="receptor-section">
           <div className="filter-heading"><span>3 · Confirm & run</span>{job ? <small>{job.status.replaceAll("_", " ")}</small> : null}</div>

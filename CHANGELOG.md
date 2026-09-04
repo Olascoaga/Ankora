@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Exploratory search-space guardrails - 2026-09-04
+
+- Kept the full-protein box as Binding Site's universal non-persistent preview,
+  while requiring a backend-enforced explicit acknowledgement before a new
+  blind whole-receptor site can be finalized.
+- Added the AutoDock Vina 27,000 A^3 large-volume warning as structured single
+  and library campaign evidence, including the exact volume, selected
+  exhaustiveness, and unchanged-parameter statement.
+- Added volume-aware Vina guidance that recommends a focused site or a recorded
+  sensitivity series without silently choosing a sampling parameter.
+
 ## M9 pose interactions, figures, and Results management - 2026-08-27
 
 - Added exact-pose ProLIF analysis across Vina and AutoDock4 CPU/GPU records, with immutable structured contacts, skeletal 2D diagrams, Mol* residue focus, and recorded publication-figure export.

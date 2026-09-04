@@ -51,6 +51,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationRequest,
     ReceptorPreparationStatus,
 )
+from ankora_backend.schemas.warnings import WarningCode
 from ankora_backend.services import vina_docking as docking_module
 from ankora_backend.services.ligand_filtering import apply_library_filters
 from ankora_backend.services.ligand_import import import_local_ligand_library
@@ -79,7 +80,9 @@ def _provenance(event_id: str) -> ProvenanceEvent:
     )
 
 
-def _service(tmp_path: Path) -> tuple[VinaDockingService, VinaDockingRequest]:
+def _service(
+    tmp_path: Path, *, binding_box: BindingBox | None = None
+) -> tuple[VinaDockingService, VinaDockingRequest]:
     receptor_store = ReceptorArtifactStore(tmp_path)
     ligand_store = LigandArtifactStore(tmp_path)
     binding_store = BindingSiteArtifactStore(tmp_path)
@@ -151,7 +154,7 @@ def _service(tmp_path: Path) -> tuple[VinaDockingService, VinaDockingRequest]:
     )
 
     binding_id = binding_store.new_binding_site_id()
-    box = BindingBox(
+    box = binding_box or BindingBox(
         center_x=0,
         center_y=0,
         center_z=0,
@@ -202,9 +205,7 @@ def _wait_for_terminal(service: VinaDockingService, job_id: str):  # type: ignor
     raise AssertionError("synthetic docking job did not terminate")
 
 
-def _wait_for_batch_terminal(
-    service: VinaDockingService, batch_id: str
-):  # type: ignore[no-untyped-def]
+def _wait_for_batch_terminal(service: VinaDockingService, batch_id: str):  # type: ignore[no-untyped-def]
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         record = service.get_batch(batch_id)
@@ -320,14 +321,14 @@ def test_vina_job_preserves_raw_output_and_pose_artifacts(
     assert record.provenance is not None
     assert record.provenance.command == ["synthetic-vina.exe", "--synthetic"]
     first = record.poses[0].artifact
-    assert service.pose_content_path(record.job_id, first.artifact_id).read_bytes().startswith(
-        b"MODEL 1\n"
+    assert (
+        service.pose_content_path(record.job_id, first.artifact_id)
+        .read_bytes()
+        .startswith(b"MODEL 1\n")
     )
 
 
-def test_vina_job_can_be_canceled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_vina_job_can_be_canceled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service, request = _service(tmp_path)
     monkeypatch.setattr(
         docking_module,
@@ -358,6 +359,55 @@ def test_vina_job_can_be_canceled(
     assert record.execution.canceled is True
     assert record.execution.stdout == "partial synthetic output"
     assert record.poses == []
+
+
+def test_vina_large_search_space_is_recorded_without_changing_parameters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    large_box = BindingBox(
+        center_x=0,
+        center_y=0,
+        center_z=0,
+        size_x=45,
+        size_y=60,
+        size_z=38,
+    )
+    service, request = _service(tmp_path, binding_box=large_box)
+    monkeypatch.setattr(
+        docking_module,
+        "probe_vina",
+        lambda: VinaInstallation(executable="synthetic-vina.exe", version="1.2.7"),
+    )
+
+    def synthetic_execution(**kwargs):  # type: ignore[no-untyped-def]
+        kwargs["output_path"].write_bytes(SYNTHETIC_POSES)
+        return CancellableToolExecution(
+            command=["synthetic-vina.exe", "--exhaustiveness", "8"],
+            exit_code=0,
+            stdout="synthetic stdout",
+            stderr="WARNING: search space volume is greater than 27000 Angstrom^3",
+            canceled=False,
+            timed_out=False,
+        )
+
+    monkeypatch.setattr(docking_module, "execute_vina", synthetic_execution)
+    queued = service.start(request)
+    record = _wait_for_terminal(service, queued.job_id)
+    service.shutdown()
+
+    assert queued.request.parameters.exhaustiveness == 8
+    assert queued.warnings[0].code is WarningCode.DOCKING_SEARCH_SPACE_LARGE
+    assert queued.warnings[0].details == {
+        "binding_site_id": request.binding_site_id,
+        "binding_site_source": "manual",
+        "volume_angstrom3": 102600.0,
+        "warning_threshold_angstrom3": 27000.0,
+        "volume_to_threshold_ratio": 3.8,
+        "selected_exhaustiveness": 8,
+        "parameters_changed_by_ankora": False,
+    }
+    assert record.provenance is not None
+    assert record.provenance.warnings == queued.warnings
 
 
 def test_vina_library_batch_coordinates_cpu_and_preserves_source_order(
@@ -392,9 +442,7 @@ def test_vina_library_batch_coordinates_cpu_and_preserves_source_order(
     assert duplicate.batch_id == queued.batch_id
     record = _wait_for_batch_terminal(service, queued.batch_id)
     progress = service.get_batch_progress(queued.batch_id, after_revision=0)
-    unchanged = service.get_batch_progress(
-        queued.batch_id, after_revision=progress.revision
-    )
+    unchanged = service.get_batch_progress(queued.batch_id, after_revision=progress.revision)
     latest = service.latest_batch(
         library_id=request.library_id,
         receptor_id=request.receptor_id,
@@ -429,15 +477,17 @@ def test_vina_library_batch_coordinates_cpu_and_preserves_source_order(
     historical_payload = record.entries[0].model_dump()
     historical_payload.pop("preparation_initial_energy_kcal_mol")
     assert (
-        VinaBatchLigandResult.model_validate(
-            historical_payload
-        ).preparation_initial_energy_kcal_mol
+        VinaBatchLigandResult.model_validate(historical_payload).preparation_initial_energy_kcal_mol
         is None
     )
     first = record.entries[0].poses[0].artifact
-    assert service.batch_pose_content_path(
-        record.batch_id, record.entries[0].ligand_id, first.artifact_id
-    ).read_bytes().startswith(b"MODEL 1\n")
+    assert (
+        service.batch_pose_content_path(
+            record.batch_id, record.entries[0].ligand_id, first.artifact_id
+        )
+        .read_bytes()
+        .startswith(b"MODEL 1\n")
+    )
 
 
 def test_vina_library_batch_accounts_for_an_unprepared_manifest_entry(
@@ -534,9 +584,7 @@ def test_vina_library_batch_rejects_pdbqt_from_another_chemical_state(
         )
 
     monkeypatch.setattr(docking_module, "execute_vina", successful_execution)
-    record = _wait_for_batch_terminal(
-        service, service.start_batch(request).batch_id
-    )
+    record = _wait_for_batch_terminal(service, service.start_batch(request).batch_id)
     service.shutdown()
 
     assert executed_ligands == 1
@@ -588,9 +636,7 @@ def test_vina_library_batch_isolates_one_ligand_failure(
     assert record.completed_count == 2
     assert record.succeeded_count == 1
     assert record.failed_count == 1
-    failed = next(
-        entry for entry in record.entries if entry.status is DockingJobStatus.FAILED
-    )
+    failed = next(entry for entry in record.entries if entry.status is DockingJobStatus.FAILED)
     assert failed.failure is not None
     assert failed.failure.code == "VINA_EXECUTION_FAILED"
     completed = next(

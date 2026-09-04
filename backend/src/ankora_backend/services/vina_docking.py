@@ -44,7 +44,38 @@ from ankora_backend.schemas.receptors import (
     ReceptorOutputStage,
     ReceptorPreparationStatus,
 )
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
+
+VINA_SEARCH_VOLUME_WARNING_ANGSTROM3 = 27_000.0
+
+
+def _search_space_warnings(
+    *, binding_site: BindingSiteRecord, exhaustiveness: int
+) -> list[StructuredWarning]:
+    box = binding_site.box
+    volume = box.size_x * box.size_y * box.size_z
+    if volume <= VINA_SEARCH_VOLUME_WARNING_ANGSTROM3:
+        return []
+    return [
+        StructuredWarning(
+            code=WarningCode.DOCKING_SEARCH_SPACE_LARGE,
+            stage="vina_docking",
+            message=(
+                "The AutoDock Vina search-space volume exceeds 27,000 A^3; "
+                "sampling may be insufficient at the selected exhaustiveness."
+            ),
+            details={
+                "binding_site_id": binding_site.binding_site_id,
+                "binding_site_source": binding_site.decisions.source.value,
+                "volume_angstrom3": volume,
+                "warning_threshold_angstrom3": (VINA_SEARCH_VOLUME_WARNING_ANGSTROM3),
+                "volume_to_threshold_ratio": (volume / VINA_SEARCH_VOLUME_WARNING_ANGSTROM3),
+                "selected_exhaustiveness": exhaustiveness,
+                "parameters_changed_by_ankora": False,
+            },
+        )
+    ]
 
 
 @dataclass(frozen=True)
@@ -90,9 +121,7 @@ class VinaDockingService:
 
     def start(self, request: VinaDockingRequest) -> VinaDockingJobRecord:
         installation = probe_vina()
-        receptor_output, receptor_path, ligand_path, binding_site = self._validate_inputs(
-            request
-        )
+        receptor_output, receptor_path, ligand_path, binding_site = self._validate_inputs(request)
         job_id = self._docking_store.new_job_id()
         output_path = self._docking_store.output_path(job_id, "vina_poses.pdbqt")
         command = [
@@ -116,6 +145,10 @@ class VinaDockingService:
             receptor_sha256=receptor_output.sha256,
             ligand_sha256=self._sha256_file(ligand_path),
             command=command,
+            warnings=_search_space_warnings(
+                binding_site=binding_site,
+                exhaustiveness=request.parameters.exhaustiveness,
+            ),
         )
         self._docking_store.create_job(record)
         cancel_event = threading.Event()
@@ -155,13 +188,9 @@ class VinaDockingService:
                     details={"job_id": job_id, "status": record.status.value},
                 )
             cancel_event.set()
-            requested = record.model_copy(
-                update={"status": DockingJobStatus.CANCEL_REQUESTED}
-            )
+            requested = record.model_copy(update={"status": DockingJobStatus.CANCEL_REQUESTED})
             self._docking_store.update_record(requested)
-        return DockingCancelResponse(
-            job_id=job_id, status=DockingJobStatus.CANCEL_REQUESTED
-        )
+        return DockingCancelResponse(job_id=job_id, status=DockingJobStatus.CANCEL_REQUESTED)
 
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         return self._docking_store.pose_content_path(job_id, artifact_id)
@@ -175,24 +204,18 @@ class VinaDockingService:
                 raise AnkoraDomainError(
                     code="DOCKING_BATCH_ALREADY_ACTIVE",
                     stage="vina_docking",
-                    message=(
-                        "Another virtual-screening docking campaign is already active."
-                    ),
+                    message=("Another virtual-screening docking campaign is already active."),
                     status_code=409,
                     details={"active_batch_id": existing.batch_id},
                 )
             return self._create_batch(request)
 
-    def _create_batch(
-        self, request: VinaBatchDockingRequest
-    ) -> VinaBatchDockingRecord:
+    def _create_batch(self, request: VinaBatchDockingRequest) -> VinaBatchDockingRecord:
         installation = probe_vina()
         receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
         )
-        filter_run = self._ligand_store.load_filter_run(
-            request.library_id, request.filter_run_id
-        )
+        filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         if filter_run.artifact.library_id != request.library_id:
             raise self._input_error(
                 "DOCKING_LIBRARY_FILTER_MISMATCH",
@@ -205,9 +228,7 @@ class VinaDockingService:
         manifest_path = self._ligand_store.filter_run_content_path(
             request.library_id, request.filter_run_id
         )
-        self._verify_hash(
-            manifest_path, filter_run.artifact.sha256, "selection_manifest"
-        )
+        self._verify_hash(manifest_path, filter_run.artifact.sha256, "selection_manifest")
         if not filter_run.selected_ligand_ids:
             raise self._input_error(
                 "DOCKING_LIBRARY_SELECTION_EMPTY",
@@ -235,8 +256,7 @@ class VinaDockingService:
                         source_index=len(entries),
                         name="Unavailable library molecule",
                         message=(
-                            "The selected molecule is absent from its immutable "
-                            "library record."
+                            "The selected molecule is absent from its immutable library record."
                         ),
                         code="DOCKING_LIBRARY_LIGAND_MISSING",
                         completed_at=now,
@@ -269,9 +289,7 @@ class VinaDockingService:
             preparation_initial_energy = (
                 status.initial_energy_kcal_mol if status is not None else None
             )
-            preparation_energy = (
-                status.final_energy_kcal_mol if status is not None else None
-            )
+            preparation_energy = status.final_energy_kcal_mol if status is not None else None
             if (
                 status is None
                 or status.status is not LigandPreparationStatus.PREPARED
@@ -286,12 +304,8 @@ class VinaDockingService:
                         source_index=source_index,
                         name=state.inspection.name,
                         canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=(
-                            state.inspection.molecular_weight_g_mol
-                        ),
-                        preparation_initial_energy_kcal_mol=(
-                            preparation_initial_energy
-                        ),
+                        molecular_weight_g_mol=(state.inspection.molecular_weight_g_mol),
+                        preparation_initial_energy_kcal_mol=(preparation_initial_energy),
                         preparation_energy_kcal_mol=preparation_energy,
                         message=(
                             "This selected molecule has no completed Meeko PDBQT preparation."
@@ -311,12 +325,8 @@ class VinaDockingService:
                         source_index=source_index,
                         name=state.inspection.name,
                         canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=(
-                            state.inspection.molecular_weight_g_mol
-                        ),
-                        preparation_initial_energy_kcal_mol=(
-                            preparation_initial_energy
-                        ),
+                        molecular_weight_g_mol=(state.inspection.molecular_weight_g_mol),
+                        preparation_initial_energy_kcal_mol=(preparation_initial_energy),
                         preparation_energy_kcal_mol=preparation_energy,
                         message=(
                             "The prepared PDBQT belongs to a different or unrecorded "
@@ -328,9 +338,7 @@ class VinaDockingService:
                 )
                 continue
             try:
-                pdbqt = self._ligand_store.load_pdbqt_record(
-                    ligand_id, status.pdbqt_preparation_id
-                )
+                pdbqt = self._ligand_store.load_pdbqt_record(ligand_id, status.pdbqt_preparation_id)
                 ligand_path = self._ligand_store.pdbqt_content_path(
                     ligand_id, status.pdbqt_preparation_id
                 )
@@ -359,12 +367,8 @@ class VinaDockingService:
                         source_index=source_index,
                         name=state.inspection.name,
                         canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=(
-                            state.inspection.molecular_weight_g_mol
-                        ),
-                        preparation_initial_energy_kcal_mol=(
-                            preparation_initial_energy
-                        ),
+                        molecular_weight_g_mol=(state.inspection.molecular_weight_g_mol),
+                        preparation_initial_energy_kcal_mol=(preparation_initial_energy),
                         preparation_energy_kcal_mol=preparation_energy,
                         message=error.message,
                         code=error.code,
@@ -382,9 +386,7 @@ class VinaDockingService:
                     name=state.inspection.name,
                     canonical_smiles=state.inspection.canonical_smiles,
                     molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
-                    preparation_initial_energy_kcal_mol=(
-                        preparation_initial_energy
-                    ),
+                    preparation_initial_energy_kcal_mol=(preparation_initial_energy),
                     preparation_energy_kcal_mol=preparation_energy,
                     ligand_preparation_id=status.pdbqt_preparation_id,
                     ligand_sha256=pdbqt.artifact.sha256,
@@ -405,13 +407,9 @@ class VinaDockingService:
             )
 
         worker_count = min(request.parameters.parallel_ligands, len(ready_paths))
-        threads_per_ligand = max(
-            1, request.parameters.total_cpu_threads // worker_count
-        )
+        threads_per_ligand = max(1, request.parameters.total_cpu_threads // worker_count)
         batch_id = self._docking_store.new_batch_id()
-        execution_parameters = self._batch_execution_parameters(
-            request, threads_per_ligand
-        )
+        execution_parameters = self._batch_execution_parameters(request, threads_per_ligand)
         work_items: list[_BatchWorkItem] = []
         for index, entry in enumerate(entries):
             prepared_path = ready_paths.get(entry.ligand_id)
@@ -431,13 +429,9 @@ class VinaDockingService:
                 ),
             ]
             entries[index] = entry.model_copy(update={"command": command})
-            work_items.append(
-                _BatchWorkItem(ligand_id=entry.ligand_id, ligand_path=prepared_path)
-            )
+            work_items.append(_BatchWorkItem(ligand_id=entry.ligand_id, ligand_path=prepared_path))
 
-        failed_count = sum(
-            entry.status is DockingJobStatus.FAILED for entry in entries
-        )
+        failed_count = sum(entry.status is DockingJobStatus.FAILED for entry in entries)
         record = VinaBatchDockingRecord(
             batch_id=batch_id,
             status=DockingJobStatus.QUEUED,
@@ -457,6 +451,10 @@ class VinaDockingService:
             failed_count=failed_count,
             canceled_count=0,
             entries=entries,
+            warnings=_search_space_warnings(
+                binding_site=binding_site,
+                exhaustiveness=request.parameters.exhaustiveness,
+            ),
         )
         self._docking_store.create_batch(record)
         cancel_event = threading.Event()
@@ -520,9 +518,7 @@ class VinaDockingService:
     def get_batch(self, batch_id: str) -> VinaBatchDockingRecord:
         return self._docking_store.load_batch_record(batch_id)
 
-    def get_batch_progress(
-        self, batch_id: str, *, after_revision: int
-    ) -> VinaBatchProgress:
+    def get_batch_progress(self, batch_id: str, *, after_revision: int) -> VinaBatchProgress:
         """Return only ligand rows changed after the caller's last revision."""
 
         record = self._docking_store.load_batch_record(batch_id)
@@ -540,9 +536,7 @@ class VinaDockingService:
             succeeded_count=record.succeeded_count,
             failed_count=record.failed_count,
             canceled_count=record.canceled_count,
-            entries=[
-                entry for entry in record.entries if entry.revision > after_revision
-            ],
+            entries=[entry for entry in record.entries if entry.revision > after_revision],
             failure=record.failure,
             provenance=record.provenance,
         )
@@ -555,9 +549,7 @@ class VinaDockingService:
                 DockingJobStatus.COMPLETED,
                 DockingJobStatus.FAILED,
             }:
-                return DockingBatchCancelResponse(
-                    batch_id=batch_id, status=record.status
-                )
+                return DockingBatchCancelResponse(batch_id=batch_id, status=record.status)
             cancel_event = self._cancel_events.get(batch_id)
             if cancel_event is None:
                 raise AnkoraDomainError(
@@ -580,12 +572,8 @@ class VinaDockingService:
             batch_id=batch_id, status=DockingJobStatus.CANCEL_REQUESTED
         )
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
-        return self._docking_store.batch_pose_content_path(
-            batch_id, ligand_id, artifact_id
-        )
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
+        return self._docking_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
     def _run_batch(
         self,
@@ -769,9 +757,7 @@ class VinaDockingService:
         for pose in parsed:
             artifact_id = f"{batch_id}-{entry.ligand_id}-pose-{pose.mode}"
             filename = f"pose_{pose.mode}.pdbqt"
-            self._docking_store.write_batch_bytes(
-                batch_id, entry.ligand_id, filename, pose.content
-            )
+            self._docking_store.write_batch_bytes(batch_id, entry.ligand_id, filename, pose.content)
             artifact = DockingPoseArtifact(
                 artifact_id=artifact_id,
                 mode=pose.mode,
@@ -810,6 +796,7 @@ class VinaDockingService:
                 **batch.request.parameters.model_dump(mode="json"),
                 "threads_for_this_ligand": batch.threads_per_ligand,
             },
+            warnings=batch.warnings,
             command=evidence.command,
         )
         self._update_batch_entry(
@@ -861,9 +848,7 @@ class VinaDockingService:
                     "phase": DockingJobPhase.COMPLETE,
                     "completed_at": datetime.now(UTC),
                     "execution": evidence,
-                    "failure": DockingFailure(
-                        code=code, message=message, details=details
-                    ),
+                    "failure": DockingFailure(code=code, message=message, details=details),
                 }
             ),
         )
@@ -907,9 +892,7 @@ class VinaDockingService:
                     record.selection_manifest_artifact_id,
                 ],
                 output_artifacts=[
-                    pose.artifact.artifact_id
-                    for entry in entries
-                    for pose in entry.poses
+                    pose.artifact.artifact_id for entry in entries for pose in entry.poses
                 ],
                 tool=record.tool,
                 parameters={
@@ -917,14 +900,13 @@ class VinaDockingService:
                     "worker_count": record.worker_count,
                     "threads_per_ligand": record.threads_per_ligand,
                 },
+                warnings=record.warnings,
             )
             self._docking_store.update_batch_record(
                 record.model_copy(
                     update={
                         "status": (
-                            DockingJobStatus.CANCELED
-                            if canceled
-                            else DockingJobStatus.COMPLETED
+                            DockingJobStatus.CANCELED if canceled else DockingJobStatus.COMPLETED
                         ),
                         "phase": DockingJobPhase.COMPLETE,
                         "completed_at": completed_at,
@@ -936,9 +918,7 @@ class VinaDockingService:
                 )
             )
 
-    def _update_batch_entry(
-        self, batch_id: str, updated: VinaBatchLigandResult
-    ) -> None:
+    def _update_batch_entry(self, batch_id: str, updated: VinaBatchLigandResult) -> None:
         with self._lock:
             record = self._docking_store.load_batch_record(batch_id)
             next_revision = record.revision + 1
@@ -957,9 +937,7 @@ class VinaDockingService:
                     "The docking batch no longer contains its selected ligand.",
                     {"batch_id": batch_id, "ligand_id": updated.ligand_id},
                 )
-            entries[index] = updated.model_copy(
-                update={"revision": next_revision}
-            )
+            entries[index] = updated.model_copy(update={"revision": next_revision})
             self._docking_store.update_batch_record(
                 record.model_copy(
                     update={
@@ -972,9 +950,7 @@ class VinaDockingService:
 
     def _batch_entry(self, batch_id: str, ligand_id: str) -> VinaBatchLigandResult:
         record = self._docking_store.load_batch_record(batch_id)
-        entry = next(
-            (item for item in record.entries if item.ligand_id == ligand_id), None
-        )
+        entry = next((item for item in record.entries if item.ligand_id == ligand_id), None)
         if entry is None:
             raise self._input_error(
                 "DOCKING_BATCH_LIGAND_NOT_FOUND",
@@ -985,13 +961,9 @@ class VinaDockingService:
 
     @staticmethod
     def _batch_counts(entries: list[VinaBatchLigandResult]) -> dict[str, int]:
-        succeeded = sum(
-            entry.status is DockingJobStatus.COMPLETED for entry in entries
-        )
+        succeeded = sum(entry.status is DockingJobStatus.COMPLETED for entry in entries)
         failed = sum(entry.status is DockingJobStatus.FAILED for entry in entries)
-        canceled = sum(
-            entry.status is DockingJobStatus.CANCELED for entry in entries
-        )
+        canceled = sum(entry.status is DockingJobStatus.CANCELED for entry in entries)
         return {
             "completed_count": succeeded + failed + canceled,
             "succeeded_count": succeeded,
@@ -1025,9 +997,7 @@ class VinaDockingService:
             name=name,
             canonical_smiles=canonical_smiles,
             molecular_weight_g_mol=molecular_weight_g_mol,
-            preparation_initial_energy_kcal_mol=(
-                preparation_initial_energy_kcal_mol
-            ),
+            preparation_initial_energy_kcal_mol=(preparation_initial_energy_kcal_mol),
             preparation_energy_kcal_mol=preparation_energy_kcal_mol,
             status=DockingJobStatus.FAILED,
             phase=DockingJobPhase.COMPLETE,
@@ -1098,9 +1068,7 @@ class VinaDockingService:
                 "The selected receptor has no preserved PDBQT output.",
                 {"receptor_id": receptor_id},
             )
-        receptor_path = self._receptor_store.content_path(
-            receptor_id, receptor_output.artifact_id
-        )
+        receptor_path = self._receptor_store.content_path(receptor_id, receptor_output.artifact_id)
         self._verify_hash(receptor_path, receptor_output.sha256, "receptor")
 
         binding_site = self._binding_site_store.load_record(binding_site_id)
@@ -1257,6 +1225,7 @@ class VinaDockingService:
             output_artifacts=[pose.artifact.artifact_id for pose in poses],
             tool=record.tool,
             parameters=record.request.parameters.model_dump(mode="json"),
+            warnings=record.warnings,
             command=evidence.command,
         )
         completed = record.model_copy(
@@ -1341,9 +1310,7 @@ class VinaDockingService:
             )
 
     @staticmethod
-    def _input_error(
-        code: str, message: str, details: dict[str, object]
-    ) -> AnkoraDomainError:
+    def _input_error(code: str, message: str, details: dict[str, object]) -> AnkoraDomainError:
         return AnkoraDomainError(
             code=code,
             stage="docking_configuration",

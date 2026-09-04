@@ -55,9 +55,7 @@ class VinaDockingRequest(BaseModel):
     @model_validator(mode="after")
     def require_explicit_acknowledgement(self) -> "VinaDockingRequest":
         if not self.acknowledge_inputs_and_scoring:
-            raise ValueError(
-                "acknowledge_inputs_and_scoring must be true before docking"
-            )
+            raise ValueError("acknowledge_inputs_and_scoring must be true before docking")
         return self
 
 
@@ -87,17 +85,13 @@ class VinaBatchDockingRequest(BaseModel):
     binding_site_id: str = Field(min_length=1)
     library_id: str = Field(min_length=1)
     filter_run_id: str = Field(min_length=1)
-    parameters: VinaBatchDockingParameters = Field(
-        default_factory=VinaBatchDockingParameters
-    )
+    parameters: VinaBatchDockingParameters = Field(default_factory=VinaBatchDockingParameters)
     acknowledge_inputs_and_scoring: bool = False
 
     @model_validator(mode="after")
     def require_explicit_acknowledgement(self) -> "VinaBatchDockingRequest":
         if not self.acknowledge_inputs_and_scoring:
-            raise ValueError(
-                "acknowledge_inputs_and_scoring must be true before batch docking"
-            )
+            raise ValueError("acknowledge_inputs_and_scoring must be true before batch docking")
         return self
 
 
@@ -216,6 +210,7 @@ class VinaBatchDockingRecord(BaseModel):
     failed_count: int = Field(ge=0)
     canceled_count: int = Field(ge=0)
     entries: list[VinaBatchLigandResult] = Field(min_length=1)
+    warnings: list[StructuredWarning] = Field(default_factory=list)
     failure: DockingFailure | None = None
     provenance: ProvenanceEvent | None = None
     revision: int = Field(default=0, ge=0)

@@ -14,6 +14,7 @@ import type {
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { DockingBoxInteractionMode, ViewerResidueSelection, ViewerSource } from "../../viewer/adapter";
+import { VinaSamplingGuidance } from "../docking/VinaSamplingGuidance";
 
 interface BindingSiteWorkspaceProps {
   structure: StructureRecord;
@@ -52,6 +53,9 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
   const [selectedPocketId, setSelectedPocketId] = useState<string | null>(null);
   const [boxInteractionMode, setBoxInteractionMode] = useState<DockingBoxInteractionMode>("move");
   const [operation, setOperation] = useState<"previewing" | "finalizing" | "detecting" | null>(null);
+  const [fullProteinAcknowledged, setFullProteinAcknowledged] = useState(
+    record?.decisions.source === "full_protein_blind",
+  );
   const [error, setError] = useState<Error | null>(null);
   const initialPreviewReceptor = useRef<string | null>(null);
 
@@ -63,6 +67,7 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
       setDraftBox(record.box);
       setPreviewRequest(record.decisions);
       setPreviewParentRecordId(record.binding_site_id);
+      setFullProteinAcknowledged(record.decisions.source === "full_protein_blind");
       if (record.decisions.residue_selection) {
         setSelectedResidues(record.decisions.residue_selection.residues);
         setResiduePaddingAngstrom(record.decisions.residue_selection.padding_angstrom);
@@ -94,7 +99,14 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
     }];
   }, [displayOutput]);
 
-  const canFinalize = Boolean(draftBox && (previewRequest || previewParentRecordId));
+  const fullProteinAcknowledgementRequired = Boolean(
+    previewRequest?.source === "full_protein_blind" && !previewParentRecordId,
+  );
+  const canFinalize = Boolean(
+    draftBox
+    && (previewRequest || previewParentRecordId)
+    && (!fullProteinAcknowledgementRequired || fullProteinAcknowledged),
+  );
 
   async function suggestFromHeterogen() {
     if (!selectedHeterogen || selectedHeterogen.sequence_number === null) return;
@@ -140,6 +152,7 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
   }
 
   async function previewFullProtein(margin = blindMarginAngstrom) {
+    setFullProteinAcknowledged(false);
     await previewBox(
       {
         source: "full_protein_blind",
@@ -147,6 +160,7 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
         residue_selection: null,
         manual_box: null,
         blind_margin_angstrom: margin,
+        acknowledge_exploratory_full_protein: false,
         pocket_selection: null,
         parent_binding_site_id: null,
       },
@@ -202,7 +216,10 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
           manualRequest(draftBox, null),
         );
       } else if (previewRequest) {
-        const sourceRecord = await ankoraApi.createBindingSite(receptor.receptor_id, previewRequest);
+        const confirmedRequest = previewRequest.source === "full_protein_blind"
+          ? { ...previewRequest, acknowledge_exploratory_full_protein: true }
+          : previewRequest;
+        const sourceRecord = await ankoraApi.createBindingSite(receptor.receptor_id, confirmedRequest);
         finalRecord = boxesEqual(draftBox, sourceRecord.box)
           ? sourceRecord
           : await ankoraApi.createBindingSite(
@@ -367,6 +384,20 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
             <label className="numeric-field"><span>Size Z</span><input aria-label="Box size Z in angstroms" type="number" min={0.1} step={0.5} value={draftBox?.size_z ?? 0} onChange={(event) => updateDraft({ size_z: clampDecimal(event.target.value, 0.1, 200) })} /></label>
           </div>
           {draftBox ? <div className="binding-box-volume"><span>Search volume</span><strong>{formatVolume(draftBox)} Å³</strong></div> : null}
+          {draftBox ? <VinaSamplingGuidance box={draftBox} /> : null}
+          {fullProteinAcknowledgementRequired ? (
+            <label className="docking-acknowledgement">
+              <input
+                type="checkbox"
+                checked={fullProteinAcknowledged}
+                onChange={(event) => setFullProteinAcknowledged(event.target.checked)}
+              />
+              <span>
+                <strong>Acknowledge exploratory full-protein search</strong>
+                <small>I understand that this initial whole-receptor box is a blind exploratory search space, not a validated binding-site definition.</small>
+              </span>
+            </label>
+          ) : null}
           <div className="state-resolved-note binding-site-final-note">
             <strong>Final scientific decision</strong>
             <small>This action writes the selected source and exact displayed box as immutable provenance, then opens Docking. Previewing or editing the box does not finalize it.</small>

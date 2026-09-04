@@ -49,6 +49,14 @@ Preserved pose results:
 
 Vina emitted two raw warnings, preserved without alteration in `stderr`: the search-space volume exceeded 27,000 Å³, and low exhaustiveness may prevent use of every CPU. These are expected consequences of the selected smoke-test box/parameters and are not suppressed.
 
+As of 2026-09-04, that observed 27,000 Å³ boundary is also a first-class
+product guardrail. New single-ligand and library records above the boundary
+carry structured `DOCKING_SEARCH_SPACE_LARGE` evidence with exact volume,
+ratio, binding-site source, and selected exhaustiveness; completion provenance
+retains the same warning. The setup interface displays volume-aware guidance
+before execution and explicitly states that Ankora has not changed the selected
+value. This increment did not rerun Vina or reinterpret the smoke-test scores.
+
 ## Applied-library scheduler verification
 
 - The batch request identifies one exact library and applied filter-run artifact; the manifest SHA-256 and every available ligand PDBQT SHA-256 are recomputed before execution.

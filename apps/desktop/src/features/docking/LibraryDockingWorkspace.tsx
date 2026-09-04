@@ -17,6 +17,7 @@ import { MolecularViewer } from "../../viewer/MolecularViewer";
 import { CampaignExportPanel } from "./CampaignExportPanel";
 import { CampaignHistoryPanel, useCampaignHistory } from "./CampaignHistoryPanel";
 import type { ViewerSource } from "../../viewer/adapter";
+import { VinaSamplingGuidance } from "./VinaSamplingGuidance";
 
 interface LibraryDockingWorkspaceProps {
   receptor: ReceptorPreparationRecord;
@@ -349,6 +350,7 @@ export function LibraryDockingWorkspace({
           <NumberField label="Energy range (kcal/mol)" value={parameters.energy_range_kcal_mol} min={0} max={100} step={0.5} disabled={controlsLocked} onChange={(value) => updateParameter("energy_range_kcal_mol", value)} />
           <NumberField label="Timeout / ligand (min)" value={parameters.timeout_minutes_per_ligand} min={1} max={2880} disabled={controlsLocked} onChange={(value) => updateParameter("timeout_minutes_per_ligand", value)} />
         </div>
+        <VinaSamplingGuidance box={bindingSite.box} exhaustiveness={parameters.exhaustiveness} showWithinBoundary />
         <div className="state-resolved-note"><strong>Throughput-first CPU budget</strong><small>{requestedWorkers} concurrent Vina processes × {requestedThreadsPerLigand} {requestedThreadsPerLigand === 1 ? "thread" : "threads"} = {requestedWorkers * requestedThreadsPerLigand} of {parameters.total_cpu_threads} allocated threads. The default gives each library molecule its own single-thread process because Vina's inner parallelism is limited by exhaustiveness.</small></div>
       </section>
       <section className="receptor-section">

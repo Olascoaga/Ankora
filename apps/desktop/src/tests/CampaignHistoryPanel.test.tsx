@@ -104,6 +104,7 @@ function vinaRecord(overrides: Partial<VinaBatchDockingRecord> = {}): VinaBatchD
     selection_manifest_artifact_id: "manifest", selection_manifest_sha256: "c".repeat(64),
     selected_count: 2, worker_count: 4, threads_per_ligand: 2,
     completed_count: 2, succeeded_count: 2, failed_count: 0, canceled_count: 0,
+    warnings: [],
     entries: [
       {
         ligand_id: "ligand-0", source_index: 0, name: "Restored Compound",

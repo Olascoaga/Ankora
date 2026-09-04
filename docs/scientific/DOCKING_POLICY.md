@@ -12,6 +12,15 @@ space, random seed, search controls, and resource budget explicitly. Every run
 retains the exact command or parameter files, executable version and hash,
 input/output hashes, raw output, structured results, failures, and provenance.
 
+A full-protein search space is an exploratory option, not a default scientific
+claim about the binding site. Ankora may show it as the initial non-persistent
+preview because it is universally computable, but creating it requires an
+explicit acknowledgement. For Vina, a box volume above 27,000 A^3 creates a
+structured warning in addition to preserving the engine's raw output. Ankora
+shows the exact volume and selected exhaustiveness, recommends a focused box or
+a recorded sampling-sensitivity series, and never changes exhaustiveness
+automatically.
+
 AutoDock4 CPU preflight is per ligand. Stock AutoGrid4 4.2.6 is limited to 14
 ligand affinity-map atom types and does not parameterize Meeko macrocycle glue
 types such as `CG0`/`G0`. Ankora retains an affected molecule as an explicit
