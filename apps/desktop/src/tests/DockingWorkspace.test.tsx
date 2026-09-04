@@ -169,7 +169,7 @@ it("submits explicit Vina parameters and displays the completed pose table", asy
     binding_site_id: bindingSite.binding_site_id,
     ligand_id: ligand.artifact.ligand_id,
     ligand_preparation_id: "preparation-synthetic",
-    parameters: { cpu_threads: 4, seed: 12345 },
+    parameters: { sampling_protocol: "screening", cpu_threads: 4, seed: 12345 },
     acknowledge_inputs_and_scoring: true,
   });
   expect(screen.getByText(/not experimental affinities/i)).toBeInTheDocument();
@@ -225,13 +225,30 @@ it("docks the complete applied library and renders compound-level results", asyn
   expect(submitted).toMatchObject({
     library_id: libraryInput.library_id,
     filter_run_id: libraryInput.filter_run_id,
-    parameters: { total_cpu_threads: 6, parallel_ligands: 2, seed: 45678 },
+    parameters: { sampling_protocol: "screening", total_cpu_threads: 6, parallel_ligands: 2, seed: 45678 },
     acknowledge_inputs_and_scoring: true,
   });
   expect(screen.getByText("CCO")).toBeInTheDocument();
   expect(screen.getByText("46.07")).toBeInTheDocument();
   expect(screen.getByText("-10.000")).toBeInTheDocument();
   expect(screen.getByText("2 / 2")).toBeInTheDocument();
+});
+
+it("applies a refinement protocol and relabels scientist edits as custom", () => {
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={tools} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Pose refinement" }));
+  expect(screen.getByLabelText("Exhaustiveness")).toHaveValue(32);
+  expect(screen.getByLabelText("Maximum poses")).toHaveValue(20);
+  expect(screen.getByLabelText("Energy range (kcal/mol)")).toHaveValue(5);
+
+  const acknowledgement = screen.getByRole("checkbox");
+  fireEvent.click(acknowledgement);
+  expect(acknowledgement).toBeChecked();
+  fireEvent.change(screen.getByLabelText("Exhaustiveness"), { target: { value: "16" } });
+
+  expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute("aria-pressed", "true");
+  expect(acknowledgement).not.toBeChecked();
 });
 
 it("updates the best result live, sorts columns, and expands every pose for a compound", async () => {

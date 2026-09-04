@@ -535,6 +535,23 @@ class MethodsReportService:
         draft.tool(name, version, "molecular docking")
         engine = _engine_prose(entry, name, version)
         if entry.scoring_family is ScoringFamily.VINA:
+            sampling_protocol = parameters.get("sampling_protocol")
+            if sampling_protocol is None:
+                draft.say(
+                    "This historical campaign did not record a named Vina sampling "
+                    "purpose, so no screening or refinement intent was inferred."
+                )
+            else:
+                purpose = {
+                    "screening": "Screening",
+                    "pose_refinement": "Pose refinement",
+                    "custom": "Custom",
+                }.get(str(sampling_protocol), str(sampling_protocol))
+                draft.say(
+                    f"The recorded Vina sampling purpose was {purpose}. This label "
+                    "describes protocol intent only; it is not evidence of sampling "
+                    "convergence or publication suitability."
+                )
             draft.say(
                 f"Docking was performed with {engine} using an "
                 f"exhaustiveness of {parameters.get('exhaustiveness')}, at most "

@@ -57,6 +57,15 @@ retains the same warning. The setup interface displays volume-aware guidance
 before execution and explicitly states that Ankora has not changed the selected
 value. This increment did not rerun Vina or reinterpret the smoke-test scores.
 
+As of 2026-09-04, new Vina requests also retain a purpose-labelled sampling
+protocol under ADR-019. The smoke run above predates that contract and therefore
+remains explicitly unlabeled; Ankora does not infer a screening or refinement
+purpose from its deliberately low values. Automated validation proves that new
+Screening and Pose refinement labels require their exact defined values, any
+edit must be recorded as Custom, and generated Methods text does not present a
+purpose label as convergence or publication-suitability evidence. This contract
+test did not rerun Vina or alter the preserved smoke evidence.
+
 ## Applied-library scheduler verification
 
 - The batch request identifies one exact library and applied filter-run artifact; the manifest SHA-256 and every available ligand PDBQT SHA-256 are recomputed before execution.

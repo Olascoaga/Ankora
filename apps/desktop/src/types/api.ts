@@ -891,6 +891,7 @@ export interface LigandLibraryDockingInput {
 }
 
 export interface VinaDockingParameters {
+  sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
   cpu_threads: number;
   seed: number;
   exhaustiveness: number;
@@ -910,6 +911,7 @@ export interface VinaDockingRequest {
 }
 
 export interface VinaBatchDockingParameters {
+  sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
   total_cpu_threads: number;
   parallel_ligands: number;
   seed: number;

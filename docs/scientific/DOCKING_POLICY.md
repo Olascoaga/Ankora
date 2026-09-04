@@ -21,6 +21,16 @@ shows the exact volume and selected exhaustiveness, recommends a focused box or
 a recorded sampling-sensitivity series, and never changes exhaustiveness
 automatically.
 
+New Vina requests also record whether their exact sampling values were selected
+for `screening`, `pose_refinement`, or as a scientist-edited `custom` protocol.
+Screening starts at exhaustiveness 8 with 9 modes and a 3 kcal/mol energy
+range; pose refinement starts at exhaustiveness 32 with 20 modes and a 5
+kcal/mol range. Both use a 1 A minimum inter-mode RMSD. These are
+purpose-labelled starting points, not convergence criteria. Editing any of the
+four sampling values changes the label to custom. No named protocol is called
+publication-ready: that judgment requires recorded system-specific sensitivity
+and convergence evidence.
+
 AutoDock4 CPU preflight is per ligand. Stock AutoGrid4 4.2.6 is limited to 14
 ligand affinity-map atom types and does not parameterize Meeko macrocycle glue
 types such as `CG0`/`G0`. Ankora retains an affected molecule as an explicit

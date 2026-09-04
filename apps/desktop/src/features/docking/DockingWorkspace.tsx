@@ -23,6 +23,13 @@ import { DockingModeSwitch } from "./DockingModeSwitch";
 import type { DockingMode } from "./DockingModeSwitch";
 import { LibraryDockingWorkspace } from "./LibraryDockingWorkspace";
 import { VinaSamplingGuidance } from "./VinaSamplingGuidance";
+import {
+  applyVinaSamplingProtocol,
+  isVinaSamplingParameter,
+  vinaSamplingProtocolLabel,
+  VinaSamplingProtocolControl,
+} from "./VinaSamplingProtocol";
+import type { VinaSamplingProtocol } from "./VinaSamplingProtocol";
 
 interface DockingWorkspaceProps {
   receptor: ReceptorPreparationRecord;
@@ -39,6 +46,7 @@ const TERMINAL_STATUSES = new Set(["completed", "failed", "canceled"]);
 function defaultParameters(): VinaDockingParameters {
   const logicalCores = typeof navigator === "undefined" ? 2 : navigator.hardwareConcurrency || 2;
   return {
+    sampling_protocol: "screening",
     cpu_threads: Math.max(1, logicalCores - 1),
     seed: 20260823,
     exhaustiveness: 8,
@@ -190,8 +198,21 @@ function SingleLigandDockingWorkspace({
     });
   }, [job, onActivityChange]);
 
-  function updateParameter(name: keyof VinaDockingParameters, value: number) {
-    setParameters((current) => ({ ...current, [name]: value }));
+  function updateParameter(
+    name: Exclude<keyof VinaDockingParameters, "sampling_protocol">,
+    value: number,
+  ) {
+    setAcknowledged(false);
+    setParameters((current) => ({
+      ...current,
+      [name]: value,
+      ...(isVinaSamplingParameter(name) ? { sampling_protocol: "custom" as const } : {}),
+    }));
+  }
+
+  function selectSamplingProtocol(protocol: VinaSamplingProtocol) {
+    setAcknowledged(false);
+    setParameters((current) => applyVinaSamplingProtocol(current, protocol));
   }
 
   async function startDocking() {
@@ -273,6 +294,11 @@ function SingleLigandDockingWorkspace({
             <strong>AutoDock Vina 1.2.7</strong>
             <small>{tools?.vina.available ? tools.vina.path : "Install or configure the official Windows executable."}</small>
           </div>
+          <VinaSamplingProtocolControl
+            protocol={parameters.sampling_protocol ?? "custom"}
+            disabled={active}
+            onChange={selectSamplingProtocol}
+          />
           <div className="docking-parameter-grid">
             <NumberField label="CPU threads" value={parameters.cpu_threads} min={1} max={256} disabled={active} onChange={(value) => updateParameter("cpu_threads", value)} />
             <NumberField label="Seed" value={parameters.seed} min={1} max={2147483647} disabled={active} onChange={(value) => updateParameter("seed", value)} />
@@ -302,6 +328,7 @@ function SingleLigandDockingWorkspace({
             <div className="filter-heading"><span>4 · Evidence</span><small>{job.job_id.slice(0, 8)}…</small></div>
             <dl className="docking-evidence">
               <div><dt>Engine</dt><dd>{job.tool.name} {job.tool.version}</dd></div>
+              <div><dt>Purpose</dt><dd>{vinaSamplingProtocolLabel(job.request.parameters.sampling_protocol)}</dd></div>
               <div><dt>Poses</dt><dd>{job.poses.length}</dd></div>
               <div><dt>Seed</dt><dd>{job.request.parameters.seed}</dd></div>
               <div><dt>CPU</dt><dd>{job.request.parameters.cpu_threads} threads</dd></div>

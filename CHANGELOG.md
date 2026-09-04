@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Purpose-labelled Vina sampling protocols - 2026-09-04
+
+- Added explicit Screening, Pose refinement, and Custom purposes to new Vina
+  single-ligand and library requests while retaining their exact numerical
+  controls.
+- Made scientist edits relabel the setup as Custom and invalidate the previous
+  confirmation; the backend rejects mismatched named presets.
+- Kept historical campaigns unlabeled rather than inferring intent, and made
+  Methods output state that a protocol label is not convergence or
+  publication-suitability evidence.
+
 ## Exploratory search-space guardrails - 2026-09-04
 
 - Kept the full-protein box as Binding Site's universal non-persistent preview,

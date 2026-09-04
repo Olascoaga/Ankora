@@ -16,6 +16,7 @@ from ankora_backend.schemas.results_catalog import (
     ReproducibilityAssessment,
     ReproducibilityExecution,
     ReproducibilityStatus,
+    ScoringFamily,
 )
 from ankora_backend.services.methods_report import MethodsReportService
 
@@ -655,6 +656,82 @@ def test_citations_are_declared_the_authors_responsibility() -> None:
     assert "must be added by the author" in report.markdown
     assert "ADADELTA" in report.markdown
     assert "2.5 × 10⁶" in report.markdown
+
+
+@pytest.mark.parametrize(
+    ("sampling_protocol", "expected"),
+    [
+        ("screening", "recorded Vina sampling purpose was Screening"),
+        ("pose_refinement", "recorded Vina sampling purpose was Pose refinement"),
+        ("custom", "recorded Vina sampling purpose was Custom"),
+    ],
+)
+def test_vina_methods_report_sampling_purpose_without_claiming_convergence(
+    sampling_protocol: str,
+    expected: str,
+) -> None:
+    parameters = {
+        "sampling_protocol": sampling_protocol,
+        "exhaustiveness": 8,
+        "num_modes": 9,
+        "min_rmsd_angstrom": 1.0,
+        "energy_range_kcal_mol": 3.0,
+        "seed": 42,
+    }
+    report = _service(
+        _entry(
+            engine_key="vina_job",
+            engine_label="AutoDock Vina 1.2.7",
+            engine_version="1.2.7",
+            scoring_family=ScoringFamily.VINA,
+            backend="vina",
+            selected_count=1,
+            succeeded_count=1,
+            failed_count=0,
+        ),
+        docking=SimpleNamespace(
+            load_record=lambda _: SimpleNamespace(
+                request=SimpleNamespace(
+                    parameters=SimpleNamespace(model_dump=lambda mode: parameters),
+                ),
+            ),
+        ),
+    ).render("vina_job:job-1")
+
+    assert expected in report.markdown
+    assert "not evidence of sampling convergence or publication suitability" in report.markdown
+
+
+def test_historical_vina_methods_report_does_not_infer_sampling_purpose() -> None:
+    parameters = {
+        "exhaustiveness": 8,
+        "num_modes": 9,
+        "min_rmsd_angstrom": 1.0,
+        "energy_range_kcal_mol": 3.0,
+        "seed": 42,
+    }
+    report = _service(
+        _entry(
+            engine_key="vina_job",
+            engine_label="AutoDock Vina 1.2.7",
+            engine_version="1.2.7",
+            scoring_family=ScoringFamily.VINA,
+            backend="vina",
+            selected_count=1,
+            succeeded_count=1,
+            failed_count=0,
+        ),
+        docking=SimpleNamespace(
+            load_record=lambda _: SimpleNamespace(
+                request=SimpleNamespace(
+                    parameters=SimpleNamespace(model_dump=lambda mode: parameters),
+                ),
+            ),
+        ),
+    ).render("vina_job:job-1")
+
+    assert "did not record a named Vina sampling purpose" in report.markdown
+    assert "no screening or refinement intent was inferred" in report.markdown
 
 
 def test_an_unknown_campaign_is_refused_rather_than_described() -> None:

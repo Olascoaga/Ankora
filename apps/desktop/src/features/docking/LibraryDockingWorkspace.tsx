@@ -18,6 +18,13 @@ import { CampaignExportPanel } from "./CampaignExportPanel";
 import { CampaignHistoryPanel, useCampaignHistory } from "./CampaignHistoryPanel";
 import type { ViewerSource } from "../../viewer/adapter";
 import { VinaSamplingGuidance } from "./VinaSamplingGuidance";
+import {
+  applyVinaSamplingProtocol,
+  isVinaSamplingParameter,
+  vinaSamplingProtocolLabel,
+  VinaSamplingProtocolControl,
+} from "./VinaSamplingProtocol";
+import type { VinaSamplingProtocol } from "./VinaSamplingProtocol";
 
 interface LibraryDockingWorkspaceProps {
   receptor: ReceptorPreparationRecord;
@@ -45,6 +52,7 @@ function defaultParameters(): VinaBatchDockingParameters {
   const logicalCores = typeof navigator === "undefined" ? 2 : navigator.hardwareConcurrency || 2;
   const totalCpuThreads = Math.max(1, logicalCores - 1);
   return {
+    sampling_protocol: "screening",
     total_cpu_threads: totalCpuThreads,
     parallel_ligands: Math.min(64, totalCpuThreads),
     seed: 20260823,
@@ -257,14 +265,27 @@ export function LibraryDockingWorkspace({
     }
   }
 
-  function updateParameter(name: keyof VinaBatchDockingParameters, value: number) {
+  function updateParameter(
+    name: Exclude<keyof VinaBatchDockingParameters, "sampling_protocol">,
+    value: number,
+  ) {
+    setAcknowledged(false);
     setParameters((current) => {
-      const next = { ...current, [name]: value };
+      const next = {
+        ...current,
+        [name]: value,
+        ...(isVinaSamplingParameter(name) ? { sampling_protocol: "custom" as const } : {}),
+      };
       if (name === "total_cpu_threads") {
         next.parallel_ligands = Math.min(next.parallel_ligands, Math.max(1, value));
       }
       return next;
     });
+  }
+
+  function selectSamplingProtocol(protocol: VinaSamplingProtocol) {
+    setAcknowledged(false);
+    setParameters((current) => applyVinaSamplingProtocol(current, protocol));
   }
 
   async function startBatch() {
@@ -340,6 +361,11 @@ export function LibraryDockingWorkspace({
       <section className="receptor-section">
         <div className="filter-heading"><span>2 · Engine & resources</span><small>{tools?.vina.available ? tools.vina.version : "Unavailable"}</small></div>
         <div className={tools?.vina.available ? "state-resolved-note" : "protonation-blocker"}><strong>AutoDock Vina 1.2.7</strong><small>{tools?.vina.available ? tools.vina.path : "Install or configure the official Windows executable."}</small></div>
+        <VinaSamplingProtocolControl
+          protocol={parameters.sampling_protocol ?? "custom"}
+          disabled={controlsLocked}
+          onChange={selectSamplingProtocol}
+        />
         <div className="docking-parameter-grid">
           <NumberField label="Total CPU threads" value={parameters.total_cpu_threads} min={1} max={256} disabled={controlsLocked} onChange={(value) => updateParameter("total_cpu_threads", value)} />
           <NumberField label="Concurrent ligands" value={parameters.parallel_ligands} min={1} max={Math.min(64, parameters.total_cpu_threads)} disabled={controlsLocked} onChange={(value) => updateParameter("parallel_ligands", value)} />
@@ -377,7 +403,7 @@ export function LibraryDockingWorkspace({
       />
       {batch ? <section className="receptor-section">
         <div className="filter-heading"><span>4 · Campaign evidence</span><small>{batch.batch_id.slice(0, 8)}…</small></div>
-        <dl className="docking-evidence"><div><dt>Completed</dt><dd>{batch.completed_count} / {batch.selected_count}</dd></div><div><dt>Succeeded</dt><dd>{batch.succeeded_count}</dd></div><div><dt>Failed</dt><dd>{batch.failed_count}</dd></div><div><dt>Resources</dt><dd>{batch.worker_count} × {batch.threads_per_ligand} CPU</dd></div></dl>
+        <dl className="docking-evidence"><div><dt>Purpose</dt><dd>{vinaSamplingProtocolLabel(batch.request.parameters.sampling_protocol)}</dd></div><div><dt>Completed</dt><dd>{batch.completed_count} / {batch.selected_count}</dd></div><div><dt>Succeeded</dt><dd>{batch.succeeded_count}</dd></div><div><dt>Failed</dt><dd>{batch.failed_count}</dd></div><div><dt>Resources</dt><dd>{batch.worker_count} × {batch.threads_per_ligand} CPU</dd></div></dl>
         {selectedEntry ? <details className="technical-details" open={Boolean(selectedEntry.failure)}><summary>Selected molecule evidence</summary>{selectedEntry.failure ? <p>{selectedEntry.failure.code} · {selectedEntry.failure.message}</p> : null}<pre>{selectedEntry.command.join(" ") || "No command was launched."}</pre>{selectedEntry.execution ? <><h4>stdout</h4><pre>{selectedEntry.execution.stdout || "(empty)"}</pre><h4>stderr</h4><pre>{selectedEntry.execution.stderr || "(empty)"}</pre></> : null}</details> : <p className="field-note">Select a library row to inspect its exact command and raw evidence.</p>}
       </section> : null}
     </aside>

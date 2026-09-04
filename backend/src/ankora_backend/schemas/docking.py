@@ -30,9 +30,44 @@ class DockingJobPhase(StrEnum):
     COMPLETE = "complete"
 
 
+class VinaSamplingProtocol(StrEnum):
+    SCREENING = "screening"
+    POSE_REFINEMENT = "pose_refinement"
+    CUSTOM = "custom"
+
+
+def _validate_sampling_protocol(
+    *,
+    protocol: VinaSamplingProtocol | None,
+    exhaustiveness: int,
+    num_modes: int,
+    min_rmsd_angstrom: float,
+    energy_range_kcal_mol: float,
+) -> None:
+    if protocol is None or protocol is VinaSamplingProtocol.CUSTOM:
+        return
+    expected = (
+        (8, 9, 1.0, 3.0)
+        if protocol is VinaSamplingProtocol.SCREENING
+        else (32, 20, 1.0, 5.0)
+    )
+    observed = (
+        exhaustiveness,
+        num_modes,
+        min_rmsd_angstrom,
+        energy_range_kcal_mol,
+    )
+    if observed != expected:
+        raise ValueError(
+            f"sampling_protocol '{protocol.value}' requires the recorded preset {expected}; "
+            "use 'custom' for edited sampling parameters"
+        )
+
+
 class VinaDockingParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    sampling_protocol: VinaSamplingProtocol | None = None
     cpu_threads: int = Field(default=1, ge=1, le=256)
     seed: int = Field(default=20260823, ge=1, le=2_147_483_647)
     exhaustiveness: int = Field(default=8, ge=1, le=128)
@@ -40,6 +75,17 @@ class VinaDockingParameters(BaseModel):
     min_rmsd_angstrom: float = Field(default=1.0, ge=0, le=20)
     energy_range_kcal_mol: float = Field(default=3.0, ge=0, le=100)
     timeout_minutes: int = Field(default=360, ge=1, le=2_880)
+
+    @model_validator(mode="after")
+    def match_named_sampling_protocol(self) -> "VinaDockingParameters":
+        _validate_sampling_protocol(
+            protocol=self.sampling_protocol,
+            exhaustiveness=self.exhaustiveness,
+            num_modes=self.num_modes,
+            min_rmsd_angstrom=self.min_rmsd_angstrom,
+            energy_range_kcal_mol=self.energy_range_kcal_mol,
+        )
+        return self
 
 
 class VinaDockingRequest(BaseModel):
@@ -62,6 +108,7 @@ class VinaDockingRequest(BaseModel):
 class VinaBatchDockingParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    sampling_protocol: VinaSamplingProtocol | None = None
     total_cpu_threads: int = Field(default=1, ge=1, le=256)
     parallel_ligands: int = Field(default=1, ge=1, le=64)
     seed: int = Field(default=20260823, ge=1, le=2_147_483_647)
@@ -75,6 +122,13 @@ class VinaBatchDockingParameters(BaseModel):
     def keep_parallelism_inside_cpu_budget(self) -> "VinaBatchDockingParameters":
         if self.parallel_ligands > self.total_cpu_threads:
             raise ValueError("parallel_ligands cannot exceed total_cpu_threads")
+        _validate_sampling_protocol(
+            protocol=self.sampling_protocol,
+            exhaustiveness=self.exhaustiveness,
+            num_modes=self.num_modes,
+            min_rmsd_angstrom=self.min_rmsd_angstrom,
+            energy_range_kcal_mol=self.energy_range_kcal_mol,
+        )
         return self
 
 

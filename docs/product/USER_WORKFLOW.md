@@ -19,6 +19,15 @@ whole-receptor search requires an explicit exploratory-use acknowledgement.
 Docking then shows the exact box volume and sampling guidance beside Vina's
 unchanged, scientist-controlled exhaustiveness.
 
+For Vina, choose the purpose of the next calculation before confirming it:
+`Screening` provides throughput-oriented starting values, `Pose refinement`
+provides a deeper starting point for a focused shortlist, and `Custom` records
+scientist-edited values. Changing a sampling value automatically changes the
+purpose to Custom and clears the previous confirmation. A purpose label does
+not establish convergence or make a calculation suitable for publication;
+record a system-specific sensitivity or convergence study when that claim is
+needed.
+
 M1-M8 are implemented. Later milestone numbering follows the visible workflow rather than the original bootstrap numbering:
 
 - M6 Results: durable project-level campaign, compound, pose, cluster/run, comparison, and evidence review.

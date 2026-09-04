@@ -1011,6 +1011,7 @@ class VinaDockingService:
     ) -> VinaDockingParameters:
         parameters = request.parameters
         return VinaDockingParameters(
+            sampling_protocol=parameters.sampling_protocol,
             cpu_threads=threads_per_ligand,
             seed=parameters.seed,
             exhaustiveness=parameters.exhaustiveness,
