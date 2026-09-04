@@ -30,6 +30,8 @@ from ankora_backend.schemas.ligands import (
     LigandLibraryFilterPreview,
     LigandLibraryFilterRequest,
     LigandLibraryFilterRun,
+    LigandMicrostateMode,
+    LigandMicrostateRecord,
     LigandRuleEvaluation,
     LigandStructuralAlert,
 )
@@ -144,6 +146,7 @@ def preview_library_filters(
     return LigandLibraryFilterPreview(
         library_id=library_id,
         plan=request.plan,
+        microstate_plan=request.microstate_plan,
         evaluations=evaluations,
         summary=_summary(evaluations),
         rdkit_version=rdBase.rdkitVersion,
@@ -313,8 +316,14 @@ def apply_library_filters(
         library_id=library_id,
         request=LigandLibraryFilterRequest(
             plan=request.plan,
+            microstate_plan=request.microstate_plan,
             state_overrides=request.state_overrides,
         ),
+        store=store,
+    )
+    _validate_microstate_selection(
+        preview=preview,
+        request=request,
         store=store,
     )
     filter_run_id = store.new_filter_run_id()
@@ -331,6 +340,7 @@ def apply_library_filters(
         "rdkit_version": preview.rdkit_version,
         "worker_count": preview.worker_count,
         "plan": preview.plan.model_dump(mode="json"),
+        "microstate_plan": preview.microstate_plan.model_dump(mode="json"),
         "summary": preview.summary.model_dump(mode="json"),
         "selected_ligand_ids": selected,
         "evaluations": [item.model_dump(mode="json") for item in preview.evaluations],
@@ -356,6 +366,7 @@ def apply_library_filters(
         tool=ToolIdentity(name="RDKit library filters", version=preview.rdkit_version),
         parameters={
             "plan": preview.plan.model_dump(mode="json"),
+            "microstate_plan": preview.microstate_plan.model_dump(mode="json"),
             "summary": preview.summary.model_dump(mode="json"),
             "state_overrides": request.state_overrides,
             "worker_count": preview.worker_count,
@@ -366,6 +377,7 @@ def apply_library_filters(
     record = LigandLibraryFilterRun(
         artifact=artifact,
         plan=preview.plan,
+        microstate_plan=preview.microstate_plan,
         evaluations=preview.evaluations,
         summary=preview.summary,
         selected_ligand_ids=selected,
@@ -378,6 +390,47 @@ def apply_library_filters(
     )
     store.create_filter_run(library_id, filter_run_id, manifest, record)
     return record
+
+
+def _validate_microstate_selection(
+    *,
+    preview: LigandLibraryFilterPreview,
+    request: ApplyLigandLibraryFilterRequest,
+    store: LigandArtifactStore,
+) -> None:
+    """An enumerated screen must name one exact state for every selected parent."""
+    if request.microstate_plan.mode is not LigandMicrostateMode.ENUMERATED_SELECTION:
+        return
+    missing: list[str] = []
+    mismatched: list[str] = []
+    for evaluation in preview.evaluations:
+        if evaluation.disposition is not LigandFilterDisposition.ELIGIBLE:
+            continue
+        state_id = request.state_overrides.get(evaluation.ligand_id)
+        if state_id is None:
+            missing.append(evaluation.ligand_id)
+            continue
+        try:
+            state = store.load_state_record(evaluation.ligand_id, state_id)
+        except AnkoraDomainError:
+            mismatched.append(evaluation.ligand_id)
+            continue
+        if (
+            not isinstance(state, LigandMicrostateRecord)
+            or state.selection.plan != request.microstate_plan
+        ):
+            mismatched.append(evaluation.ligand_id)
+    if missing or mismatched:
+        raise _filter_error(
+            "LIGAND_MICROSTATE_SELECTION_REQUIRED",
+            "Every eligible parent compound must have one explicitly selected "
+            "microstate from this exact bounded plan before the selection is applied.",
+            details={
+                "missing_ligand_ids": missing,
+                "mismatched_ligand_ids": mismatched,
+                "microstate_plan": request.microstate_plan.model_dump(mode="json"),
+            },
+        )
 
 
 def _load_state_molecule(

@@ -151,6 +151,8 @@ def minimize_ligand(
         if record.minimization.converged
         else LigandPreparationStatus.NONCONVERGED,
         conformer_id=record.artifact.conformer_id,
+        chemical_state_id=record.artifact.chemical_state_id,
+        chemical_state_formal_charge=record.inspection.formal_charge,
         initial_energy_kcal_mol=record.minimization.initial_energy_kcal_mol,
         final_energy_kcal_mol=record.minimization.final_energy_kcal_mol,
     )
@@ -226,6 +228,8 @@ def generate_ligand_conformer(
         if record.minimization.converged
         else LigandPreparationStatus.NONCONVERGED,
         conformer_id=record.artifact.conformer_id,
+        chemical_state_id=record.artifact.chemical_state_id,
+        chemical_state_formal_charge=record.inspection.formal_charge,
         initial_energy_kcal_mol=record.minimization.initial_energy_kcal_mol,
         final_energy_kcal_mol=record.minimization.final_energy_kcal_mol,
     )
@@ -358,6 +362,7 @@ def _minimize_and_store(
     artifact = LigandConformerArtifact(
         conformer_id=conformer_id,
         ligand_id=ligand_id,
+        chemical_state_id=state_id,
         stage=stage,
         filename=(
             f"{original.inspection.name}_{suffix}_"

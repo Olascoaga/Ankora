@@ -74,6 +74,9 @@ from ankora_backend.schemas.ligands import (
     LigandLibraryFilterRun,
     LigandLibraryPage,
     LigandLibraryRecord,
+    LigandMicrostateOptions,
+    LigandMicrostatePlan,
+    LigandMicrostateRecord,
     LigandPdbqtRecord,
     LigandProtonationOptions,
     LigandProtonationRecord,
@@ -81,6 +84,7 @@ from ankora_backend.schemas.ligands import (
     LigandStateResolutionOptions,
     MinimizeLigandRequest,
     PrepareLigandPdbqtRequest,
+    ResolveLigandMicrostateRequest,
     ResolveLigandProtonationRequest,
     ResolveLigandStateRequest,
 )
@@ -146,6 +150,10 @@ from ankora_backend.services.ligand_import import (
     MAX_LIGAND_BYTES,
     import_local_ligand,
     import_local_ligand_library,
+)
+from ankora_backend.services.ligand_microstates import (
+    microstate_options,
+    resolve_ligand_microstate,
 )
 from ankora_backend.services.ligand_minimization import (
     generate_ligand_conformer,
@@ -610,6 +618,39 @@ def create_resolved_ligand_protonation(
     ligand_id: str, request: ResolveLigandProtonationRequest
 ) -> LigandProtonationRecord:
     return resolve_ligand_protonation(
+        ligand_id=ligand_id,
+        request=request,
+        store=LigandArtifactStore.from_environment(),
+    )
+
+
+@router.post(
+    "/ligands/{ligand_id}/states/{parent_state_id}/microstate-options",
+    response_model=LigandMicrostateOptions,
+)
+def get_ligand_microstate_options(
+    ligand_id: str,
+    parent_state_id: str,
+    plan: LigandMicrostatePlan,
+) -> LigandMicrostateOptions:
+    return microstate_options(
+        ligand_id=ligand_id,
+        parent_state_id=parent_state_id,
+        plan=plan,
+        store=LigandArtifactStore.from_environment(),
+    )
+
+
+@router.post(
+    "/ligands/{ligand_id}/states/select-microstate",
+    response_model=LigandMicrostateRecord,
+    status_code=201,
+)
+def create_selected_ligand_microstate(
+    ligand_id: str,
+    request: ResolveLigandMicrostateRequest,
+) -> LigandMicrostateRecord:
+    return resolve_ligand_microstate(
         ligand_id=ligand_id,
         request=request,
         store=LigandArtifactStore.from_environment(),

@@ -21,6 +21,7 @@ export type LigandBatchStatus =
 
 export interface LigandBatchResult {
   status: LigandBatchStatus;
+  chemicalStateId?: string | null;
   conformer?: import("../../types/api").LigandConformerRecord;
   pdbqt?: LigandPdbqtRecord;
   // Present when this result was hydrated from persisted preparation status

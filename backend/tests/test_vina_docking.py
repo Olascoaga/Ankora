@@ -495,6 +495,61 @@ def test_vina_library_batch_accounts_for_an_unprepared_manifest_entry(
     assert unavailable.failure.code == "DOCKING_LIGAND_NOT_PREPARED"
 
 
+def test_vina_library_batch_rejects_pdbqt_from_another_chemical_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, single_request = _service(tmp_path)
+    request = _batch_request(tmp_path, service, single_request, monkeypatch)
+    store = LigandArtifactStore(tmp_path)
+    filter_run = store.load_filter_run(request.library_id, request.filter_run_id)
+    stale_id = filter_run.selected_ligand_ids[-1]
+    preparation = store.load_preparation_status(request.library_id)
+    store.upsert_preparation_entry(
+        request.library_id,
+        preparation.entries[stale_id].model_copy(
+            update={
+                "chemical_state_id": "synthetic-different-state",
+                "updated_at": datetime.now(UTC),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        docking_module,
+        "probe_vina",
+        lambda: VinaInstallation(executable="synthetic-vina.exe", version="1.2.7"),
+    )
+    executed_ligands = 0
+
+    def successful_execution(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal executed_ligands
+        executed_ligands += 1
+        kwargs["output_path"].write_bytes(SYNTHETIC_POSES)
+        return CancellableToolExecution(
+            command=["synthetic-vina.exe"],
+            exit_code=0,
+            stdout="",
+            stderr="",
+            canceled=False,
+            timed_out=False,
+        )
+
+    monkeypatch.setattr(docking_module, "execute_vina", successful_execution)
+    record = _wait_for_batch_terminal(
+        service, service.start_batch(request).batch_id
+    )
+    service.shutdown()
+
+    assert executed_ligands == 1
+    stale = next(entry for entry in record.entries if entry.ligand_id == stale_id)
+    assert stale.failure is not None
+    assert stale.failure.code == "DOCKING_PREPARATION_STATE_MISMATCH"
+    assert stale.chemical_state_id == next(
+        evaluation.state_id
+        for evaluation in filter_run.evaluations
+        if evaluation.ligand_id == stale_id
+    )
+
+
 def test_vina_library_batch_isolates_one_ligand_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -425,6 +425,9 @@ export type LigandPreparationStatus = "needs_decision" | "generating" | "minimiz
 
 export interface LigandPreparationEntry {
   ligand_id: string;
+  parent_compound_id?: string | null;
+  chemical_state_id?: string | null;
+  chemical_state_formal_charge?: number | null;
   status: LigandPreparationStatus;
   conformer_id: string | null;
   pdbqt_preparation_id: string | null;
@@ -488,6 +491,7 @@ export interface LigandLibraryFilterPlan {
 
 export interface LigandLibraryFilterRequest {
   plan: LigandLibraryFilterPlan;
+  microstate_plan: LigandMicrostatePlan;
   state_overrides: Record<string, string>;
 }
 
@@ -559,6 +563,7 @@ export interface LigandFilterSummary {
 export interface LigandLibraryFilterPreview {
   library_id: string;
   plan: LigandLibraryFilterPlan;
+  microstate_plan?: LigandMicrostatePlan;
   evaluations: LigandFilterEvaluation[];
   summary: LigandFilterSummary;
   rdkit_version: string;
@@ -577,6 +582,7 @@ export interface LigandFilterRunArtifact {
 export interface LigandLibraryFilterRun {
   artifact: LigandFilterRunArtifact;
   plan: LigandLibraryFilterPlan;
+  microstate_plan?: LigandMicrostatePlan;
   evaluations: LigandFilterEvaluation[];
   summary: LigandFilterSummary;
   selected_ligand_ids: string[];
@@ -672,6 +678,65 @@ export interface LigandProtonationRecord {
   content_url: string;
 }
 
+export type LigandMicrostateMode = "exact_imported_state" | "enumerated_selection";
+
+export interface LigandMicrostatePlan {
+  mode: LigandMicrostateMode;
+  ph_min: number;
+  ph_max: number;
+  precision: number;
+  max_tautomers_per_protomer: number;
+  max_microstates_per_parent: number;
+}
+
+export interface LigandMicrostateCandidate {
+  index: number;
+  microstate_key: string;
+  canonical_isomeric_smiles: string;
+  formal_charge: number;
+  protonation_candidate_index: number;
+  tautomer_index: number;
+  matches_parent_state: boolean;
+}
+
+export interface LigandMicrostateOptions {
+  parent_state_id: string;
+  plan: LigandMicrostatePlan;
+  candidates: LigandMicrostateCandidate[];
+  protonation_candidate_count: number;
+  enumerated_candidate_count: number;
+  truncated: boolean;
+  dimorphite_version: string;
+  rdkit_version: string;
+}
+
+export interface ResolveLigandMicrostateRequest {
+  parent_state_id: string;
+  plan: LigandMicrostatePlan;
+  candidate_index: number;
+  acknowledge_bounded_enumeration: boolean;
+}
+
+export interface LigandMicrostateSelection {
+  candidate_index: number;
+  candidate_count: number;
+  microstate_key: string;
+  protonation_candidate_index: number;
+  tautomer_index: number;
+  plan: LigandMicrostatePlan;
+  enumeration_truncated: boolean;
+}
+
+export interface LigandMicrostateRecord {
+  artifact: LigandChemicalStateArtifact;
+  parent_state_id: string;
+  inspection: LigandInspection;
+  selection: LigandMicrostateSelection;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+  content_url: string;
+}
+
 export type LigandForceField = "MMFF94" | "MMFF94s";
 
 export interface MinimizeLigandRequest {
@@ -698,6 +763,7 @@ export interface LigandConformerArtifact {
   sha256: string;
   size_bytes: number;
   created_at: string;
+  chemical_state_id?: string | null;
 }
 
 export interface LigandMinimizationResult {
@@ -865,6 +931,9 @@ export interface VinaDockingJobRecord {
 
 export interface VinaBatchLigandResult {
   ligand_id: string;
+  parent_compound_id?: string | null;
+  chemical_state_id?: string | null;
+  chemical_state_formal_charge?: number | null;
   source_index: number;
   name: string;
   canonical_smiles: string | null;
@@ -1207,6 +1276,9 @@ export interface AutoDock4BatchRequest {
 
 export interface AutoDock4BatchLigandResult {
   ligand_id: string;
+  parent_compound_id?: string | null;
+  chemical_state_id?: string | null;
+  chemical_state_formal_charge?: number | null;
   source_index: number;
   name: string;
   canonical_smiles: string | null;
@@ -1458,6 +1530,9 @@ export interface AutoDockGpuBatchRequest {
 
 export interface AutoDockGpuBatchLigandResult {
   ligand_id: string;
+  parent_compound_id?: string | null;
+  chemical_state_id?: string | null;
+  chemical_state_formal_charge?: number | null;
   source_index: number;
   name: string;
   canonical_smiles: string | null;
@@ -1684,6 +1759,9 @@ export interface TrashResultCampaignsResponse {
 
 export interface CompoundRow {
   ligand_id: string;
+  parent_compound_id?: string | null;
+  chemical_state_id?: string | null;
+  chemical_state_formal_charge?: number | null;
   /** Manifest order, so user sorting never destroys which molecule this was. */
   source_index: number;
   name: string;

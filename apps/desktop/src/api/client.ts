@@ -27,6 +27,9 @@ import type {
   LigandLibraryPage,
   LigandLibraryPreparationRecord,
   LigandLibraryRecord,
+  LigandMicrostateOptions,
+  LigandMicrostatePlan,
+  LigandMicrostateRecord,
   LigandPdbqtRecord,
   LigandProtonationOptions,
   LigandProtonationRecord,
@@ -39,6 +42,7 @@ import type {
   ReceptorPreparationRecord,
   ReceptorPreparationRequest,
   ResolveLigandProtonationRequest,
+  ResolveLigandMicrostateRequest,
   ResolveLigandStateRequest,
   ResourceUsage,
   StructureRecord,
@@ -288,6 +292,28 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     request: ResolveLigandProtonationRequest,
   ): Promise<LigandProtonationRecord> =>
     requestJson<LigandProtonationRecord>(`/ligands/${ligandId}/states/protonate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(request),
+    }),
+  ligandMicrostateOptions: (
+    ligandId: string,
+    parentStateId: string,
+    plan: LigandMicrostatePlan,
+  ): Promise<LigandMicrostateOptions> =>
+    requestJson<LigandMicrostateOptions>(
+      `/ligands/${ligandId}/states/${parentStateId}/microstate-options`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(plan),
+      },
+    ),
+  resolveLigandMicrostate: (
+    ligandId: string,
+    request: ResolveLigandMicrostateRequest,
+  ): Promise<LigandMicrostateRecord> =>
+    requestJson<LigandMicrostateRecord>(`/ligands/${ligandId}/states/select-microstate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(request),

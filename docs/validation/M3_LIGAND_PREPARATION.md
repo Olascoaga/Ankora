@@ -15,7 +15,7 @@ Authoritative platform: Windows 11 x64
 - [x] Preserve method, iteration limit, energies, convergence, RDKit version, hash, and parent linkage.
 - [x] Import local SDF/MOL/SMILES ligand inputs.
 - [x] Resolve disconnected components and undefined tetrahedral stereocenters through explicit recorded choices.
-- [ ] Enumerate protonation and tautomer states.
+- [x] Enumerate bounded protonation and tautomer candidates for screening and require one explicit state selection per parent compound.
 - [x] Generate and MMFF-optimize independent conformers with a recorded ETKDGv3 seed.
 - [x] Select the lowest-energy converged member of each conformer pool and preserve a visibly blocked nonconverged fallback only when none converge.
 - [x] Generate ligand PDBQT from a converged conformer through a versioned Meeko adapter.
@@ -67,6 +67,12 @@ Applying filters without acknowledgement returns `LIGAND_FILTER_CONFIRMATION_REQ
 
 With a synthetic four-logical-processor budget, backend coverage verifies three parallel filter workers while retaining all five evaluations in source order and assigning the later duplicate to the earlier UUID deterministically. Frontend coverage holds both conformer responses open and verifies that two generation requests are already in flight, proving the batch is concurrent rather than merely displaying a worker count. Worker counts are included in filter manifests and conformer/Meeko provenance parameters.
 
+## Screening-microstate contract
+
+Explicitly synthetic acetylacetone and triethylamine fixtures verify deterministic bounded protonation/tautomer enumeration, structured truncation evidence, create-only selected-state artifacts, and filter rejection when an eligible parent lacks a selection under `enumerated_selection`. API coverage verifies the typed option/selection round trip and records that candidate order is not a population ranking. Frontend coverage requires the scientist to choose and acknowledge one unranked candidate before applying the manifest.
+
+The preparation rollup stores parent-compound ID, exact chemical-state ID, and formal charge. Batch preparation consumes the state ID from the immutable filter evaluation rather than session memory. Vina, AutoDock4 CPU, and AutoDock-GPU preserve that lineage in each result row and reject a prepared PDBQT if its state differs from the manifest. The project result catalog exposes the parent/state identity, and Methods describes the bounds, selection, truncation, and absence of ranking claims.
+
 ## Recorded independent RV2 conformer
 
 Ankora removed the crystallographic coordinates from the inspected RV2 graph before embedding. RDKit 2026.03.5 ETKDGv3 used seed `20260819`, added explicit hydrogens, and MMFF94s converged within the 500-iteration limit from 124.6983725 to 45.4020794 kcal/mol. The result is conformer `5975429e-5d9a-4d3e-bf79-245d90c7f933`, a 3,427-byte SDF with SHA-256 `43590ffcdbce0f41abe3c9607fb85a0cdea0ce2823ead104f46904515a7618d5`. It remains a generated docking-input candidate, not a validation result or claim that the ligand state is biologically preferred.
@@ -79,9 +85,16 @@ Preparation `382e6572-ca42-45cb-a23e-6eb362a4b5f8` produced `RV2_prepared.pdbqt`
 
 ## Verification and acceptance status
 
-- 58 backend tests passed; Ruff and strict mypy passed across 40 source files.
-- 16 frontend tests across five files passed; strict TypeScript and the production Vite build passed.
-- Rust formatting, strict Clippy, native tests, and the optimized Windows Tauri build passed.
+- The current full-workspace gate on 2026-09-03 passed 432 backend tests; Ruff
+  and strict mypy passed across 101 source files.
+- All 207 frontend tests across 27 files passed; strict TypeScript and the
+  production Vite build passed.
+- Rust formatting, strict Clippy, native tests, and the optimized Windows Tauri
+  build passed after the screening-microstate integration.
 - The real RV2 extraction, independent conformer, and Meeko PDBQT evidence above are preserved under `.ankora-data`.
 
-M3 is technically complete, including the local virtual-screening library extension. Scientist review of the final single-ligand and library state/conformer/PDBQT workflows remains required before M3 is marked scientifically accepted or M4 begins.
+M3 is technically complete, including the local virtual-screening library
+extension and the later explicit screening-microstate remediation. The
+scientist accepted the M3 workflow on 2026-08-26; that acceptance applies to
+the recorded mechanics and evidence, not to any unrecorded state choice or a
+general biological-validity claim.

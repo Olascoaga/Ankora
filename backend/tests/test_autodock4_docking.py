@@ -9,6 +9,7 @@ import json
 import pathlib
 import threading
 import time
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
@@ -402,6 +403,43 @@ def test_every_molecule_gets_its_own_autodock_clustering(
         )
         assert path.read_text(encoding="utf-8").startswith("MODEL")
     service.shutdown()
+
+
+def test_autodock4_batch_rejects_pdbqt_from_another_chemical_state(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+    store = LigandArtifactStore(tmp_path)
+    filter_run = store.load_filter_run(request.library_id, request.filter_run_id)
+    stale_id = filter_run.selected_ligand_ids[-1]
+    preparation = store.load_preparation_status(request.library_id)
+    store.upsert_preparation_entry(
+        request.library_id,
+        preparation.entries[stale_id].model_copy(
+            update={
+                "chemical_state_id": "synthetic-different-state",
+                "updated_at": datetime.now(UTC),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        docking_module, "execute_autodock4_cancellable", _replay_real_log
+    )
+
+    record = _wait_batch(service, service.start_batch(request).batch_id)
+    service.shutdown()
+
+    assert record.succeeded_count == 1  # type: ignore[attr-defined]
+    stale = next(  # type: ignore[attr-defined]
+        entry for entry in record.entries if entry.ligand_id == stale_id
+    )
+    assert stale.failure is not None
+    assert stale.failure.code == "AUTODOCK4_PREPARATION_STATE_MISMATCH"
+    assert stale.chemical_state_id == next(
+        evaluation.state_id
+        for evaluation in filter_run.evaluations
+        if evaluation.ligand_id == stale_id
+    )
 
 
 def test_one_molecule_failing_does_not_stop_the_others(

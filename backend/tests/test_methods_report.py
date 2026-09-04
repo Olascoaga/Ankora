@@ -447,6 +447,47 @@ def test_batch_reports_heterogeneous_protocols_and_state_lineages() -> None:
     assert "No ligand tautomer enumeration was recorded" in report.markdown
 
 
+def test_selected_microstate_is_described_as_bounded_and_unranked() -> None:
+    initial_state = "state-ligand-1"
+    microstate_id = "microstate-ligand-1"
+    microstate = SimpleNamespace(
+        parent_state_id=initial_state,
+        selection=SimpleNamespace(
+            plan=SimpleNamespace(
+                ph_min=7.4,
+                ph_max=7.4,
+                max_tautomers_per_protomer=8,
+                max_microstates_per_parent=16,
+            ),
+            candidate_count=5,
+            candidate_index=2,
+            enumeration_truncated=True,
+        ),
+        provenance=SimpleNamespace(
+            event_type="ligand_microstate_selected",
+            tool=SimpleNamespace(
+                name="Dimorphite-DL + RDKit TautomerEnumerator",
+                version="Dimorphite-DL 2.0.2; RDKit 2025.09.6",
+            ),
+        ),
+    )
+    ligands = _BatchLigands(
+        {"ligand-1": _protocol("ligand-1", state_id=microstate_id)},
+        {("ligand-1", microstate_id): microstate},
+    )
+
+    report = _batch_report(
+        ligands,
+        [_batch_entry("ligand-1", "preparation-ligand-1")],
+        selected_count=1,
+    )
+
+    assert "protonation/tautomer candidate 3 of 5" in report.markdown
+    assert "candidate order was unranked" in report.markdown
+    assert "configured bound reached" in report.markdown
+    assert "No ligand tautomer enumeration was recorded" not in report.markdown
+
+
 def test_incomplete_batch_preparation_stays_a_visible_methods_gap() -> None:
     protocols = {
         "ligand-1": _protocol("ligand-1"),

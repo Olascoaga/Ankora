@@ -66,7 +66,7 @@ function ligand(index: number, name: string, smiles: string, formula: string, ma
 
 function conformer(source: LigandRecord, energy: number): LigandConformerRecord {
   return {
-    artifact: { conformer_id: `conformer-${source.artifact.ligand_id}`, ligand_id: source.artifact.ligand_id, stage: "generated_minimized", filename: "prepared.sdf", format: "sdf", sha256: "c".repeat(64), size_bytes: 200, created_at: "2026-08-19T00:00:00Z" },
+    artifact: { conformer_id: `conformer-${source.artifact.ligand_id}`, ligand_id: source.artifact.ligand_id, chemical_state_id: source.state?.state_id ?? null, stage: "generated_minimized", filename: "prepared.sdf", format: "sdf", sha256: "c".repeat(64), size_bytes: 200, created_at: "2026-08-19T00:00:00Z" },
     inspection: { ...source.inspection, conformer_count: 1, has_3d_coordinates: true },
     minimization: { force_field: "MMFF94s", max_iterations: 500, converged: true, initial_energy_kcal_mol: energy + 10, final_energy_kcal_mol: energy, embedding_method: "ETKDGv3", random_seed: 20260819, independent_from_source_coordinates: true, conformer_pool_size: 20 },
     warnings: [],
@@ -218,7 +218,7 @@ it("imports and processes every eligible molecule while showing a screening tabl
     selected_count: 2,
     prepared_count: 0,
   }));
-  expect(screen.getByText(/does not run Dimorphite-DL/)).toBeInTheDocument();
+  expect(screen.getByText(/exact submitted or component-resolved state is retained/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: /Prepare the applied filtered subset/ }));
   fireEvent.click(screen.getByRole("button", { name: "Process 2 selected ligands" }));
 
@@ -247,6 +247,104 @@ it("imports and processes every eligible molecule while showing a screening tabl
   }));
   expect(screen.getByText("Needs decision")).toBeInTheDocument();
   expect(fetchSpy.mock.calls.filter(([url]) => String(url).includes("/conformers/generate"))).toHaveLength(2);
+});
+
+it("requires an explicit bounded microstate before applying an enumerated screening policy", async () => {
+  const parent = ligand(1, "triethylamine", "CCN(CC)CC", "C6H15N", 101.19);
+  const library: LigandLibraryRecord = {
+    artifact: { library_id: "library-1", filename: "amines.smi", format: "smiles", sha256: "d".repeat(64), size_bytes: 100, record_count: 1, created_at: "2026-08-19T00:00:00Z" },
+    entries: [{ record_index: 0, status: "imported", ligand: parent, failure: null }],
+    imported_count: 1,
+    failed_count: 0,
+    provenance: { event_id: "library-1", event_type: "local_ligand_library_imported", timestamp: "2026-08-19T00:00:00Z", input_artifacts: [], output_artifacts: ["library-1"], tool: { name: "synthetic", version: "1" }, parameters: {}, warnings: [], command: null },
+    original_content_url: "/ligand-libraries/library-1/content",
+  };
+  const microstateId = "microstate-1";
+  let appliedBody: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/ligand-libraries/import") && init?.method === "POST") return json(library, 201);
+    if (url.endsWith("/filter-preview") && init?.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      const stateId = body.state_overrides[parent.artifact.ligand_id] ?? parent.state?.state_id;
+      return json({
+        library_id: "library-1",
+        plan: body.plan,
+        microstate_plan: body.microstate_plan,
+        evaluations: [filterEvaluation(parent, "eligible", { state_id: stateId })],
+        summary: { imported_count: 1, eligible_count: 1, excluded_count: 0, needs_decision_count: 0, duplicate_count: 0, pains_match_count: 0, brenk_match_count: 0 },
+        rdkit_version: "2025.09.4",
+        worker_count: 1,
+      }, 200);
+    }
+    if (url.endsWith("/microstate-options") && init?.method === "POST") {
+      const plan = JSON.parse(String(init.body));
+      return json({
+        parent_state_id: parent.state?.state_id,
+        plan,
+        candidates: [{ index: 0, microstate_key: "a".repeat(64), canonical_isomeric_smiles: "CC[NH+](CC)CC", formal_charge: 1, protonation_candidate_index: 0, tautomer_index: 0, matches_parent_state: false }],
+        protonation_candidate_count: 1,
+        enumerated_candidate_count: 1,
+        truncated: false,
+        dimorphite_version: "2.0.2",
+        rdkit_version: "2025.09.4",
+      }, 200);
+    }
+    if (url.endsWith("/states/select-microstate") && init?.method === "POST") {
+      const request = JSON.parse(String(init.body));
+      return json({
+        artifact: { state_id: microstateId, ligand_id: parent.artifact.ligand_id, filename: "selected.sdf", format: "sdf", sha256: "f".repeat(64), size_bytes: 120, created_at: "2026-08-20T00:00:00Z" },
+        parent_state_id: parent.state?.state_id,
+        inspection: { ...parent.inspection, formal_charge: 1, canonical_smiles: "CC[NH+](CC)CC" },
+        selection: { candidate_index: 0, candidate_count: 1, microstate_key: "a".repeat(64), protonation_candidate_index: 0, tautomer_index: 0, plan: request.plan, enumeration_truncated: false },
+        warnings: [],
+        provenance: { event_id: "microstate-event", event_type: "ligand_microstate_selected", timestamp: "2026-08-20T00:00:00Z", input_artifacts: [parent.state?.state_id], output_artifacts: [microstateId], tool: { name: "Dimorphite-DL + RDKit", version: "test" }, parameters: {}, warnings: [], command: null },
+        content_url: `/ligands/${parent.artifact.ligand_id}/states/${microstateId}/content`,
+      }, 201);
+    }
+    if (url.endsWith("/filter-runs") && init?.method === "POST") {
+      appliedBody = JSON.parse(String(init.body));
+      const request = appliedBody as any;
+      return json({
+        artifact: { filter_run_id: "filter-microstate", library_id: "library-1", filename: "selection_manifest.json", sha256: "e".repeat(64), size_bytes: 100, created_at: "2026-08-20T00:00:00Z" },
+        plan: request.plan,
+        microstate_plan: request.microstate_plan,
+        evaluations: [filterEvaluation(parent, "eligible", { state_id: microstateId })],
+        summary: { imported_count: 1, eligible_count: 1, excluded_count: 0, needs_decision_count: 0, duplicate_count: 0, pains_match_count: 0, brenk_match_count: 0 },
+        selected_ligand_ids: [parent.artifact.ligand_id],
+        rdkit_version: "2025.09.4",
+        worker_count: 1,
+        provenance: { event_id: "filter-microstate", event_type: "ligand_library_filtered", timestamp: "2026-08-20T00:00:00Z", input_artifacts: ["library-1"], output_artifacts: ["filter-microstate"], tool: { name: "RDKit", version: "2025.09.4" }, parameters: {}, warnings: [], command: null },
+        manifest_content_url: "/filter-microstate/content",
+      }, 201);
+    }
+    return new Response(null, { status: 404 });
+  });
+  render(<LigandWorkspaceHarness structure={structure} tools={tools} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Local file" }));
+  const input = document.querySelector<HTMLInputElement>(".ligand-file-action input");
+  fireEvent.change(input!, { target: { files: [new File(["synthetic"], "amines.smi")] } });
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("Screening chemical-state policy"), {
+    target: { value: "enumerated_selection" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Enumerate this parent compound" }));
+  const candidate = await screen.findByLabelText("Exact state to carry forward");
+  fireEvent.change(candidate, { target: { value: "0" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Select this exact bounded candidate/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Record selected screening microstate" }));
+  expect(await screen.findByText("Selected microstate recorded")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("checkbox", { name: /Apply this exact selection/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply filtered subset" }));
+  await waitFor(() => expect(appliedBody).not.toBeNull());
+  expect(appliedBody).toMatchObject({
+    microstate_plan: { mode: "enumerated_selection" },
+    state_overrides: { [parent.artifact.ligand_id]: microstateId },
+    acknowledge_selection: true,
+  });
 });
 
 it("builds a custom descriptor rule, sends it in the preview request, and reflects the resulting exclusion", async () => {

@@ -189,6 +189,9 @@ class CompoundRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ligand_id: str = Field(min_length=1)
+    parent_compound_id: str | None = None
+    chemical_state_id: str | None = None
+    chemical_state_formal_charge: int | None = None
     # Manifest order, kept as its own column so user sorting never destroys it.
     source_index: int = Field(ge=0)
     name: str = Field(min_length=1)

@@ -42,6 +42,16 @@ Library inputs pass through an explicit 2D cleaning stage before any 3D generati
 - The original library and every inspected/resolved state remain immutable. ETKDG/MMFF/Meeko batch processing consumes only the ligand UUIDs in the applied manifest; it never processes a provisional table selection.
 - Descriptor/rule evaluation and selected-ligand preparation use bounded local parallel workers. The default uses the available logical processors minus one, capped by molecule count. Source-order duplicate decisions are applied after parallel descriptor work, so concurrency cannot change which earlier UUID is authoritative.
 
+## Screening protonation and tautomer policy
+
+- Every library manifest records either `exact_imported_state` (the default) or `enumerated_selection`. Exact mode retains the submitted or explicitly component/stereochemistry-resolved graph and does not claim that alternatives were considered.
+- Enumerated mode runs Dimorphite-DL for the visible pH range and precision, then RDKit `TautomerEnumerator` for each protonation proposal. The scientist controls the maximum tautomers per protomer and total microstates per parent.
+- Candidate SMILES are deduplicated and ordered deterministically for reproducibility only. Order is not a population, probability, biological-preference, or docking-suitability ranking.
+- Ankora never selects a candidate automatically, including when the bounded set contains only one member. One exact candidate per eligible parent must be acknowledged and stored as an immutable child state before the enumerated manifest can be applied.
+- Bound exhaustion is recorded as `LIG_MICROSTATE_ENUMERATION_TRUNCATED`; the interface states that additional candidates may exist.
+- Filtering, conformer generation, PDBQT preparation, docking results, and generated Methods carry the parent-compound and exact chemical-state identities. A preparation made from another or unrecorded state is stale and cannot enter docking.
+- Results remain one row per parent because exactly one state is accepted per parent in this policy. Ankora does not silently report the most favorable score across alternative states.
+
 - Independent generation removes every supplied coordinate conformer before embedding.
 - RDKit ETKDGv3 runs with a scientist-visible integer random seed and enforced known stereochemistry.
 - The embedded molecule receives explicit hydrogens and is minimized with the explicitly selected MMFF94/MMFF94s variant and iteration limit.
@@ -68,6 +78,6 @@ Library inputs pass through an explicit 2D cleaning stage before any 3D generati
 
 ## Boundary of the current slice
 
-Physiological-pH protonation-state enumeration is implemented through Dimorphite-DL as an explicit, scientist-confirmed chemical-state decision. The pH range, precision, candidate set, chosen candidate, parent state, formal charge, tool version, and provenance are recorded; the scientist may also explicitly retain the as-drawn state. Tautomer enumeration is not implemented. Neither protonation enumeration nor the present disconnected-component/stereochemistry resolver claims to identify a biologically preferred state. A generated PDBQT is a docking input, not a validation result or binding claim.
+Single-ligand physiological-pH protonation-state enumeration is implemented through Dimorphite-DL as an explicit, scientist-confirmed chemical-state decision. Screening libraries additionally support the bounded protonation-plus-tautomer policy above. Neither workflow claims to identify a biologically preferred state. A generated PDBQT is a docking input, not a validation result or binding claim.
 
-Batch preparation is an explicitly confirmed, bounded-parallel repetition of the visible ETKDGv3 seed, MMFF variant, and iteration limit for each UUID in an applied filter manifest. The worker count is visible and recorded in each generated conformer/Meeko request. Molecules with unresolved components or stereochemistry pause at `Needs decision`; excluded molecules remain visible and unprocessed; selected molecules continue, and failures remain isolated to their rows. Ankora does not silently select a salt fragment, stereoisomer, protonation state, tautomer, or alert policy in order to complete a batch.
+Batch preparation is an explicitly confirmed, bounded-parallel repetition of the visible ETKDGv3 seed, MMFF variant, and iteration limit for each exact state UUID in an applied filter manifest. The worker count is visible and recorded in each generated conformer/Meeko request. Molecules with unresolved components, stereochemistry, or a missing required microstate decision pause; excluded molecules remain visible and unprocessed; selected molecules continue, and failures remain isolated to their rows. Ankora does not silently select a salt fragment, stereoisomer, protonation state, tautomer, or alert policy in order to complete a batch.

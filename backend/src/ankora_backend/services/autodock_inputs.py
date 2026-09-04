@@ -21,6 +21,11 @@ from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.autogrid import AutoGridMapKind, AutoGridMapSetRecord
 from ankora_backend.schemas.binding_sites import BindingSiteRecord
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
+from ankora_backend.schemas.ligands import (
+    LigandInspection,
+    LigandLibraryFilterRun,
+    LigandRecord,
+)
 from ankora_backend.schemas.receptors import (
     ReceptorOutputArtifact,
     ReceptorOutputStage,
@@ -176,6 +181,9 @@ class SelectedMolecule:
     ligand_id: str
     source_index: int
     name: str
+    parent_compound_id: str | None = None
+    chemical_state_id: str | None = None
+    chemical_state_formal_charge: int | None = None
     canonical_smiles: str | None = None
     molecular_weight_g_mol: float | None = None
     preparation_id: str | None = None
@@ -244,12 +252,36 @@ def resolve_selection(
             )
             continue
         source_index, ligand = source
+        try:
+            state = resolve_selected_chemical_state(
+                ligand_id=ligand_id,
+                ligand=ligand,
+                filter_run=filter_run,
+                ligand_store=ligand_store,
+                stage=stage,
+                code_prefix=code_prefix,
+            )
+        except AnkoraDomainError as error:
+            resolved.append(
+                SelectedMolecule(
+                    ligand_id=ligand_id,
+                    parent_compound_id=ligand_id,
+                    source_index=source_index,
+                    name=ligand.inspection.name,
+                    unavailable_code=error.code,
+                    unavailable_reason=error.message,
+                )
+            )
+            continue
         common: dict[str, object] = {
             "ligand_id": ligand_id,
+            "parent_compound_id": ligand_id,
+            "chemical_state_id": state.state_id,
+            "chemical_state_formal_charge": state.inspection.formal_charge,
             "source_index": source_index,
-            "name": ligand.inspection.name,
-            "canonical_smiles": ligand.inspection.canonical_smiles,
-            "molecular_weight_g_mol": ligand.inspection.molecular_weight_g_mol,
+            "name": state.inspection.name,
+            "canonical_smiles": state.inspection.canonical_smiles,
+            "molecular_weight_g_mol": state.inspection.molecular_weight_g_mol,
         }
         status = preparation.entries.get(ligand_id)
         if (
@@ -263,6 +295,18 @@ def resolve_selection(
                     unavailable_code=f"{code_prefix}_LIGAND_NOT_PREPARED",
                     unavailable_reason=(
                         "This molecule has no completed Meeko PDBQT preparation."
+                    ),
+                )
+            )
+            continue
+        if status.chemical_state_id != state.state_id:
+            resolved.append(
+                SelectedMolecule(
+                    **common,  # type: ignore[arg-type]
+                    unavailable_code=f"{code_prefix}_PREPARATION_STATE_MISMATCH",
+                    unavailable_reason=(
+                        "The prepared PDBQT belongs to a different or unrecorded "
+                        "chemical state than the applied selection manifest."
                     ),
                 )
             )
@@ -314,6 +358,56 @@ def resolve_selection(
             )
         )
     return resolved
+
+
+@dataclass(frozen=True, slots=True)
+class SelectedChemicalState:
+    """Exact parent/state identity carried by an applied screening manifest."""
+
+    parent_compound_id: str
+    state_id: str
+    inspection: LigandInspection
+
+
+def resolve_selected_chemical_state(
+    *,
+    ligand_id: str,
+    ligand: LigandRecord,
+    filter_run: LigandLibraryFilterRun,
+    ligand_store: LigandArtifactStore,
+    stage: str,
+    code_prefix: str,
+) -> SelectedChemicalState:
+    evaluation = next(
+        (item for item in filter_run.evaluations if item.ligand_id == ligand_id),
+        None,
+    )
+    if evaluation is None:
+        raise _rejected(
+            f"{code_prefix}_SELECTION_STATE_MISSING",
+            "The applied selection does not record this parent compound's chemical state.",
+            {"ligand_id": ligand_id, "filter_run_id": filter_run.artifact.filter_run_id},
+            stage,
+        )
+    state_id = evaluation.state_id
+    try:
+        inspection = (
+            ligand.inspection
+            if ligand.state is not None and ligand.state.state_id == state_id
+            else ligand_store.load_state_inspection(ligand_id, state_id)
+        )
+    except (AnkoraDomainError, OSError, ValueError) as error:
+        raise _rejected(
+            f"{code_prefix}_SELECTION_STATE_UNAVAILABLE",
+            "The exact chemical state recorded by the applied selection is unavailable.",
+            {"ligand_id": ligand_id, "chemical_state_id": state_id},
+            stage,
+        ) from error
+    return SelectedChemicalState(
+        parent_compound_id=ligand_id,
+        state_id=state_id,
+        inspection=inspection,
+    )
 
 
 def verify_hash(path: Path, expected: str, *, stage: str, code_prefix: str) -> None:

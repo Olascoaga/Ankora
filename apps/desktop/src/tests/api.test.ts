@@ -96,13 +96,23 @@ describe("typed API client", () => {
       duplicate_policy: "exclude" as const,
       custom_rules: [],
     };
+    const microstatePlan = {
+      mode: "exact_imported_state" as const,
+      ph_min: 7.4,
+      ph_max: 7.4,
+      precision: 1,
+      max_tautomers_per_protomer: 8,
+      max_microstates_per_parent: 16,
+    };
 
     await ankoraApi.previewLigandLibraryFilters("library-1", {
       plan,
+      microstate_plan: microstatePlan,
       state_overrides: { "ligand-1": "state-2" },
     });
     await ankoraApi.applyLigandLibraryFilters("library-1", {
       plan,
+      microstate_plan: microstatePlan,
       state_overrides: { "ligand-1": "state-2" },
       acknowledge_selection: true,
     });
@@ -113,6 +123,7 @@ describe("typed API client", () => {
     );
     expect(JSON.parse(String(fetchSpy.mock.calls[1][1]?.body))).toEqual({
       plan,
+      microstate_plan: microstatePlan,
       state_overrides: { "ligand-1": "state-2" },
       acknowledge_selection: true,
     });

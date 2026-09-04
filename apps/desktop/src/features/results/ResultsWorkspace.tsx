@@ -690,6 +690,7 @@ function CompoundTable({ entry, onInspect }: {
               <th>Rank</th>
               <th>#</th>
               <th>Molecule</th>
+              <th>Chemical state</th>
               {/* The engine's own column name, so it is never just "score". */}
               <th>{page?.value_label ?? "Result (kcal/mol)"}</th>
               {clusterNative ? <th>Clusters</th> : <th>Poses</th>}
@@ -718,6 +719,7 @@ function CompoundTable({ entry, onInspect }: {
                 {/* Manifest order, kept beside the ranking that reordered it. */}
                 <td>{row.source_index + 1}</td>
                 <td>{row.name}</td>
+                <td>{row.chemical_state_id ? <><code>{row.chemical_state_id.slice(0, 10)}…</code><small>charge {row.chemical_state_formal_charge !== null && row.chemical_state_formal_charge !== undefined ? `${row.chemical_state_formal_charge >= 0 ? "+" : ""}${row.chemical_state_formal_charge}` : "not recorded"}</small></> : "Historical · not recorded"}</td>
                 <td>{row.best_result_kcal_mol?.toFixed(2) ?? "—"}</td>
                 <td>{(clusterNative ? row.cluster_count : row.pose_count) ?? "—"}</td>
                 {clusterNative ? <td>{row.top_cluster_runs ?? "—"}</td> : null}

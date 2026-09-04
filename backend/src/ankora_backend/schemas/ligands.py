@@ -203,6 +203,106 @@ class LigandProtonationRecord(BaseModel):
     content_url: str = Field(min_length=1)
 
 
+class LigandMicrostateMode(StrEnum):
+    EXACT_IMPORTED_STATE = "exact_imported_state"
+    ENUMERATED_SELECTION = "enumerated_selection"
+
+
+class LigandMicrostatePlan(BaseModel):
+    """Scientist-visible bounds for one compound's screening microstates.
+
+    The plan deliberately contains no ranking or population model.  Candidate
+    order is a reproducibility detail only; a scientist must choose the exact
+    state that is carried forward.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: LigandMicrostateMode = LigandMicrostateMode.EXACT_IMPORTED_STATE
+    ph_min: float = Field(default=7.4, ge=0, le=14)
+    ph_max: float = Field(default=7.4, ge=0, le=14)
+    precision: float = Field(default=1.0, gt=0, le=5)
+    max_tautomers_per_protomer: int = Field(default=8, ge=1, le=32)
+    max_microstates_per_parent: int = Field(default=16, ge=1, le=64)
+
+    @model_validator(mode="after")
+    def require_valid_ph_range(self) -> "LigandMicrostatePlan":
+        if self.ph_max < self.ph_min:
+            raise ValueError("ph_max must not be below ph_min")
+        return self
+
+
+class LigandMicrostateCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0)
+    microstate_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_isomeric_smiles: str = Field(min_length=1)
+    formal_charge: int
+    protonation_candidate_index: int = Field(ge=0)
+    tautomer_index: int = Field(ge=0)
+    matches_parent_state: bool = False
+
+
+class LigandMicrostateOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    parent_state_id: str = Field(min_length=1)
+    plan: LigandMicrostatePlan
+    candidates: list[LigandMicrostateCandidate] = Field(min_length=1)
+    protonation_candidate_count: int = Field(ge=1)
+    enumerated_candidate_count: int = Field(ge=1)
+    truncated: bool = False
+    dimorphite_version: str = Field(min_length=1)
+    rdkit_version: str = Field(min_length=1)
+
+
+class ResolveLigandMicrostateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    parent_state_id: str = Field(min_length=1)
+    plan: LigandMicrostatePlan
+    candidate_index: int = Field(ge=0)
+    acknowledge_bounded_enumeration: bool = False
+
+    @model_validator(mode="after")
+    def require_enumerated_selection(self) -> "ResolveLigandMicrostateRequest":
+        if self.plan.mode is not LigandMicrostateMode.ENUMERATED_SELECTION:
+            raise ValueError(
+                "A derived microstate can only be selected from an enumerated plan."
+            )
+        if not self.acknowledge_bounded_enumeration:
+            raise ValueError(
+                "acknowledge_bounded_enumeration must be true before selecting a "
+                "screening microstate."
+            )
+        return self
+
+
+class LigandMicrostateSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_index: int = Field(ge=0)
+    candidate_count: int = Field(ge=1)
+    microstate_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protonation_candidate_index: int = Field(ge=0)
+    tautomer_index: int = Field(ge=0)
+    plan: LigandMicrostatePlan
+    enumeration_truncated: bool = False
+
+
+class LigandMicrostateRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    artifact: LigandChemicalStateArtifact
+    parent_state_id: str = Field(min_length=1)
+    inspection: LigandInspection
+    selection: LigandMicrostateSelection
+    warnings: list[StructuredWarning]
+    provenance: ProvenanceEvent
+    content_url: str = Field(min_length=1)
+
+
 class LigandRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -374,6 +474,7 @@ class LigandLibraryFilterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     plan: LigandLibraryFilterPlan = Field(default_factory=LigandLibraryFilterPlan)
+    microstate_plan: LigandMicrostatePlan = Field(default_factory=LigandMicrostatePlan)
     state_overrides: dict[str, str] = Field(default_factory=dict)
 
 
@@ -459,6 +560,7 @@ class LigandLibraryFilterPreview(BaseModel):
 
     library_id: str = Field(min_length=1)
     plan: LigandLibraryFilterPlan
+    microstate_plan: LigandMicrostatePlan = Field(default_factory=LigandMicrostatePlan)
     evaluations: list[LigandFilterEvaluation]
     summary: LigandFilterSummary
     rdkit_version: str = Field(min_length=1)
@@ -481,6 +583,7 @@ class LigandLibraryFilterRun(BaseModel):
 
     artifact: LigandFilterRunArtifact
     plan: LigandLibraryFilterPlan
+    microstate_plan: LigandMicrostatePlan = Field(default_factory=LigandMicrostatePlan)
     evaluations: list[LigandFilterEvaluation]
     summary: LigandFilterSummary
     selected_ligand_ids: list[str]
@@ -531,6 +634,7 @@ class LigandConformerArtifact(BaseModel):
 
     conformer_id: str = Field(min_length=1)
     ligand_id: str = Field(min_length=1)
+    chemical_state_id: str | None = None
     stage: str = Field(pattern="^(minimized|generated_minimized)$")
     filename: str = Field(min_length=1)
     format: str = Field(pattern="^sdf$")

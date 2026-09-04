@@ -17,6 +17,9 @@ import type {
   LigandLibraryDockingInput,
   LigandLibraryRecord,
   LigandLibrarySummary,
+  LigandMicrostateOptions,
+  LigandMicrostatePlan,
+  LigandMicrostateRecord,
   LigandPdbqtRecord,
   LigandPreparationStatus,
   LigandProtonationOptions,
@@ -59,6 +62,8 @@ type Operation =
   | "importing"
   | "resolving"
   | "bulk-resolving"
+  | "enumerating-microstates"
+  | "selecting-microstate"
   | "minimizing"
   | "generating"
   | "preparing-pdbqt"
@@ -79,6 +84,15 @@ const DEFAULT_FILTER_PLAN: LigandLibraryFilterPlan = {
   brenk_policy: "review",
   duplicate_policy: "exclude",
   custom_rules: [],
+};
+
+const DEFAULT_MICROSTATE_PLAN: LigandMicrostatePlan = {
+  mode: "exact_imported_state",
+  ph_min: 7.4,
+  ph_max: 7.4,
+  precision: 1.0,
+  max_tautomers_per_protomer: 8,
+  max_microstates_per_parent: 16,
 };
 
 export function LigandWorkspace({
@@ -113,6 +127,11 @@ export function LigandWorkspace({
   const [filterRun, setFilterRun] = useState<LigandLibraryFilterRun | null>(null);
   const [filterConfirmed, setFilterConfirmed] = useState(false);
   const [resolvedStates, setResolvedStates] = useState<Record<string, LigandChemicalStateRecord>>({});
+  const [microstatePlan, setMicrostatePlan] = useState<LigandMicrostatePlan>(DEFAULT_MICROSTATE_PLAN);
+  const [microstateStates, setMicrostateStates] = useState<Record<string, LigandMicrostateRecord>>({});
+  const [microstateOptions, setMicrostateOptions] = useState<LigandMicrostateOptions | null>(null);
+  const [microstateCandidateIndex, setMicrostateCandidateIndex] = useState<number | null>(null);
+  const [microstateAcknowledged, setMicrostateAcknowledged] = useState(false);
   const [protonationStates, setProtonationStates] = useState<Record<string, LigandProtonationRecord>>({});
   const [protonationOptions, setProtonationOptions] = useState<LigandProtonationOptions | null>(null);
   const [protonationCandidateIndex, setProtonationCandidateIndex] = useState<number | null>(null);
@@ -186,6 +205,7 @@ export function LigandWorkspace({
           if (next[entry.ligand_id]) continue;
           next[entry.ligand_id] = {
             status: batchStatusFromPreparation(entry.status),
+            chemicalStateId: entry.chemical_state_id,
             initialEnergyKcalMol: entry.initial_energy_kcal_mol ?? undefined,
             finalEnergyKcalMol: entry.final_energy_kcal_mol ?? undefined,
             error: entry.error_message ?? undefined,
@@ -230,6 +250,9 @@ export function LigandWorkspace({
     setProtonationOptions(null);
     setProtonationCandidateIndex(null);
     setProtonationSkipped(false);
+    setMicrostateOptions(null);
+    setMicrostateCandidateIndex(null);
+    setMicrostateAcknowledged(false);
     const savedResult = record ? batchResults[record.artifact.ligand_id] : undefined;
     setConformer(savedResult?.conformer ?? null);
     setPdbqt(savedResult?.pdbqt ?? null);
@@ -286,14 +309,17 @@ export function LigandWorkspace({
     return () => { active = false; };
   }, [record?.artifact.ligand_id, currentBatchResult]);
 
+  const activeMicrostate = record ? microstateStates[record.artifact.ligand_id] ?? null : null;
   const activeProtonation = record ? protonationStates[record.artifact.ligand_id] ?? null : null;
   const activeState = record ? resolvedStates[record.artifact.ligand_id] ?? null : null;
-  const inspection = activeProtonation?.inspection ?? activeState?.inspection ?? record?.inspection ?? null;
-  const activeStateId = activeProtonation?.artifact.state_id
+  const inspection = activeMicrostate?.inspection ?? activeProtonation?.inspection ?? activeState?.inspection ?? record?.inspection ?? null;
+  const baseStateId = activeState?.artifact.state_id ?? record?.state?.state_id ?? null;
+  const activeStateId = activeMicrostate?.artifact.state_id
+    ?? activeProtonation?.artifact.state_id
     ?? activeState?.artifact.state_id
     ?? record?.state?.state_id
     ?? null;
-  const activeContentUrl = activeProtonation?.content_url ?? activeState?.content_url ?? record?.content_url ?? null;
+  const activeContentUrl = activeMicrostate?.content_url ?? activeProtonation?.content_url ?? activeState?.content_url ?? record?.content_url ?? null;
   const blockers = inspection
     ? inspection.undefined_stereocenter_count + (inspection.fragment_count > 1 ? 1 : 0)
     : 0;
@@ -304,7 +330,9 @@ export function LigandWorkspace({
       id: activeStateId ?? record.artifact.ligand_id,
       url: ankoraApi.ligandContentUrl(activeContentUrl),
       format: "sdf",
-      label: activeProtonation
+      label: activeMicrostate
+        ? `${inspection.name} · explicitly selected screening microstate`
+        : activeProtonation
         ? `${inspection.name} · explicitly protonated state`
         : activeState
         ? `${inspection.name} · explicitly resolved state`
@@ -322,7 +350,7 @@ export function LigandWorkspace({
         : `${inspection.name} · source geometry + ${conformer.minimization.force_field}`,
     };
     return viewMode === "minimized" ? [minimized] : [reference, minimized];
-  }, [activeContentUrl, activeProtonation, activeState, activeStateId, conformer, inspection, record, viewMode]);
+  }, [activeContentUrl, activeMicrostate, activeProtonation, activeState, activeStateId, conformer, inspection, record, viewMode]);
 
   async function extract() {
     if (!selected || selected.sequence_number === null) return;
@@ -360,10 +388,12 @@ export function LigandWorkspace({
       setWorkspaceMode(next.imported_count > 1 ? "screening" : "single");
       setLibrary(next);
       setFilterPlan(DEFAULT_FILTER_PLAN);
+      setMicrostatePlan(DEFAULT_MICROSTATE_PLAN);
       setFilterRun(null);
       onLibraryDockingInputChange?.(null);
       setFilterConfirmed(false);
       setResolvedStates({});
+      setMicrostateStates({});
       setBatchResults({});
       setBatchConfirmed(false);
       const first = next.entries.find((entry) => entry.ligand)?.ligand;
@@ -371,6 +401,7 @@ export function LigandWorkspace({
         onRecordChange(first);
         const preview = await ankoraApi.previewLigandLibraryFilters(next.artifact.library_id, {
           plan: DEFAULT_FILTER_PLAN,
+          microstate_plan: DEFAULT_MICROSTATE_PLAN,
           state_overrides: {},
         });
         setFilterPreview(preview);
@@ -399,10 +430,12 @@ export function LigandWorkspace({
       setWorkspaceMode("screening");
       setLibrary(next);
       setFilterPlan(DEFAULT_FILTER_PLAN);
+      setMicrostatePlan(DEFAULT_MICROSTATE_PLAN);
       setFilterRun(null);
       onLibraryDockingInputChange?.(null);
       setFilterConfirmed(false);
       setResolvedStates({});
+      setMicrostateStates({});
       setBatchResults({});
       setBatchConfirmed(false);
       const first = next.entries.find((entry) => entry.ligand)?.ligand;
@@ -411,9 +444,11 @@ export function LigandWorkspace({
         const run = await ankoraApi.latestLigandLibraryFilterRun(libraryId);
         setFilterRun(run);
         setFilterPlan(run.plan);
+        setMicrostatePlan(run.microstate_plan ?? DEFAULT_MICROSTATE_PLAN);
         setFilterPreview({
           library_id: run.artifact.library_id,
           plan: run.plan,
+          microstate_plan: run.microstate_plan ?? DEFAULT_MICROSTATE_PLAN,
           evaluations: run.evaluations,
           summary: run.summary,
           rdkit_version: run.rdkit_version,
@@ -424,6 +459,7 @@ export function LigandWorkspace({
         // exactly what it was.
         const preview = await ankoraApi.previewLigandLibraryFilters(libraryId, {
           plan: DEFAULT_FILTER_PLAN,
+          microstate_plan: DEFAULT_MICROSTATE_PLAN,
           state_overrides: {},
         });
         setFilterPreview(preview);
@@ -449,6 +485,7 @@ export function LigandWorkspace({
       setFilterRun(null);
       onLibraryDockingInputChange?.(null);
       setResolvedStates({});
+      setMicrostateStates({});
       setBatchResults({});
       onRecordChange(next);
     } catch (reason: unknown) {
@@ -499,7 +536,10 @@ export function LigandWorkspace({
         ...resolvedStates,
         [record.artifact.ligand_id]: next,
       };
+      const nextMicrostateStates = { ...microstateStates };
+      delete nextMicrostateStates[record.artifact.ligand_id];
       setResolvedStates(nextResolvedStates);
+      setMicrostateStates(nextMicrostateStates);
       if (library) {
         // Refresh the preview so this ligand's updated descriptors are reflected,
         // but keep the already-applied filter run and batch confirmation intact -
@@ -507,7 +547,7 @@ export function LigandWorkspace({
         // re-confirming the batch for every other ligand already in progress.
         const preview = await ankoraApi.previewLigandLibraryFilters(
           library.artifact.library_id,
-          filterRequest(filterPlan, nextResolvedStates),
+          filterRequest(filterPlan, microstatePlan, nextResolvedStates, nextMicrostateStates),
         );
         setFilterPreview(preview);
       } else {
@@ -595,7 +635,7 @@ export function LigandWorkspace({
       setResolvedStates(nextResolvedStates);
       const preview = await ankoraApi.previewLigandLibraryFilters(
         library.artifact.library_id,
-        filterRequest(filterPlan, nextResolvedStates),
+        filterRequest(filterPlan, microstatePlan, nextResolvedStates, microstateStates),
       );
       setFilterPreview(preview);
     } catch (reason: unknown) {
@@ -831,13 +871,104 @@ export function LigandWorkspace({
     if (next.precision !== undefined) setPhPrecision(clampDecimal(String(next.precision), 0.1, 5));
   }
 
+  function changeMicrostatePlan(change: Partial<LigandMicrostatePlan>) {
+    setMicrostatePlan((current) => ({ ...current, ...change }));
+    setMicrostateStates({});
+    setMicrostateOptions(null);
+    setMicrostateCandidateIndex(null);
+    setMicrostateAcknowledged(false);
+    setFilterPreview(null);
+    setFilterRun(null);
+    onLibraryDockingInputChange?.(null);
+    setFilterConfirmed(false);
+    setBatchConfirmed(false);
+  }
+
+  async function enumerateMicrostates() {
+    if (!record || !baseStateId || blockers || microstatePlan.mode !== "enumerated_selection") return;
+    setOperation("enumerating-microstates");
+    setError(null);
+    try {
+      const next = await ankoraApi.ligandMicrostateOptions(
+        record.artifact.ligand_id,
+        baseStateId,
+        microstatePlan,
+      );
+      setMicrostateOptions(next);
+      // Candidate order is deterministic provenance, not a population or
+      // desirability ranking. Even one candidate therefore needs a click.
+      setMicrostateCandidateIndex(null);
+      setMicrostateAcknowledged(false);
+    } catch (reason: unknown) {
+      setError(asError(reason, "Screening microstates could not be enumerated"));
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function selectMicrostate() {
+    if (
+      !record || !microstateOptions || microstateCandidateIndex === null
+      || !microstateAcknowledged
+    ) return;
+    setOperation("selecting-microstate");
+    setError(null);
+    try {
+      const next = await ankoraApi.resolveLigandMicrostate(record.artifact.ligand_id, {
+        parent_state_id: microstateOptions.parent_state_id,
+        plan: microstateOptions.plan,
+        candidate_index: microstateCandidateIndex,
+        acknowledge_bounded_enumeration: true,
+      });
+      const nextMicrostateStates = {
+        ...microstateStates,
+        [record.artifact.ligand_id]: next,
+      };
+      setMicrostateStates(nextMicrostateStates);
+      setMicrostateOptions(null);
+      setMicrostateCandidateIndex(null);
+      setMicrostateAcknowledged(false);
+      setFilterRun(null);
+      onLibraryDockingInputChange?.(null);
+      setFilterConfirmed(false);
+      setBatchConfirmed(false);
+      setBatchResults((current) => {
+        const updated = { ...current };
+        delete updated[record.artifact.ligand_id];
+        return updated;
+      });
+      if (library) {
+        const preview = await ankoraApi.previewLigandLibraryFilters(
+          library.artifact.library_id,
+          filterRequest(filterPlan, microstatePlan, resolvedStates, nextMicrostateStates),
+        );
+        setFilterPreview(preview);
+      }
+      setConformer(null);
+      setPdbqt(null);
+      setViewMode("reference");
+    } catch (reason: unknown) {
+      setError(asError(reason, "The selected screening microstate could not be recorded"));
+    } finally {
+      setOperation(null);
+    }
+  }
+
   async function prepareLibrary() {
     if (!library || !filterRun || !batchConfirmed) return;
-    const selectedIds = new Set(filterRun.selected_ligand_ids);
+    const appliedRun = filterRun;
+    const selectedIds = new Set(appliedRun.selected_ligand_ids);
+    const selectedStates = new Map(
+      appliedRun.evaluations.map((evaluation) => [evaluation.ligand_id, evaluation.state_id]),
+    );
     const ligands = library.entries.flatMap((entry) => (
       entry.ligand
       && selectedIds.has(entry.ligand.artifact.ligand_id)
-      && batchResults[entry.ligand.artifact.ligand_id]?.status !== "prepared"
+      && !(
+        batchResults[entry.ligand.artifact.ligand_id]?.status === "prepared"
+        && batchResults[entry.ligand.artifact.ligand_id]?.chemicalStateId
+          === selectedStates.get(entry.ligand.artifact.ligand_id)
+      )
       && batchResults[entry.ligand.artifact.ligand_id]?.status !== "excluded"
         ? [entry.ligand]
         : []
@@ -852,23 +983,18 @@ export function LigandWorkspace({
 
     async function prepareOne(ligand: LigandRecord) {
       const ligandId = ligand.artifact.ligand_id;
-      const resolved = resolvedStates[ligandId];
-      const inspected = resolved?.inspection ?? ligand.inspection;
-      const stateId = resolved?.artifact.state_id ?? ligand.state?.state_id ?? null;
-      if (
-        !stateId
-        || inspected.fragment_count > 1
-        || inspected.undefined_stereocenter_count > 0
-      ) {
+      const evaluation = appliedRun.evaluations.find((item) => item.ligand_id === ligandId);
+      const stateId = evaluation?.state_id ?? null;
+      if (!stateId || evaluation?.disposition !== "eligible") {
         setBatchResults((current) => ({
           ...current,
-          [ligandId]: { status: "needs-decision" },
+          [ligandId]: { status: "needs-decision", chemicalStateId: stateId },
         }));
         return;
       }
-      setBatchResults((current) => ({
-        ...current,
-        [ligandId]: { status: "generating" },
+        setBatchResults((current) => ({
+          ...current,
+          [ligandId]: { status: "generating", chemicalStateId: stateId },
       }));
       try {
         const nextConformer = await ankoraApi.generateLigandConformer(ligandId, {
@@ -881,6 +1007,7 @@ export function LigandWorkspace({
         });
         let result: LigandBatchResult = {
           status: nextConformer.minimization.converged ? "minimized" : "nonconverged",
+          chemicalStateId: stateId,
           conformer: nextConformer,
         };
         if (nextConformer.minimization.converged && tools?.meeko_ligand.available) {
@@ -889,7 +1016,7 @@ export function LigandWorkspace({
             nextConformer.artifact.conformer_id,
             { charge_model: "gasteiger", client_concurrency_hint: workerCount },
           );
-          result = { status: "prepared", conformer: nextConformer, pdbqt: nextPdbqt };
+          result = { status: "prepared", chemicalStateId: stateId, conformer: nextConformer, pdbqt: nextPdbqt };
         }
         setBatchResults((current) => ({ ...current, [ligandId]: result }));
         if (record?.artifact.ligand_id === ligandId) {
@@ -901,7 +1028,7 @@ export function LigandWorkspace({
         const failure = asError(reason, "Ligand preparation failed");
         setBatchResults((current) => ({
           ...current,
-          [ligandId]: { status: "failed", error: failure.message },
+          [ligandId]: { status: "failed", chemicalStateId: stateId, error: failure.message },
         }));
       }
     }
@@ -948,7 +1075,7 @@ export function LigandWorkspace({
     try {
       const next = await ankoraApi.previewLigandLibraryFilters(
         library.artifact.library_id,
-        filterRequest(filterPlan, resolvedStates),
+        filterRequest(filterPlan, microstatePlan, resolvedStates, microstateStates),
       );
       setFilterPreview(next);
       setFilterRun(null);
@@ -970,14 +1097,15 @@ export function LigandWorkspace({
       const next = await ankoraApi.applyLigandLibraryFilters(
         library.artifact.library_id,
         {
-          ...filterRequest(filterPlan, resolvedStates),
+          ...filterRequest(filterPlan, microstatePlan, resolvedStates, microstateStates),
           acknowledge_selection: true,
         },
       );
       setFilterRun(next);
       setFilterPreview({
-        library_id: next.artifact.library_id,
-        plan: next.plan,
+          library_id: next.artifact.library_id,
+          plan: next.plan,
+          microstate_plan: next.microstate_plan ?? microstatePlan,
         evaluations: next.evaluations,
         summary: next.summary,
         rdkit_version: next.rdkit_version,
@@ -1003,7 +1131,7 @@ export function LigandWorkspace({
     if (next) onRecordChange(next);
   }
 
-  const notice = viewerNotice(record, activeState, conformer, viewMode);
+  const notice = viewerNotice(record, Boolean(activeMicrostate || activeState), conformer, viewMode);
   const stereoChoiceRequired = resolution?.stereoisomer_selection_required ?? false;
   const canResolve = componentIndex !== null
     && (!stereoChoiceRequired || stereoisomerIndex !== null);
@@ -1011,22 +1139,31 @@ export function LigandWorkspace({
     record && filterRun?.selected_ligand_ids.includes(record.artifact.ligand_id),
   );
   const selectedCount = filterRun?.selected_ligand_ids.length ?? 0;
+  const selectedStateIds = new Map(
+    filterRun?.evaluations.map((evaluation) => [evaluation.ligand_id, evaluation.state_id]) ?? [],
+  );
+  const resultMatchesSelection = (id: string) => (
+    batchResults[id]?.chemicalStateId === selectedStateIds.get(id)
+  );
   const preparedCount = filterRun
-    ? filterRun.selected_ligand_ids.filter((id) => batchResults[id]?.status === "prepared").length
+    ? filterRun.selected_ligand_ids.filter((id) => (
+        batchResults[id]?.status === "prepared" && resultMatchesSelection(id)
+      )).length
     : 0;
   const excludedCount = filterRun
     ? filterRun.selected_ligand_ids.filter((id) => batchResults[id]?.status === "excluded").length
     : 0;
   const terminalCount = filterRun
     ? filterRun.selected_ligand_ids.filter((id) => (
-        isTerminalLigandBatchStatus(batchResults[id]?.status)
+        isTerminalLigandBatchStatus(batchResults[id]?.status) && resultMatchesSelection(id)
       )).length
     : 0;
   const pendingCount = selectedCount - terminalCount;
   const retryableCount = filterRun
     ? filterRun.selected_ligand_ids.filter((id) => {
         const status = batchResults[id]?.status;
-        return status === "failed" || status === "minimized" || status === "nonconverged";
+        return resultMatchesSelection(id)
+          && (status === "failed" || status === "minimized" || status === "nonconverged");
       }).length
     : 0;
   const processableCount = pendingCount + retryableCount;
@@ -1059,6 +1196,11 @@ export function LigandWorkspace({
     const inspected = resolvedStates[id]?.inspection ?? ligand?.inspection;
     return (inspected?.fragment_count ?? 0) > 1;
   }).length;
+  const missingMicrostateCount = microstatePlan.mode === "enumerated_selection" && filterPreview
+    ? filterPreview.evaluations.filter((evaluation) => (
+        evaluation.disposition === "eligible" && !microstateStates[evaluation.ligand_id]
+      )).length
+    : 0;
 
   return <>
     <section className="workspace" aria-label="Ligand workspace">
@@ -1113,6 +1255,7 @@ export function LigandWorkspace({
         run={filterRun}
         confirmed={filterConfirmed}
         operation={operation}
+        missingMicrostateCount={missingMicrostateCount}
         onPlanChange={changeFilterPlan}
         onResetPlan={resetFilterPlan}
         onConfirmedChange={setFilterConfirmed}
@@ -1122,7 +1265,7 @@ export function LigandWorkspace({
       {library ? <InspectorStage title="3 · Library preparation" className="ligand-batch-controls" defaultOpen={Boolean(filterRun)} summary={filterRun ? `${filterRun.selected_ligand_ids.length} selected` : "Apply filters first"}>
         <p className="field-note">{filterRun ? `${filterRun.selected_ligand_ids.length} explicitly selected molecules are ready for 3D preparation.` : "Apply the filter preview first. No molecule is minimized from a provisional selection."}</p>
         <label className="check-row"><input type="checkbox" checked={batchConfirmed} disabled={!filterRun} onChange={(event) => setBatchConfirmed(event.target.checked)} /><span><strong>Prepare the applied filtered subset</strong><small>Generate independent ETKDGv3 coordinates, minimize with {forceField}, and create PDBQT when Meeko is available.</small></span></label>
-        <p className="field-note">Batch preparation uses each ligand&apos;s imported or already-resolved chemical state as-is; it does not run Dimorphite-DL physiological protonation enumeration. To enumerate ionization states at a target pH, open the ligand individually before including it in a batch run.</p>
+        <p className="field-note">Batch preparation uses the exact chemical-state ID recorded by the applied manifest. {filterRun?.microstate_plan?.mode === "enumerated_selection" ? "Every included parent compound therefore carries one explicitly selected bounded protonation/tautomer state." : "The exact submitted or component-resolved state is retained; no protonation or tautomer is selected silently."}</p>
         {filterRun && selectedCount > 0 && terminalCount === selectedCount ? (
           <>
             <p className="prepared-summary"><strong>Batch complete</strong><span>{preparedCount}/{selectedCount} ligands are PDBQT-ready{selectedCount - preparedCount ? ` · ${selectedCount - preparedCount} retained without docking-ready output` : ""}{excludedCount ? ` · ${excludedCount} explicitly excluded` : ""}. Ankora will continue to Binding site; every unsuccessful outcome remains recorded.</span></p>
@@ -1135,7 +1278,7 @@ export function LigandWorkspace({
         ) : null}
       </InspectorStage> : null}
       {record && inspection ? <>
-        <LigandSummary record={record} inspection={inspection} resolved={Boolean(activeState) || Boolean(activeProtonation)} />
+        <LigandSummary record={record} inspection={inspection} resolved={Boolean(activeState) || Boolean(activeProtonation) || Boolean(activeMicrostate)} />
         {library || blockers || activeState ? <>
         <InspectorStage title={`${library ? "4" : "2"} · Chemical state`} className="ligand-state-controls" defaultOpen={!stateConfirmed} summary={stateConfirmed ? "Confirmed" : blockers ? "Decision required" : "Review"}>
           {blockers && !activeState ? <>
@@ -1164,51 +1307,51 @@ export function LigandWorkspace({
         </> : null}
         {library ? <>
         <InspectorStage
-          title={`${library ? "5" : "3"} · Protonation`}
+          title="5 · Screening microstate"
           className="ligand-protonation-controls"
-          defaultOpen={stateConfirmed && !activeProtonation && !protonationSkipped}
-          summary={activeProtonation ? "Confirmed" : protonationSkipped ? "Skipped" : "Pending"}
+          defaultOpen={microstatePlan.mode === "enumerated_selection" && !activeMicrostate}
+          summary={microstatePlan.mode === "exact_imported_state" ? "Exact supplied state" : activeMicrostate ? "Selected" : "Selection required"}
         >
-          {!stateConfirmed ? (
-            <p className="field-note">Confirm the chemical state above before enumerating protonation states.</p>
-          ) : activeProtonation ? (
+          <label className="field-label" htmlFor="library-microstate-policy">Screening chemical-state policy</label>
+          <select
+            id="library-microstate-policy"
+            value={microstatePlan.mode}
+            onChange={(event) => changeMicrostatePlan({ mode: event.target.value as LigandMicrostatePlan["mode"] })}
+          >
+            <option value="exact_imported_state">Use exact supplied/resolved state</option>
+            <option value="enumerated_selection">Enumerate, then explicitly select one state per parent</option>
+          </select>
+          {microstatePlan.mode === "exact_imported_state" ? (
             <div className="state-resolved-note">
-              <strong>Protonation state applied</strong>
-              <small>
-                pH {activeProtonation.selection.ph_min}–{activeProtonation.selection.ph_max} · candidate{" "}
-                {activeProtonation.selection.candidate_index + 1} of {activeProtonation.selection.candidate_count}
-                {" · formal charge "}
-                {inspection.formal_charge >= 0 ? "+" : ""}
-                {inspection.formal_charge}
-              </small>
-            </div>
-          ) : protonationSkipped ? (
-            <div className="protonation-blocker" role="alert">
-              <p>Protonation was skipped. The as-drawn formal charge is used for 3D generation and docking.</p>
-              <div className="protonation-blocker-actions"><button type="button" onClick={() => setProtonationSkipped(false)}>Reconsider</button></div>
+              <strong>Exact-state policy</strong>
+              <small>Ankora filters and prepares the submitted or explicitly component-resolved state. Protonation and tautomer alternatives are not generated.</small>
             </div>
           ) : <>
-            <label className="numeric-field"><span>pH min</span><input aria-label="Minimum pH" type="number" step={0.1} min={0} max={14} value={phMin} onChange={(event) => setPhMin(clampDecimal(event.target.value, 0, 14))} /></label>
-            <label className="numeric-field"><span>pH max</span><input aria-label="Maximum pH" type="number" step={0.1} min={0} max={14} value={phMax} onChange={(event) => setPhMax(clampDecimal(event.target.value, 0, 14))} /></label>
-            <label className="numeric-field"><span>Precision</span><input aria-label="pKa precision in standard deviations" type="number" step={0.1} min={0.1} max={5} value={phPrecision} onChange={(event) => setPhPrecision(clampDecimal(event.target.value, 0.1, 5))} /></label>
-            <p className="field-note">Enumerates ionization states with Dimorphite-DL across the pH range. A single unambiguous result still requires explicit confirmation.</p>
-            <button type="button" className="apply-plan" disabled={Boolean(operation)} onClick={() => void enumerateProtonation()}>Enumerate protonation states at this pH</button>
-            {protonationOptions ? <>
-              {protonationOptions.candidates.length > 1 ? <>
-                <label className="field-label" htmlFor="ligand-protonation-candidate">Protonation state</label>
-                <select id="ligand-protonation-candidate" value={protonationCandidateIndex ?? ""} onChange={(event) => setProtonationCandidateIndex(Number(event.target.value))}>
-                  <option value="" disabled>Choose one protonation state</option>
-                  {protonationOptions.candidates.map((candidate) => <option key={candidate.index} value={candidate.index}>formal charge {candidate.formal_charge >= 0 ? "+" : ""}{candidate.formal_charge} · {candidate.canonical_smiles}</option>)}
-                </select>
-              </> : (
-                <p className="field-note">
-                  No ambiguity at pH {protonationOptions.ph_min}–{protonationOptions.ph_max}: formal charge{" "}
-                  {protonationOptions.candidates[0] ? (protonationOptions.candidates[0].formal_charge >= 0 ? "+" : "") + protonationOptions.candidates[0].formal_charge : "unchanged"}.
-                </p>
-              )}
-              <button type="button" className="apply-plan" disabled={protonationCandidateIndex === null || Boolean(operation)} onClick={() => void applyProtonation()}>Create explicitly resolved protonation state</button>
+            <div className="filter-policy-grid">
+              <label><span>pH min</span><input aria-label="Screening minimum pH" type="number" step={0.1} min={0} max={14} value={microstatePlan.ph_min} onChange={(event) => changeMicrostatePlan({ ph_min: clampDecimal(event.target.value, 0, 14) })} /></label>
+              <label><span>pH max</span><input aria-label="Screening maximum pH" type="number" step={0.1} min={0} max={14} value={microstatePlan.ph_max} onChange={(event) => changeMicrostatePlan({ ph_max: clampDecimal(event.target.value, 0, 14) })} /></label>
+              <label><span>pKa precision</span><input aria-label="Screening pKa precision" type="number" step={0.1} min={0.1} max={5} value={microstatePlan.precision} onChange={(event) => changeMicrostatePlan({ precision: clampDecimal(event.target.value, 0.1, 5) })} /></label>
+              <label><span>Tautomers / protomer</span><input aria-label="Maximum tautomers per protomer" type="number" min={1} max={32} value={microstatePlan.max_tautomers_per_protomer} onChange={(event) => changeMicrostatePlan({ max_tautomers_per_protomer: clampNumber(event.target.value, 1, 32) })} /></label>
+              <label><span>States / parent</span><input aria-label="Maximum microstates per parent" type="number" min={1} max={64} value={microstatePlan.max_microstates_per_parent} onChange={(event) => changeMicrostatePlan({ max_microstates_per_parent: clampNumber(event.target.value, 1, 64) })} /></label>
+            </div>
+            <p className="field-note">Dimorphite-DL proposes protonation states and RDKit enumerates tautomers inside these recorded bounds. Candidate order is deterministic but is not a population, probability, or preference ranking.</p>
+            {blockers ? <p className="protonation-blocker">Resolve the component and stereochemistry above before enumerating this parent compound.</p> : activeMicrostate ? (
+              <div className="state-resolved-note">
+                <strong>Selected microstate recorded</strong>
+                <small>Candidate {activeMicrostate.selection.candidate_index + 1} of {activeMicrostate.selection.candidate_count} · formal charge {activeMicrostate.inspection.formal_charge >= 0 ? "+" : ""}{activeMicrostate.inspection.formal_charge}{activeMicrostate.selection.enumeration_truncated ? " · bounded set was truncated" : ""}</small>
+              </div>
+            ) : null}
+            <button type="button" className="apply-plan" disabled={Boolean(operation) || Boolean(blockers)} onClick={() => void enumerateMicrostates()}>{activeMicrostate ? "Enumerate again for this parent" : "Enumerate this parent compound"}</button>
+            {microstateOptions ? <>
+              <p className={microstateOptions.truncated ? "protonation-blocker" : "field-note"}>{microstateOptions.candidates.length} retained candidate{microstateOptions.candidates.length === 1 ? "" : "s"} from {microstateOptions.protonation_candidate_count} protonation proposal{microstateOptions.protonation_candidate_count === 1 ? "" : "s"}.{microstateOptions.truncated ? " The configured bound truncated the enumerated set." : ""}</p>
+              <label className="field-label" htmlFor="ligand-microstate-candidate">Exact state to carry forward</label>
+              <select id="ligand-microstate-candidate" value={microstateCandidateIndex ?? ""} onChange={(event) => { setMicrostateCandidateIndex(Number(event.target.value)); setMicrostateAcknowledged(false); }}>
+                <option value="" disabled>Choose one unranked candidate</option>
+                {microstateOptions.candidates.map((candidate) => <option key={candidate.microstate_key} value={candidate.index}>charge {candidate.formal_charge >= 0 ? "+" : ""}{candidate.formal_charge} · protomer {candidate.protonation_candidate_index + 1} · tautomer {candidate.tautomer_index + 1}{candidate.matches_parent_state ? " · matches parent" : ""} · {candidate.canonical_isomeric_smiles}</option>)}
+              </select>
+              <label className="check-row"><input type="checkbox" checked={microstateAcknowledged} onChange={(event) => setMicrostateAcknowledged(event.target.checked)} /><span><strong>Select this exact bounded candidate</strong><small>I understand that omitted states may exist and that the list is not ranked by biological population or docking suitability.</small></span></label>
+              <button type="button" className="apply-plan" disabled={microstateCandidateIndex === null || !microstateAcknowledged || Boolean(operation)} onClick={() => void selectMicrostate()}>Record selected screening microstate</button>
             </> : null}
-            <button type="button" className="link-action" onClick={skipProtonation}>Skip — use as-drawn</button>
           </>}
         </InspectorStage>
         <InspectorStage title={`${library ? "6" : "4"} · 3D conformer + minimization`} className="minimization-controls" defaultOpen={stateConfirmed && !conformer} summary={conformer ? conformer.minimization.converged ? "Converged" : "Review" : "Pending"}>
@@ -1355,6 +1498,7 @@ interface LibraryFilterControlsProps {
   run: LigandLibraryFilterRun | null;
   confirmed: boolean;
   operation: Operation;
+  missingMicrostateCount: number;
   onPlanChange: (change: Partial<LigandLibraryFilterPlan>) => void;
   onResetPlan: () => void;
   onConfirmedChange: (confirmed: boolean) => void;
@@ -1402,8 +1546,9 @@ function LibraryFilterControls(props: LibraryFilterControlsProps) {
       <span><strong>{summary.eligible_count}</strong> eligible</span><span><strong>{summary.excluded_count}</strong> excluded</span><span><strong>{summary.needs_decision_count}</strong> decisions</span><span><strong>{summary.pains_match_count + summary.brenk_match_count}</strong> alerts</span>
     </div> : <p className="filter-preview-stale">Filter settings changed. Recalculate before applying.</p>}
     {props.preview ? <>
+      {props.missingMicrostateCount ? <p className="protonation-blocker" role="alert"><strong>{props.missingMicrostateCount} eligible parent compound{props.missingMicrostateCount === 1 ? "" : "s"} still need{props.missingMicrostateCount === 1 ? "s" : ""} an explicit microstate.</strong> Select each compound in the table and record one bounded candidate before applying this enumerated-state policy.</p> : null}
       <label className="check-row"><input type="checkbox" checked={props.confirmed} onChange={(event) => props.onConfirmedChange(event.target.checked)} /><span><strong>Apply this exact selection</strong><small>Create an immutable manifest containing every descriptor, rule result, alert, exclusion, and selected ligand ID.</small></span></label>
-      <button type="button" className="apply-plan" disabled={!props.confirmed || Boolean(props.operation)} onClick={props.onApply}>Apply filtered subset</button>
+      <button type="button" className="apply-plan" disabled={!props.confirmed || Boolean(props.operation) || props.missingMicrostateCount > 0} onClick={props.onApply}>Apply filtered subset</button>
     </> : null}
     {props.run ? <div className="filter-run-note"><strong>Selection manifest applied</strong><small>{props.run.selected_ligand_ids.length} ligands · {props.run.worker_count} filter workers · RDKit {props.run.rdkit_version} · SHA-256 {props.run.artifact.sha256.slice(0, 12)}…</small></div> : null}
   </InspectorStage>;
@@ -1545,10 +1690,10 @@ function ErrorBanner({ error }: { error: Error }) {
   return <div className="structure-error receptor-error" role="alert"><strong>{error.message}</strong>{apiError?.code ? <span>{apiError.code}</span> : null}{apiError && Object.keys(apiError.details).length ? <details><summary>Technical evidence</summary><pre>{JSON.stringify(apiError.details, null, 2)}</pre></details> : null}</div>;
 }
 
-function viewerNotice(record: LigandRecord | null, state: LigandChemicalStateRecord | null, conformer: LigandConformerRecord | null, mode: LigandViewMode): [string, string] {
+function viewerNotice(record: LigandRecord | null, hasResolvedState: boolean, conformer: LigandConformerRecord | null, mode: LigandViewMode): [string, string] {
   if (conformer && mode === "minimized") return [conformer.minimization.independent_from_source_coordinates ? "Independent minimized conformer" : "Minimized source geometry", "Explicit-hydrogen MMFF derivative. The imported/reference state remains unchanged."];
   if (conformer && mode === "overlay") return ["Comparison overlay", "Accepted state and prepared 3D conformer are both visible."];
-  if (state) return ["Explicitly resolved state", "The selected component and stereoisomer are recorded in a new immutable SDF."];
+  if (hasResolvedState) return ["Explicitly resolved state", "The selected chemical state is recorded in a new immutable SDF."];
   if (record?.artifact.source === "local") return ["Imported inspected state", record.inspection.has_3d_coordinates ? "The local original is preserved; this canonical SDF retains its supplied 3D coordinates." : "The local original is preserved. This connectivity preview has no authoritative 3D geometry."];
   return ["Crystallographic reference", "Observed coordinates and deposited mmCIF topology. This immutable state is never overwritten."];
 }
@@ -1558,6 +1703,8 @@ function operationLabel(operation: Exclude<Operation, null>, forceField: LigandF
   if (operation === "importing") return "Preserving and inspecting the local ligand…";
   if (operation === "resolving") return "Writing the explicitly selected chemical state…";
   if (operation === "bulk-resolving") return "Keeping the largest fragment for each selected ligand…";
+  if (operation === "enumerating-microstates") return "Enumerating a bounded protonation and tautomer set…";
+  if (operation === "selecting-microstate") return "Recording the explicitly selected screening microstate…";
   if (operation === "generating") return `Generating ETKDGv3 coordinates and minimizing with ${forceField}…`;
   if (operation === "preparing-pdbqt") return "Preparing the converged conformer with Meeko…";
   if (operation === "filtering") return "Evaluating descriptors, rules, alerts, and duplicates…";
@@ -1593,12 +1740,16 @@ function libraryWorkerCount(total: number): number {
 
 function filterRequest(
   plan: LigandLibraryFilterPlan,
+  microstatePlan: LigandMicrostatePlan,
   states: Record<string, LigandChemicalStateRecord>,
+  microstates: Record<string, LigandMicrostateRecord>,
 ) {
   return {
     plan,
+    microstate_plan: microstatePlan,
     state_overrides: Object.fromEntries(
-      Object.entries(states).map(([ligandId, state]) => [ligandId, state.artifact.state_id]),
+      [...Object.entries(states), ...Object.entries(microstates)]
+        .map(([ligandId, state]) => [ligandId, state.artifact.state_id]),
     ),
   };
 }

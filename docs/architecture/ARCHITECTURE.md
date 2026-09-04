@@ -40,6 +40,8 @@ Tool discovery does not execute the tools. A requested optional stage fails with
 ```text
 immutable compound or ordered library
   -> exact inspected/resolved chemical states
+  -> exact-imported-state policy OR bounded protonation/tautomer candidates
+  -> explicit scientist-selected screening microstate per retained parent
   -> read-only descriptors, rules, alerts, and duplicates
   -> explicit immutable selection manifest
   -> bounded per-ligand ETKDG/MMFF preparation
@@ -48,3 +50,9 @@ immutable compound or ordered library
 ```
 
 Single-compound and virtual-screening modes share the same scientific contracts but expose different data planes. The screening table never becomes the source of scientific truth: it renders typed backend records, manifest decisions, and immutable derivative evidence.
+
+Screening microstates follow ADR-016. Candidate order is deterministic but
+scientifically unranked, one exact state must be selected per retained parent,
+and downstream preparation and docking reject state-lineage mismatches. Results
+remain parent-level rows because Ankora does not silently choose a best score
+across multiple chemical states.

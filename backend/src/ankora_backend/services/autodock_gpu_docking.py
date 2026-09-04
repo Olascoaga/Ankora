@@ -760,6 +760,11 @@ class AutoDockGpuDockingService:
         entries = [
             AutoDockGpuBatchLigandResult(
                 ligand_id=molecule.ligand_id,
+                parent_compound_id=molecule.parent_compound_id,
+                chemical_state_id=molecule.chemical_state_id,
+                chemical_state_formal_charge=(
+                    molecule.chemical_state_formal_charge
+                ),
                 source_index=molecule.source_index,
                 name=molecule.name,
                 canonical_smiles=molecule.canonical_smiles,

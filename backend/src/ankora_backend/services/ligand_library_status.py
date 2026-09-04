@@ -23,6 +23,8 @@ def record_library_status(
     status: LigandPreparationStatus,
     conformer_id: str | None = None,
     pdbqt_preparation_id: str | None = None,
+    chemical_state_id: str | None = None,
+    chemical_state_formal_charge: int | None = None,
     initial_energy_kcal_mol: float | None = None,
     final_energy_kcal_mol: float | None = None,
     error_message: str | None = None,
@@ -34,6 +36,9 @@ def record_library_status(
         library_id,
         LigandPreparationEntry(
             ligand_id=original.artifact.ligand_id,
+            parent_compound_id=original.artifact.ligand_id,
+            chemical_state_id=chemical_state_id,
+            chemical_state_formal_charge=chemical_state_formal_charge,
             status=status,
             conformer_id=conformer_id,
             pdbqt_preparation_id=pdbqt_preparation_id,

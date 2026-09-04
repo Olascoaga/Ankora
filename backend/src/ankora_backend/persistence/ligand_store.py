@@ -23,6 +23,7 @@ from ankora_backend.schemas.ligands import (
     LigandLibraryFilterRun,
     LigandLibraryRecord,
     LigandLibrarySummary,
+    LigandMicrostateRecord,
     LigandPdbqtRecord,
     LigandProtonationRecord,
     LigandRecord,
@@ -332,7 +333,11 @@ class LigandArtifactStore:
         ligand_id: str,
         state_id: str,
         content: bytes,
-        record: LigandChemicalStateRecord | LigandProtonationRecord,
+        record: (
+            LigandChemicalStateRecord
+            | LigandProtonationRecord
+            | LigandMicrostateRecord
+        ),
     ) -> None:
         directory = self._state_dir(ligand_id, state_id)
         directory.mkdir(parents=True, exist_ok=False)
@@ -371,7 +376,7 @@ class LigandArtifactStore:
 
     def load_state_record(
         self, ligand_id: str, state_id: str
-    ) -> LigandChemicalStateRecord | LigandProtonationRecord:
+    ) -> LigandChemicalStateRecord | LigandProtonationRecord | LigandMicrostateRecord:
         """Load the exact scientist-recorded decision that produced a state."""
         payload = self._read_state_record_json(ligand_id, state_id)
         event_type = payload.get("provenance", {}).get("event_type")
@@ -379,6 +384,8 @@ class LigandArtifactStore:
             return LigandProtonationRecord.model_validate(payload)
         if event_type == "ligand_chemical_state_resolved":
             return LigandChemicalStateRecord.model_validate(payload)
+        if event_type == "ligand_microstate_selected":
+            return LigandMicrostateRecord.model_validate(payload)
         raise AnkoraDomainError(
             code="LIGAND_STATE_RECORD_UNRECOGNIZED",
             stage="ligand_store",

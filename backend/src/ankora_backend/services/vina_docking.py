@@ -44,6 +44,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorOutputStage,
     ReceptorPreparationStatus,
 )
+from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
 
 
 @dataclass(frozen=True)
@@ -243,6 +244,28 @@ class VinaDockingService:
                 )
                 continue
             source_index, ligand = source
+            try:
+                state = resolve_selected_chemical_state(
+                    ligand_id=ligand_id,
+                    ligand=ligand,
+                    filter_run=filter_run,
+                    ligand_store=self._ligand_store,
+                    stage="vina_docking",
+                    code_prefix="DOCKING",
+                )
+            except AnkoraDomainError as error:
+                entries.append(
+                    self._unavailable_batch_entry(
+                        ligand_id=ligand_id,
+                        parent_compound_id=ligand_id,
+                        source_index=source_index,
+                        name=ligand.inspection.name,
+                        message=error.message,
+                        code=error.code,
+                        completed_at=now,
+                    )
+                )
+                continue
             preparation_initial_energy = (
                 status.initial_energy_kcal_mol if status is not None else None
             )
@@ -257,11 +280,14 @@ class VinaDockingService:
                 entries.append(
                     self._unavailable_batch_entry(
                         ligand_id=ligand_id,
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
                         source_index=source_index,
-                        name=ligand.inspection.name,
-                        canonical_smiles=ligand.inspection.canonical_smiles,
+                        name=state.inspection.name,
+                        canonical_smiles=state.inspection.canonical_smiles,
                         molecular_weight_g_mol=(
-                            ligand.inspection.molecular_weight_g_mol
+                            state.inspection.molecular_weight_g_mol
                         ),
                         preparation_initial_energy_kcal_mol=(
                             preparation_initial_energy
@@ -271,6 +297,32 @@ class VinaDockingService:
                             "This selected molecule has no completed Meeko PDBQT preparation."
                         ),
                         code="DOCKING_LIGAND_NOT_PREPARED",
+                        completed_at=now,
+                    )
+                )
+                continue
+            if status.chemical_state_id != state.state_id:
+                entries.append(
+                    self._unavailable_batch_entry(
+                        ligand_id=ligand_id,
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
+                        source_index=source_index,
+                        name=state.inspection.name,
+                        canonical_smiles=state.inspection.canonical_smiles,
+                        molecular_weight_g_mol=(
+                            state.inspection.molecular_weight_g_mol
+                        ),
+                        preparation_initial_energy_kcal_mol=(
+                            preparation_initial_energy
+                        ),
+                        preparation_energy_kcal_mol=preparation_energy,
+                        message=(
+                            "The prepared PDBQT belongs to a different or unrecorded "
+                            "chemical state than the applied selection manifest."
+                        ),
+                        code="DOCKING_PREPARATION_STATE_MISMATCH",
                         completed_at=now,
                     )
                 )
@@ -301,11 +353,14 @@ class VinaDockingService:
                 entries.append(
                     self._unavailable_batch_entry(
                         ligand_id=ligand_id,
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
                         source_index=source_index,
-                        name=ligand.inspection.name,
-                        canonical_smiles=ligand.inspection.canonical_smiles,
+                        name=state.inspection.name,
+                        canonical_smiles=state.inspection.canonical_smiles,
                         molecular_weight_g_mol=(
-                            ligand.inspection.molecular_weight_g_mol
+                            state.inspection.molecular_weight_g_mol
                         ),
                         preparation_initial_energy_kcal_mol=(
                             preparation_initial_energy
@@ -320,10 +375,13 @@ class VinaDockingService:
             entries.append(
                 VinaBatchLigandResult(
                     ligand_id=ligand_id,
+                    parent_compound_id=state.parent_compound_id,
+                    chemical_state_id=state.state_id,
+                    chemical_state_formal_charge=state.inspection.formal_charge,
                     source_index=source_index,
-                    name=ligand.inspection.name,
-                    canonical_smiles=ligand.inspection.canonical_smiles,
-                    molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                    name=state.inspection.name,
+                    canonical_smiles=state.inspection.canonical_smiles,
+                    molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                     preparation_initial_energy_kcal_mol=(
                         preparation_initial_energy
                     ),
@@ -950,6 +1008,9 @@ class VinaDockingService:
         message: str,
         code: str,
         completed_at: datetime,
+        parent_compound_id: str | None = None,
+        chemical_state_id: str | None = None,
+        chemical_state_formal_charge: int | None = None,
         canonical_smiles: str | None = None,
         molecular_weight_g_mol: float | None = None,
         preparation_initial_energy_kcal_mol: float | None = None,
@@ -957,6 +1018,9 @@ class VinaDockingService:
     ) -> VinaBatchLigandResult:
         return VinaBatchLigandResult(
             ligand_id=ligand_id,
+            parent_compound_id=parent_compound_id,
+            chemical_state_id=chemical_state_id,
+            chemical_state_formal_charge=chemical_state_formal_charge,
             source_index=source_index,
             name=name,
             canonical_smiles=canonical_smiles,

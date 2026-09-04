@@ -275,6 +275,9 @@ class ResultCatalogService:
     def _vina_row(entry: Any) -> CompoundRow:
         return CompoundRow(
             ligand_id=entry.ligand_id,
+            parent_compound_id=entry.parent_compound_id,
+            chemical_state_id=entry.chemical_state_id,
+            chemical_state_formal_charge=entry.chemical_state_formal_charge,
             source_index=entry.source_index,
             name=entry.name,
             canonical_smiles=entry.canonical_smiles,
@@ -292,6 +295,9 @@ class ResultCatalogService:
         top = next((c for c in entry.clusters if c.cluster_rank == 1), None)
         return CompoundRow(
             ligand_id=entry.ligand_id,
+            parent_compound_id=entry.parent_compound_id,
+            chemical_state_id=entry.chemical_state_id,
+            chemical_state_formal_charge=entry.chemical_state_formal_charge,
             source_index=entry.source_index,
             name=entry.name,
             canonical_smiles=entry.canonical_smiles,

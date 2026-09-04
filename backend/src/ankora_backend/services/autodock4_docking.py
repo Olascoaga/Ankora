@@ -61,6 +61,7 @@ from ankora_backend.schemas.warnings import StructuredWarning
 from ankora_backend.services.autodock_inputs import (
     ordered_atom_types,
     resolve_receptor_and_site,
+    resolve_selected_chemical_state,
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
@@ -684,6 +685,28 @@ class AutoDock4DockingService:
                 )
                 continue
             source_index, ligand = source
+            try:
+                state = resolve_selected_chemical_state(
+                    ligand_id=ligand_id,
+                    ligand=ligand,
+                    filter_run=filter_run,
+                    ligand_store=self._ligand_store,
+                    stage=_STAGE,
+                    code_prefix="AUTODOCK4",
+                )
+            except AnkoraDomainError as error:
+                entries.append(
+                    self._unavailable_entry(
+                        ligand_id,
+                        source_index,
+                        ligand.inspection.name,
+                        error.message,
+                        error.code,
+                        now,
+                        parent_compound_id=ligand_id,
+                    )
+                )
+                continue
             status = preparation.entries.get(ligand_id)
             if (
                 status is None
@@ -692,11 +715,36 @@ class AutoDock4DockingService:
             ):
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, ligand.inspection.name,
+                        ligand_id, source_index, state.inspection.name,
                         "This molecule has no completed Meeko PDBQT preparation.",
                         "AUTODOCK4_LIGAND_NOT_PREPARED", now,
-                        canonical_smiles=ligand.inspection.canonical_smiles,
-                        molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                        canonical_smiles=state.inspection.canonical_smiles,
+                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
+                    )
+                )
+                continue
+            if status.chemical_state_id != state.state_id:
+                entries.append(
+                    self._unavailable_entry(
+                        ligand_id,
+                        source_index,
+                        state.inspection.name,
+                        (
+                            "The prepared PDBQT belongs to a different or unrecorded "
+                            "chemical state than the applied selection manifest."
+                        ),
+                        "AUTODOCK4_PREPARATION_STATE_MISMATCH",
+                        now,
+                        canonical_smiles=state.inspection.canonical_smiles,
+                        molecular_weight_g_mol=(
+                            state.inspection.molecular_weight_g_mol
+                        ),
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
                     )
                 )
                 continue
@@ -713,11 +761,14 @@ class AutoDock4DockingService:
             except (AnkoraDomainError, ValueError) as error:
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, ligand.inspection.name,
+                        ligand_id, source_index, state.inspection.name,
                         str(getattr(error, "message", error)),
                         "AUTODOCK4_LIGAND_UNAVAILABLE", now,
-                        canonical_smiles=ligand.inspection.canonical_smiles,
-                        molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                        canonical_smiles=state.inspection.canonical_smiles,
+                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
                     )
                 )
                 continue
@@ -725,27 +776,33 @@ class AutoDock4DockingService:
             if missing:
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, ligand.inspection.name,
+                        ligand_id, source_index, state.inspection.name,
                         (
                             "This molecule uses atom types the selected map set "
                             f"does not cover: {', '.join(missing)}."
                         ),
                         "AUTODOCK4_LIGAND_TYPES_NOT_IN_MAP_SET", now,
-                        canonical_smiles=ligand.inspection.canonical_smiles,
-                        molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                        canonical_smiles=state.inspection.canonical_smiles,
+                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                         ligand_preparation_id=status.pdbqt_preparation_id,
                         ligand_sha256=pdbqt.artifact.sha256,
                         ligand_atom_types=list(atom_types),
+                        parent_compound_id=state.parent_compound_id,
+                        chemical_state_id=state.state_id,
+                        chemical_state_formal_charge=state.inspection.formal_charge,
                     )
                 )
                 continue
             entries.append(
                 AutoDock4BatchLigandResult(
                     ligand_id=ligand_id,
+                    parent_compound_id=state.parent_compound_id,
+                    chemical_state_id=state.state_id,
+                    chemical_state_formal_charge=state.inspection.formal_charge,
                     source_index=source_index,
-                    name=ligand.inspection.name,
-                    canonical_smiles=ligand.inspection.canonical_smiles,
-                    molecular_weight_g_mol=ligand.inspection.molecular_weight_g_mol,
+                    name=state.inspection.name,
+                    canonical_smiles=state.inspection.canonical_smiles,
+                    molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                     ligand_preparation_id=status.pdbqt_preparation_id,
                     ligand_sha256=pdbqt.artifact.sha256,
                     ligand_atom_types=list(atom_types),
@@ -797,10 +854,16 @@ class AutoDock4DockingService:
         ligand_preparation_id: str | None = None,
         ligand_sha256: str | None = None,
         ligand_atom_types: list[str] | None = None,
+        parent_compound_id: str | None = None,
+        chemical_state_id: str | None = None,
+        chemical_state_formal_charge: int | None = None,
     ) -> AutoDock4BatchLigandResult:
         """An unusable molecule stays a visible row rather than disappearing."""
         return AutoDock4BatchLigandResult(
             ligand_id=ligand_id,
+            parent_compound_id=parent_compound_id,
+            chemical_state_id=chemical_state_id,
+            chemical_state_formal_charge=chemical_state_formal_charge,
             source_index=source_index,
             name=name,
             canonical_smiles=canonical_smiles,

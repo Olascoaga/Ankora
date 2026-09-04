@@ -153,6 +153,9 @@ def _vina_batch(
         entries=[
             VinaBatchLigandResult(
                 ligand_id=f"ligand-{index}",
+                parent_compound_id=f"ligand-{index}",
+                chemical_state_id=f"state-{index}",
+                chemical_state_formal_charge=1 if index == 0 else 0,
                 source_index=index,
                 name=f"Compound {index}",
                 canonical_smiles="CCO" if index else "CC",
@@ -591,6 +594,9 @@ def test_vina_counts_poses_and_autodock_counts_clusters() -> None:
 
     assert (vina.pose_count, vina.cluster_count, vina.top_cluster_runs) == (1, None, None)
     assert (cpu.pose_count, cpu.cluster_count, cpu.top_cluster_runs) == (None, 1, 6)
+    assert vina.parent_compound_id == "ligand-0"
+    assert vina.chemical_state_id == "state-0"
+    assert vina.chemical_state_formal_charge == 1
 
 
 def test_a_molecule_that_was_never_docked_keeps_its_row_and_sorts_last() -> None:

@@ -27,6 +27,7 @@ def prepare_ligand_pdbqt(
     store: LigandArtifactStore,
 ) -> LigandPdbqtRecord:
     original = store.load_record(ligand_id)
+    conformer = store.load_conformer_record(ligand_id, conformer_id)
     try:
         record = _prepare_and_store_pdbqt(
             ligand_id=ligand_id,
@@ -40,16 +41,22 @@ def prepare_ligand_pdbqt(
             store,
             original,
             status=LigandPreparationStatus.FAILED,
+            conformer_id=conformer_id,
+            chemical_state_id=conformer.artifact.chemical_state_id,
+            chemical_state_formal_charge=conformer.inspection.formal_charge,
+            initial_energy_kcal_mol=conformer.minimization.initial_energy_kcal_mol,
+            final_energy_kcal_mol=conformer.minimization.final_energy_kcal_mol,
             error_message=error.message,
         )
         raise
-    conformer = store.load_conformer_record(ligand_id, conformer_id)
     record_library_status(
         store,
         original,
         status=LigandPreparationStatus.PREPARED,
         conformer_id=conformer_id,
         pdbqt_preparation_id=record.artifact.preparation_id,
+        chemical_state_id=conformer.artifact.chemical_state_id,
+        chemical_state_formal_charge=conformer.inspection.formal_charge,
         initial_energy_kcal_mol=conformer.minimization.initial_energy_kcal_mol,
         final_energy_kcal_mol=conformer.minimization.final_energy_kcal_mol,
     )
