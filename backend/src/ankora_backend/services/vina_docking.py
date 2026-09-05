@@ -45,7 +45,9 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationStatus,
 )
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
+from ankora_backend.services.work_leases import WorkLeaseManager
 
 VINA_SEARCH_VOLUME_WARNING_ANGSTROM3 = 27_000.0
 
@@ -99,11 +101,13 @@ class VinaDockingService:
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
+        lease_manager: WorkLeaseManager | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
+        self._leases = lease_manager
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-vina")
         self._cancel_events: dict[str, threading.Event] = {}
         self._active_batch_ids: set[str] = set()
@@ -111,12 +115,15 @@ class VinaDockingService:
         self._lock = threading.RLock()
 
     @classmethod
-    def from_environment(cls) -> "VinaDockingService":
+    def from_environment(
+        cls, *, lease_manager: WorkLeaseManager | None = None
+    ) -> "VinaDockingService":
         return cls(
             docking_store=DockingArtifactStore.from_environment(),
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
+            lease_manager=lease_manager,
         )
 
     def start(self, request: VinaDockingRequest) -> VinaDockingJobRecord:
@@ -585,6 +592,8 @@ class VinaDockingService:
         parameters: VinaDockingParameters,
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.VINA_BATCH, batch_id)
         try:
             if cancel_event.is_set():
                 self._finish_batch(batch_id, canceled=True)
@@ -640,6 +649,8 @@ class VinaDockingService:
                     )
                 )
         finally:
+            if self._leases is not None:
+                self._leases.release(WorkKind.VINA_BATCH, batch_id)
             self._forget(batch_id)
 
     def _run_batch_item(
@@ -1096,9 +1107,13 @@ class VinaDockingService:
         box: BindingBox,
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.VINA_JOB, job_id)
         record = self._docking_store.load_record(job_id)
         if cancel_event.is_set():
             self._finish_canceled(record, None)
+            if self._leases is not None:
+                self._leases.release(WorkKind.VINA_JOB, job_id)
             self._forget(job_id)
             return
         started = datetime.now(UTC)
@@ -1181,6 +1196,8 @@ class VinaDockingService:
                 {"reason": str(error)},
             )
         finally:
+            if self._leases is not None:
+                self._leases.release(WorkKind.VINA_JOB, job_id)
             self._forget(job_id)
 
     def _finish_completed(

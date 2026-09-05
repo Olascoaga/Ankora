@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Durable execution ownership and startup recovery - 2026-09-04
+
+- Added durable owner/heartbeat leases for Vina, AutoGrid, AutoDock4 CPU, and
+  AutoDock-GPU jobs and campaigns.
+- Reconciled queued, running, or cancel-requested work at backend startup as an
+  explicit interrupted failure while preserving raw partial evidence.
+- Preserved every terminal per-ligand result in an interrupted campaign and
+  marked only unfinished entries as interrupted; no partial work directory is
+  silently reused.
+- Exposed the startup reconciliation summary through the local typed API so a
+  subsequent interface increment can offer explicit retry-as-new actions.
+
 ## Purpose-labelled Vina sampling protocols - 2026-09-04
 
 - Added explicit Screening, Pose refinement, and Custom purposes to new Vina

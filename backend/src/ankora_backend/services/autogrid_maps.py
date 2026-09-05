@@ -59,6 +59,8 @@ from ankora_backend.schemas.receptors import (
     ReceptorOutputStage,
     ReceptorPreparationStatus,
 )
+from ankora_backend.schemas.work_recovery import WorkKind
+from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autogrid_map_generation"
 
@@ -102,11 +104,13 @@ class AutoGridMapService:
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
+        lease_manager: WorkLeaseManager | None = None,
     ) -> None:
         self._map_store = map_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
+        self._leases = lease_manager
         # AutoGrid is memory and CPU heavy and a campaign only ever needs one
         # map set at a time, so runs serialize rather than competing.
         self._executor = ThreadPoolExecutor(
@@ -116,12 +120,15 @@ class AutoGridMapService:
         self._lock = threading.RLock()
 
     @classmethod
-    def from_environment(cls) -> "AutoGridMapService":
+    def from_environment(
+        cls, *, lease_manager: WorkLeaseManager | None = None
+    ) -> "AutoGridMapService":
         return cls(
             map_store=AutoGridMapStore.from_environment(),
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
+            lease_manager=lease_manager,
         )
 
     def get(self, map_set_id: str) -> AutoGridMapSetRecord:
@@ -228,9 +235,13 @@ class AutoGridMapService:
         prepared: "_PreparedMapSet",
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.AUTOGRID_JOB, job_id)
         record = self._map_store.load_job(job_id)
         if cancel_event.is_set():
             self._finish_job(record, status=AutoGridJobStatus.CANCELED)
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
             self._forget(job_id)
             return
         running = record.model_copy(
@@ -269,6 +280,8 @@ class AutoGridMapService:
                 execution=map_set.execution,
             )
         finally:
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
             self._forget(job_id)
 
     def _finish_job(

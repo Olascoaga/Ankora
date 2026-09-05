@@ -68,6 +68,7 @@ from ankora_backend.schemas.autogrid import AutoGridMapKind, AutoGridMapSetRecor
 from ankora_backend.schemas.binding_sites import BindingSiteRecord
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import (
     SelectedMolecule,
     ordered_atom_types,
@@ -76,6 +77,7 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock_gpu_docking"
 _CODE_PREFIX = "AUTODOCK_GPU"
@@ -129,12 +131,14 @@ class AutoDockGpuDockingService:
         ligand_store: LigandArtifactStore,
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
+        lease_manager: WorkLeaseManager | None = None,
     ) -> None:
         self._job_store = job_store
         self._map_store = map_store
         self._ligand_store = ligand_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
+        self._leases = lease_manager
         # One device, one worker. See the module docstring for the measurement.
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="ankora-autodock-gpu"
@@ -145,13 +149,16 @@ class AutoDockGpuDockingService:
         self._active_batch_id: str | None = None
 
     @classmethod
-    def from_environment(cls) -> "AutoDockGpuDockingService":
+    def from_environment(
+        cls, *, lease_manager: WorkLeaseManager | None = None
+    ) -> "AutoDockGpuDockingService":
         return cls(
             job_store=AutoDockGpuJobStore.from_environment(),
             map_store=AutoGridMapStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
+            lease_manager=lease_manager,
         )
 
     def start(self, request: AutoDockGpuDockingRequest) -> AutoDockGpuDockingJobRecord:
@@ -238,10 +245,14 @@ class AutoDockGpuDockingService:
         prepared: _PreparedDocking,
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
         record = self._job_store.load_job(job_id)
         if cancel_event.is_set():
             self._finish(record, status=AutoDockJobStatus.CANCELED)
             self._forget(job_id)
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
             return
         running = record.model_copy(
             update={
@@ -269,6 +280,8 @@ class AutoDockGpuDockingService:
             )
         finally:
             self._forget(job_id)
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
 
     def _execute(
         self,
@@ -842,6 +855,8 @@ class AutoDockGpuDockingService:
         prepared: "_PreparedCampaign",
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
         try:
             self._execute_batch(batch_id, prepared, cancel_event)
         except AnkoraDomainError as error:
@@ -865,6 +880,8 @@ class AutoDockGpuDockingService:
             with self._batch_lock:
                 self._active_batch_id = None
             self._forget(batch_id)
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
 
     def _execute_batch(
         self,

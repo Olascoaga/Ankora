@@ -58,6 +58,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorOutputArtifact,
 )
 from ankora_backend.schemas.warnings import StructuredWarning
+from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import (
     ordered_atom_types,
     resolve_receptor_and_site,
@@ -65,6 +66,7 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock4_docking"
 
@@ -101,12 +103,14 @@ class AutoDock4DockingService:
         ligand_store: LigandArtifactStore,
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
+        lease_manager: WorkLeaseManager | None = None,
     ) -> None:
         self._job_store = job_store
         self._map_store = map_store
         self._ligand_store = ligand_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
+        self._leases = lease_manager
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="ankora-autodock4"
         )
@@ -117,13 +121,16 @@ class AutoDock4DockingService:
         self._active_batch_id: str | None = None
 
     @classmethod
-    def from_environment(cls) -> "AutoDock4DockingService":
+    def from_environment(
+        cls, *, lease_manager: WorkLeaseManager | None = None
+    ) -> "AutoDock4DockingService":
         return cls(
             job_store=AutoDock4JobStore.from_environment(),
             map_store=AutoGridMapStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
+            lease_manager=lease_manager,
         )
 
     def start(self, request: AutoDock4DockingRequest) -> AutoDock4DockingJobRecord:
@@ -209,9 +216,13 @@ class AutoDock4DockingService:
         prepared: _PreparedDocking,
         cancel_event: threading.Event,
     ) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.AUTODOCK4_JOB, job_id)
         record = self._job_store.load_job(job_id)
         if cancel_event.is_set():
             self._finish(record, status=AutoDock4JobStatus.CANCELED)
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
             self._forget(job_id)
             return
         running = record.model_copy(
@@ -239,6 +250,8 @@ class AutoDock4DockingService:
                 ),
             )
         finally:
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
             self._forget(job_id)
 
     def _execute(
@@ -878,6 +891,8 @@ class AutoDock4DockingService:
         )
 
     def _run_batch(self, batch_id: str, cancel_event: threading.Event) -> None:
+        if self._leases is not None:
+            self._leases.acquire(WorkKind.AUTODOCK4_BATCH, batch_id)
         try:
             record = self._job_store.load_batch(batch_id)
             self._update_batch(
@@ -920,6 +935,8 @@ class AutoDock4DockingService:
                 ),
             )
         finally:
+            if self._leases is not None:
+                self._leases.release(WorkKind.AUTODOCK4_BATCH, batch_id)
             self._forget(batch_id)
             with self._batch_lock:
                 self._active_batch_id = None

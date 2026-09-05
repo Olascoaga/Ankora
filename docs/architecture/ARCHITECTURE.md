@@ -8,6 +8,13 @@ External tools and docking engines are isolated behind adapters. Original files 
 
 Independent library work uses bounded local parallelism. The default worker budget is `logical processors - 1`, capped by the number of tasks, so scientific throughput uses the machine without starving the Windows UI. Ordering, per-molecule failure isolation, immutable output directories, tool versions, and worker counts remain explicit. Order-dependent or thread-unsafe stages stay serial until they have a safe parallel boundary; future engine adapters must prevent nested CPU oversubscription.
 
+Long-running engine work carries a durable owner lease with a periodic
+heartbeat. On backend startup, records left queued, running, or awaiting
+cancellation are reconciled to an explicit interrupted failure. Completed
+per-molecule results and raw partial outputs are retained. Ankora never resumes
+inside an abandoned output directory: a scientist-requested retry creates a
+new immutable attempt under ADR-020.
+
 The React interface uses a fixed-viewport scientific workbench under ADR-014. Application menus and project context sit above a stateful workflow navigator, central viewer/data plane, contextual decision inspector, status strip, and expandable activity center. The shell owns theme, density, panel resizing/collapse, warnings, provenance, commands, tool readiness, and active-job reporting so milestone screens can focus on scientific decisions. Shared semantic design tokens and accessibility rules are documented in `docs/design/UX_FOUNDATION.md`.
 
 ## Local request path

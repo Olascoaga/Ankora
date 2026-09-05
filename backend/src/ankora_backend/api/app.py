@@ -11,11 +11,14 @@ from fastapi.responses import JSONResponse
 from ankora_backend import __version__
 from ankora_backend.api.routes import router
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.persistence.work_lease_store import WorkLeaseStore
 from ankora_backend.schemas.errors import ErrorResponse
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
 from ankora_backend.services.vina_docking import VinaDockingService
+from ankora_backend.services.work_leases import WorkLeaseManager
+from ankora_backend.services.work_recovery import InterruptedWorkRecovery
 
 _ALLOWED_ORIGINS = [
     "http://127.0.0.1:1420",
@@ -62,6 +65,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         cast(
             AutoDockGpuDockingService, app.state.autodock_gpu_docking
         ).shutdown()
+        cast(WorkLeaseManager, app.state.work_leases).shutdown()
 
 
 def create_app() -> FastAPI:
@@ -79,10 +83,24 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
-    app.state.vina_docking = VinaDockingService.from_environment()
-    app.state.autogrid_maps = AutoGridMapService.from_environment()
-    app.state.autodock4_docking = AutoDock4DockingService.from_environment()
-    app.state.autodock_gpu_docking = AutoDockGpuDockingService.from_environment()
+    lease_store = WorkLeaseStore.from_environment()
+    app.state.work_recovery = InterruptedWorkRecovery.from_environment(
+        leases=lease_store
+    ).reconcile()
+    lease_manager = WorkLeaseManager(lease_store)
+    app.state.work_leases = lease_manager
+    app.state.vina_docking = VinaDockingService.from_environment(
+        lease_manager=lease_manager
+    )
+    app.state.autogrid_maps = AutoGridMapService.from_environment(
+        lease_manager=lease_manager
+    )
+    app.state.autodock4_docking = AutoDock4DockingService.from_environment(
+        lease_manager=lease_manager
+    )
+    app.state.autodock_gpu_docking = AutoDockGpuDockingService.from_environment(
+        lease_manager=lease_manager
+    )
 
     @app.middleware("http")
     async def require_known_origin_for_uploads(request: Request, call_next):  # type: ignore[no-untyped-def]

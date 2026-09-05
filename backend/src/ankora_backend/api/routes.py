@@ -130,6 +130,7 @@ from ankora_backend.schemas.system import (
     ToolsResponse,
     ToolStatus,
 )
+from ankora_backend.schemas.work_recovery import WorkRecoverySummary
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
@@ -228,6 +229,12 @@ def system_resources() -> ResourceUsage:
     running campaign is visible where the scientist already looks.
     """
     return collect_resource_usage()
+
+
+@router.get("/work/recovery", response_model=WorkRecoverySummary)
+def work_recovery(request: Request) -> WorkRecoverySummary:
+    """Report work that startup reconciliation marked as interrupted."""
+    return cast(WorkRecoverySummary, request.app.state.work_recovery)
 
 
 @router.get("/tools", response_model=ToolsResponse)

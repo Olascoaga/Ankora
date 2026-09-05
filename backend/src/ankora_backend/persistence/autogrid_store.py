@@ -130,6 +130,20 @@ class AutoGridMapStore:
                 raise self._job_not_found(job_id) from error
         return AutoGridMapJobRecord.model_validate_json(raw)
 
+    def list_jobs(self) -> list[AutoGridMapJobRecord]:
+        directory = self._jobs_dir()
+        if not directory.is_dir():
+            return []
+        records: list[AutoGridMapJobRecord] = []
+        for candidate in sorted(directory.iterdir(), key=lambda item: item.name):
+            if not candidate.is_dir():
+                continue
+            try:
+                records.append(self.load_job(candidate.name))
+            except (AnkoraDomainError, ValueError):
+                continue
+        return records
+
     def _jobs_dir(self) -> Path:
         path = self._root / "projects" / "default" / "results" / "autogrid_jobs"
         resolved = path.resolve()

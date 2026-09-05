@@ -10,6 +10,17 @@ def test_health_endpoint() -> None:
     assert response.json() == {"status": "ok", "backend_version": "0.1.0"}
 
 
+def test_work_recovery_endpoint_reports_startup_reconciliation(
+    monkeypatch, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+
+    response = TestClient(create_app()).get("/api/v1/work/recovery")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
 def test_system_endpoint_reports_runtime() -> None:
     response = TestClient(create_app()).get("/api/v1/system")
     body = response.json()
