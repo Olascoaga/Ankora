@@ -634,8 +634,13 @@ def test_the_software_table_is_a_hole_when_no_tool_version_is_known() -> None:
     assert report.software == []
 
 
-def test_citations_are_declared_the_authors_responsibility() -> None:
-    """Ankora records versions; it does not know which paper to cite."""
+def test_the_engine_reference_reaches_the_bibliography() -> None:
+    """Ankora records which tools ran, so it can name the papers behind them.
+
+    This replaces an earlier contract where the section only declared the
+    citations to be the author's problem. The references are supplied; what
+    stays the author's is restyling them and citing Ankora itself.
+    """
     report = _service(
         _entry(),
         autodock_gpu=SimpleNamespace(
@@ -653,7 +658,10 @@ def test_citations_are_declared_the_authors_responsibility() -> None:
         ),
     ).render("autodock_gpu_batch:batch-1")
 
-    assert "must be added by the author" in report.markdown
+    assert "10.1021/acs.jctc.0c01006" in report.markdown
+    assert "Santos-Martins D, Solis-Vasquez L" in report.markdown
+    assert "cite Ankora itself separately" in report.markdown
+    assert "must be added by the author" not in report.markdown
     assert "ADADELTA" in report.markdown
     assert "2.5 × 10⁶" in report.markdown
 
@@ -751,3 +759,83 @@ def test_an_unknown_campaign_is_refused_rather_than_described() -> None:
 
     with pytest.raises(AnkoraDomainError):
         service.render("gnina_batch:whatever")
+
+
+def _docked(engine_key: str, store_name: str, loader: str, **entry_fields: Any) -> Any:
+    """A campaign whose docking record exists, so tools reach the Software table."""
+    preparation = _ExactPreparation()
+    record = SimpleNamespace(
+        request=SimpleNamespace(
+            ligand_id="ligand-exact",
+            ligand_preparation_id="preparation-exact",
+            parameters=SimpleNamespace(model_dump=lambda mode: {}),
+        ),
+    )
+    return _service(
+        _entry(
+            engine_key=engine_key, library_id=None,
+            selected_count=1, succeeded_count=1, failed_count=0,
+            **entry_fields,
+        ),
+        ligands=preparation,
+        **{store_name: SimpleNamespace(**{loader: lambda _: record})},
+    ).render(f"{engine_key}:job-1")
+
+
+def test_the_engine_is_named_from_its_key_not_its_display_label() -> None:
+    """`AutoDock 4.2.6 · CPU` names the backend last.
+
+    Reading the trailing segment made the tool `CPU`, so every AutoDock4 CPU
+    campaign - the reproducible reference backend - said "Docking was performed
+    with CPU 4.2.6" and listed `CPU` in the Software table, which is not a
+    citable tool.
+    """
+    report = _docked(
+        "autodock4_job", "autodock4", "load_job",
+        engine_label="AutoDock 4.2.6 · CPU", engine_version="4.2.6",
+        backend="autodock4", scoring_family=SimpleNamespace(name="AUTODOCK4"),
+    )
+
+    assert "Docking was performed with AutoDock4 4.2.6" in report.markdown
+    assert "with CPU 4.2.6" not in report.markdown
+    assert "| CPU |" not in report.markdown
+
+
+def test_each_tool_carries_the_reference_its_authors_ask_for() -> None:
+    report = _docked(
+        "vina_job", "docking", "load_record",
+        engine_label="AutoDock Vina 1.2.7", engine_version="1.2.7",
+        backend="vina", scoring_family=SimpleNamespace(name="VINA"),
+    )
+
+    assert "| Software | Version | Role | References |" in report.markdown
+    assert "## References" in report.markdown
+    # Vina's authors ask for the 1.2.0 paper and the original, so both appear.
+    assert "10.1021/acs.jcim.1c00203" in report.markdown
+    assert "10.1002/jcc.21334" in report.markdown
+    assert "| AutoDock Vina | 1.2.7 | molecular docking | 1, 2 |" in report.markdown
+
+
+def test_a_tool_without_a_verified_reference_is_reported_as_having_none() -> None:
+    """A citation is harder to check than a sentence: it looks right until followed."""
+    report = _service(
+        _entry(
+            engine_key="unknown_engine", engine_label="Imaginary Engine 9.9",
+            engine_version="9.9", backend="vina",
+            scoring_family=SimpleNamespace(name="VINA"),
+            library_id=None, selected_count=1, succeeded_count=1, failed_count=0,
+        ),
+        ligands=_ExactPreparation(),
+        docking=SimpleNamespace(load_record=lambda _: SimpleNamespace(
+            request=SimpleNamespace(
+                ligand_id="ligand-exact", ligand_preparation_id="preparation-exact",
+                parameters=SimpleNamespace(model_dump=lambda mode: {}),
+            ),
+        )),
+    ).render("unknown_engine:job-1")
+
+    assert "Ankora holds no verified published reference for" in report.markdown
+    assert "Imaginary Engine 9.9" in report.markdown
+    assert "| none recorded |" in report.markdown
+    # Ankora's own missing map is not a hole in the campaign's records.
+    assert not any("reference" in gap for gap in report.gaps)

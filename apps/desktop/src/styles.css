@@ -599,6 +599,8 @@ button { font: inherit; }
 .methods-preview h3:first-child { margin-top: 0; }
 .methods-preview p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.62; }
 .methods-preview .methods-aside { color: var(--muted); font-size: 12px; font-style: italic; }
+.methods-preview .methods-list { display: grid; gap: 6px; margin: 0; padding-left: 22px; color: var(--text); font-size: 13px; line-height: 1.55; }
+.methods-preview .methods-list li { padding-left: 2px; }
 .methods-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .methods-table th, .methods-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--muted); text-align: left; vertical-align: top; }
 .methods-table th { color: var(--text); font-weight: 600; }

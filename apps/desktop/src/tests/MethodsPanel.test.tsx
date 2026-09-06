@@ -162,3 +162,36 @@ it("survives a table it cannot read rather than blanking the workbench", async (
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.getByText(/\| --- \| --- \|/)).toBeInTheDocument();
 });
+
+it("keeps a reference list readable instead of one run-on paragraph", async () => {
+  // The Software table numbers each tool; the references have to stay separate
+  // lines or an author cannot check, copy or restyle any single one of them.
+  serve(report({ markdown: [
+    "## References",
+    "",
+    "1. Trott O, Olson AJ. AutoDock Vina. J Comput Chem. 2010;31(2):455-461.",
+    "2. Morris GM, et al. AutoDock4. J Comput Chem. 2009;30(16):2785-2791.",
+  ].join("\n") }));
+
+  await openDialog();
+
+  const items = screen.getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(items[0]).toHaveTextContent("Trott O, Olson AJ");
+  expect(items[1]).toHaveTextContent("Morris GM");
+});
+
+it("keeps lineage bullets as separate items", async () => {
+  serve(report({ markdown: [
+    "## Ligand preparation",
+    "",
+    "The 25 verified ligands comprised 2 chemical-state lineages:",
+    "- 20 ligands used the initial imported state.",
+    "- 5 ligands underwent explicit component resolution.",
+  ].join("\n") }));
+
+  await openDialog();
+
+  expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  expect(screen.getByText(/comprised 2 chemical-state lineages/)).toBeInTheDocument();
+});
