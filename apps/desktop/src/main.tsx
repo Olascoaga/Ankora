@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "molstar/build/viewer/molstar.css";
 import "./styles.css";
 import "./design-system.css";
@@ -14,6 +15,8 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary level="application" scope="application shell">
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

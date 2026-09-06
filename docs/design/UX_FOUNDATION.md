@@ -34,6 +34,12 @@ This document is the implementation contract for the professional scientific int
 - Progress bars expose current/total values for bounded batches; indeterminate animation is used only when no total exists.
 - Empty states explain the next valid action. Disabled workflow steps explain their prerequisite in the left rail.
 - Errors keep concise recovery near the task and retain expandable technical evidence. Scientific decisions are never applied implicitly as error recovery.
+- React rendering failures are contained twice: a workspace failure leaves the
+  surrounding navigation and status shell usable, while an application-level
+  boundary provides a last-resort recovery screen. Retrying either boundary
+  redraws the interface only; it never repeats a scientific command. The
+  evidence panel preserves the error name, message, JavaScript stack, component
+  stack, and affected project/workspace scope and can be copied for support.
 
 ## Adding later milestones
 

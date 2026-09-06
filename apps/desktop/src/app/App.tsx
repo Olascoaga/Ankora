@@ -2,6 +2,7 @@ import { type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent
 
 import { ankoraApi, ApiError } from "../api/client";
 import { AppIcon } from "../components/AppIcon";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SplashScreen } from "../components/SplashScreen";
 import { BindingSiteWorkspace } from "../features/binding-site/BindingSiteWorkspace";
 import { DockingWorkspace } from "../features/docking/DockingWorkspace";
@@ -605,6 +606,12 @@ export function App() {
       {!workflowCollapsed ? <div className="panel-resizer workflow-resizer" role="separator" aria-label="Resize workflow panel" aria-orientation="vertical" onDoubleClick={() => setWorkflowWidth(208)} onPointerDown={(event) => beginPanelResize("workflow", event)} /> : null}
       {!inspectorCollapsed ? <div className="panel-resizer inspector-resizer" role="separator" aria-label="Resize inspector panel" aria-orientation="vertical" onDoubleClick={() => setInspectorWidth(360)} onPointerDown={(event) => beginPanelResize("inspector", event)} /> : null}
 
+      <ErrorBoundary
+        level="workspace"
+        scope={`${activeProject.project_id} / ${activeStep}`}
+        resetKey={`${activeProject.project_id}:${activeStep}`}
+        onLeaveWorkspace={() => setActiveStep("Structure")}
+      >
       {activeStep === "Receptor" && structure ? <ReceptorWorkspace structure={structure} initialRecord={receptorRecord} tools={state.tools} selection={selection} onSelect={setSelection} onRecordChange={handleReceptorRecord} onActivityChange={setWorkspaceActivity} /> : <>
       {activeStep === "Ligand" && structure && receptorRecord ? <LigandWorkspace structure={structure} record={ligandRecord} tools={state.tools} dockingInput={ligandDockingInput} onDockingInputChange={setLigandDockingInput} onLibraryDockingInputChange={setLigandLibraryDockingInput} onRecordChange={setLigandRecord} onActivityChange={setWorkspaceActivity} onLibraryStatusChange={setLigandLibraryStatus} /> : <>
       {activeStep === "Binding site" && structure && receptorRecord?.status === "docking_ready" ? <BindingSiteWorkspace structure={structure} receptor={receptorRecord} tools={state.tools} record={bindingSiteRecord} onRecordChange={setBindingSiteRecord} onContinue={(next) => {
@@ -688,6 +695,7 @@ export function App() {
       </>}
       </>}
       </>}
+      </ErrorBoundary>
 
       <footer className="statusbar">
         <div className="status-summary">
