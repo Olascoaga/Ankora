@@ -14,7 +14,11 @@ import time
 from importlib import import_module
 from typing import Any
 
-from ankora_backend.schemas.system import GpuUsage, ResourceUsage
+from ankora_backend.schemas.system import (
+    GpuUsage,
+    ResourceSchedulerSnapshot,
+    ResourceUsage,
+)
 
 # `cpu_percent(interval=None)` reports the load since the previous call, so the
 # very first one in a process has nothing to compare against and returns 0.0.
@@ -31,7 +35,7 @@ _GPU_TIMEOUT_SECONDS = 4.0
 _gpu_cache: tuple[float, GpuUsage | None, str | None] | None = None
 
 
-def collect_resource_usage() -> ResourceUsage:
+def collect_resource_usage(*, scheduler: ResourceSchedulerSnapshot | None = None) -> ResourceUsage:
     memory = _psutil.virtual_memory()
     gpu, reason = _gpu_usage()
     return ResourceUsage(
@@ -42,6 +46,7 @@ def collect_resource_usage() -> ResourceUsage:
         memory_percent=float(memory.percent),
         gpu=gpu,
         gpu_unavailable_reason=reason,
+        scheduler=scheduler,
     )
 
 

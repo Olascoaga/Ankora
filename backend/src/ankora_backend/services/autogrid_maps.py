@@ -60,6 +60,12 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationStatus,
 )
 from ankora_backend.schemas.work_recovery import WorkKind
+from ankora_backend.services.resource_arbiter import (
+    ResourceArbiter,
+    ResourceLease,
+    ResourceRequestCanceled,
+    autogrid_claim,
+)
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autogrid_map_generation"
@@ -84,9 +90,7 @@ class _PreparedMapSet:
 class _JobCanceled(Exception):
     """Internal signal: the scientist stopped this run; it is not a failure."""
 
-    def __init__(
-        self, *, execution: AutoGridExecutionEvidence, evidence_directory: str
-    ) -> None:
+    def __init__(self, *, execution: AutoGridExecutionEvidence, evidence_directory: str) -> None:
         super().__init__("AutoGrid generation was canceled")
         self.execution = execution
         self.evidence_directory = evidence_directory
@@ -105,23 +109,26 @@ class AutoGridMapService:
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
         lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> None:
         self._map_store = map_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
         self._leases = lease_manager
+        self._resources = resource_arbiter
         # AutoGrid is memory and CPU heavy and a campaign only ever needs one
         # map set at a time, so runs serialize rather than competing.
-        self._executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="ankora-autogrid"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-autogrid")
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
 
     @classmethod
     def from_environment(
-        cls, *, lease_manager: WorkLeaseManager | None = None
+        cls,
+        *,
+        lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> "AutoGridMapService":
         return cls(
             map_store=AutoGridMapStore.from_environment(),
@@ -129,6 +136,7 @@ class AutoGridMapService:
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             lease_manager=lease_manager,
+            resource_arbiter=resource_arbiter,
         )
 
     def get(self, map_set_id: str) -> AutoGridMapSetRecord:
@@ -145,10 +153,17 @@ class AutoGridMapService:
         """
         prepared = self._prepare(request)
         if prepared.existing is not None:
-            return AutoGridMapSetSummary(
-                reused_existing_map_set=True, record=prepared.existing
+            return AutoGridMapSetSummary(reused_existing_map_set=True, record=prepared.existing)
+        if self._resources is None:
+            record = self._generate(prepared, cancel_event=threading.Event())
+        else:
+            claim = autogrid_claim(
+                prepared.identity_key,
+                npts=prepared.geometry.npts,
+                map_count=len(prepared.preflight.ligand_atom_types) + 2,
             )
-        record = self._generate(prepared, cancel_event=threading.Event())
+            with self._resources.acquire(claim):
+                record = self._generate(prepared, cancel_event=threading.Event())
         return AutoGridMapSetSummary(reused_existing_map_set=False, record=record)
 
     def start_map_set(self, request: AutoGridMapSetRequest) -> AutoGridMapJobRecord:
@@ -219,9 +234,7 @@ class AutoGridMapService:
             self._map_store.update_job(
                 record.model_copy(update={"status": AutoGridJobStatus.CANCEL_REQUESTED})
             )
-        return AutoGridJobCancelResponse(
-            job_id=job_id, status=AutoGridJobStatus.CANCEL_REQUESTED
-        )
+        return AutoGridJobCancelResponse(job_id=job_id, status=AutoGridJobStatus.CANCEL_REQUESTED)
 
     def shutdown(self) -> None:
         with self._lock:
@@ -235,11 +248,44 @@ class AutoGridMapService:
         prepared: "_PreparedMapSet",
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.AUTOGRID_JOB, job_id)
         record = self._map_store.load_job(job_id)
+        if self._resources is not None:
+            try:
+                resource_lease = self._resources.acquire(
+                    autogrid_claim(
+                        job_id,
+                        npts=prepared.geometry.npts,
+                        map_count=len(prepared.preflight.ligand_atom_types) + 2,
+                    ),
+                    cancel_event=cancel_event,
+                )
+            except ResourceRequestCanceled:
+                self._finish_job(record, status=AutoGridJobStatus.CANCELED)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
+                self._forget(job_id)
+                return
+            except AnkoraDomainError as error:
+                self._finish_job(
+                    record,
+                    status=AutoGridJobStatus.FAILED,
+                    failure=AutoGridFailure(
+                        code=error.code,
+                        message=error.message,
+                        details=dict(error.details),
+                    ),
+                )
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
+                self._forget(job_id)
+                return
         if cancel_event.is_set():
             self._finish_job(record, status=AutoGridJobStatus.CANCELED)
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
             self._forget(job_id)
@@ -268,9 +314,7 @@ class AutoGridMapService:
                 failure=AutoGridFailure(
                     code=error.code, message=error.message, details=dict(error.details)
                 ),
-                evidence_directory=_as_optional_str(
-                    error.details.get("evidence_directory")
-                ),
+                evidence_directory=_as_optional_str(error.details.get("evidence_directory")),
             )
         else:
             self._finish_job(
@@ -280,6 +324,8 @@ class AutoGridMapService:
                 execution=map_set.execution,
             )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
             self._forget(job_id)
@@ -393,9 +439,7 @@ class AutoGridMapService:
         self._require_ascii_job_directory(job_directory)
 
         shutil.copyfile(receptor_path, job_directory / RECEPTOR_FILENAME)
-        (job_directory / GRID_PARAMETER_FILENAME).write_text(
-            gpf, encoding="ascii", newline="\n"
-        )
+        (job_directory / GRID_PARAMETER_FILENAME).write_text(gpf, encoding="ascii", newline="\n")
 
         started = time.monotonic()
         execution = execute_autogrid_cancellable(
@@ -418,9 +462,7 @@ class AutoGridMapService:
             # The partial directory stays on disk as evidence. It can never be
             # mistaken for a usable map set: no record.json was written, so
             # identity lookup ignores it.
-            raise _JobCanceled(
-                execution=evidence, evidence_directory=str(job_directory)
-            )
+            raise _JobCanceled(execution=evidence, evidence_directory=str(job_directory))
         if execution.timed_out:
             raise AnkoraDomainError(
                 code="AUTOGRID_EXECUTION_TIMED_OUT",
@@ -439,9 +481,7 @@ class AutoGridMapService:
             )
         if job is not None:
             self._map_store.update_job(
-                job.model_copy(
-                    update={"phase": AutoGridJobPhase.COLLECTING_ARTIFACTS}
-                )
+                job.model_copy(update={"phase": AutoGridJobPhase.COLLECTING_ARTIFACTS})
             )
         if execution.exit_code != 0 or not successful_log:
             raise AnkoraDomainError(
@@ -459,12 +499,8 @@ class AutoGridMapService:
                 },
             )
 
-        artifacts = self._collect_artifacts(
-            map_set_id, job_directory, ligand_atom_types
-        )
-        field_artifact = next(
-            item for item in artifacts if item.kind is AutoGridMapKind.FIELD
-        )
+        artifacts = self._collect_artifacts(map_set_id, job_directory, ligand_atom_types)
+        field_artifact = next(item for item in artifacts if item.kind is AutoGridMapKind.FIELD)
         created_at = datetime.now(UTC)
         record = AutoGridMapSetRecord(
             map_set_id=map_set_id,
@@ -609,9 +645,7 @@ class AutoGridMapService:
             ligands=rows,
         )
 
-    def _single_ligand_row(
-        self, request: AutoGridMapSetRequest
-    ) -> AutoGridLigandPreflightRow:
+    def _single_ligand_row(self, request: AutoGridMapSetRequest) -> AutoGridLigandPreflightRow:
         if request.ligand_id is None or request.ligand_preparation_id is None:
             raise self._inconsistent_request(
                 request.source.value, "ligand_id and ligand_preparation_id"
@@ -631,16 +665,10 @@ class AutoGridMapService:
             document=path.read_text(encoding="utf-8", errors="replace"),
         )
 
-    def _filter_run_rows(
-        self, request: AutoGridMapSetRequest
-    ) -> list[AutoGridLigandPreflightRow]:
+    def _filter_run_rows(self, request: AutoGridMapSetRequest) -> list[AutoGridLigandPreflightRow]:
         if request.library_id is None or request.filter_run_id is None:
-            raise self._inconsistent_request(
-                request.source.value, "library_id and filter_run_id"
-            )
-        filter_run = self._ligand_store.load_filter_run(
-            request.library_id, request.filter_run_id
-        )
+            raise self._inconsistent_request(request.source.value, "library_id and filter_run_id")
+        filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         if not filter_run.selected_ligand_ids:
             raise AnkoraDomainError(
                 code="AUTOGRID_SELECTION_EMPTY",
@@ -688,12 +716,8 @@ class AutoGridMapService:
                 )
                 continue
             try:
-                pdbqt = self._ligand_store.load_pdbqt_record(
-                    ligand_id, status.pdbqt_preparation_id
-                )
-                path = self._ligand_store.pdbqt_content_path(
-                    ligand_id, status.pdbqt_preparation_id
-                )
+                pdbqt = self._ligand_store.load_pdbqt_record(ligand_id, status.pdbqt_preparation_id)
+                path = self._ligand_store.pdbqt_content_path(ligand_id, status.pdbqt_preparation_id)
                 self._verify_hash(path, pdbqt.artifact.sha256, "ligand")
                 document = path.read_text(encoding="utf-8", errors="replace")
             except AnkoraDomainError as error:
@@ -770,9 +794,7 @@ class AutoGridMapService:
                 "The selected receptor has no preserved PDBQT output.",
                 {"receptor_id": receptor_id},
             )
-        receptor_path = self._receptor_store.content_path(
-            receptor_id, receptor_output.artifact_id
-        )
+        receptor_path = self._receptor_store.content_path(receptor_id, receptor_output.artifact_id)
         self._verify_hash(receptor_path, receptor_output.sha256, "receptor")
         binding_site = self._binding_site_store.load_record(binding_site_id)
         if binding_site.receptor_id != receptor_id or binding_site.stale:
@@ -817,9 +839,7 @@ class AutoGridMapService:
             "autogrid_version": installation.version,
             "autogrid_sha256": installation.sha256,
         }
-        canonical = json.dumps(
-            identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        )
+        canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return sha256(canonical.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -874,9 +894,7 @@ class AutoGridMapService:
         )
 
     @staticmethod
-    def _input_error(
-        code: str, message: str, details: dict[str, object]
-    ) -> AnkoraDomainError:
+    def _input_error(code: str, message: str, details: dict[str, object]) -> AnkoraDomainError:
         return AnkoraDomainError(
             code=code,
             stage=_STAGE,

@@ -16,6 +16,7 @@ from ankora_backend.schemas.errors import ErrorResponse
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
+from ankora_backend.services.resource_arbiter import ResourceArbiter
 from ankora_backend.services.vina_docking import VinaDockingService
 from ankora_backend.services.work_leases import WorkLeaseManager
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
@@ -50,8 +51,7 @@ _ORIGIN_GUARDED_PATHS = {
 
 def _requires_known_origin(path: str) -> bool:
     return path in _ORIGIN_GUARDED_PATHS or (
-        path.startswith("/api/v1/results/campaigns/")
-        and path.endswith("/complex/export")
+        path.startswith("/api/v1/results/campaigns/") and path.endswith("/complex/export")
     )
 
 
@@ -63,9 +63,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         cast(VinaDockingService, app.state.vina_docking).shutdown()
         cast(AutoGridMapService, app.state.autogrid_maps).shutdown()
         cast(AutoDock4DockingService, app.state.autodock4_docking).shutdown()
-        cast(
-            AutoDockGpuDockingService, app.state.autodock_gpu_docking
-        ).shutdown()
+        cast(AutoDockGpuDockingService, app.state.autodock_gpu_docking).shutdown()
         cast(WorkLeaseManager, app.state.work_leases).shutdown()
 
 
@@ -90,17 +88,23 @@ def create_app() -> FastAPI:
     ).reconcile()
     lease_manager = WorkLeaseManager(lease_store)
     app.state.work_leases = lease_manager
+    resource_arbiter = ResourceArbiter.from_environment()
+    app.state.resource_arbiter = resource_arbiter
     vina_docking = VinaDockingService.from_environment(
-        lease_manager=lease_manager
+        lease_manager=lease_manager,
+        resource_arbiter=resource_arbiter,
     )
     autogrid_maps = AutoGridMapService.from_environment(
-        lease_manager=lease_manager
+        lease_manager=lease_manager,
+        resource_arbiter=resource_arbiter,
     )
     autodock4_docking = AutoDock4DockingService.from_environment(
-        lease_manager=lease_manager
+        lease_manager=lease_manager,
+        resource_arbiter=resource_arbiter,
     )
     autodock_gpu_docking = AutoDockGpuDockingService.from_environment(
-        lease_manager=lease_manager
+        lease_manager=lease_manager,
+        resource_arbiter=resource_arbiter,
     )
     app.state.vina_docking = vina_docking
     app.state.autogrid_maps = autogrid_maps
@@ -121,10 +125,7 @@ def create_app() -> FastAPI:
                 body = ErrorResponse(
                     code="UPLOAD_ORIGIN_NOT_ALLOWED",
                     stage="request_validation",
-                    message=(
-                        "This endpoint only accepts requests from the Ankora "
-                        "desktop app."
-                    ),
+                    message=("This endpoint only accepts requests from the Ankora desktop app."),
                     details={"origin": origin},
                     recoverable=False,
                 )
@@ -134,9 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(router)
 
     @app.exception_handler(AnkoraDomainError)
-    async def handle_domain_error(
-        _request: Request, error: AnkoraDomainError
-    ) -> JSONResponse:
+    async def handle_domain_error(_request: Request, error: AnkoraDomainError) -> JSONResponse:
         body = ErrorResponse(
             code=error.code,
             stage=error.stage,

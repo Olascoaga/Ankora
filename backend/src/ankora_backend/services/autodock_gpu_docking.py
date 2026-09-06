@@ -77,6 +77,12 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.resource_arbiter import (
+    ResourceArbiter,
+    ResourceLease,
+    ResourceRequestCanceled,
+    autodock_gpu_claim,
+)
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock_gpu_docking"
@@ -132,6 +138,7 @@ class AutoDockGpuDockingService:
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
         lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> None:
         self._job_store = job_store
         self._map_store = map_store
@@ -139,10 +146,9 @@ class AutoDockGpuDockingService:
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._leases = lease_manager
+        self._resources = resource_arbiter
         # One device, one worker. See the module docstring for the measurement.
-        self._executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="ankora-autodock-gpu"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-autodock-gpu")
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
         self._batch_lock = threading.Lock()
@@ -150,7 +156,10 @@ class AutoDockGpuDockingService:
 
     @classmethod
     def from_environment(
-        cls, *, lease_manager: WorkLeaseManager | None = None
+        cls,
+        *,
+        lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> "AutoDockGpuDockingService":
         return cls(
             job_store=AutoDockGpuJobStore.from_environment(),
@@ -159,6 +168,7 @@ class AutoDockGpuDockingService:
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             lease_manager=lease_manager,
+            resource_arbiter=resource_arbiter,
         )
 
     def start(self, request: AutoDockGpuDockingRequest) -> AutoDockGpuDockingJobRecord:
@@ -217,9 +227,7 @@ class AutoDockGpuDockingService:
                 raise AnkoraDomainError(
                     code=f"{_CODE_PREFIX}_JOB_NOT_ACTIVE",
                     stage=_STAGE,
-                    message=(
-                        "This docking job is not active in the current Ankora session."
-                    ),
+                    message=("This docking job is not active in the current Ankora session."),
                     status_code=409,
                     details={"job_id": job_id, "status": record.status.value},
                 )
@@ -227,9 +235,7 @@ class AutoDockGpuDockingService:
             self._job_store.update_job(
                 record.model_copy(update={"status": AutoDockJobStatus.CANCEL_REQUESTED})
             )
-        return AutoDockGpuCancelResponse(
-            job_id=job_id, status=AutoDockJobStatus.CANCEL_REQUESTED
-        )
+        return AutoDockGpuCancelResponse(job_id=job_id, status=AutoDockJobStatus.CANCEL_REQUESTED)
 
     def shutdown(self) -> None:
         with self._lock:
@@ -245,12 +251,41 @@ class AutoDockGpuDockingService:
         prepared: _PreparedDocking,
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
         record = self._job_store.load_job(job_id)
+        if self._resources is not None:
+            try:
+                resource_lease = self._resources.acquire(
+                    autodock_gpu_claim(job_id, ligand_count=1),
+                    cancel_event=cancel_event,
+                )
+            except ResourceRequestCanceled:
+                self._finish(record, status=AutoDockJobStatus.CANCELED)
+                self._forget(job_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
+                return
+            except AnkoraDomainError as error:
+                self._finish(
+                    record,
+                    status=AutoDockJobStatus.FAILED,
+                    failure=AutoDockFailure(
+                        code=error.code,
+                        message=error.message,
+                        details=dict(error.details),
+                    ),
+                )
+                self._forget(job_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
+                return
         if cancel_event.is_set():
             self._finish(record, status=AutoDockJobStatus.CANCELED)
             self._forget(job_id)
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
             return
@@ -279,6 +314,8 @@ class AutoDockGpuDockingService:
                 ),
             )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             self._forget(job_id)
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
@@ -302,9 +339,7 @@ class AutoDockGpuDockingService:
             seed=parameters.seed,
             heuristics=parameters.heuristics,
             autostop=parameters.autostop,
-            energy_evaluations=(
-                None if parameters.heuristics else parameters.energy_evaluations
-            ),
+            energy_evaluations=(None if parameters.heuristics else parameters.energy_evaluations),
             population_size=parameters.population_size,
             local_search_method=parameters.local_search_method.value,
             cluster_rmsd_tolerance_angstrom=parameters.cluster_rmsd_tolerance_angstrom,
@@ -332,9 +367,7 @@ class AutoDockGpuDockingService:
             timed_out=execution.timed_out,
         )
         self._job_store.update_job(
-            record.model_copy(
-                update={"command": execution.command, "execution": evidence}
-            )
+            record.model_copy(update={"command": execution.command, "execution": evidence})
         )
         if execution.canceled:
             raise _JobCanceled(execution=evidence)
@@ -364,9 +397,7 @@ class AutoDockGpuDockingService:
                 }
             )
         )
-        parsed = parse_autodock4_log(
-            log_path.read_text(encoding="utf-8", errors="replace")
-        )
+        parsed = parse_autodock4_log(log_path.read_text(encoding="utf-8", errors="replace"))
         runs, clusters = self._persist_results(job_id, parsed)
         completed_at = datetime.now(UTC)
         self._job_store.update_job(
@@ -432,16 +463,13 @@ class AutoDockGpuDockingService:
                         sha256=sha256(pose.content).hexdigest(),
                         size_bytes=len(pose.content),
                         content_url=(
-                            f"/docking/autodock-gpu/jobs/{job_id}"
-                            f"/poses/{artifact_id}/content"
+                            f"/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/content"
                         ),
                     ),
                 )
             )
         members: dict[int, list[int]] = defaultdict(list)
-        for row in sorted(
-            parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)
-        ):
+        for row in sorted(parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)):
             members[row.cluster_rank].append(row.run)
         clusters = [
             AutoDockClusterResult(
@@ -459,9 +487,7 @@ class AutoDockGpuDockingService:
     # --- inputs ------------------------------------------------------------
 
     def _prepare(self, request: AutoDockGpuDockingRequest) -> _PreparedDocking:
-        installation = probe_autodock_gpu(
-            device_number=request.parameters.device_number
-        )
+        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
@@ -491,9 +517,7 @@ class AutoDockGpuDockingService:
         document = ligand_path.read_text(encoding="utf-8", errors="replace")
         atom_types = ordered_atom_types(document)
         atom_lines = [
-            line
-            for line in document.splitlines()
-            if line.startswith(("ATOM  ", "HETATM"))
+            line for line in document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
         ]
         available = {
             artifact.atom_type
@@ -510,9 +534,7 @@ class AutoDockGpuDockingService:
                 ),
                 {
                     "missing_atom_types": missing,
-                    "map_set_atom_types": sorted(
-                        value for value in available if value is not None
-                    ),
+                    "map_set_atom_types": sorted(value for value in available if value is not None),
                 },
             )
         return _PreparedDocking(
@@ -532,9 +554,7 @@ class AutoDockGpuDockingService:
 
     def _identity(self, prepared: _PreparedDocking) -> AutoDockGpuToolIdentity:
         return AutoDockGpuToolIdentity(
-            tool=ToolIdentity(
-                name="AutoDock-GPU", version=prepared.installation.version
-            ),
+            tool=ToolIdentity(name="AutoDock-GPU", version=prepared.installation.version),
             executable_path=prepared.installation.executable,
             sha256=prepared.installation.sha256,
             architecture=prepared.installation.architecture,
@@ -609,9 +629,7 @@ class AutoDockGpuDockingService:
             ) from error
 
     @staticmethod
-    def _input_error(
-        code: str, message: str, details: dict[str, object]
-    ) -> AnkoraDomainError:
+    def _input_error(code: str, message: str, details: dict[str, object]) -> AnkoraDomainError:
         return AnkoraDomainError(
             code=code, stage=_STAGE, message=message, status_code=422, details=details
         )
@@ -696,9 +714,7 @@ class AutoDockGpuDockingService:
                 ),
                 changed_entries=[],
             )
-        return AutoDockGpuCancelResponse(
-            job_id=batch_id, status=AutoDockJobStatus.CANCEL_REQUESTED
-        )
+        return AutoDockGpuCancelResponse(job_id=batch_id, status=AutoDockJobStatus.CANCEL_REQUESTED)
 
     def latest_batch(
         self, *, receptor_id: str, binding_site_id: str, filter_run_id: str
@@ -728,17 +744,13 @@ class AutoDockGpuDockingService:
             key=lambda record: (record.created_at, record.batch_id),
         )
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
     def _create_batch(
         self, request: AutoDockGpuBatchRequest
     ) -> tuple[AutoDockGpuBatchRecord, "_PreparedCampaign"]:
-        installation = probe_autodock_gpu(
-            device_number=request.parameters.device_number
-        )
+        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
@@ -765,17 +777,13 @@ class AutoDockGpuDockingService:
             stage=_STAGE,
             code_prefix=_CODE_PREFIX,
         )
-        filter_run = self._ligand_store.load_filter_run(
-            request.library_id, request.filter_run_id
-        )
+        filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         entries = [
             AutoDockGpuBatchLigandResult(
                 ligand_id=molecule.ligand_id,
                 parent_compound_id=molecule.parent_compound_id,
                 chemical_state_id=molecule.chemical_state_id,
-                chemical_state_formal_charge=(
-                    molecule.chemical_state_formal_charge
-                ),
+                chemical_state_formal_charge=(molecule.chemical_state_formal_charge),
                 source_index=molecule.source_index,
                 name=molecule.name,
                 canonical_smiles=molecule.canonical_smiles,
@@ -784,15 +792,9 @@ class AutoDockGpuDockingService:
                 ligand_sha256=molecule.sha256,
                 ligand_atom_types=list(molecule.atom_types),
                 status=(
-                    AutoDockJobStatus.QUEUED
-                    if molecule.runnable
-                    else AutoDockJobStatus.FAILED
+                    AutoDockJobStatus.QUEUED if molecule.runnable else AutoDockJobStatus.FAILED
                 ),
-                phase=(
-                    AutoDockJobPhase.QUEUED
-                    if molecule.runnable
-                    else AutoDockJobPhase.COMPLETE
-                ),
+                phase=(AutoDockJobPhase.QUEUED if molecule.runnable else AutoDockJobPhase.COMPLETE),
                 completed_at=None if molecule.runnable else datetime.now(UTC),
                 failure=(
                     None
@@ -853,10 +855,29 @@ class AutoDockGpuDockingService:
         prepared: "_PreparedCampaign",
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
         try:
+            if self._resources is not None:
+                resource_lease = self._resources.acquire(
+                    autodock_gpu_claim(batch_id, ligand_count=len(prepared.molecules)),
+                    cancel_event=cancel_event,
+                )
             self._execute_batch(batch_id, prepared, cancel_event)
+        except ResourceRequestCanceled:
+            current = self._job_store.load_batch_overview(batch_id)
+            self._job_store.update_batch(
+                current.model_copy(
+                    update={
+                        "status": AutoDockJobStatus.CANCELED,
+                        "phase": AutoDockJobPhase.COMPLETE,
+                        "completed_at": datetime.now(UTC),
+                        "revision": current.revision + 1,
+                    }
+                ),
+                changed_entries=[],
+            )
         except AnkoraDomainError as error:
             current = self._job_store.load_batch_overview(batch_id)
             self._job_store.update_batch(
@@ -876,6 +897,8 @@ class AutoDockGpuDockingService:
                 changed_entries=[],
             )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             with self._batch_lock:
                 self._active_batch_id = None
             self._forget(batch_id)
@@ -903,9 +926,7 @@ class AutoDockGpuDockingService:
             assert molecule.path is not None
             shutil.copyfile(molecule.path, work / f"{tag}.pdbqt")
             listed += [f"{tag}.pdbqt", tag]
-        (work / _FILELIST_NAME).write_text(
-            "\n".join(listed) + "\n", encoding="ascii", newline="\n"
-        )
+        (work / _FILELIST_NAME).write_text("\n".join(listed) + "\n", encoding="ascii", newline="\n")
 
         arguments = build_arguments(
             field_filename=prepared.field_filename,
@@ -914,9 +935,7 @@ class AutoDockGpuDockingService:
             seed=parameters.seed,
             heuristics=parameters.heuristics,
             autostop=parameters.autostop,
-            energy_evaluations=(
-                None if parameters.heuristics else parameters.energy_evaluations
-            ),
+            energy_evaluations=(None if parameters.heuristics else parameters.energy_evaluations),
             population_size=parameters.population_size,
             local_search_method=parameters.local_search_method.value,
             cluster_rmsd_tolerance_angstrom=parameters.cluster_rmsd_tolerance_angstrom,
@@ -1025,20 +1044,14 @@ class AutoDockGpuDockingService:
                         "completed_at": datetime.now(UTC),
                         "failure": AutoDockFailure(
                             code=f"{_CODE_PREFIX}_MOLECULE_NOT_DOCKED",
-                            message=(
-                                "The campaign ended before this molecule was docked."
-                            ),
+                            message=("The campaign ended before this molecule was docked."),
                         ),
                         "revision": entry.revision + 1,
                     }
                 )
                 continue
-            parsed = parse_autodock4_log(
-                log.read_text(encoding="utf-8", errors="replace")
-            )
-            runs, clusters = self._persist_batch_results(
-                batch_id, molecule.ligand_id, parsed
-            )
+            parsed = parse_autodock4_log(log.read_text(encoding="utf-8", errors="replace"))
+            runs, clusters = self._persist_batch_results(batch_id, molecule.ligand_id, parsed)
             succeeded += 1
             results[molecule.ligand_id] = entry.model_copy(
                 update={
@@ -1051,16 +1064,10 @@ class AutoDockGpuDockingService:
                 }
             )
         entries = [results[entry.ligand_id] for entry in record.entries]
-        canceled = sum(
-            1 for entry in entries if entry.status is AutoDockJobStatus.CANCELED
-        )
+        canceled = sum(1 for entry in entries if entry.status is AutoDockJobStatus.CANCELED)
         failed = sum(1 for entry in entries if entry.status is AutoDockJobStatus.FAILED)
         completed_at = datetime.now(UTC)
-        status = (
-            AutoDockJobStatus.CANCELED
-            if evidence.canceled
-            else AutoDockJobStatus.COMPLETED
-        )
+        status = AutoDockJobStatus.CANCELED if evidence.canceled else AutoDockJobStatus.COMPLETED
         self._job_store.update_batch(
             record.model_copy(
                 update={
@@ -1107,9 +1114,7 @@ class AutoDockGpuDockingService:
             row = ranking[pose.run]
             artifact_id = str(uuid4())
             filename = f"run_{pose.run}.pdbqt"
-            self._job_store.write_batch_pose(
-                batch_id, ligand_id, filename, pose.content
-            )
+            self._job_store.write_batch_pose(batch_id, ligand_id, filename, pose.content)
             runs.append(
                 AutoDockRunResult(
                     run=pose.run,
@@ -1133,9 +1138,7 @@ class AutoDockGpuDockingService:
                 )
             )
         members: dict[int, list[int]] = defaultdict(list)
-        for row in sorted(
-            parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)
-        ):
+        for row in sorted(parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)):
             members[row.cluster_rank].append(row.run)
         clusters = [
             AutoDockClusterResult(
@@ -1168,12 +1171,12 @@ class AutoDockGpuDockingService:
             except OSError:
                 shutil.copyfile(source, destination)
 
+
 def _field_filename(map_set: AutoGridMapSetRecord) -> str:
     """The `.fld` descriptor is what `--ffile` consumes."""
-    field = next(
-        item for item in map_set.artifacts if item.kind is AutoGridMapKind.FIELD
-    )
+    field = next(item for item in map_set.artifacts if item.kind is AutoGridMapKind.FIELD)
     return field.filename
+
 
 @dataclass(frozen=True, slots=True)
 class _PreparedCampaign:

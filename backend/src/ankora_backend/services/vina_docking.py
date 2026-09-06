@@ -47,6 +47,12 @@ from ankora_backend.schemas.receptors import (
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
+from ankora_backend.services.resource_arbiter import (
+    ResourceArbiter,
+    ResourceLease,
+    ResourceRequestCanceled,
+    vina_claim,
+)
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 VINA_SEARCH_VOLUME_WARNING_ANGSTROM3 = 27_000.0
@@ -102,12 +108,14 @@ class VinaDockingService:
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
         lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
         self._leases = lease_manager
+        self._resources = resource_arbiter
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-vina")
         self._cancel_events: dict[str, threading.Event] = {}
         self._active_batch_ids: set[str] = set()
@@ -116,7 +124,10 @@ class VinaDockingService:
 
     @classmethod
     def from_environment(
-        cls, *, lease_manager: WorkLeaseManager | None = None
+        cls,
+        *,
+        lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> "VinaDockingService":
         return cls(
             docking_store=DockingArtifactStore.from_environment(),
@@ -124,6 +135,7 @@ class VinaDockingService:
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             lease_manager=lease_manager,
+            resource_arbiter=resource_arbiter,
         )
 
     def start(self, request: VinaDockingRequest) -> VinaDockingJobRecord:
@@ -530,9 +542,7 @@ class VinaDockingService:
 
         summary = self._docking_store.load_batch_summary(batch_id)
         payload = {
-            key: value
-            for key, value in summary.items()
-            if key in VinaBatchProgress.model_fields
+            key: value for key, value in summary.items() if key in VinaBatchProgress.model_fields
         }
         payload["entries"] = self._docking_store.load_batch_entries_after_revision(
             batch_id, after_revision
@@ -584,9 +594,21 @@ class VinaDockingService:
         parameters: VinaDockingParameters,
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.VINA_BATCH, batch_id)
         try:
+            record = self._docking_store.load_batch_overview(batch_id)
+            if self._resources is not None:
+                resource_lease = self._resources.acquire(
+                    vina_claim(
+                        batch_id,
+                        cpu_threads=(record.worker_count * parameters.cpu_threads),
+                        concurrent_processes=record.worker_count,
+                        ligand_count=len(work_items),
+                    ),
+                    cancel_event=cancel_event,
+                )
             if cancel_event.is_set():
                 self._finish_batch(batch_id, canceled=True)
                 return
@@ -623,6 +645,27 @@ class VinaDockingService:
                 for future in futures:
                     future.result()
             self._finish_batch(batch_id, cancel_event.is_set())
+        except ResourceRequestCanceled:
+            self._finish_batch(batch_id, canceled=True)
+        except AnkoraDomainError as error:
+            with self._lock:
+                record = self._docking_store.load_batch_overview(batch_id)
+                self._docking_store.update_batch_record(
+                    record.model_copy(
+                        update={
+                            "status": DockingJobStatus.FAILED,
+                            "phase": DockingJobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                            "revision": record.revision + 1,
+                            "failure": DockingFailure(
+                                code=error.code,
+                                message=error.message,
+                                details=dict(error.details),
+                            ),
+                        }
+                    ),
+                    changed_entries=[],
+                )
         except Exception as error:  # pragma: no cover - final supervisor containment
             with self._lock:
                 record = self._docking_store.load_batch_overview(batch_id)
@@ -643,6 +686,8 @@ class VinaDockingService:
                     changed_entries=[],
                 )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.VINA_BATCH, batch_id)
             self._forget(batch_id)
@@ -907,9 +952,7 @@ class VinaDockingService:
                 },
                 warnings=record.warnings,
             )
-            changed_entries = [
-                entry for entry in entries if entry.revision == next_revision
-            ]
+            changed_entries = [entry for entry in entries if entry.revision == next_revision]
             self._docking_store.update_batch_record(
                 record.model_copy(
                     update={
@@ -1084,11 +1127,37 @@ class VinaDockingService:
         box: BindingBox,
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.VINA_JOB, job_id)
         record = self._docking_store.load_record(job_id)
+        if self._resources is not None:
+            try:
+                resource_lease = self._resources.acquire(
+                    vina_claim(
+                        job_id,
+                        cpu_threads=record.request.parameters.cpu_threads,
+                        concurrent_processes=1,
+                        ligand_count=1,
+                    ),
+                    cancel_event=cancel_event,
+                )
+            except ResourceRequestCanceled:
+                self._finish_canceled(record, None)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.VINA_JOB, job_id)
+                self._forget(job_id)
+                return
+            except AnkoraDomainError as error:
+                self._finish_failed(record, None, error.code, error.message, dict(error.details))
+                if self._leases is not None:
+                    self._leases.release(WorkKind.VINA_JOB, job_id)
+                self._forget(job_id)
+                return
         if cancel_event.is_set():
             self._finish_canceled(record, None)
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.VINA_JOB, job_id)
             self._forget(job_id)
@@ -1173,6 +1242,8 @@ class VinaDockingService:
                 {"reason": str(error)},
             )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.VINA_JOB, job_id)
             self._forget(job_id)

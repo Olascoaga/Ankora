@@ -89,6 +89,7 @@ export function describeUsage(usage: ResourceUsage | null): {
     `CPU ${Math.round(usage.cpu_percent)}%`
     + ` · ${gpu}`
     + ` · RAM ${formatBytes(usage.memory_used_bytes)}`;
+  const scheduler = usage.scheduler;
   const detail = [
     `CPU ${usage.cpu_percent.toFixed(1)}% across ${usage.logical_cores} logical cores`,
     `Memory ${formatBytes(usage.memory_used_bytes)} of `
@@ -98,6 +99,12 @@ export function describeUsage(usage: ResourceUsage | null): {
         + `${formatBytes(usage.gpu.memory_used_bytes)} of `
         + `${formatBytes(usage.gpu.memory_total_bytes)}`
       : usage.gpu_unavailable_reason ?? "No GPU reading.",
+    scheduler
+      ? `Ankora scheduler: ${scheduler.active_allocations.length} active, `
+        + `${scheduler.queued_requests} queued; `
+        + `${scheduler.cpu_threads_allocated}/${scheduler.cpu_threads_capacity} CPU threads `
+        + `and ${scheduler.gpu_slots_allocated}/${scheduler.gpu_slots_capacity} GPU slots reserved.`
+      : "Ankora scheduler not reported.",
   ].join("\n");
   return { label, detail };
 }

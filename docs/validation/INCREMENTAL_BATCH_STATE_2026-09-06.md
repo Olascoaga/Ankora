@@ -49,4 +49,5 @@ The Windows migration run completed successfully with:
 This validates incremental local persistence and server-side pagination. The
 sidecar does not change scoring, ranking semantics, molecular preparation,
 engine invocation, or any scientific artifact. Global scheduling across
-simultaneous campaigns remains a separate resource-arbitration milestone.
+simultaneous work is now governed separately by ADR-022 and the validation in
+`GLOBAL_RESOURCE_ARBITER_2026-09-06.md`.

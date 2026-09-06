@@ -36,6 +36,33 @@ class GpuUsage(ContractModel):
     memory_total_bytes: int
 
 
+class ResourceAllocation(ContractModel):
+    """Capacity held by one admitted scientific workload."""
+
+    workload: str
+    owner_id: str
+    cpu_threads: int
+    memory_bytes: int
+    disk_bytes: int
+    gpu_slots: int
+
+
+class ResourceSchedulerSnapshot(ContractModel):
+    """Observable state of the process-wide scientific-work arbiter."""
+
+    cpu_threads_capacity: int
+    cpu_threads_allocated: int
+    gpu_slots_capacity: int
+    gpu_slots_allocated: int
+    memory_reserve_bytes: int
+    memory_bytes_reserved: int
+    disk_path: str
+    disk_reserve_bytes: int
+    disk_bytes_reserved: int
+    queued_requests: int
+    active_allocations: list[ResourceAllocation]
+
+
 class ResourceUsage(ContractModel):
     """A snapshot of what this machine is doing right now.
 
@@ -50,6 +77,7 @@ class ResourceUsage(ContractModel):
     memory_percent: float
     gpu: GpuUsage | None = None
     gpu_unavailable_reason: str | None = None
+    scheduler: ResourceSchedulerSnapshot | None = None
 
 
 class ToolStatus(ContractModel):

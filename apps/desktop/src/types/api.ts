@@ -2065,6 +2065,29 @@ export interface GpuUsage {
   memory_total_bytes: number;
 }
 
+export interface ResourceAllocation {
+  workload: string;
+  owner_id: string;
+  cpu_threads: number;
+  memory_bytes: number;
+  disk_bytes: number;
+  gpu_slots: number;
+}
+
+export interface ResourceSchedulerSnapshot {
+  cpu_threads_capacity: number;
+  cpu_threads_allocated: number;
+  gpu_slots_capacity: number;
+  gpu_slots_allocated: number;
+  memory_reserve_bytes: number;
+  memory_bytes_reserved: number;
+  disk_path: string;
+  disk_reserve_bytes: number;
+  disk_bytes_reserved: number;
+  queued_requests: number;
+  active_allocations: ResourceAllocation[];
+}
+
 export interface ResourceUsage {
   cpu_percent: number;
   logical_cores: number;
@@ -2074,6 +2097,7 @@ export interface ResourceUsage {
   /** Null when there is no NVIDIA GPU, driver, or answer — never a fake 0%. */
   gpu: GpuUsage | null;
   gpu_unavailable_reason: string | null;
+  scheduler?: ResourceSchedulerSnapshot | null;
 }
 
 /** One tool, the version that ran, and what it did in this campaign. */

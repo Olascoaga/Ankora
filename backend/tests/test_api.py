@@ -57,6 +57,27 @@ def test_system_endpoint_reports_runtime() -> None:
     assert body["app_mode"] == "development"
 
 
+def test_scientific_services_share_one_observable_resource_arbiter(
+    monkeypatch, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    app = create_app()
+    arbiter = app.state.resource_arbiter
+
+    assert app.state.vina_docking._resources is arbiter
+    assert app.state.autogrid_maps._resources is arbiter
+    assert app.state.autodock4_docking._resources is arbiter
+    assert app.state.autodock_gpu_docking._resources is arbiter
+
+    response = TestClient(app).get("/api/v1/system/resources")
+
+    assert response.status_code == 200
+    scheduler = response.json()["scheduler"]
+    assert scheduler["cpu_threads_capacity"] == arbiter.cpu_threads
+    assert scheduler["queued_requests"] == 0
+    assert scheduler["active_allocations"] == []
+
+
 def test_tools_endpoint_has_stable_contract(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.delenv("ANKORA_VINA_PATH", raising=False)
     monkeypatch.delenv("ANKORA_GNINA_PATH", raising=False)

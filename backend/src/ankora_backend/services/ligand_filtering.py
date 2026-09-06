@@ -101,12 +101,11 @@ def preview_library_filters(
     library_id: str,
     request: LigandLibraryFilterRequest,
     store: LigandArtifactStore,
+    worker_limit: int | None = None,
 ) -> LigandLibraryFilterPreview:
     library = store.load_library_record(library_id)
     ligand_ids = {
-        entry.ligand.artifact.ligand_id
-        for entry in library.entries
-        if entry.ligand is not None
+        entry.ligand.artifact.ligand_id for entry in library.entries if entry.ligand is not None
     }
     unknown_overrides = sorted(set(request.state_overrides) - ligand_ids)
     if unknown_overrides:
@@ -121,7 +120,7 @@ def preview_library_filters(
         for entry in library.entries
         if entry.ligand is not None and entry.ligand.state is not None
     ]
-    worker_count = _parallel_worker_count(len(entries))
+    worker_count = _parallel_worker_count(len(entries), worker_limit=worker_limit)
     if worker_count == 1:
         evaluations = [
             _evaluate_entry(entry=entry, request=request, store=store) for entry in entries
@@ -252,9 +251,7 @@ def _evaluate_entry(
         custom_rule_results=custom_rule_results,
         alerts=alerts,
         disposition=(
-            LigandFilterDisposition.EXCLUDED
-            if excluded
-            else LigandFilterDisposition.ELIGIBLE
+            LigandFilterDisposition.EXCLUDED if excluded else LigandFilterDisposition.ELIGIBLE
         ),
         reasons=reasons,
     )
@@ -295,9 +292,11 @@ def _apply_duplicate_policy(
     return resolved
 
 
-def _parallel_worker_count(task_count: int) -> int:
+def _parallel_worker_count(task_count: int, *, worker_limit: int | None = None) -> int:
     logical_cores = os.cpu_count() or 2
     usable_cores = logical_cores - 1 if logical_cores > 1 else 1
+    if worker_limit is not None:
+        usable_cores = min(usable_cores, max(1, worker_limit))
     return max(1, min(task_count, usable_cores))
 
 
@@ -306,6 +305,7 @@ def apply_library_filters(
     library_id: str,
     request: ApplyLigandLibraryFilterRequest,
     store: LigandArtifactStore,
+    worker_limit: int | None = None,
 ) -> LigandLibraryFilterRun:
     if not request.acknowledge_selection:
         raise _filter_error(
@@ -320,6 +320,7 @@ def apply_library_filters(
             state_overrides=request.state_overrides,
         ),
         store=store,
+        worker_limit=worker_limit,
     )
     _validate_microstate_selection(
         preview=preview,
@@ -433,9 +434,7 @@ def _validate_microstate_selection(
         )
 
 
-def _load_state_molecule(
-    store: LigandArtifactStore, ligand_id: str, state_id: str
-) -> Any:
+def _load_state_molecule(store: LigandArtifactStore, ligand_id: str, state_id: str) -> Any:
     supplier = Chem.SDMolSupplier(
         str(store.state_content_path(ligand_id, state_id)),
         removeHs=False,
@@ -632,8 +631,7 @@ def _summary(evaluations: list[LigandFilterEvaluation]) -> LigandFilterSummary:
             item.disposition is LigandFilterDisposition.EXCLUDED for item in evaluations
         ),
         needs_decision_count=sum(
-            item.disposition is LigandFilterDisposition.NEEDS_DECISION
-            for item in evaluations
+            item.disposition is LigandFilterDisposition.NEEDS_DECISION for item in evaluations
         ),
         duplicate_count=sum(item.duplicate_of_ligand_id is not None for item in evaluations),
         pains_match_count=sum(

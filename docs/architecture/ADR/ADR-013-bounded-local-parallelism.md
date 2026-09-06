@@ -11,4 +11,4 @@ Parallel execution must preserve deterministic source/result ordering, immutable
 
 ## Consequences
 
-Library filtering and per-ligand ETKDG/MMFF/Meeko preparation use multiple local workers. Worker counts are visible and recorded. Future Vina and GNINA adapters must pass supported CPU/GPU settings explicitly and avoid nested oversubscription. Ankora reserves one logical processor for Windows and the interface by default; later UI controls may allow the scientist to choose a lower limit.
+Library filtering and per-ligand ETKDG/MMFF/Meeko preparation use multiple local workers. Worker counts are visible and recorded. Docking adapters pass supported CPU/GPU settings explicitly and avoid nested oversubscription. Ankora reserves one logical processor for Windows and the interface by default; later UI controls may allow the scientist to choose a lower limit. ADR-022 adds the application-wide admission boundary needed when several otherwise bounded operations overlap.

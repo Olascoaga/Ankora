@@ -66,6 +66,12 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.resource_arbiter import (
+    ResourceArbiter,
+    ResourceLease,
+    ResourceRequestCanceled,
+    autodock4_claim,
+)
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock4_docking"
@@ -104,6 +110,7 @@ class AutoDock4DockingService:
         receptor_store: ReceptorArtifactStore,
         binding_site_store: BindingSiteArtifactStore,
         lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> None:
         self._job_store = job_store
         self._map_store = map_store
@@ -111,9 +118,8 @@ class AutoDock4DockingService:
         self._receptor_store = receptor_store
         self._binding_site_store = binding_site_store
         self._leases = lease_manager
-        self._executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="ankora-autodock4"
-        )
+        self._resources = resource_arbiter
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-autodock4")
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
         self._batch_lock = threading.Lock()
@@ -122,7 +128,10 @@ class AutoDock4DockingService:
 
     @classmethod
     def from_environment(
-        cls, *, lease_manager: WorkLeaseManager | None = None
+        cls,
+        *,
+        lease_manager: WorkLeaseManager | None = None,
+        resource_arbiter: ResourceArbiter | None = None,
     ) -> "AutoDock4DockingService":
         return cls(
             job_store=AutoDock4JobStore.from_environment(),
@@ -131,6 +140,7 @@ class AutoDock4DockingService:
             receptor_store=ReceptorArtifactStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             lease_manager=lease_manager,
+            resource_arbiter=resource_arbiter,
         )
 
     def start(self, request: AutoDock4DockingRequest) -> AutoDock4DockingJobRecord:
@@ -196,13 +206,9 @@ class AutoDock4DockingService:
                 )
             cancel_event.set()
             self._job_store.update_job(
-                record.model_copy(
-                    update={"status": AutoDock4JobStatus.CANCEL_REQUESTED}
-                )
+                record.model_copy(update={"status": AutoDock4JobStatus.CANCEL_REQUESTED})
             )
-        return AutoDock4CancelResponse(
-            job_id=job_id, status=AutoDock4JobStatus.CANCEL_REQUESTED
-        )
+        return AutoDock4CancelResponse(job_id=job_id, status=AutoDock4JobStatus.CANCEL_REQUESTED)
 
     def shutdown(self) -> None:
         with self._lock:
@@ -216,11 +222,40 @@ class AutoDock4DockingService:
         prepared: _PreparedDocking,
         cancel_event: threading.Event,
     ) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.AUTODOCK4_JOB, job_id)
         record = self._job_store.load_job(job_id)
+        if self._resources is not None:
+            try:
+                resource_lease = self._resources.acquire(
+                    autodock4_claim(job_id, concurrent_processes=1, ligand_count=1),
+                    cancel_event=cancel_event,
+                )
+            except ResourceRequestCanceled:
+                self._finish(record, status=AutoDock4JobStatus.CANCELED)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
+                self._forget(job_id)
+                return
+            except AnkoraDomainError as error:
+                self._finish(
+                    record,
+                    status=AutoDock4JobStatus.FAILED,
+                    failure=AutoDock4Failure(
+                        code=error.code,
+                        message=error.message,
+                        details=dict(error.details),
+                    ),
+                )
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
+                self._forget(job_id)
+                return
         if cancel_event.is_set():
             self._finish(record, status=AutoDock4JobStatus.CANCELED)
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
             self._forget(job_id)
@@ -250,6 +285,8 @@ class AutoDock4DockingService:
                 ),
             )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
             self._forget(job_id)
@@ -283,9 +320,7 @@ class AutoDock4DockingService:
                 prepared.request.parameters.cluster_rmsd_tolerance_angstrom
             ),
         )
-        (job_directory / DOCKING_PARAMETER_FILENAME).write_text(
-            dpf, encoding="ascii", newline="\n"
-        )
+        (job_directory / DOCKING_PARAMETER_FILENAME).write_text(dpf, encoding="ascii", newline="\n")
 
         started = time.monotonic()
         execution = execute_autodock4_cancellable(
@@ -297,9 +332,7 @@ class AutoDock4DockingService:
         duration = time.monotonic() - started
         log_path = job_directory / DOCKING_LOG_FILENAME
         document = (
-            log_path.read_text(encoding="utf-8", errors="replace")
-            if log_path.is_file()
-            else ""
+            log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
         )
         successful = log_reports_success(document)
         evidence = AutoDock4ExecutionEvidence(
@@ -480,9 +513,7 @@ class AutoDock4DockingService:
         document = ligand_path.read_text(encoding="utf-8", errors="replace")
         atom_types = _ordered_atom_types(document)
         atom_lines = [
-            line
-            for line in document.splitlines()
-            if line.startswith(("ATOM  ", "HETATM"))
+            line for line in document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
         ]
 
         available = {
@@ -500,9 +531,7 @@ class AutoDock4DockingService:
                 ),
                 {
                     "missing_atom_types": missing,
-                    "map_set_atom_types": sorted(
-                        value for value in available if value is not None
-                    ),
+                    "map_set_atom_types": sorted(value for value in available if value is not None),
                 },
             )
         validate_ligand_against_autodock4_limits(
@@ -593,16 +622,12 @@ class AutoDock4DockingService:
         active = [record for record in matching if record.batch_id == active_id]
         successful = [record for record in matching if record.succeeded_count > 0]
         candidates = active or successful or matching
-        return max(
-            candidates, key=lambda record: (record.created_at, record.batch_id)
-        )
+        return max(candidates, key=lambda record: (record.created_at, record.batch_id))
 
     def get_batch(self, batch_id: str) -> AutoDock4BatchRecord:
         return self._job_store.load_batch(batch_id)
 
-    def get_batch_progress(
-        self, batch_id: str, after_revision: int
-    ) -> AutoDock4BatchProgress:
+    def get_batch_progress(self, batch_id: str, after_revision: int) -> AutoDock4BatchProgress:
         summary = self._job_store.load_batch_summary(batch_id)
         payload = {
             key: value
@@ -642,13 +667,9 @@ class AutoDock4DockingService:
                 ),
                 changed_entries=[],
             )
-        return AutoDock4CancelResponse(
-            job_id=batch_id, status=AutoDock4JobStatus.CANCEL_REQUESTED
-        )
+        return AutoDock4CancelResponse(job_id=batch_id, status=AutoDock4JobStatus.CANCEL_REQUESTED)
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
     def _create_batch(self, request: AutoDock4BatchRequest) -> AutoDock4BatchRecord:
@@ -658,9 +679,7 @@ class AutoDock4DockingService:
         warnings = self._validate_map_set_applies(
             map_set, receptor_output=receptor_output, binding_site=binding_site
         )
-        filter_run = self._ligand_store.load_filter_run(
-            request.library_id, request.filter_run_id
-        )
+        filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         if not filter_run.selected_ligand_ids:
             raise self._input_error(
                 "AUTODOCK4_SELECTION_EMPTY",
@@ -686,9 +705,12 @@ class AutoDock4DockingService:
             if source is None:
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, len(entries), "Unavailable library molecule",
+                        ligand_id,
+                        len(entries),
+                        "Unavailable library molecule",
                         "The selected molecule is absent from its library record.",
-                        "AUTODOCK4_LIBRARY_LIGAND_MISSING", now,
+                        "AUTODOCK4_LIBRARY_LIGAND_MISSING",
+                        now,
                     )
                 )
                 continue
@@ -723,9 +745,12 @@ class AutoDock4DockingService:
             ):
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, state.inspection.name,
+                        ligand_id,
+                        source_index,
+                        state.inspection.name,
                         "This molecule has no completed Meeko PDBQT preparation.",
-                        "AUTODOCK4_LIGAND_NOT_PREPARED", now,
+                        "AUTODOCK4_LIGAND_NOT_PREPARED",
+                        now,
                         canonical_smiles=state.inspection.canonical_smiles,
                         molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                         parent_compound_id=state.parent_compound_id,
@@ -747,9 +772,7 @@ class AutoDock4DockingService:
                         "AUTODOCK4_PREPARATION_STATE_MISMATCH",
                         now,
                         canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=(
-                            state.inspection.molecular_weight_g_mol
-                        ),
+                        molecular_weight_g_mol=(state.inspection.molecular_weight_g_mol),
                         parent_compound_id=state.parent_compound_id,
                         chemical_state_id=state.state_id,
                         chemical_state_formal_charge=state.inspection.formal_charge,
@@ -757,21 +780,20 @@ class AutoDock4DockingService:
                 )
                 continue
             try:
-                pdbqt = self._ligand_store.load_pdbqt_record(
-                    ligand_id, status.pdbqt_preparation_id
-                )
-                path = self._ligand_store.pdbqt_content_path(
-                    ligand_id, status.pdbqt_preparation_id
-                )
+                pdbqt = self._ligand_store.load_pdbqt_record(ligand_id, status.pdbqt_preparation_id)
+                path = self._ligand_store.pdbqt_content_path(ligand_id, status.pdbqt_preparation_id)
                 self._verify_hash(path, pdbqt.artifact.sha256)
                 document = path.read_text(encoding="utf-8", errors="replace")
                 atom_types = _ordered_atom_types(document)
             except (AnkoraDomainError, ValueError) as error:
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, state.inspection.name,
+                        ligand_id,
+                        source_index,
+                        state.inspection.name,
                         str(getattr(error, "message", error)),
-                        "AUTODOCK4_LIGAND_UNAVAILABLE", now,
+                        "AUTODOCK4_LIGAND_UNAVAILABLE",
+                        now,
                         canonical_smiles=state.inspection.canonical_smiles,
                         molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                         parent_compound_id=state.parent_compound_id,
@@ -784,12 +806,15 @@ class AutoDock4DockingService:
             if missing:
                 entries.append(
                     self._unavailable_entry(
-                        ligand_id, source_index, state.inspection.name,
+                        ligand_id,
+                        source_index,
+                        state.inspection.name,
                         (
                             "This molecule uses atom types the selected map set "
                             f"does not cover: {', '.join(missing)}."
                         ),
-                        "AUTODOCK4_LIGAND_TYPES_NOT_IN_MAP_SET", now,
+                        "AUTODOCK4_LIGAND_TYPES_NOT_IN_MAP_SET",
+                        now,
                         canonical_smiles=state.inspection.canonical_smiles,
                         molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
                         ligand_preparation_id=status.pdbqt_preparation_id,
@@ -818,9 +843,7 @@ class AutoDock4DockingService:
                     phase=AutoDock4JobPhase.QUEUED,
                 )
             )
-        runnable = sum(
-            1 for entry in entries if entry.status is AutoDock4JobStatus.QUEUED
-        )
+        runnable = sum(1 for entry in entries if entry.status is AutoDock4JobStatus.QUEUED)
         worker_count = max(1, min(request.parameters.parallel_ligands, runnable or 1))
         record = AutoDock4BatchRecord(
             batch_id=self._job_store.new_batch_id(),
@@ -836,9 +859,7 @@ class AutoDock4DockingService:
             selection_manifest_sha256=filter_run.artifact.sha256,
             selected_count=len(entries),
             worker_count=worker_count,
-            failed_count=sum(
-                1 for entry in entries if entry.status is AutoDock4JobStatus.FAILED
-            ),
+            failed_count=sum(1 for entry in entries if entry.status is AutoDock4JobStatus.FAILED),
             completed_count=sum(
                 1 for entry in entries if entry.status is AutoDock4JobStatus.FAILED
             ),
@@ -886,10 +907,22 @@ class AutoDock4DockingService:
         )
 
     def _run_batch(self, batch_id: str, cancel_event: threading.Event) -> None:
+        resource_lease: ResourceLease | None = None
         if self._leases is not None:
             self._leases.acquire(WorkKind.AUTODOCK4_BATCH, batch_id)
         try:
             record = self._job_store.load_batch(batch_id)
+            if self._resources is not None:
+                resource_lease = self._resources.acquire(
+                    autodock4_claim(
+                        batch_id,
+                        concurrent_processes=record.worker_count,
+                        ligand_count=sum(
+                            entry.status is AutoDock4JobStatus.QUEUED for entry in record.entries
+                        ),
+                    ),
+                    cancel_event=cancel_event,
+                )
             self._update_batch(
                 batch_id,
                 lambda current: current.model_copy(
@@ -901,20 +934,21 @@ class AutoDock4DockingService:
                 ),
             )
             pending = [
-                entry for entry in record.entries
-                if entry.status is AutoDock4JobStatus.QUEUED
+                entry for entry in record.entries if entry.status is AutoDock4JobStatus.QUEUED
             ]
             if pending:
                 with ThreadPoolExecutor(
                     max_workers=record.worker_count,
                     thread_name_prefix="ankora-autodock4-batch",
                 ) as pool:
-                    list(pool.map(
-                        lambda entry: self._run_batch_entry(
-                            batch_id, entry.ligand_id, cancel_event
-                        ),
-                        pending,
-                    ))
+                    list(
+                        pool.map(
+                            lambda entry: self._run_batch_entry(
+                                batch_id, entry.ligand_id, cancel_event
+                            ),
+                            pending,
+                        )
+                    )
             self._update_batch(
                 batch_id,
                 lambda current: current.model_copy(
@@ -929,7 +963,37 @@ class AutoDock4DockingService:
                     }
                 ),
             )
+        except ResourceRequestCanceled:
+            self._update_batch(
+                batch_id,
+                lambda current: current.model_copy(
+                    update={
+                        "status": AutoDock4JobStatus.CANCELED,
+                        "phase": AutoDock4JobPhase.COMPLETE,
+                        "completed_at": datetime.now(UTC),
+                    }
+                ),
+            )
+        except AnkoraDomainError as error:
+            failure = AutoDock4Failure(
+                code=error.code,
+                message=error.message,
+                details=dict(error.details),
+            )
+            self._update_batch(
+                batch_id,
+                lambda current: current.model_copy(
+                    update={
+                        "status": AutoDock4JobStatus.FAILED,
+                        "phase": AutoDock4JobPhase.COMPLETE,
+                        "completed_at": datetime.now(UTC),
+                        "failure": failure,
+                    }
+                ),
+            )
         finally:
+            if resource_lease is not None:
+                resource_lease.release()
             if self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK4_BATCH, batch_id)
             self._forget(batch_id)
@@ -941,9 +1005,7 @@ class AutoDock4DockingService:
     ) -> None:
         """One molecule's complete AutoDock4 job. A failure stays on this row."""
         if cancel_event.is_set():
-            self._finish_entry(
-                batch_id, ligand_id, status=AutoDock4JobStatus.CANCELED
-            )
+            self._finish_entry(batch_id, ligand_id, status=AutoDock4JobStatus.CANCELED)
             return
         batch = self._job_store.load_batch_overview(batch_id)
         entry = self._job_store.load_batch_entry(batch_id, ligand_id)
@@ -986,8 +1048,7 @@ class AutoDock4DockingService:
             self._require_ascii_job_directory(directory)
             document = ligand_path.read_text(encoding="utf-8", errors="replace")
             atom_lines = [
-                line for line in document.splitlines()
-                if line.startswith(("ATOM  ", "HETATM"))
+                line for line in document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
             ]
             self._stage_directory(directory, map_set, ligand_path)
             dpf = render_autodock4_dpf(
@@ -1008,9 +1069,7 @@ class AutoDock4DockingService:
                     batch.request.parameters.cluster_rmsd_tolerance_angstrom
                 ),
             )
-            (directory / DOCKING_PARAMETER_FILENAME).write_text(
-                dpf, encoding="ascii", newline="\n"
-            )
+            (directory / DOCKING_PARAMETER_FILENAME).write_text(dpf, encoding="ascii", newline="\n")
             started = time.monotonic()
             execution = execute_autodock4_cancellable(
                 installation=probe_autodock4(),
@@ -1020,9 +1079,7 @@ class AutoDock4DockingService:
             )
             log_path = directory / DOCKING_LOG_FILENAME
             log = (
-                log_path.read_text(encoding="utf-8", errors="replace")
-                if log_path.is_file()
-                else ""
+                log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
             )
             evidence = AutoDock4ExecutionEvidence(
                 command=execution.command,
@@ -1036,7 +1093,8 @@ class AutoDock4DockingService:
             )
             if execution.canceled:
                 self._finish_entry(
-                    batch_id, ligand_id,
+                    batch_id,
+                    ligand_id,
                     status=AutoDock4JobStatus.CANCELED,
                     execution=evidence,
                     command=execution.command,
@@ -1044,7 +1102,8 @@ class AutoDock4DockingService:
                 return
             if execution.exit_code != 0 or not evidence.successful_completion_logged:
                 self._finish_entry(
-                    batch_id, ligand_id,
+                    batch_id,
+                    ligand_id,
                     status=AutoDock4JobStatus.FAILED,
                     execution=evidence,
                     command=execution.command,
@@ -1066,7 +1125,8 @@ class AutoDock4DockingService:
             runs, clusters = self._persist_batch_results(batch_id, ligand_id, parsed)
             completed_at = datetime.now(UTC)
             self._finish_entry(
-                batch_id, ligand_id,
+                batch_id,
+                ligand_id,
                 status=AutoDock4JobStatus.COMPLETED,
                 execution=evidence,
                 command=execution.command,
@@ -1090,7 +1150,8 @@ class AutoDock4DockingService:
             )
         except AnkoraDomainError as error:
             self._finish_entry(
-                batch_id, ligand_id,
+                batch_id,
+                ligand_id,
                 status=AutoDock4JobStatus.FAILED,
                 failure=AutoDock4Failure(
                     code=error.code, message=error.message, details=dict(error.details)
@@ -1130,9 +1191,7 @@ class AutoDock4DockingService:
                 )
             )
         members: dict[int, list[int]] = defaultdict(list)
-        for row in sorted(
-            parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)
-        ):
+        for row in sorted(parsed.ranking, key=lambda item: (item.cluster_rank, item.sub_rank)):
             members[row.cluster_rank].append(row.run)
         clusters = [
             AutoDock4ClusterResult(
@@ -1293,18 +1352,14 @@ class AutoDock4DockingService:
             )
 
     @staticmethod
-    def _input_error(
-        code: str, message: str, details: dict[str, object]
-    ) -> AnkoraDomainError:
+    def _input_error(code: str, message: str, details: dict[str, object]) -> AnkoraDomainError:
         return AnkoraDomainError(
             code=code, stage=_STAGE, message=message, status_code=422, details=details
         )
 
 
 def _map_prefix(map_set: AutoGridMapSetRecord) -> str:
-    field = next(
-        item for item in map_set.artifacts if item.kind is AutoGridMapKind.FIELD
-    )
+    field = next(item for item in map_set.artifacts if item.kind is AutoGridMapKind.FIELD)
     return field.filename.removesuffix(".maps.fld")
 
 
@@ -1314,8 +1369,7 @@ _torsdof = torsional_degrees_of_freedom
 
 def _centroid(atom_lines: list[str]) -> tuple[float, float, float]:
     coordinates = [
-        (float(line[30:38]), float(line[38:46]), float(line[46:54]))
-        for line in atom_lines
+        (float(line[30:38]), float(line[38:46]), float(line[46:54])) for line in atom_lines
     ]
     count = len(coordinates)
     return (

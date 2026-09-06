@@ -185,6 +185,12 @@ from ankora_backend.services.receptor_preparation import (
     preview_receptor_protonation,
 )
 from ankora_backend.services.redocking_validation import RedockingValidationService
+from ankora_backend.services.resource_arbiter import (
+    ResourceArbiter,
+    ligand_conformer_claim,
+    ligand_filter_claim,
+    ligand_pdbqt_claim,
+)
 from ankora_backend.services.result_catalog import ResultCatalogService
 from ankora_backend.services.result_deletion import ResultDeletionService
 from ankora_backend.services.structure_inspection import (
@@ -221,6 +227,21 @@ def _work_retry_service(request: Request) -> WorkRetryService:
     return cast(WorkRetryService, request.app.state.work_retry)
 
 
+def _resource_arbiter(request: Request) -> ResourceArbiter:
+    return cast(ResourceArbiter, request.app.state.resource_arbiter)
+
+
+def _ligand_filter_workers(
+    store: LigandArtifactStore, library_id: str, arbiter: ResourceArbiter
+) -> int:
+    library = store.load_library_record(library_id)
+    eligible_inputs = sum(
+        entry.ligand is not None and entry.ligand.state is not None
+        for entry in library.entries
+    )
+    return max(1, min(arbiter.cpu_threads, eligible_inputs))
+
+
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", backend_version="0.1.0")
@@ -232,13 +253,13 @@ def system() -> SystemResponse:
 
 
 @router.get("/system/resources", response_model=ResourceUsage)
-def system_resources() -> ResourceUsage:
+def system_resources(request: Request) -> ResourceUsage:
     """What the machine is doing right now.
 
     Sampled per request: the status bar asks periodically, so the cost of a
     running campaign is visible where the scientist already looks.
     """
-    return collect_resource_usage()
+    return collect_resource_usage(scheduler=_resource_arbiter(request).snapshot())
 
 
 @router.get("/work/recovery", response_model=WorkRecoverySummary)
@@ -275,9 +296,7 @@ def tools() -> ToolsResponse:
     propka = discover_tool("propka3", os.getenv("ANKORA_PROPKA_PATH"))
     propka_package = discover_python_package("propka", "propka")
     meeko = discover_tool("mk_prepare_receptor", os.getenv("ANKORA_MEEKO_PATH"))
-    meeko_ligand = discover_tool(
-        "mk_prepare_ligand", os.getenv("ANKORA_MEEKO_LIGAND_PATH")
-    )
+    meeko_ligand = discover_tool("mk_prepare_ligand", os.getenv("ANKORA_MEEKO_LIGAND_PATH"))
     meeko_package = discover_python_package("meeko", "meeko")
     p2rank = discover_p2rank(os.getenv("ANKORA_P2RANK_PATH"))
     return ToolsResponse(
@@ -451,9 +470,7 @@ def list_ligand_libraries(
     )
 
 
-@router.get(
-    "/ligand-libraries/{library_id}", response_model=LigandLibraryRecord
-)
+@router.get("/ligand-libraries/{library_id}", response_model=LigandLibraryRecord)
 def get_ligand_library(library_id: str) -> LigandLibraryRecord:
     return LigandArtifactStore.from_environment().load_library_record(library_id)
 
@@ -478,13 +495,20 @@ def get_ligand_library_content(library_id: str) -> FileResponse:
     response_model=LigandLibraryFilterPreview,
 )
 def preview_ligand_library_filters(
-    library_id: str, request: LigandLibraryFilterRequest
+    library_id: str,
+    request: LigandLibraryFilterRequest,
+    api_request: Request,
 ) -> LigandLibraryFilterPreview:
-    return preview_library_filters(
-        library_id=library_id,
-        request=request,
-        store=LigandArtifactStore.from_environment(),
-    )
+    arbiter = _resource_arbiter(api_request)
+    store = LigandArtifactStore.from_environment()
+    workers = _ligand_filter_workers(store, library_id, arbiter)
+    with arbiter.acquire(ligand_filter_claim(library_id, workers)):
+        return preview_library_filters(
+            library_id=library_id,
+            request=request,
+            store=store,
+            worker_limit=workers,
+        )
 
 
 @router.post(
@@ -493,13 +517,20 @@ def preview_ligand_library_filters(
     status_code=201,
 )
 def create_ligand_library_filter_run(
-    library_id: str, request: ApplyLigandLibraryFilterRequest
+    library_id: str,
+    request: ApplyLigandLibraryFilterRequest,
+    api_request: Request,
 ) -> LigandLibraryFilterRun:
-    return apply_library_filters(
-        library_id=library_id,
-        request=request,
-        store=LigandArtifactStore.from_environment(),
-    )
+    arbiter = _resource_arbiter(api_request)
+    store = LigandArtifactStore.from_environment()
+    workers = _ligand_filter_workers(store, library_id, arbiter)
+    with arbiter.acquire(ligand_filter_claim(library_id, workers)):
+        return apply_library_filters(
+            library_id=library_id,
+            request=request,
+            store=store,
+            worker_limit=workers,
+        )
 
 
 @router.get(
@@ -516,21 +547,15 @@ def get_latest_ligand_library_filter_run(
     "/ligand-libraries/{library_id}/filter-runs/{filter_run_id}",
     response_model=LigandLibraryFilterRun,
 )
-def get_ligand_library_filter_run(
-    library_id: str, filter_run_id: str
-) -> LigandLibraryFilterRun:
-    return LigandArtifactStore.from_environment().load_filter_run(
-        library_id, filter_run_id
-    )
+def get_ligand_library_filter_run(library_id: str, filter_run_id: str) -> LigandLibraryFilterRun:
+    return LigandArtifactStore.from_environment().load_filter_run(library_id, filter_run_id)
 
 
 @router.get(
     "/ligand-libraries/{library_id}/filter-runs/{filter_run_id}/content",
     response_class=FileResponse,
 )
-def get_ligand_library_filter_manifest(
-    library_id: str, filter_run_id: str
-) -> FileResponse:
+def get_ligand_library_filter_manifest(library_id: str, filter_run_id: str) -> FileResponse:
     store = LigandArtifactStore.from_environment()
     record = store.load_filter_run(library_id, filter_run_id)
     return FileResponse(
@@ -699,13 +724,16 @@ def create_selected_ligand_microstate(
     status_code=201,
 )
 def minimize_ligand_conformer(
-    ligand_id: str, request: MinimizeLigandRequest
+    ligand_id: str,
+    request: MinimizeLigandRequest,
+    api_request: Request,
 ) -> LigandConformerRecord:
-    return minimize_ligand(
-        ligand_id=ligand_id,
-        request=request,
-        store=LigandArtifactStore.from_environment(),
-    )
+    with _resource_arbiter(api_request).acquire(ligand_conformer_claim(ligand_id)):
+        return minimize_ligand(
+            ligand_id=ligand_id,
+            request=request,
+            store=LigandArtifactStore.from_environment(),
+        )
 
 
 @router.post(
@@ -714,13 +742,16 @@ def minimize_ligand_conformer(
     status_code=201,
 )
 def generate_independent_ligand_conformer(
-    ligand_id: str, request: GenerateLigandConformerRequest
+    ligand_id: str,
+    request: GenerateLigandConformerRequest,
+    api_request: Request,
 ) -> LigandConformerRecord:
-    return generate_ligand_conformer(
-        ligand_id=ligand_id,
-        request=request,
-        store=LigandArtifactStore.from_environment(),
-    )
+    with _resource_arbiter(api_request).acquire(ligand_conformer_claim(ligand_id)):
+        return generate_ligand_conformer(
+            ligand_id=ligand_id,
+            request=request,
+            store=LigandArtifactStore.from_environment(),
+        )
 
 
 @router.get(
@@ -728,9 +759,7 @@ def generate_independent_ligand_conformer(
     response_model=LigandConformerRecord,
 )
 def get_ligand_conformer(ligand_id: str, conformer_id: str) -> LigandConformerRecord:
-    return LigandArtifactStore.from_environment().load_conformer_record(
-        ligand_id, conformer_id
-    )
+    return LigandArtifactStore.from_environment().load_conformer_record(ligand_id, conformer_id)
 
 
 @router.get(
@@ -757,13 +786,15 @@ def create_ligand_pdbqt(
     ligand_id: str,
     conformer_id: str,
     request: PrepareLigandPdbqtRequest,
+    api_request: Request,
 ) -> LigandPdbqtRecord:
-    return prepare_ligand_pdbqt(
-        ligand_id=ligand_id,
-        conformer_id=conformer_id,
-        request=request,
-        store=LigandArtifactStore.from_environment(),
-    )
+    with _resource_arbiter(api_request).acquire(ligand_pdbqt_claim(ligand_id)):
+        return prepare_ligand_pdbqt(
+            ligand_id=ligand_id,
+            conformer_id=conformer_id,
+            request=request,
+            store=LigandArtifactStore.from_environment(),
+        )
 
 
 @router.get(
@@ -771,9 +802,7 @@ def create_ligand_pdbqt(
     response_model=LigandPdbqtRecord,
 )
 def get_ligand_pdbqt(ligand_id: str, preparation_id: str) -> LigandPdbqtRecord:
-    return LigandArtifactStore.from_environment().load_pdbqt_record(
-        ligand_id, preparation_id
-    )
+    return LigandArtifactStore.from_environment().load_pdbqt_record(ligand_id, preparation_id)
 
 
 @router.get(
@@ -980,9 +1009,7 @@ def create_vina_docking_batch(
     return _vina_docking_service(request).start_batch(batch_request)
 
 
-@router.get(
-    "/docking/batches/latest", response_model=VinaBatchDockingRecord
-)
+@router.get("/docking/batches/latest", response_model=VinaBatchDockingRecord)
 def get_latest_docking_batch(
     request: Request,
     library_id: Annotated[str, Query(min_length=1)],
@@ -1007,16 +1034,12 @@ def get_vina_campaign_history(
     )
 
 
-@router.get(
-    "/docking/batches/{batch_id}", response_model=VinaBatchDockingRecord
-)
+@router.get("/docking/batches/{batch_id}", response_model=VinaBatchDockingRecord)
 def get_docking_batch(batch_id: str, request: Request) -> VinaBatchDockingRecord:
     return _vina_docking_service(request).get_batch(batch_id)
 
 
-@router.get(
-    "/docking/batches/{batch_id}/progress", response_model=VinaBatchProgress
-)
+@router.get("/docking/batches/{batch_id}/progress", response_model=VinaBatchProgress)
 def get_docking_batch_progress(
     batch_id: str,
     request: Request,
@@ -1031,15 +1054,12 @@ def get_docking_batch_progress(
     "/docking/batches/{batch_id}/cancel",
     response_model=DockingBatchCancelResponse,
 )
-def cancel_docking_batch(
-    batch_id: str, request: Request
-) -> DockingBatchCancelResponse:
+def cancel_docking_batch(batch_id: str, request: Request) -> DockingBatchCancelResponse:
     return _vina_docking_service(request).cancel_batch(batch_id)
 
 
 @router.get(
-    "/docking/batches/{batch_id}/ligands/{ligand_id}/poses/"
-    "{artifact_id}/content",
+    "/docking/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/content",
     response_class=FileResponse,
 )
 def get_batch_docking_pose_content(
@@ -1048,9 +1068,7 @@ def get_batch_docking_pose_content(
     artifact_id: str,
     request: Request,
 ) -> FileResponse:
-    path = _vina_docking_service(request).batch_pose_content_path(
-        batch_id, ligand_id, artifact_id
-    )
+    path = _vina_docking_service(request).batch_pose_content_path(batch_id, ligand_id, artifact_id)
     return FileResponse(
         path,
         media_type="text/plain; charset=utf-8",
@@ -1180,9 +1198,7 @@ def create_autodock_gpu_job(
     "/docking/autodock-gpu/jobs/{job_id}",
     response_model=AutoDockGpuDockingJobRecord,
 )
-def get_autodock_gpu_job(
-    job_id: str, request: Request
-) -> AutoDockGpuDockingJobRecord:
+def get_autodock_gpu_job(job_id: str, request: Request) -> AutoDockGpuDockingJobRecord:
     return _autodock_gpu_service(request).get(job_id)
 
 
@@ -1190,9 +1206,7 @@ def get_autodock_gpu_job(
     "/docking/autodock-gpu/jobs/{job_id}/cancel",
     response_model=AutoDockGpuCancelResponse,
 )
-def cancel_autodock_gpu_job(
-    job_id: str, request: Request
-) -> AutoDockGpuCancelResponse:
+def cancel_autodock_gpu_job(job_id: str, request: Request) -> AutoDockGpuCancelResponse:
     return _autodock_gpu_service(request).cancel(job_id)
 
 
@@ -1247,9 +1261,7 @@ def get_latest_autodock_gpu_batch(
     "/docking/autodock-gpu/batches/{batch_id}",
     response_model=AutoDockGpuBatchRecord,
 )
-def get_autodock_gpu_batch(
-    batch_id: str, request: Request
-) -> AutoDockGpuBatchRecord:
+def get_autodock_gpu_batch(batch_id: str, request: Request) -> AutoDockGpuBatchRecord:
     return _autodock_gpu_service(request).get_batch(batch_id)
 
 
@@ -1257,9 +1269,7 @@ def get_autodock_gpu_batch(
     "/docking/autodock-gpu/batches/{batch_id}/progress",
     response_model=AutoDockGpuBatchProgress,
 )
-def get_autodock_gpu_batch_progress(
-    batch_id: str, request: Request
-) -> AutoDockGpuBatchProgress:
+def get_autodock_gpu_batch_progress(batch_id: str, request: Request) -> AutoDockGpuBatchProgress:
     return _autodock_gpu_service(request).get_batch_progress(batch_id)
 
 
@@ -1267,15 +1277,12 @@ def get_autodock_gpu_batch_progress(
     "/docking/autodock-gpu/batches/{batch_id}/cancel",
     response_model=AutoDockGpuCancelResponse,
 )
-def cancel_autodock_gpu_batch(
-    batch_id: str, request: Request
-) -> AutoDockGpuCancelResponse:
+def cancel_autodock_gpu_batch(batch_id: str, request: Request) -> AutoDockGpuCancelResponse:
     return _autodock_gpu_service(request).cancel_batch(batch_id)
 
 
 @router.get(
-    "/docking/autodock-gpu/batches/{batch_id}/ligands/{ligand_id}"
-    "/poses/{artifact_id}/content",
+    "/docking/autodock-gpu/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/content",
     response_class=FileResponse,
 )
 def get_autodock_gpu_batch_pose_content(
@@ -1284,9 +1291,7 @@ def get_autodock_gpu_batch_pose_content(
     artifact_id: str,
     request: Request,
 ) -> FileResponse:
-    path = _autodock_gpu_service(request).batch_pose_content_path(
-        batch_id, ligand_id, artifact_id
-    )
+    path = _autodock_gpu_service(request).batch_pose_content_path(batch_id, ligand_id, artifact_id)
     return FileResponse(
         path,
         media_type="text/plain; charset=utf-8",
@@ -1367,8 +1372,7 @@ def cancel_autodock4_batch(batch_id: str, request: Request) -> AutoDock4CancelRe
 
 
 @router.get(
-    "/docking/autodock4/batches/{batch_id}/ligands/{ligand_id}/poses/"
-    "{artifact_id}/content",
+    "/docking/autodock4/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/content",
     response_class=FileResponse,
 )
 def get_autodock4_batch_pose_content(
@@ -1377,9 +1381,7 @@ def get_autodock4_batch_pose_content(
     artifact_id: str,
     request: Request,
 ) -> FileResponse:
-    path = _autodock4_service(request).batch_pose_content_path(
-        batch_id, ligand_id, artifact_id
-    )
+    path = _autodock4_service(request).batch_pose_content_path(batch_id, ligand_id, artifact_id)
     return FileResponse(
         path,
         media_type="text/plain; charset=utf-8",
@@ -1582,9 +1584,7 @@ def list_result_compounds(
 )
 def list_result_poses(engine: str, record_id: str, ligand_id: str) -> PoseInventory:
     """Engine-native modes or runs for exactly one recorded molecule."""
-    return PoseInteractionService.from_environment().list_poses(
-        f"{engine}:{record_id}", ligand_id
-    )
+    return PoseInteractionService.from_environment().list_poses(f"{engine}:{record_id}", ligand_id)
 
 
 @router.get(
