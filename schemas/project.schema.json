@@ -1,28 +1,31 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ankora.local/schemas/project.schema.json",
-  "title": "Ankora project",
+  "title": "Ankora project catalog",
   "type": "object",
   "additionalProperties": false,
-  "required": ["project_id", "name", "created_at", "artifacts"],
+  "required": ["active_project_id", "projects"],
   "properties": {
-    "project_id": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1 },
-    "created_at": { "type": "string", "format": "date-time" },
-    "artifacts": {
+    "active_project_id": { "$ref": "#/$defs/projectId" },
+    "projects": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["artifact_id", "kind", "relative_path", "sha256", "parent_ids", "stale"],
-        "properties": {
-          "artifact_id": { "type": "string", "minLength": 1 },
-          "kind": { "type": "string", "minLength": 1 },
-          "relative_path": { "type": "string", "minLength": 1 },
-          "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
-          "parent_ids": { "type": "array", "items": { "type": "string" } },
-          "stale": { "type": "boolean" }
-        }
+      "items": { "$ref": "#/$defs/project" }
+    }
+  },
+  "$defs": {
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "name", "registered_at", "migrated_legacy"],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "registered_at": { "type": "string", "format": "date-time" },
+        "migrated_legacy": { "type": "boolean" }
       }
     }
   }

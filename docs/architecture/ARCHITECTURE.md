@@ -6,6 +6,14 @@ The frontend owns workflow presentation, viewer adaptation, inspectors, result p
 
 External tools and docking engines are isolated behind adapters. Original files are immutable; derived artifacts record parentage and become stale when upstream decisions change. Structured state will use SQLite while molecular artifacts and raw tool output remain normal project files.
 
+ADR-023 gives that evidence an explicit project identity. A catalog outside
+the evidence trees registers each project, preserves the original `default`
+tree as a legitimate migrated workspace, and safely rebuilds long-lived
+scientific services on project switch. ADR-011 derives a dependency graph from
+the immutable records; required-reason stale markers live outside those records
+and propagate only to recorded descendants. Alternatives are not invalidated
+just because newer evidence exists.
+
 Independent library work uses bounded local parallelism. The default worker budget is `logical processors - 1`, capped by the number of tasks, so scientific throughput uses the machine without starving the Windows UI. Ordering, per-molecule failure isolation, immutable output directories, tool versions, and worker counts remain explicit. Order-dependent or thread-unsafe stages stay serial until they have a safe parallel boundary.
 
 One process-local resource arbiter, defined by ADR-022, is shared by ligand preparation, Vina, AutoGrid, AutoDock4 CPU, and AutoDock-GPU. A job enters scientific execution only after an atomic FIFO claim for its full CPU, GPU, memory, and disk estimate fits. Waiting work remains queued, can be canceled without leaking capacity, and appears with active allocations in the system resource snapshot. Durable work leases under ADR-020 answer who owns recoverable work; resource leases answer whether that owned work may consume this process's machine capacity now. Neither substitutes for the other.

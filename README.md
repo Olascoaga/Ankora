@@ -10,6 +10,12 @@ Independent library operations use bounded multicore execution by default: Ankor
 
 The desktop interface is a fixed scientific workbench rather than a scrolling form: workflow and inspector panels are resizable/collapsible, receptor issues and screening compounds use viewer-linked data tables, single-ligand and virtual-screening modes are explicit, and background work, warnings, provenance, commands, and tool readiness live in a shared activity center. If the backend or machine stops during engine work, the next startup preserves and exposes the interrupted attempt; an explicitly confirmed retry starts under a new immutable identity rather than appending to partial evidence. Dark, light, and Windows-following themes plus comfortable/compact density are available from the View menu. The implementation rules are recorded in [docs/design/UX_FOUNDATION.md](docs/design/UX_FOUNDATION.md).
 
+The Project Workspace creates and switches independent scientific workspaces
+without rewriting the migrated `default` project. It also exposes the
+record-derived dependency graph: scientists may mark an input stale with an
+explicit reason, after which Ankora marks only its downstream dependents stale
+while retaining every original record and alternative branch for inspection.
+
 ## Prerequisites
 
 - Windows 11 x64

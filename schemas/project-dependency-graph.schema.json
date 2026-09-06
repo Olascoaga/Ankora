@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ankora.local/schemas/project-dependency-graph.schema.json",
+  "title": "Ankora project dependency graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project_id", "generated_at", "nodes", "edges", "total_nodes",
+    "offset", "limit", "stale_count", "unresolved_reference_count"
+  ],
+  "properties": {
+    "project_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+    "total_nodes": { "type": "integer", "minimum": 0 },
+    "offset": { "type": "integer", "minimum": 0 },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+    "stale_count": { "type": "integer", "minimum": 0 },
+    "unresolved_reference_count": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id", "kind", "label", "relative_path", "parent_ids",
+        "unresolved_parent_ids", "stale", "stale_reasons"
+      ],
+      "properties": {
+        "node_id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": [
+            "structure", "receptor", "ligand", "ligand_library",
+            "ligand_filter", "chemical_state", "conformer",
+            "ligand_preparation", "binding_site", "pocket_detection",
+            "autogrid_map_set", "docking_campaign", "validation",
+            "pose_analysis", "export", "unknown"
+          ]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "relative_path": { "type": "string", "minLength": 1 },
+        "parent_ids": { "type": "array", "items": { "type": "string" } },
+        "unresolved_parent_ids": { "type": "array", "items": { "type": "string" } },
+        "stale": { "type": "boolean" },
+        "stale_reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parent_id", "child_id"],
+      "properties": {
+        "parent_id": { "type": "string", "minLength": 1 },
+        "child_id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
