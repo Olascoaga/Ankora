@@ -6,6 +6,8 @@ opposite things — idle, or not measured at all.
 """
 
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -16,9 +18,9 @@ from ankora_backend.services import system_resources
 @pytest.fixture(autouse=True)
 def _no_cached_reading() -> Any:
     """Each test asks the driver itself rather than the previous test's answer."""
-    system_resources._gpu_cache = None
+    system_resources._gpu_cache.clear()
     yield
-    system_resources._gpu_cache = None
+    system_resources._gpu_cache.clear()
 
 
 def _completed(stdout: str = "", stderr: str = "", code: int = 0) -> Any:
@@ -108,6 +110,49 @@ def test_the_driver_is_asked_once_for_several_close_readings(
     system_resources.collect_resource_usage()
 
     assert calls == 1
+
+
+def test_concurrent_readers_share_one_complete_driver_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Threaded API requests must not race separate ``nvidia-smi`` processes."""
+    first_probe_started = threading.Event()
+    second_call_started = threading.Event()
+    second_probe_started = threading.Event()
+    allow_probe_to_finish = threading.Event()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def _blocking_probe(*_: Any, **__: Any) -> Any:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+            if calls == 1:
+                first_probe_started.set()
+            else:
+                second_probe_started.set()
+        assert allow_probe_to_finish.wait(timeout=2)
+        return _completed("GPU, 10, 100, 200\n")
+
+    monkeypatch.setattr(system_resources.subprocess, "run", _blocking_probe)
+
+    def _second_read() -> Any:
+        second_call_started.set()
+        return system_resources.collect_resource_usage()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(system_resources.collect_resource_usage)
+        assert first_probe_started.wait(timeout=1)
+        second = executor.submit(_second_read)
+
+        assert second_call_started.wait(timeout=1)
+        assert not second_probe_started.wait(timeout=0.25)
+        allow_probe_to_finish.set()
+        first_usage = first.result(timeout=2)
+        second_usage = second.result(timeout=2)
+
+    assert calls == 1
+    assert first_usage.gpu == second_usage.gpu
 
 
 def test_cpu_and_memory_are_read_from_the_real_machine() -> None:

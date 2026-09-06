@@ -11,7 +11,10 @@ reports no GPU and the reason, never a reassuring 0%.
 
 import subprocess
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from importlib import import_module
+from threading import Lock
 from typing import Any
 
 from ankora_backend.schemas.system import (
@@ -32,7 +35,56 @@ _psutil.cpu_percent(interval=None)
 # same couple of seconds rather than paying that per request.
 _GPU_CACHE_SECONDS = 2.0
 _GPU_TIMEOUT_SECONDS = 4.0
-_gpu_cache: tuple[float, GpuUsage | None, str | None] | None = None
+
+GpuReading = tuple[GpuUsage | None, str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class _CachedGpuReading:
+    captured_at: float
+    usage: GpuUsage | None
+    unavailable_reason: str | None
+
+
+class _GpuTelemetryCache:
+    """A short-lived, single-flight cache around the NVIDIA driver probe.
+
+    FastAPI may execute several synchronous resource requests on different
+    worker threads.  Cache inspection, refresh, and publication therefore form
+    one critical section: at most one request starts ``nvidia-smi`` and every
+    waiter receives that complete reading rather than racing a second process
+    or observing partially updated state.
+    """
+
+    def __init__(self, *, lifetime_seconds: float) -> None:
+        self._lifetime_seconds = lifetime_seconds
+        self._lock = Lock()
+        self._reading: _CachedGpuReading | None = None
+
+    def read(self, loader: Callable[[], GpuReading]) -> GpuReading:
+        with self._lock:
+            now = time.monotonic()
+            if (
+                self._reading is not None
+                and now - self._reading.captured_at < self._lifetime_seconds
+            ):
+                return self._reading.usage, self._reading.unavailable_reason
+
+            usage, reason = loader()
+            self._reading = _CachedGpuReading(
+                captured_at=time.monotonic(),
+                usage=usage,
+                unavailable_reason=reason,
+            )
+            return usage, reason
+
+    def clear(self) -> None:
+        """Discard one reading through the same serialized boundary as reads."""
+        with self._lock:
+            self._reading = None
+
+
+_gpu_cache = _GpuTelemetryCache(lifetime_seconds=_GPU_CACHE_SECONDS)
 
 
 def collect_resource_usage(*, scheduler: ResourceSchedulerSnapshot | None = None) -> ResourceUsage:
@@ -50,17 +102,11 @@ def collect_resource_usage(*, scheduler: ResourceSchedulerSnapshot | None = None
     )
 
 
-def _gpu_usage() -> tuple[GpuUsage | None, str | None]:
-    global _gpu_cache
-    now = time.monotonic()
-    if _gpu_cache is not None and now - _gpu_cache[0] < _GPU_CACHE_SECONDS:
-        return _gpu_cache[1], _gpu_cache[2]
-    reading = _query_nvidia_smi()
-    _gpu_cache = (now, reading[0], reading[1])
-    return reading
+def _gpu_usage() -> GpuReading:
+    return _gpu_cache.read(_query_nvidia_smi)
 
 
-def _query_nvidia_smi() -> tuple[GpuUsage | None, str | None]:
+def _query_nvidia_smi() -> GpuReading:
     """The driver's own tool, asked for exactly four numbers.
 
     An argument array with `shell=False`, like every other process Ankora
