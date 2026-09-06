@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.pose_complexes import (
     PoseComplexExport,
     PoseComplexExportRequest,
@@ -28,6 +29,7 @@ _STAGE = "pose_complex_export"
 class PoseComplexExportService:
     def __init__(self, *, root: Path, pose_service: PoseInteractionService) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root)
         self._poses = pose_service
 
     @classmethod
@@ -59,9 +61,7 @@ class PoseComplexExportService:
         chosen = _validated_destination(request.destination)
 
         export_id = str(uuid4())
-        record_directory = (
-            self._root / "projects" / "default" / "exports" / "pose_complexes" / export_id
-        ).resolve()
+        record_directory = (self._project_root / "exports" / "pose_complexes" / export_id).resolve()
         if self._root not in record_directory.parents:
             raise _failure(
                 "POSE_COMPLEX_DESTINATION_INVALID",

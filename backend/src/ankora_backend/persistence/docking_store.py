@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.docking import (
     VinaBatchDockingRecord,
@@ -23,8 +24,9 @@ def _best_vina_result(entry: VinaBatchLigandResult) -> float | None:
 
 
 class DockingArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
         self._record_lock = threading.RLock()
         self._batch_state = IncrementalBatchStore(
             record_type=VinaBatchDockingRecord,
@@ -33,9 +35,9 @@ class DockingArtifactStore:
         )
 
     @classmethod
-    def from_environment(cls) -> "DockingArtifactStore":
+    def from_environment(cls, project_id: str | None = None) -> "DockingArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_job_id(self) -> str:
         return str(uuid4())
@@ -119,9 +121,7 @@ class DockingArtifactStore:
             directory = self._batch_dir(record.batch_id)
             if not directory.is_dir():
                 raise self._not_found(record.batch_id)
-            return self._batch_state.update(
-                directory, record, changed_entries=changed_entries
-            )
+            return self._batch_state.update(directory, record, changed_entries=changed_entries)
 
     def load_batch_record(self, batch_id: str) -> VinaBatchDockingRecord:
         with self._record_lock:
@@ -142,9 +142,7 @@ class DockingArtifactStore:
         except FileNotFoundError as error:
             raise self._not_found(batch_id) from error
 
-    def load_batch_entry(
-        self, batch_id: str, ligand_id: str
-    ) -> VinaBatchLigandResult | None:
+    def load_batch_entry(self, batch_id: str, ligand_id: str) -> VinaBatchLigandResult | None:
         try:
             return self._batch_state.load_entry(self._batch_dir(batch_id), ligand_id)
         except FileNotFoundError as error:
@@ -162,9 +160,7 @@ class DockingArtifactStore:
         self, batch_id: str, revision: int
     ) -> list[VinaBatchLigandResult]:
         try:
-            return self._batch_state.entries_after_revision(
-                self._batch_dir(batch_id), revision
-            )
+            return self._batch_state.entries_after_revision(self._batch_dir(batch_id), revision)
         except FileNotFoundError as error:
             raise self._not_found(batch_id) from error
 
@@ -222,7 +218,7 @@ class DockingArtifactStore:
         A single job is as durable as a campaign, so the result catalog can
         offer both instead of only what ran in a library.
         """
-        directory = self._root / "projects" / "default" / "results" / "docking"
+        directory = self._project_root / "results" / "docking"
         if not directory.is_dir():
             return []
         records: list[VinaDockingJobRecord] = []
@@ -235,9 +231,7 @@ class DockingArtifactStore:
                 continue
         return records
 
-    def batch_output_path(
-        self, batch_id: str, ligand_id: str, filename: str
-    ) -> Path:
+    def batch_output_path(self, batch_id: str, ligand_id: str, filename: str) -> Path:
         if Path(filename).name != filename or not filename:
             raise ValueError("Docking output filename must be a plain filename")
         return self._batch_ligand_dir(batch_id, ligand_id) / filename
@@ -250,17 +244,13 @@ class DockingArtifactStore:
             stream.write(content)
         return path
 
-    def write_batch_text(
-        self, batch_id: str, ligand_id: str, filename: str, content: str
-    ) -> Path:
+    def write_batch_text(self, batch_id: str, ligand_id: str, filename: str, content: str) -> Path:
         path = self.batch_output_path(batch_id, ligand_id, filename)
         with path.open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(content)
         return path
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         entry = self.load_batch_entry(batch_id, ligand_id)
         pose = next(
             (
@@ -294,7 +284,7 @@ class DockingArtifactStore:
             normalized = str(UUID(job_id))
         except ValueError as error:
             raise self._not_found(job_id) from error
-        path = self._root / "projects" / "default" / "results" / "docking" / normalized
+        path = self._project_root / "results" / "docking" / normalized
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(job_id)
@@ -312,7 +302,7 @@ class DockingArtifactStore:
         return resolved
 
     def _batches_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "results" / "docking_batches"
+        path = self._project_root / "results" / "docking_batches"
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found("docking_batches")

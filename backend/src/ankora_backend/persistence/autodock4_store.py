@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchLigandResult,
@@ -19,14 +20,13 @@ from ankora_backend.schemas.autodock4 import (
 def _best_autodock4_result(entry: AutoDock4BatchLigandResult) -> float | None:
     if not entry.clusters:
         return None
-    return float(
-        min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters)
-    )
+    return float(min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters))
 
 
 class AutoDock4JobStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
         self._record_lock = threading.RLock()
         self._batch_state = IncrementalBatchStore(
             record_type=AutoDock4BatchRecord,
@@ -35,9 +35,9 @@ class AutoDock4JobStore:
         )
 
     @classmethod
-    def from_environment(cls) -> "AutoDock4JobStore":
+    def from_environment(cls, project_id: str | None = None) -> "AutoDock4JobStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_job_id(self) -> str:
         return str(uuid4())
@@ -58,9 +58,7 @@ class AutoDock4JobStore:
                 raise self._not_found(record.job_id)
             temporary = directory / "record.json.tmp"
             with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-                )
+                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
                 stream.write("\n")
             os.replace(temporary, directory / "record.json")
 
@@ -90,11 +88,7 @@ class AutoDock4JobStore:
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         record = self.load_job(job_id)
         artifact = next(
-            (
-                item.artifact
-                for item in record.runs
-                if item.artifact.artifact_id == artifact_id
-            ),
+            (item.artifact for item in record.runs if item.artifact.artifact_id == artifact_id),
             None,
         )
         if artifact is None:
@@ -148,9 +142,7 @@ class AutoDock4JobStore:
             directory = self._batch_dir(record.batch_id)
             if not directory.is_dir():
                 raise self._not_found(record.batch_id)
-            return self._batch_state.update(
-                directory, record, changed_entries=changed_entries
-            )
+            return self._batch_state.update(directory, record, changed_entries=changed_entries)
 
     def load_batch(self, batch_id: str) -> AutoDock4BatchRecord:
         with self._record_lock:
@@ -171,9 +163,7 @@ class AutoDock4JobStore:
         except FileNotFoundError as error:
             raise self._not_found(batch_id) from error
 
-    def load_batch_entry(
-        self, batch_id: str, ligand_id: str
-    ) -> AutoDock4BatchLigandResult | None:
+    def load_batch_entry(self, batch_id: str, ligand_id: str) -> AutoDock4BatchLigandResult | None:
         try:
             return self._batch_state.load_entry(self._batch_dir(batch_id), ligand_id)
         except FileNotFoundError as error:
@@ -187,13 +177,9 @@ class AutoDock4JobStore:
         except FileNotFoundError as error:
             raise self._not_found(batch_id) from error
 
-    def batch_ligand_ids_with_status(
-        self, batch_id: str, status: str
-    ) -> list[str]:
+    def batch_ligand_ids_with_status(self, batch_id: str, status: str) -> list[str]:
         try:
-            return self._batch_state.ligand_ids_with_status(
-                self._batch_dir(batch_id), status
-            )
+            return self._batch_state.ligand_ids_with_status(self._batch_dir(batch_id), status)
         except FileNotFoundError as error:
             raise self._not_found(batch_id) from error
 
@@ -271,9 +257,7 @@ class AutoDock4JobStore:
             stream.write(content)
         return path
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         entry = self.load_batch_entry(batch_id, ligand_id)
         artifact = next(
             (
@@ -291,7 +275,7 @@ class AutoDock4JobStore:
         return path
 
     def _batches_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "results" / "autodock4_batches"
+        path = self._project_root / "results" / "autodock4_batches"
         resolved = path.resolve()
         if self._root not in resolved.parents and resolved != self._root:
             raise self._not_found("autodock4_batches")
@@ -309,7 +293,7 @@ class AutoDock4JobStore:
         return resolved
 
     def _jobs_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "results" / "autodock4_jobs"
+        path = self._project_root / "results" / "autodock4_jobs"
         resolved = path.resolve()
         if self._root not in resolved.parents and resolved != self._root:
             raise self._not_found("autodock4_jobs")

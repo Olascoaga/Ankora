@@ -216,6 +216,10 @@ class AutoDock4DockingService:
                 event.set()
         self._executor.shutdown(wait=True, cancel_futures=True)
 
+    def has_active_work(self) -> bool:
+        with self._lock:
+            return bool(self._cancel_events)
+
     def _run(
         self,
         job_id: str,

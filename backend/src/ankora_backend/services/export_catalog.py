@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.exports import (
     ExportEntry,
     ExportFile,
@@ -36,6 +37,7 @@ _CAMPAIGN_SERVED = {"results.csv", "manifest.json", "README.txt", "campaign_bund
 class ExportCatalogService:
     def __init__(self, *, root: Path) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root)
 
     @classmethod
     def from_environment(cls) -> "ExportCatalogService":
@@ -83,8 +85,7 @@ class ExportCatalogService:
                     exported_at=_moment(manifest.get("exported_at"), directory),
                     title=_engine_label(engine),
                     subtitle=(
-                        f"{counts.get('succeeded', 0)}/{counts.get('selected', 0)} "
-                        "molecules docked"
+                        f"{counts.get('succeeded', 0)}/{counts.get('selected', 0)} molecules docked"
                     ),
                     source_kind=manifest.get("source_kind"),
                     source_id=manifest.get("source_id"),
@@ -116,8 +117,7 @@ class ExportCatalogService:
                     exported_at=_moment(manifest.get("exported_at"), directory),
                     title=_figure_title(manifest, result),
                     subtitle=", ".join(
-                        str(item.get("filename"))
-                        for item in manifest.get("files") or []
+                        str(item.get("filename")) for item in manifest.get("files") or []
                     ),
                     catalog_id=result.get("catalog_id"),
                     analysis_id=result.get("interaction_analysis_id"),
@@ -161,7 +161,7 @@ class ExportCatalogService:
         return entries
 
     def _exports_dir(self) -> Path:
-        resolved = (self._root / "projects" / "default" / "exports").resolve()
+        resolved = (self._project_root / "exports").resolve()
         if self._root not in resolved.parents and resolved != self._root:
             raise AnkoraDomainError(
                 code="EXPORT_CATALOG_UNAVAILABLE",
@@ -210,15 +210,11 @@ def _assessment(value: Any) -> ReproducibilityAssessment | None:
 
 def _names(manifest: dict[str, Any]) -> set[str]:
     return {
-        str(item.get("filename"))
-        for item in manifest.get("files") or []
-        if item.get("filename")
+        str(item.get("filename")) for item in manifest.get("files") or [] if item.get("filename")
     }
 
 
-def _files(
-    directory: Path, *, served: set[str] | None, url_prefix: str | None
-) -> list[ExportFile]:
+def _files(directory: Path, *, served: set[str] | None, url_prefix: str | None) -> list[ExportFile]:
     try:
         found = sorted(item for item in directory.iterdir() if item.is_file())
     except OSError:

@@ -31,6 +31,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.figures import (
     FigureExport,
     FigureExportRequest,
@@ -68,6 +69,7 @@ _EXTENSION = {
 class FigureExportService:
     def __init__(self, *, root: Path) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root)
 
     @classmethod
     def from_environment(cls) -> "FigureExportService":
@@ -90,18 +92,14 @@ class FigureExportService:
         figure_id = str(uuid4())
         record_directory = self._figure_dir(figure_id)
         record_directory.mkdir(parents=True, exist_ok=False)
-        chosen = validated_destination(
-            request.destination, stage=_STAGE, prefix="FIGURE"
-        )
+        chosen = validated_destination(request.destination, stage=_STAGE, prefix="FIGURE")
         directory = chosen or record_directory
         exported_at = datetime.now(UTC)
         # Inside the project a figure owns its whole folder, so a plain name is
         # unambiguous. In a folder the scientist already keeps things in, a file
         # called `interaction_diagram.svg` says nothing about which molecule or
         # which pose it is.
-        basename = (
-            _descriptive_basename(request) if chosen else _BASENAME[request.source]
-        )
+        basename = _descriptive_basename(request) if chosen else _BASENAME[request.source]
 
         files: list[FigureFile] = []
         for figure_format in formats:
@@ -153,15 +151,11 @@ class FigureExportService:
         # happened, and a folder the scientist may later move or tidy is not
         # where that fact can live.
         manifest = _manifest(export)
-        with (record_directory / "figure.json").open(
-            "x", encoding="utf-8", newline="\n"
-        ) as stream:
+        with (record_directory / "figure.json").open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(manifest)
         if chosen is not None:
             name = free_name(chosen, basename, "json")
-            with (chosen / name).open(
-                "x", encoding="utf-8", newline="\n"
-            ) as stream:
+            with (chosen / name).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(manifest)
         return export
 
@@ -184,9 +178,7 @@ class FigureExportService:
             normalized = str(UUID(figure_id))
         except ValueError as error:
             raise self._not_found(figure_id, None) from error
-        resolved = (
-            self._root / "projects" / "default" / "exports" / "figures" / normalized
-        ).resolve()
+        resolved = (self._project_root / "exports" / "figures" / normalized).resolve()
         if self._root not in resolved.parents:
             raise self._not_found(figure_id, None)
         return resolved
@@ -215,9 +207,7 @@ def _ordered_formats(request: FigureExportRequest) -> list[FigureFormat]:
     return [item for item in order if item in requested]
 
 
-def _validated_svg(
-    request: FigureExportRequest, formats: list[FigureFormat]
-) -> str | None:
+def _validated_svg(request: FigureExportRequest, formats: list[FigureFormat]) -> str | None:
     if FigureFormat.SVG not in formats:
         return None
     svg = (request.svg or "").strip()
@@ -231,9 +221,7 @@ def _validated_svg(
     return svg
 
 
-def _validated_raster(
-    request: FigureExportRequest, formats: list[FigureFormat]
-) -> bytes | None:
+def _validated_raster(request: FigureExportRequest, formats: list[FigureFormat]) -> bytes | None:
     if not any(item is not FigureFormat.SVG for item in formats):
         return None
     payload = request.png_base64 or ""
@@ -349,9 +337,7 @@ def _manifest(export: FigureExport) -> str:
             ),
         ],
     )
-    return json.dumps(
-        payload.model_dump(mode="json"), indent=2, sort_keys=False
-    ) + "\n"
+    return json.dumps(payload.model_dump(mode="json"), indent=2, sort_keys=False) + "\n"
 
 
 def _failure(

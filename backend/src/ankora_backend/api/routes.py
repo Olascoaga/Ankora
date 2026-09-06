@@ -19,6 +19,7 @@ from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
+from ankora_backend.persistence.project_store import ProjectStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchProgress,
@@ -97,6 +98,14 @@ from ankora_backend.schemas.pose_interactions import (
     InteractionAnalysisRecord,
     InteractionAnalysisRequest,
     PoseInventory,
+)
+from ankora_backend.schemas.projects import (
+    CreateProjectRequest,
+    MarkArtifactStaleRequest,
+    MarkArtifactStaleResponse,
+    ProjectCatalog,
+    ProjectDependencyGraph,
+    ProjectRecord,
 )
 from ankora_backend.schemas.receptors import (
     ReceptorInspectionReport,
@@ -179,6 +188,8 @@ from ankora_backend.services.methods_report import MethodsReportService
 from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
 from ankora_backend.services.pose_interactions import PoseInteractionService
+from ankora_backend.services.project_dependencies import ProjectDependencyService
+from ankora_backend.services.project_runtime import ProjectRuntime
 from ankora_backend.services.receptor_inspection import inspect_receptor
 from ankora_backend.services.receptor_preparation import (
     prepare_receptor,
@@ -205,6 +216,14 @@ from ankora_backend.services.vina_docking import VinaDockingService
 from ankora_backend.services.work_retry import WorkRetryService
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _project_store(request: Request) -> ProjectStore:
+    return cast(ProjectStore, request.app.state.projects)
+
+
+def _project_runtime(request: Request) -> ProjectRuntime:
+    return cast(ProjectRuntime, request.app.state.project_runtime)
 
 
 def _vina_docking_service(request: Request) -> VinaDockingService:
@@ -236,8 +255,7 @@ def _ligand_filter_workers(
 ) -> int:
     library = store.load_library_record(library_id)
     eligible_inputs = sum(
-        entry.ligand is not None and entry.ligand.state is not None
-        for entry in library.entries
+        entry.ligand is not None and entry.ligand.state is not None for entry in library.entries
     )
     return max(1, min(arbiter.cpu_threads, eligible_inputs))
 
@@ -245,6 +263,39 @@ def _ligand_filter_workers(
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", backend_version="0.1.0")
+
+
+@router.get("/projects", response_model=ProjectCatalog)
+def projects(request: Request) -> ProjectCatalog:
+    return _project_store(request).catalog()
+
+
+@router.post("/projects", response_model=ProjectRecord, status_code=201)
+def create_project(request: Request, payload: CreateProjectRequest) -> ProjectRecord:
+    return _project_store(request).create(payload.name)
+
+
+@router.post("/projects/{project_id}/activate", response_model=ProjectRecord)
+def activate_project(request: Request, project_id: str) -> ProjectRecord:
+    return _project_runtime(request).activate(project_id, request.app.state)
+
+
+@router.get("/projects/active/dependencies", response_model=ProjectDependencyGraph)
+def project_dependencies(
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> ProjectDependencyGraph:
+    return ProjectDependencyService.from_environment().graph(offset=offset, limit=limit)
+
+
+@router.post(
+    "/projects/active/dependencies/{node_id}/stale",
+    response_model=MarkArtifactStaleResponse,
+)
+def mark_project_dependency_stale(
+    node_id: str, payload: MarkArtifactStaleRequest
+) -> MarkArtifactStaleResponse:
+    return ProjectDependencyService.from_environment().mark_stale(node_id, payload.reason)
 
 
 @router.get("/system", response_model=SystemResponse)

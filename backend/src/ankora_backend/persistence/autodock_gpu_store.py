@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.autodock_gpu import (
     AutoDockGpuBatchLigandResult,
@@ -28,14 +29,13 @@ def _best_autodock_gpu_result(
 ) -> float | None:
     if not entry.clusters:
         return None
-    return float(
-        min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters)
-    )
+    return float(min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters))
 
 
 class AutoDockGpuJobStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
         self._record_lock = threading.RLock()
         self._batch_state = IncrementalBatchStore(
             record_type=AutoDockGpuBatchRecord,
@@ -44,9 +44,9 @@ class AutoDockGpuJobStore:
         )
 
     @classmethod
-    def from_environment(cls) -> "AutoDockGpuJobStore":
+    def from_environment(cls, project_id: str | None = None) -> "AutoDockGpuJobStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_job_id(self) -> str:
         return str(uuid4())
@@ -56,9 +56,7 @@ class AutoDockGpuJobStore:
         directory.mkdir(parents=True, exist_ok=False)
         path = directory / "record.json"
         with path.open("x", encoding="utf-8", newline="\n") as stream:
-            json.dump(
-                record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-            )
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
         return directory
 
@@ -69,9 +67,7 @@ class AutoDockGpuJobStore:
                 raise self._not_found(record.job_id)
             temporary = directory / "record.json.tmp"
             with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-                )
+                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
                 stream.write("\n")
             os.replace(temporary, directory / "record.json")
 
@@ -101,11 +97,7 @@ class AutoDockGpuJobStore:
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         record = self.load_job(job_id)
         artifact = next(
-            (
-                item.artifact
-                for item in record.runs
-                if item.artifact.artifact_id == artifact_id
-            ),
+            (item.artifact for item in record.runs if item.artifact.artifact_id == artifact_id),
             None,
         )
         if artifact is None:
@@ -117,9 +109,7 @@ class AutoDockGpuJobStore:
 
     def list_jobs(self) -> list[AutoDockGpuDockingJobRecord]:
         """Every single-ligand job this project holds."""
-        directory = (
-            self._root / "projects" / "default" / "results" / "autodock_gpu_jobs"
-        )
+        directory = self._project_root / "results" / "autodock_gpu_jobs"
         if not directory.is_dir():
             return []
         records: list[AutoDockGpuDockingJobRecord] = []
@@ -137,10 +127,7 @@ class AutoDockGpuJobStore:
             normalized = str(UUID(job_id))
         except ValueError as error:
             raise self._not_found(job_id) from error
-        path = (
-            self._root / "projects" / "default" / "results" / "autodock_gpu_jobs"
-            / normalized
-        )
+        path = self._project_root / "results" / "autodock_gpu_jobs" / normalized
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(job_id)
@@ -166,9 +153,7 @@ class AutoDockGpuJobStore:
         directory.mkdir(parents=True, exist_ok=False)
         path = directory / "record.json"
         with path.open("x", encoding="utf-8", newline="\n") as stream:
-            json.dump(
-                record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-            )
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
         self._batch_state.create(directory, record)
         return directory
@@ -183,9 +168,7 @@ class AutoDockGpuJobStore:
             directory = self._batch_dir(record.batch_id)
             if not directory.is_dir():
                 raise self._not_found(record.batch_id)
-            return self._batch_state.update(
-                directory, record, changed_entries=changed_entries
-            )
+            return self._batch_state.update(directory, record, changed_entries=changed_entries)
 
     def load_batch(self, batch_id: str) -> AutoDockGpuBatchRecord:
         with self._record_lock:
@@ -290,18 +273,12 @@ class AutoDockGpuJobStore:
             stream.write(content)
         return path
 
-    def batch_pose_content_path(
-        self, batch_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         entry = self.load_batch_entry(batch_id, ligand_id)
         if entry is None:
             raise self._not_found(batch_id, artifact_id)
         artifact = next(
-            (
-                item.artifact
-                for item in entry.runs
-                if item.artifact.artifact_id == artifact_id
-            ),
+            (item.artifact for item in entry.runs if item.artifact.artifact_id == artifact_id),
             None,
         )
         if artifact is None:
@@ -312,9 +289,7 @@ class AutoDockGpuJobStore:
         return path
 
     def _batches_dir(self) -> Path:
-        return (
-            self._root / "projects" / "default" / "results" / "autodock_gpu_batches"
-        )
+        return self._project_root / "results" / "autodock_gpu_batches"
 
     def _batch_dir(self, batch_id: str) -> Path:
         try:

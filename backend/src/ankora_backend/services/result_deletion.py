@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
     TrashedResultCampaign,
@@ -50,7 +51,7 @@ class _Move:
 class ResultDeletionService:
     def __init__(self, *, root: Path, catalog: ResultCatalogService) -> None:
         self._root = root.resolve()
-        self._project = self._root / "projects" / "default"
+        self._project = resolve_project_root(self._root)
         self._catalog = catalog
 
     @classmethod
@@ -59,9 +60,7 @@ class ResultDeletionService:
         root = Path(configured) if configured else Path.cwd() / ".ankora-data"
         return cls(root=root, catalog=ResultCatalogService.from_environment())
 
-    def trash(
-        self, request: TrashResultCampaignsRequest
-    ) -> TrashResultCampaignsResponse:
+    def trash(self, request: TrashResultCampaignsRequest) -> TrashResultCampaignsResponse:
         if not request.acknowledge_removal:
             raise AnkoraDomainError(
                 code="RESULT_TRASH_NOT_ACKNOWLEDGED",
@@ -98,12 +97,8 @@ class ResultDeletionService:
             trashed_at = datetime.now(UTC)
             operation_dir = self._trash_root() / operation_id
             moves = self._campaign_moves(entries, operation_dir)
-            interaction_moves = self._interaction_moves(
-                set(request.catalog_ids), operation_dir
-            )
-            validation_moves = self._validation_moves(
-                set(request.catalog_ids), operation_dir
-            )
+            interaction_moves = self._interaction_moves(set(request.catalog_ids), operation_dir)
+            validation_moves = self._validation_moves(set(request.catalog_ids), operation_dir)
             moves.extend(interaction_moves)
             moves.extend(validation_moves)
 
@@ -171,9 +166,7 @@ class ResultDeletionService:
                 recoverable=True,
             )
 
-    def _campaign_moves(
-        self, entries: list[CatalogEntry], operation_dir: Path
-    ) -> list[_Move]:
+    def _campaign_moves(self, entries: list[CatalogEntry], operation_dir: Path) -> list[_Move]:
         moves: list[_Move] = []
         for entry in entries:
             directory_name = _RESULT_DIRECTORIES.get(entry.engine_key)
@@ -186,9 +179,7 @@ class ResultDeletionService:
                     details={"engine_key": entry.engine_key},
                 )
             record_id = self._uuid(entry.record_id)
-            source = self._safe(
-                self._project / "results" / directory_name / record_id
-            )
+            source = self._safe(self._project / "results" / directory_name / record_id)
             if not source.is_dir():
                 raise AnkoraDomainError(
                     code="RESULT_CATALOG_NOT_FOUND",
@@ -200,19 +191,14 @@ class ResultDeletionService:
             moves.append(
                 _Move(
                     source=source,
-                    destination=operation_dir
-                    / "campaigns"
-                    / entry.engine_key
-                    / record_id,
+                    destination=operation_dir / "campaigns" / entry.engine_key / record_id,
                     category="campaign",
                     identity=entry.catalog_id,
                 )
             )
         return moves
 
-    def _interaction_moves(
-        self, catalog_ids: set[str], operation_dir: Path
-    ) -> list[_Move]:
+    def _interaction_moves(self, catalog_ids: set[str], operation_dir: Path) -> list[_Move]:
         return self._dependent_moves(
             source_root=self._project / "analysis" / "pose_interactions",
             destination_root=operation_dir / "dependencies" / "pose_interactions",
@@ -220,16 +206,13 @@ class ResultDeletionService:
             matches=lambda data: data.get("catalog_id") in catalog_ids,
         )
 
-    def _validation_moves(
-        self, catalog_ids: set[str], operation_dir: Path
-    ) -> list[_Move]:
+    def _validation_moves(self, catalog_ids: set[str], operation_dir: Path) -> list[_Move]:
         return self._dependent_moves(
             source_root=self._project / "validation" / "redocking",
             destination_root=operation_dir / "dependencies" / "redocking",
             category="redocking_validation",
             matches=lambda data: (
-                f"{data.get('source_kind', '')}:{data.get('source_id', '')}"
-                in catalog_ids
+                f"{data.get('source_kind', '')}:{data.get('source_id', '')}" in catalog_ids
             ),
         )
 

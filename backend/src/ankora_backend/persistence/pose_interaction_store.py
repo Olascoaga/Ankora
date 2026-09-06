@@ -6,19 +6,21 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
 
 _STAGE = "pose_interaction_storage"
 
 
 class PoseInteractionStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
 
     @classmethod
-    def from_environment(cls) -> "PoseInteractionStore":
+    def from_environment(cls, project_id: str | None = None) -> "PoseInteractionStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_analysis_id(self) -> str:
         return str(uuid4())
@@ -26,17 +28,13 @@ class PoseInteractionStore:
     def create(self, record: InteractionAnalysisRecord) -> None:
         directory = self._analysis_dir(record.analysis_id)
         directory.mkdir(parents=True, exist_ok=False)
-        with (directory / "record.json").open(
-            "x", encoding="utf-8", newline="\n"
-        ) as stream:
+        with (directory / "record.json").open("x", encoding="utf-8", newline="\n") as stream:
             json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
 
     def load(self, analysis_id: str) -> InteractionAnalysisRecord:
         try:
-            raw = (self._analysis_dir(analysis_id) / "record.json").read_text(
-                encoding="utf-8"
-            )
+            raw = (self._analysis_dir(analysis_id) / "record.json").read_text(encoding="utf-8")
         except FileNotFoundError as error:
             raise self._not_found(analysis_id) from error
         return InteractionAnalysisRecord.model_validate_json(raw)
@@ -64,7 +62,7 @@ class PoseInteractionStore:
         return sorted(records, key=lambda item: (item.created_at, item.analysis_id), reverse=True)
 
     def _analyses_dir(self) -> Path:
-        return self._root / "projects" / "default" / "analysis" / "pose_interactions"
+        return self._project_root / "analysis" / "pose_interactions"
 
     def _analysis_dir(self, analysis_id: str) -> Path:
         try:

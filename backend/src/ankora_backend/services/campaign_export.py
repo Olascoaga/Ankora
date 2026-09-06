@@ -36,6 +36,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
@@ -444,7 +445,8 @@ def collect_recorded_evidence(
     figures: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
 
-    analyses_root = resolved_root / "projects" / "default" / "analysis" / "pose_interactions"
+    project_root = resolve_project_root(resolved_root)
+    analyses_root = project_root / "analysis" / "pose_interactions"
     for source in sorted(analyses_root.glob("*/record.json")):
         identity = source.parent.name
         try:
@@ -488,7 +490,7 @@ def collect_recorded_evidence(
         )
 
     analysis_ids = {item["analysis_id"] for item in analyses}
-    figures_root = resolved_root / "projects" / "default" / "exports" / "figures"
+    figures_root = project_root / "exports" / "figures"
     for source in sorted(figures_root.glob("*/figure.json")):
         identity = source.parent.name
         try:
@@ -621,6 +623,7 @@ class CampaignExportService:
         binding_site_store: BindingSiteArtifactStore,
     ) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root)
         self._docking_store = docking_store
         self._autodock4_store = autodock4_store
         self._autodock_gpu_store = autodock_gpu_store
@@ -649,9 +652,7 @@ class CampaignExportService:
         campaign = self._load(source_kind, batch_id)
         campaign = replace(
             campaign,
-            reproducibility=self._reproducibility.assessment(
-                f"{source_kind}:{batch_id}"
-            ),
+            reproducibility=self._reproducibility.assessment(f"{source_kind}:{batch_id}"),
         )
         campaign = self._with_box(campaign)
         export_id = str(uuid4())
@@ -754,7 +755,7 @@ class CampaignExportService:
             normalized = str(UUID(export_id))
         except ValueError as error:
             raise self._not_found(export_id, None) from error
-        resolved = (self._root / "projects" / "default" / "exports" / normalized).resolve()
+        resolved = (self._project_root / "exports" / normalized).resolve()
         if self._root not in resolved.parents:
             raise self._not_found(export_id, None)
         return resolved
@@ -795,9 +796,7 @@ def _methods_markdown(source_kind: str, batch_id: str) -> str | None:
     from ankora_backend.services.methods_report import MethodsReportService
 
     try:
-        report = MethodsReportService.from_environment().render(
-            f"{source_kind}:{batch_id}"
-        )
+        report = MethodsReportService.from_environment().render(f"{source_kind}:{batch_id}")
     except (AnkoraDomainError, OSError, ValueError):
         return None
     return report.markdown

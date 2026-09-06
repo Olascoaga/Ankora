@@ -13,20 +13,22 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.redocking import RedockingRunRecord
 
 _STAGE = "redocking_storage"
 
 
 class RedockingValidationStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
         self._lock = threading.RLock()
 
     @classmethod
-    def from_environment(cls) -> "RedockingValidationStore":
+    def from_environment(cls, project_id: str | None = None) -> "RedockingValidationStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_validation_id(self) -> str:
         return str(uuid4())
@@ -37,18 +39,14 @@ class RedockingValidationStore:
         directory.mkdir(parents=True, exist_ok=False)
         path = directory / "record.json"
         with path.open("x", encoding="utf-8", newline="\n") as stream:
-            json.dump(
-                record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-            )
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
         return directory
 
     def load(self, validation_id: str) -> RedockingRunRecord:
         with self._lock:
             try:
-                raw = (self._run_dir(validation_id) / "record.json").read_text(
-                    encoding="utf-8"
-                )
+                raw = (self._run_dir(validation_id) / "record.json").read_text(encoding="utf-8")
             except FileNotFoundError as error:
                 raise self._not_found(validation_id) from error
         return RedockingRunRecord.model_validate_json(raw)
@@ -73,7 +71,7 @@ class RedockingValidationStore:
         )
 
     def _runs_dir(self) -> Path:
-        return self._root / "projects" / "default" / "validation" / "redocking"
+        return self._project_root / "validation" / "redocking"
 
     def _run_dir(self, validation_id: str) -> Path:
         try:

@@ -1058,6 +1058,10 @@ class VinaDockingService:
                 event.set()
         self._executor.shutdown(wait=True, cancel_futures=True)
 
+    def has_active_work(self) -> bool:
+        with self._lock:
+            return bool(self._cancel_events)
+
     def _validate_inputs(
         self, request: VinaDockingRequest
     ) -> tuple[ReceptorOutputArtifact, Path, Path, BindingSiteRecord]:

@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.ligand_library_preparation import (
     LigandLibraryPreparationRecord,
     LigandPreparationEntry,
@@ -48,17 +49,18 @@ def _preparation_lock(library_id: str) -> threading.Lock:
 
 
 class LigandArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
 
     @property
     def root(self) -> Path:
         return self._root
 
     @classmethod
-    def from_environment(cls) -> "LigandArtifactStore":
+    def from_environment(cls, project_id: str | None = None) -> "LigandArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_ligand_id(self) -> str:
         return str(uuid4())
@@ -101,14 +103,10 @@ class LigandArtifactStore:
             json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
 
-    def create_library(
-        self, library_id: str, content: bytes, record: LigandLibraryRecord
-    ) -> None:
+    def create_library(self, library_id: str, content: bytes, record: LigandLibraryRecord) -> None:
         directory = self._library_dir(library_id)
         directory.mkdir(parents=True, exist_ok=False)
-        with (directory / self.sanitize_filename(record.artifact.filename)).open(
-            "xb"
-        ) as stream:
+        with (directory / self.sanitize_filename(record.artifact.filename)).open("xb") as stream:
             stream.write(content)
         with (directory / "record.json").open("x", encoding="utf-8", newline="\n") as stream:
             json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
@@ -181,7 +179,7 @@ class LigandArtifactStore:
         )
 
     def _libraries_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "original" / "ligand_libraries"
+        path = self._project_root / "original" / "ligand_libraries"
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._library_not_found("ligand_libraries")
@@ -189,18 +187,14 @@ class LigandArtifactStore:
 
     def load_library_record(self, library_id: str) -> LigandLibraryRecord:
         try:
-            raw = (self._library_dir(library_id) / "record.json").read_text(
-                encoding="utf-8"
-            )
+            raw = (self._library_dir(library_id) / "record.json").read_text(encoding="utf-8")
         except FileNotFoundError as error:
             raise self._library_not_found(library_id) from error
         return LigandLibraryRecord.model_validate_json(raw)
 
     def library_content_path(self, library_id: str) -> Path:
         record = self.load_library_record(library_id)
-        path = self._library_dir(library_id) / self.sanitize_filename(
-            record.artifact.filename
-        )
+        path = self._library_dir(library_id) / self.sanitize_filename(record.artifact.filename)
         if not path.is_file():
             raise self._library_not_found(library_id)
         return path
@@ -226,9 +220,7 @@ class LigandArtifactStore:
             return LigandLibraryPreparationRecord(
                 library_id=library_id, updated_at=datetime.now(UTC), entries={}
             )
-        return LigandLibraryPreparationRecord.model_validate_json(
-            path.read_text(encoding="utf-8")
-        )
+        return LigandLibraryPreparationRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
     def upsert_preparation_entry(
         self, library_id: str, entry: LigandPreparationEntry
@@ -247,17 +239,14 @@ class LigandArtifactStore:
             final_path = self._preparation_status_path(library_id)
             tmp_path = final_path.with_name(f"{final_path.name}.{uuid4().hex}.tmp")
             tmp_path.write_text(
-                json.dumps(record.model_dump(mode="json"), indent=2, ensure_ascii=False)
-                + "\n",
+                json.dumps(record.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
                 newline="\n",
             )
             os.replace(tmp_path, final_path)
             return record
 
-    def load_filter_run(
-        self, library_id: str, filter_run_id: str
-    ) -> LigandLibraryFilterRun:
+    def load_filter_run(self, library_id: str, filter_run_id: str) -> LigandLibraryFilterRun:
         try:
             raw = (self._filter_run_dir(library_id, filter_run_id) / "record.json").read_text(
                 encoding="utf-8"
@@ -333,17 +322,11 @@ class LigandArtifactStore:
         ligand_id: str,
         state_id: str,
         content: bytes,
-        record: (
-            LigandChemicalStateRecord
-            | LigandProtonationRecord
-            | LigandMicrostateRecord
-        ),
+        record: (LigandChemicalStateRecord | LigandProtonationRecord | LigandMicrostateRecord),
     ) -> None:
         directory = self._state_dir(ligand_id, state_id)
         directory.mkdir(parents=True, exist_ok=False)
-        with (directory / self.sanitize_filename(record.artifact.filename)).open(
-            "xb"
-        ) as stream:
+        with (directory / self.sanitize_filename(record.artifact.filename)).open("xb") as stream:
             stream.write(content)
         with (directory / "record.json").open("x", encoding="utf-8", newline="\n") as stream:
             json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
@@ -351,17 +334,13 @@ class LigandArtifactStore:
 
     def _read_state_record_json(self, ligand_id: str, state_id: str) -> dict[str, Any]:
         try:
-            raw = (self._state_dir(ligand_id, state_id) / "record.json").read_text(
-                encoding="utf-8"
-            )
+            raw = (self._state_dir(ligand_id, state_id) / "record.json").read_text(encoding="utf-8")
         except FileNotFoundError as error:
             raise self._state_not_found(ligand_id, state_id) from error
         payload: dict[str, Any] = json.loads(raw)
         return payload
 
-    def load_state_artifact(
-        self, ligand_id: str, state_id: str
-    ) -> LigandChemicalStateArtifact:
+    def load_state_artifact(self, ligand_id: str, state_id: str) -> LigandChemicalStateArtifact:
         """Read only the artifact metadata shared by every state-producing decision
         (component/stereo resolution, protonation) without depending on which
         decision's record shape wrote it."""
@@ -413,9 +392,7 @@ class LigandArtifactStore:
             json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
             stream.write("\n")
 
-    def load_conformer_record(
-        self, ligand_id: str, conformer_id: str
-    ) -> LigandConformerRecord:
+    def load_conformer_record(self, ligand_id: str, conformer_id: str) -> LigandConformerRecord:
         try:
             raw = (self._conformer_dir(ligand_id, conformer_id) / "record.json").read_text(
                 encoding="utf-8"
@@ -442,9 +419,7 @@ class LigandArtifactStore:
     ) -> None:
         directory = self._preparation_dir(ligand_id, preparation_id)
         directory.mkdir(parents=True, exist_ok=False)
-        with (directory / self.sanitize_filename(record.artifact.filename)).open(
-            "xb"
-        ) as stream:
+        with (directory / self.sanitize_filename(record.artifact.filename)).open("xb") as stream:
             stream.write(content)
         self._write_execution_logs(directory, record.stdout, record.stderr)
         with (directory / "record.json").open("x", encoding="utf-8", newline="\n") as stream:
@@ -468,9 +443,9 @@ class LigandArtifactStore:
 
     def load_pdbqt_record(self, ligand_id: str, preparation_id: str) -> LigandPdbqtRecord:
         try:
-            raw = (
-                self._preparation_dir(ligand_id, preparation_id) / "record.json"
-            ).read_text(encoding="utf-8")
+            raw = (self._preparation_dir(ligand_id, preparation_id) / "record.json").read_text(
+                encoding="utf-8"
+            )
         except FileNotFoundError as error:
             raise self._preparation_not_found(ligand_id, preparation_id) from error
         return LigandPdbqtRecord.model_validate_json(raw)
@@ -489,7 +464,7 @@ class LigandArtifactStore:
             normalized = str(UUID(ligand_id))
         except ValueError as error:
             raise self._not_found(ligand_id) from error
-        path = self._root / "projects" / "default" / "original" / "ligands" / normalized
+        path = self._project_root / "original" / "ligands" / normalized
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(ligand_id)
@@ -500,7 +475,7 @@ class LigandArtifactStore:
             normalized = str(UUID(library_id))
         except ValueError as error:
             raise self._library_not_found(library_id) from error
-        path = self._root / "projects" / "default" / "original" / "ligand_libraries" / normalized
+        path = self._project_root / "original" / "ligand_libraries" / normalized
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._library_not_found(library_id)
@@ -636,9 +611,7 @@ class LigandArtifactStore:
         )
 
     @staticmethod
-    def _filter_run_not_found(
-        library_id: str, filter_run_id: str
-    ) -> AnkoraDomainError:
+    def _filter_run_not_found(library_id: str, filter_run_id: str) -> AnkoraDomainError:
         return AnkoraDomainError(
             code="LIGAND_FILTER_RUN_NOT_FOUND",
             stage="ligand_storage",
@@ -668,9 +641,7 @@ class LigandArtifactStore:
         )
 
     @staticmethod
-    def _preparation_not_found(
-        ligand_id: str, preparation_id: str
-    ) -> AnkoraDomainError:
+    def _preparation_not_found(ligand_id: str, preparation_id: str) -> AnkoraDomainError:
         return AnkoraDomainError(
             code="LIGAND_PREPARATION_NOT_FOUND",
             stage="ligand_storage",

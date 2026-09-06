@@ -6,18 +6,20 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.binding_sites import PocketDetectionReport
 
 
 class PocketDetectionArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
 
     @classmethod
-    def from_environment(cls) -> "PocketDetectionArtifactStore":
+    def from_environment(cls, project_id: str | None = None) -> "PocketDetectionArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")
         root = Path(configured) if configured else Path.cwd() / ".ankora-data"
-        return cls(root)
+        return cls(root, project_id)
 
     def new_report_id(self) -> str:
         return str(uuid4())
@@ -43,7 +45,7 @@ class PocketDetectionArtifactStore:
             normalized_id = str(UUID(report_id))
         except ValueError as error:
             raise self._not_found(report_id) from error
-        path = self._root / "projects" / "default" / "derived" / "pocket_detection" / normalized_id
+        path = self._project_root / "derived" / "pocket_detection" / normalized_id
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(report_id)

@@ -7,20 +7,22 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.structures import StructureArtifact, StructureRecord
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class StructureArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
 
     @classmethod
-    def from_environment(cls) -> "StructureArtifactStore":
+    def from_environment(cls, project_id: str | None = None) -> "StructureArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")
         root = Path(configured) if configured else Path.cwd() / ".ankora-data"
-        return cls(root)
+        return cls(root, project_id)
 
     def create_artifact(
         self,
@@ -67,7 +69,7 @@ class StructureArtifactStore:
             normalized_id = str(UUID(artifact_id))
         except ValueError as error:
             raise self._not_found(artifact_id) from error
-        path = (self._root / "projects" / "default" / "original" / "structures" / normalized_id)
+        path = self._project_root / "original" / "structures" / normalized_id
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(artifact_id)

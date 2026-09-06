@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.autogrid import AutoGridMapJobRecord, AutoGridMapSetRecord
 
 
@@ -17,14 +18,15 @@ class AutoGridMapStore:
     incomplete run rather than a reusable map set; identity lookup ignores it.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
         self._record_lock = threading.RLock()
 
     @classmethod
-    def from_environment(cls) -> "AutoGridMapStore":
+    def from_environment(cls, project_id: str | None = None) -> "AutoGridMapStore":
         configured = os.getenv("ANKORA_DATA_DIR")
-        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     def new_map_set_id(self) -> str:
         return str(uuid4())
@@ -47,9 +49,7 @@ class AutoGridMapStore:
     def load_record(self, map_set_id: str) -> AutoGridMapSetRecord:
         with self._record_lock:
             try:
-                raw = (self._map_set_dir(map_set_id) / "record.json").read_text(
-                    encoding="utf-8"
-                )
+                raw = (self._map_set_dir(map_set_id) / "record.json").read_text(encoding="utf-8")
             except FileNotFoundError as error:
                 raise self._not_found(map_set_id) from error
         return AutoGridMapSetRecord.model_validate_json(raw)
@@ -116,9 +116,7 @@ class AutoGridMapStore:
                 raise self._job_not_found(record.job_id)
             temporary = directory / "record.json.tmp"
             with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-                )
+                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
                 stream.write("\n")
             os.replace(temporary, directory / "record.json")
 
@@ -145,7 +143,7 @@ class AutoGridMapStore:
         return records
 
     def _jobs_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "results" / "autogrid_jobs"
+        path = self._project_root / "results" / "autogrid_jobs"
         resolved = path.resolve()
         if self._root not in resolved.parents and resolved != self._root:
             raise self._job_not_found("autogrid_jobs")
@@ -177,7 +175,7 @@ class AutoGridMapStore:
         return all((directory / item.filename).is_file() for item in record.artifacts)
 
     def _map_sets_dir(self) -> Path:
-        path = self._root / "projects" / "default" / "derived" / "autogrid_maps"
+        path = self._project_root / "derived" / "autogrid_maps"
         resolved = path.resolve()
         if self._root not in resolved.parents and resolved != self._root:
             raise self._not_found("autogrid_maps")
@@ -195,9 +193,7 @@ class AutoGridMapStore:
         return resolved
 
     @staticmethod
-    def _not_found(
-        map_set_id: str, artifact_id: str | None = None
-    ) -> AnkoraDomainError:
+    def _not_found(map_set_id: str, artifact_id: str | None = None) -> AnkoraDomainError:
         details: dict[str, object] = {"map_set_id": map_set_id}
         if artifact_id is not None:
             details["artifact_id"] = artifact_id

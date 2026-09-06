@@ -6,18 +6,20 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.receptors import ReceptorPreparationRecord
 
 
 class ReceptorArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, project_id: str | None = None) -> None:
         self._root = root.resolve()
+        self._project_root = resolve_project_root(self._root, project_id)
 
     @classmethod
-    def from_environment(cls) -> "ReceptorArtifactStore":
+    def from_environment(cls, project_id: str | None = None) -> "ReceptorArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")
         root = Path(configured) if configured else Path.cwd() / ".ankora-data"
-        return cls(root)
+        return cls(root, project_id)
 
     def new_receptor_id(self) -> str:
         return str(uuid4())
@@ -59,7 +61,7 @@ class ReceptorArtifactStore:
         return ReceptorPreparationRecord.model_validate_json(raw)
 
     def load_latest_record(self) -> ReceptorPreparationRecord:
-        receptor_root = self._root / "projects" / "default" / "derived" / "receptors"
+        receptor_root = self._project_root / "derived" / "receptors"
         if not receptor_root.is_dir():
             raise self._latest_not_found()
         records = [
@@ -72,9 +74,7 @@ class ReceptorArtifactStore:
 
     def content_path(self, receptor_id: str, artifact_id: str) -> Path:
         record = self.load_record(receptor_id)
-        output = next(
-            (item for item in record.outputs if item.artifact_id == artifact_id), None
-        )
+        output = next((item for item in record.outputs if item.artifact_id == artifact_id), None)
         if output is None:
             raise self._not_found(receptor_id, artifact_id)
         path = self.output_path(receptor_id, output.filename)
@@ -87,7 +87,7 @@ class ReceptorArtifactStore:
             normalized_id = str(UUID(receptor_id))
         except ValueError as error:
             raise self._not_found(receptor_id) from error
-        path = self._root / "projects" / "default" / "derived" / "receptors" / normalized_id
+        path = self._project_root / "derived" / "receptors" / normalized_id
         resolved = path.resolve()
         if self._root not in resolved.parents:
             raise self._not_found(receptor_id)
