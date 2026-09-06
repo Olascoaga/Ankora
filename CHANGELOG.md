@@ -2,6 +2,15 @@
 
 All notable project changes are recorded here.
 
+## Shared accessible dialogs - 2026-09-06
+
+- Added one modal-dialog boundary with explicit initial focus, trapped forward
+  and reverse keyboard navigation, Escape handling, background isolation, and
+  restoration of the caller's prior accessibility state.
+- Migrated Results deletion and the Methods preview to the shared boundary.
+  Successful deletion restores focus to the Results workspace when its opener
+  no longer exists; an in-progress destructive operation cannot be dismissed.
+
 ## Durable execution ownership and startup recovery - 2026-09-04
 
 - Added durable owner/heartbeat leases for Vina, AutoGrid, AutoDock4 CPU, and

@@ -389,6 +389,7 @@ it("deletes one result or a multiple selection as one acknowledged Trash operati
   const dialog = screen.getByRole("dialog", { name: "Delete 2 results?" });
   expect(dialog).toHaveTextContent("dependent pose analyses or redocking validations");
   expect(dialog).toHaveTextContent("export bundles are not deleted");
+  expect(within(dialog).getByRole("button", { name: "Keep results" })).toHaveFocus();
   const confirm = within(dialog).getByRole("button", { name: "Delete 2" });
   expect(confirm).toBeDisabled();
   fireEvent.click(within(dialog).getByRole("checkbox", {
@@ -400,6 +401,7 @@ it("deletes one result or a multiple selection as one acknowledged Trash operati
   expect(screen.getByRole("status")).toHaveTextContent("2 results moved to Trash");
   expect(screen.getByRole("status")).toHaveTextContent("1 pose analysis moved with them");
   expect(screen.getByRole("status")).toHaveTextContent("Export bundles remain");
+  await waitFor(() => expect(screen.getByLabelText("Results workspace")).toHaveFocus());
   const removal = fetcher.mock.calls.find(([url]) =>
     String(url).endsWith("/results/campaigns/trash")
   );

@@ -34,6 +34,13 @@ This document is the implementation contract for the professional scientific int
 - Progress bars expose current/total values for bounded batches; indeterminate animation is used only when no total exists.
 - Empty states explain the next valid action. Disabled workflow steps explain their prerequisite in the left rail.
 - Errors keep concise recovery near the task and retain expandable technical evidence. Scientific decisions are never applied implicitly as error recovery.
+- Modal workflows use the shared dialog boundary. Opening a dialog isolates the
+  application behind it from pointer, keyboard, and accessibility-tree access;
+  moves focus to an explicit safe control; keeps Tab and Shift+Tab inside; and
+  closes with Escape unless a destructive operation is already running. Closing
+  restores focus to the opener or to a stable workspace fallback when that
+  opener was removed by the completed action. A modal must not implement these
+  behaviors independently.
 - React rendering failures are contained twice: a workspace failure leaves the
   surrounding navigation and status shell usable, while an application-level
   boundary provides a last-resort recovery screen. Retrying either boundary

@@ -105,6 +105,21 @@ it("copies the markdown source, not the rendering", async () => {
   await screen.findByRole("button", { name: "Copied as Markdown" });
 });
 
+it("opens as an accessible modal and restores focus after Escape", async () => {
+  serve(report());
+  render(<MethodsPanel catalogId="autodock_gpu_batch:a36d490c" />);
+  const opener = screen.getByRole("button", { name: "Write the Methods section" });
+  opener.focus();
+  fireEvent.click(opener);
+
+  const dialog = await screen.findByRole("dialog", { name: "Methods section" });
+  expect(within(dialog).getByRole("button", { name: "Close" })).toHaveFocus();
+  fireEvent.keyDown(document, { key: "Escape" });
+
+  expect(screen.queryByRole("dialog", { name: "Methods section" })).not.toBeInTheDocument();
+  await waitFor(() => expect(opener).toHaveFocus());
+});
+
 it("only claims a copy that happened", async () => {
   serve(report());
   const writeText = vi.fn().mockRejectedValue(new Error("blocked"));

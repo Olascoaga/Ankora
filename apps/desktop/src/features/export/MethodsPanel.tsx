@@ -1,6 +1,7 @@
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
+import { Dialog } from "../../components/Dialog";
 import type { MethodsReport } from "../../types/api";
 
 /**
@@ -39,6 +40,7 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
   const [report, setReport] = useState<MethodsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -51,12 +53,6 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
     return () => { disposed = true; };
   }, [catalogId]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const copy = async () => {
     if (!report) return;
     const written = await copyText(report.markdown);
@@ -64,13 +60,13 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
   };
 
   return (
-    <div className="results-delete-backdrop">
-      <section
-        className="results-delete-dialog methods-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="methods-title"
-      >
+    <Dialog
+      className="results-delete-dialog methods-dialog"
+      backdropClassName="results-delete-backdrop"
+      labelledBy="methods-title"
+      onClose={onClose}
+      initialFocusRef={closeButtonRef}
+    >
         <div>
           <span className="section-label">Export · Methods</span>
           <h2 id="methods-title">Methods section</h2>
@@ -117,7 +113,7 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
         ) : null}
 
         <div className="methods-actions">
-          <button type="button" className="quiet-button" onClick={onClose}>Close</button>
+          <button ref={closeButtonRef} type="button" className="quiet-button" onClick={onClose}>Close</button>
           <button
             type="button"
             className="primary-action"
@@ -132,8 +128,7 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
           details taken from the DOI&apos;s registered metadata. Restyle them to your
           journal, and cite Ankora itself separately.
         </small>
-      </section>
-    </div>
+    </Dialog>
   );
 }
 

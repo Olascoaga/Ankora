@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ankoraApi, ApiError } from "../../api/client";
+import { Dialog } from "../../components/Dialog";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
@@ -58,6 +59,8 @@ export function ResultsWorkspace() {
   const [deleting, setDeleting] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
   const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
+  const keepResultsRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -168,6 +171,13 @@ export function ResultsWorkspace() {
     setConfirmingDeletion(true);
   }
 
+  function closeDeletionDialog() {
+    if (deleting) return;
+    setConfirmingDeletion(false);
+    setDeletionAcknowledged(false);
+    setDeletionError(null);
+  }
+
   async function trashSelection() {
     if (!deletionAcknowledged || deletionSelection.length === 0) return;
     setDeleting(true);
@@ -216,8 +226,10 @@ export function ResultsWorkspace() {
   return (
     <>
       <section
+        ref={workspaceRef}
         className={`workspace results-workspace${inspectedMolecule ? " results-interaction-workspace" : ""}`}
         aria-label="Results workspace"
+        tabIndex={-1}
       >
         <div className="workspace-heading">
           <div>
@@ -444,19 +456,22 @@ export function ResultsWorkspace() {
       </aside>
 
       {confirmingDeletion ? (
-        <div className="results-delete-backdrop">
-          <section
-            className="results-delete-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="results-delete-title"
-          >
+        <Dialog
+          className="results-delete-dialog"
+          backdropClassName="results-delete-backdrop"
+          labelledBy="results-delete-title"
+          describedBy="results-delete-description"
+          onClose={closeDeletionDialog}
+          initialFocusRef={keepResultsRef}
+          fallbackFocusRef={workspaceRef}
+          dismissible={!deleting}
+        >
             <div>
               <span className="section-label">Results · destructive action</span>
               <h2 id="results-delete-title">
                 Delete {deletionSelection.length} {deletionSelection.length === 1 ? "result" : "results"}?
               </h2>
-              <p>
+              <p id="results-delete-description">
                 The complete campaign folders and their dependent pose analyses or redocking
                 validations will move together to Ankora Trash. Receptors, ligands, binding sites,
                 shared grid maps, and export bundles are not deleted.
@@ -484,14 +499,11 @@ export function ResultsWorkspace() {
             {deletionError ? <div className="structure-error" role="alert">{deletionError}</div> : null}
             <div className="results-delete-actions">
               <button
+                ref={keepResultsRef}
                 type="button"
                 className="quiet-button"
                 disabled={deleting}
-                onClick={() => {
-                  setConfirmingDeletion(false);
-                  setDeletionAcknowledged(false);
-                  setDeletionError(null);
-                }}
+                onClick={closeDeletionDialog}
               >
                 Keep results
               </button>
@@ -504,8 +516,7 @@ export function ResultsWorkspace() {
                 {deleting ? "Moving to Trash…" : `Delete ${deletionSelection.length}`}
               </button>
             </div>
-          </section>
-        </div>
+        </Dialog>
       ) : null}
     </>
   );
