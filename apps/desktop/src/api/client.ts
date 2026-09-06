@@ -75,6 +75,10 @@ import type {
   VinaDockingRequest,
   InteractionAnalysisRecord,
   PoseInventory,
+  ProjectCatalog,
+  ProjectDependencyGraph,
+  ProjectRecord,
+  MarkArtifactStaleResponse,
   TrashResultCampaignsResponse,
   WorkKind,
   WorkRecoverySummary,
@@ -149,6 +153,26 @@ function campaignHistoryQuery(receptorId: string, bindingSiteId: string): string
 
 export const ankoraApi = {
   health: (): Promise<HealthResponse> => getJson<HealthResponse>("/health"),
+  projects: (): Promise<ProjectCatalog> => getJson<ProjectCatalog>("/projects"),
+  createProject: (name: string): Promise<ProjectRecord> =>
+    requestJson<ProjectRecord>("/projects", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  activateProject: (projectId: string): Promise<ProjectRecord> =>
+    requestJson<ProjectRecord>(`/projects/${encodeURIComponent(projectId)}/activate`, {
+      method: "POST",
+    }),
+  projectDependencies: (offset = 0, limit = 100): Promise<ProjectDependencyGraph> =>
+    getJson<ProjectDependencyGraph>(`/projects/active/dependencies?offset=${offset}&limit=${limit}`),
+  markProjectDependencyStale: (
+    nodeId: string,
+    reason: string,
+  ): Promise<MarkArtifactStaleResponse> =>
+    requestJson<MarkArtifactStaleResponse>(
+      `/projects/active/dependencies/${encodeURIComponent(nodeId)}/stale`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    ),
   system: (): Promise<SystemResponse> => getJson<SystemResponse>("/system"),
   tools: (): Promise<ToolsResponse> => getJson<ToolsResponse>("/tools"),
   importLigand: (file: File): Promise<LigandRecord> => {

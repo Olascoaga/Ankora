@@ -168,6 +168,69 @@ export interface IssueDecision {
   selected_altloc?: string | null;
 }
 
+export interface ProjectRecord {
+  project_id: string;
+  name: string;
+  registered_at: string;
+  migrated_legacy: boolean;
+}
+
+export interface ProjectCatalog {
+  active_project_id: string;
+  projects: ProjectRecord[];
+}
+
+export type DependencyNodeKind =
+  | "structure"
+  | "receptor"
+  | "ligand"
+  | "ligand_library"
+  | "ligand_filter"
+  | "chemical_state"
+  | "conformer"
+  | "ligand_preparation"
+  | "binding_site"
+  | "pocket_detection"
+  | "autogrid_map_set"
+  | "docking_campaign"
+  | "validation"
+  | "pose_analysis"
+  | "export"
+  | "unknown";
+
+export interface ProjectDependencyNode {
+  node_id: string;
+  kind: DependencyNodeKind;
+  label: string;
+  relative_path: string;
+  parent_ids: string[];
+  unresolved_parent_ids: string[];
+  stale: boolean;
+  stale_reasons: string[];
+}
+
+export interface ProjectDependencyEdge {
+  parent_id: string;
+  child_id: string;
+}
+
+export interface ProjectDependencyGraph {
+  project_id: string;
+  generated_at: string;
+  nodes: ProjectDependencyNode[];
+  edges: ProjectDependencyEdge[];
+  total_nodes: number;
+  offset: number;
+  limit: number;
+  stale_count: number;
+  unresolved_reference_count: number;
+}
+
+export interface MarkArtifactStaleResponse {
+  marked_node_id: string;
+  affected_node_ids: string[];
+}
+
 export interface TerminalHeavyAtomAddition {
   chain_id: string;
   residue_name: string;

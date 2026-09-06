@@ -9,13 +9,14 @@ import { RedockingWorkspace } from "../features/validation/RedockingWorkspace";
 import { ExportWorkspace } from "../features/export/ExportWorkspace";
 import { ResultsWorkspace } from "../features/results/ResultsWorkspace";
 import { LigandWorkspace } from "../features/ligand/LigandWorkspace";
+import { ProjectWorkspace } from "../features/project/ProjectWorkspace";
 import {
   isLigandLibraryStageComplete,
   summarizeLigandLibraryStatus,
   type LigandLibraryStatusSummary,
 } from "../features/ligand/libraryProgress";
 import { ReceptorWorkspace } from "../features/receptor/ReceptorWorkspace";
-import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLibraryDockingInput, LigandRecord, ReceptorPreparationRecord, RecoveredWorkItem, StructureRecord, WorkRecoverySummary, WorkRetryResponse } from "../types/api";
+import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLibraryDockingInput, LigandRecord, ProjectCatalog, ProjectDependencyGraph, ProjectDependencyNode, ProjectRecord, ReceptorPreparationRecord, RecoveredWorkItem, StructureRecord, WorkRecoverySummary, WorkRetryResponse } from "../types/api";
 import { MolecularViewer } from "../viewer/MolecularViewer";
 import type { ViewerSelection } from "../viewer/adapter";
 import { createInitialApplicationState, type ApplicationState } from "./state";
@@ -26,6 +27,16 @@ import { describeUsage, useResourceUsage } from "./useResourceUsage";
 type ActivityTab = "activity" | "warnings" | "provenance" | "tools" | "about";
 type ThemeMode = "dark" | "light" | "blue" | "amethyst" | "system";
 type DensityMode = "comfortable" | "compact";
+
+const DEFAULT_PROJECT_CATALOG: ProjectCatalog = {
+  active_project_id: "default",
+  projects: [{
+    project_id: "default",
+    name: "Default project",
+    registered_at: "",
+    migrated_legacy: true,
+  }],
+};
 
 export function App() {
   const [state, setState] = useState<ApplicationState>(createInitialApplicationState);
@@ -55,6 +66,12 @@ export function App() {
   const [retryResponses, setRetryResponses] = useState<Record<string, WorkRetryResponse>>({});
   const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
   const [toolsRefreshing, setToolsRefreshing] = useState(false);
+  const [projectCatalog, setProjectCatalog] = useState<ProjectCatalog>(DEFAULT_PROJECT_CATALOG);
+  const [projectGraph, setProjectGraph] = useState<ProjectDependencyGraph | null>(null);
+  const [projectWorkspaceOpen, setProjectWorkspaceOpen] = useState(false);
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectGraphLimit, setProjectGraphLimit] = useState(100);
   const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme", ["dark", "light", "blue", "amethyst", "system"], "dark"));
   const [density, setDensity] = useState<DensityMode>(() => readUiSetting("ankora-density", ["comfortable", "compact"], "comfortable"));
   const importMenuRef = useRef<HTMLDetailsElement>(null);
@@ -84,6 +101,19 @@ export function App() {
   useEffect(() => {
     void initializeBackend();
   }, [initializeBackend]);
+
+  useEffect(() => {
+    let active = true;
+    void ankoraApi.projects()
+      .then((catalog) => {
+        if (active && isProjectCatalog(catalog)) setProjectCatalog(catalog);
+      })
+      .catch(() => {
+        // Project identity is additive during development. The rest of the
+        // workbench remains usable against an older local backend.
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -276,7 +306,127 @@ export function App() {
     }
   }
 
+  function resetScientificWorkspace() {
+    setSelection(null);
+    setState((current) => ({
+      ...current,
+      structure: null,
+      structureOperation: "idle",
+      structureError: null,
+    }));
+    setReceptorRecord(null);
+    setLatestReceptor(null);
+    setLigandRecord(null);
+    setLigandDockingInput(null);
+    setLigandLibraryDockingInput(null);
+    setLigandLibraryStatus(null);
+    setBindingSiteRecord(null);
+    setWorkspaceActivity(null);
+    setWorkRecovery(null);
+    setActiveStep("Structure");
+  }
+
+  async function refreshProjectWorkspace(limit = projectGraphLimit) {
+    const [catalog, graph] = await Promise.all([
+      ankoraApi.projects(),
+      ankoraApi.projectDependencies(0, limit),
+    ]);
+    if (!isProjectCatalog(catalog) || !isProjectDependencyGraph(graph)) {
+      throw new Error("The backend returned an invalid project workspace.");
+    }
+    setProjectCatalog(catalog);
+    setProjectGraph(graph);
+  }
+
+  async function openProjectWorkspace() {
+    setProjectWorkspaceOpen(true);
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      await refreshProjectWorkspace();
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "Projects could not be loaded.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function activateProject(project: ProjectRecord) {
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      const activated = await ankoraApi.activateProject(project.project_id);
+      resetScientificWorkspace();
+      const [catalog, graph, recovery, savedReceptor] = await Promise.all([
+        ankoraApi.projects(),
+        ankoraApi.projectDependencies(0, projectGraphLimit),
+        ankoraApi.workRecovery().catch(() => null),
+        ankoraApi.latestReceptor().catch((error: unknown) => {
+          if (error instanceof ApiError && error.status === 404) return null;
+          throw error;
+        }),
+      ]);
+      if (!isProjectCatalog(catalog) || !isProjectDependencyGraph(graph)) {
+        throw new Error("The activated project returned an invalid workspace.");
+      }
+      setProjectCatalog(catalog);
+      setProjectGraph(graph);
+      setLatestReceptor(savedReceptor);
+      if (recovery && Array.isArray(recovery.items)) setWorkRecovery(recovery);
+      setProjectError(null);
+      if (activated.project_id !== catalog.active_project_id) {
+        throw new Error("The backend did not retain the selected project.");
+      }
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "The project could not be opened.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function createProject(name: string) {
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      const created = await ankoraApi.createProject(name);
+      await activateProject(created);
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "The project could not be created.");
+      setProjectBusy(false);
+    }
+  }
+
+  async function markProjectDependencyStale(node: ProjectDependencyNode, reason: string) {
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      await ankoraApi.markProjectDependencyStale(node.node_id, reason);
+      await refreshProjectWorkspace();
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "Stale state could not be recorded.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function loadMoreProjectDependencies() {
+    const nextLimit = Math.min(500, projectGraphLimit + 100);
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      await refreshProjectWorkspace(nextLimit);
+      setProjectGraphLimit(nextLimit);
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "More records could not be loaded.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
   const structure = state.structure;
+  const activeProject = projectCatalog.projects.find(
+    (project) => project.project_id === projectCatalog.active_project_id,
+  ) ?? DEFAULT_PROJECT_CATALOG.projects[0];
   const structureViewerSources = useMemo(() => structure ? [{
     id: structure.artifact.artifact_id,
     url: ankoraApi.structureContentUrl(structure),
@@ -390,6 +540,7 @@ export function App() {
             <button type="button" onClick={() => globalFileInputRef.current?.click()}><AppIcon name="file" />Open local structure…</button>
             <button type="button" onClick={openStructureMenu}><AppIcon name="molecule" />Fetch from RCSB / AlphaFold…</button>
             {latestReceptor ? <button type="button" onClick={() => void reopenLatestReceptor()}><AppIcon name="history" />Reopen latest receptor</button> : null}
+            <button type="button" onClick={() => void openProjectWorkspace()}><AppIcon name="layout" />Project workspace…</button>
           </AppMenu>
           <AppMenu label="Workflow">
             {workflowSteps.map((step) => {
@@ -419,7 +570,10 @@ export function App() {
             <button type="button" onClick={() => openActivity("about")}><AppIcon name="info" />About Ankora</button>
           </AppMenu>
         </div>
-        <div className="project-context"><span>Default project</span><strong>{structure ? `Structure · ${structure.metadata.entry_id ?? structure.artifact.original_filename}` : "No structure"}</strong></div>
+        <button type="button" className="project-context" onClick={() => void openProjectWorkspace()} title="Open project workspace">
+          <span>{activeProject.name}</span>
+          <strong>{structure ? `Structure · ${structure.metadata.entry_id ?? structure.artifact.original_filename}` : "No structure"}</strong>
+        </button>
         <button type="button" className={`connection-pill ${state.connection}`} onClick={() => openActivity("tools")}><span aria-hidden="true" />{connectionLabel}</button>
         <div className="panel-buttons">
           <button type="button" aria-label="Toggle workflow panel" aria-pressed={!workflowCollapsed} onClick={() => setWorkflowCollapsed((value) => !value)}><AppIcon name="panel-left" /></button>
@@ -574,6 +728,19 @@ export function App() {
         </section> : null}
       </footer>
     </main>
+    {projectWorkspaceOpen ? (
+      <ProjectWorkspace
+        catalog={projectCatalog}
+        graph={projectGraph}
+        busy={projectBusy}
+        error={projectError}
+        onClose={() => setProjectWorkspaceOpen(false)}
+        onCreate={createProject}
+        onActivate={activateProject}
+        onMarkStale={markProjectDependencyStale}
+        onLoadMore={loadMoreProjectDependencies}
+      />
+    ) : null}
     {!splashDismissed ? (
       <SplashScreen
         connection={state.connection}
@@ -587,6 +754,21 @@ export function App() {
     ) : null}
     </>
   );
+}
+
+function isProjectCatalog(value: unknown): value is ProjectCatalog {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProjectCatalog>;
+  return typeof candidate.active_project_id === "string" && Array.isArray(candidate.projects);
+}
+
+function isProjectDependencyGraph(value: unknown): value is ProjectDependencyGraph {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProjectDependencyGraph>;
+  return typeof candidate.project_id === "string"
+    && Array.isArray(candidate.nodes)
+    && Array.isArray(candidate.edges)
+    && typeof candidate.total_nodes === "number";
 }
 
 function AppMenu({ label, children }: { label: string; children: ReactNode }) {

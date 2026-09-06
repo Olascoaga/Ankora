@@ -270,4 +270,26 @@ describe("typed API client", () => {
     const headers = fetchSpy.mock.calls[0][1]?.headers as Record<string, string>;
     expect(headers["Content-Type"]).toBeUndefined();
   });
+
+  it("uses the explicit project and stale-state routes", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await ankoraApi.projects();
+    await ankoraApi.createProject("PIK3CD screen");
+    await ankoraApi.activateProject("project one");
+    await ankoraApi.projectDependencies(100, 200);
+    await ankoraApi.markProjectDependencyStale("artifact/one", "Input superseded.");
+
+    expect(String(fetchSpy.mock.calls[0][0])).toMatch(/\/projects$/);
+    expect(JSON.parse(String(fetchSpy.mock.calls[1][1]?.body))).toEqual({ name: "PIK3CD screen" });
+    expect(String(fetchSpy.mock.calls[2][0])).toMatch(/\/projects\/project%20one\/activate$/);
+    expect(String(fetchSpy.mock.calls[3][0])).toMatch(/dependencies\?offset=100&limit=200$/);
+    expect(String(fetchSpy.mock.calls[4][0])).toMatch(/dependencies\/artifact%2Fone\/stale$/);
+    expect(JSON.parse(String(fetchSpy.mock.calls[4][1]?.body))).toEqual({ reason: "Input superseded." });
+  });
 });
