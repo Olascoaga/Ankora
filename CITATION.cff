@@ -1,0 +1,47 @@
+# Citation metadata for Ankora, in Citation File Format 1.2.0.
+# https://citation-file-format.github.io
+#
+# GitHub reads this file and offers "Cite this repository" on the repository
+# page, in APA and BibTeX. Update `version` and `date-released` with each
+# tagged release so a published result names the version that produced it.
+#
+# TODO: add `orcid: "https://orcid.org/0000-0000-0000-0000"` under the author
+# once available. It is the only durable identifier that survives a name change
+# or a shared surname, and reviewers increasingly expect it.
+cff-version: 1.2.0
+title: Ankora
+message: >-
+  If you use Ankora in work you publish, please cite it using this metadata,
+  naming the version that produced your results.
+type: software
+authors:
+  - family-names: Olascoaga
+    given-names: Samael
+    email: olaskuaga@gmail.com
+abstract: >-
+  Ankora is a native Windows workbench for molecular docking that keeps the
+  scientist in control of every inspection, preparation, execution and review
+  decision. It preserves imported structures and compound libraries unchanged,
+  requires each chemical decision to be explicit rather than inferred, and
+  records the provenance of every transformation. Docking runs against native
+  AutoDock Vina or the AutoDock4 scoring family, on CPU or GPU, with immutable
+  reusable grid maps and preserved raw engine evidence. Results, redocking
+  validation, exact-pose interaction analysis and reproducible campaign bundles
+  are recorded per project, and Ankora renders the Methods section a campaign's
+  own records support — stating what was not recorded rather than filling the
+  gap.
+version: 0.1.0
+date-released: '2026-08-31'
+license: MIT
+repository-code: 'https://github.com/Olascoaga/Ankora'
+url: 'https://github.com/Olascoaga/Ankora'
+keywords:
+  - molecular docking
+  - virtual screening
+  - structure-based drug design
+  - reproducibility
+  - provenance
+  - AutoDock Vina
+  - AutoDock4
+  - AutoDock-GPU
+  - cheminformatics

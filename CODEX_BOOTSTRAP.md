@@ -971,6 +971,8 @@ Ankora/
 |   |   +-- LIGAND_PREPARATION_POLICY.md
 |   |   +-- DOCKING_POLICY.md
 |   |   +-- REDOCKING_VALIDATION.md
+|   |   +-- POSE_INTERACTION_POLICY.md
+|   |   +-- METHODS_REPORT_POLICY.md
 |   +-- validation/
 |       +-- VALIDATION_STRATEGY.md
 |       +-- reference_cases/
