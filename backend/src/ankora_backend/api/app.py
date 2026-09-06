@@ -19,6 +19,7 @@ from ankora_backend.services.autogrid_maps import AutoGridMapService
 from ankora_backend.services.vina_docking import VinaDockingService
 from ankora_backend.services.work_leases import WorkLeaseManager
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
+from ankora_backend.services.work_retry import WorkRetryService
 
 _ALLOWED_ORIGINS = [
     "http://127.0.0.1:1420",
@@ -89,17 +90,27 @@ def create_app() -> FastAPI:
     ).reconcile()
     lease_manager = WorkLeaseManager(lease_store)
     app.state.work_leases = lease_manager
-    app.state.vina_docking = VinaDockingService.from_environment(
+    vina_docking = VinaDockingService.from_environment(
         lease_manager=lease_manager
     )
-    app.state.autogrid_maps = AutoGridMapService.from_environment(
+    autogrid_maps = AutoGridMapService.from_environment(
         lease_manager=lease_manager
     )
-    app.state.autodock4_docking = AutoDock4DockingService.from_environment(
+    autodock4_docking = AutoDock4DockingService.from_environment(
         lease_manager=lease_manager
     )
-    app.state.autodock_gpu_docking = AutoDockGpuDockingService.from_environment(
+    autodock_gpu_docking = AutoDockGpuDockingService.from_environment(
         lease_manager=lease_manager
+    )
+    app.state.vina_docking = vina_docking
+    app.state.autogrid_maps = autogrid_maps
+    app.state.autodock4_docking = autodock4_docking
+    app.state.autodock_gpu_docking = autodock_gpu_docking
+    app.state.work_retry = WorkRetryService.from_environment(
+        vina=vina_docking,
+        autogrid=autogrid_maps,
+        autodock4=autodock4_docking,
+        autodock_gpu=autodock_gpu_docking,
     )
 
     @app.middleware("http")

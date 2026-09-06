@@ -2093,3 +2093,35 @@ export interface MethodsReport {
   gaps: string[];
   software: MethodsSoftware[];
 }
+
+export type WorkKind =
+  | "vina_job"
+  | "vina_batch"
+  | "autogrid_job"
+  | "autodock4_job"
+  | "autodock4_batch"
+  | "autodock_gpu_job"
+  | "autodock_gpu_batch";
+
+export interface RecoveredWorkItem {
+  work_kind: WorkKind;
+  work_id: string;
+  previous_status: string;
+  interrupted_entry_count: number;
+  completed_entry_count: number;
+  last_heartbeat_at: string | null;
+  previous_owner_instance_id: string | null;
+}
+
+export interface WorkRecoverySummary {
+  reconciled_at: string;
+  items: RecoveredWorkItem[];
+}
+
+export interface WorkRetryResponse {
+  work_kind: WorkKind;
+  interrupted_work_id: string;
+  new_work_id: string;
+  status: string;
+  created_at: string;
+}

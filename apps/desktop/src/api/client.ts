@@ -76,6 +76,9 @@ import type {
   InteractionAnalysisRecord,
   PoseInventory,
   TrashResultCampaignsResponse,
+  WorkKind,
+  WorkRecoverySummary,
+  WorkRetryResponse,
 } from "../types/api";
 
 const API_BASE_URL = import.meta.env.VITE_ANKORA_API_URL ?? "http://127.0.0.1:8765/api/v1";
@@ -722,6 +725,20 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
 
   resourceUsage: (): Promise<ResourceUsage> =>
     getJson<ResourceUsage>("/system/resources"),
+
+  workRecovery: (): Promise<WorkRecoverySummary> =>
+    getJson<WorkRecoverySummary>("/work/recovery"),
+
+  retryRecoveredWork: (
+    workKind: WorkKind,
+    workId: string,
+  ): Promise<WorkRetryResponse> => requestJson<WorkRetryResponse>(
+    `/work/recovery/${encodeURIComponent(workKind)}/${encodeURIComponent(workId)}/retry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ acknowledge_new_immutable_attempt: true }),
+    },
+  ),
 
   structureContentUrl: (record: StructureRecord): string => `${API_BASE_URL}${record.content_url}`,
   receptorOutputUrl: (contentUrl: string): string => `${API_BASE_URL}${contentUrl}`,

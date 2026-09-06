@@ -130,7 +130,12 @@ from ankora_backend.schemas.system import (
     ToolsResponse,
     ToolStatus,
 )
-from ankora_backend.schemas.work_recovery import WorkRecoverySummary
+from ankora_backend.schemas.work_recovery import (
+    WorkKind,
+    WorkRecoverySummary,
+    WorkRetryRequest,
+    WorkRetryResponse,
+)
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
@@ -191,6 +196,7 @@ from ankora_backend.services.structure_inspection import (
 from ankora_backend.services.system_info import collect_system_info
 from ankora_backend.services.system_resources import collect_resource_usage
 from ankora_backend.services.vina_docking import VinaDockingService
+from ankora_backend.services.work_retry import WorkRetryService
 
 router = APIRouter(prefix="/api/v1")
 
@@ -209,6 +215,10 @@ def _autodock4_service(request: Request) -> AutoDock4DockingService:
 
 def _autodock_gpu_service(request: Request) -> AutoDockGpuDockingService:
     return cast(AutoDockGpuDockingService, request.app.state.autodock_gpu_docking)
+
+
+def _work_retry_service(request: Request) -> WorkRetryService:
+    return cast(WorkRetryService, request.app.state.work_retry)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -235,6 +245,21 @@ def system_resources() -> ResourceUsage:
 def work_recovery(request: Request) -> WorkRecoverySummary:
     """Report work that startup reconciliation marked as interrupted."""
     return cast(WorkRecoverySummary, request.app.state.work_recovery)
+
+
+@router.post(
+    "/work/recovery/{work_kind}/{work_id}/retry",
+    response_model=WorkRetryResponse,
+    status_code=201,
+)
+def retry_recovered_work(
+    work_kind: WorkKind,
+    work_id: str,
+    retry_request: WorkRetryRequest,
+    request: Request,
+) -> WorkRetryResponse:
+    """Launch a reconciled request again under a fresh immutable identity."""
+    return _work_retry_service(request).retry(work_kind, work_id, retry_request)
 
 
 @router.get("/tools", response_model=ToolsResponse)

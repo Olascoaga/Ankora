@@ -40,6 +40,14 @@ Retry is explicit and creates a new job or campaign with its own identifier,
 directory, lease, and provenance. Ankora does not silently auto-resume or
 write new results into an abandoned attempt.
 
+The startup recovery summary is shown in the shared activity center. Each
+interruption reports its prior state and preserved/computationally interrupted
+entry counts. Its retry control remains disabled until the scientist confirms
+that the action creates a new immutable attempt. The API independently enforces
+the same confirmation and accepts only the engine-specific interruption codes
+written by startup reconciliation; an ordinary scientific or tool failure is
+not relabelled as resumable work.
+
 ## Consequences
 
 - The interface can distinguish slow work from work whose owner disappeared.

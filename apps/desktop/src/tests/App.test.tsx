@@ -23,6 +23,66 @@ function noSavedReceptor(): Response {
   return new Response(JSON.stringify({ code: "RECEPTOR_HISTORY_EMPTY", stage: "receptor_storage", message: "No saved receptor derivative is available in this project yet.", details: {}, recoverable: false }), { status: 404, headers: { "Content-Type": "application/json" } });
 }
 
+it("shows startup interruptions and retries only after explicit acknowledgement", async () => {
+  const interruptedId = "00000000-0000-0000-0000-000000000091";
+  const newId = "00000000-0000-0000-0000-000000000092";
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    requests.push({ url, init });
+    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
+    if (url.endsWith("/work/recovery") && init?.method !== "POST") {
+      return new Response(JSON.stringify({
+        reconciled_at: "2026-09-05T12:00:00Z",
+        items: [{
+          work_kind: "vina_batch",
+          work_id: interruptedId,
+          previous_status: "running",
+          interrupted_entry_count: 3,
+          completed_entry_count: 7,
+          last_heartbeat_at: "2026-09-05T11:59:00Z",
+          previous_owner_instance_id: "backend-instance",
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes(`/work/recovery/vina_batch/${interruptedId}/retry`)) {
+      return new Response(JSON.stringify({
+        work_kind: "vina_batch",
+        interrupted_work_id: interruptedId,
+        new_work_id: newId,
+        status: "queued",
+        created_at: "2026-09-05T12:01:00Z",
+      }), { status: 201, headers: { "Content-Type": "application/json" } });
+    }
+    const payload = url.endsWith("/health")
+      ? health
+      : url.endsWith("/system/resources")
+        ? resources
+        : url.endsWith("/system") ? system : tools;
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText("1 interrupted operation recovered")).toBeInTheDocument();
+  expect(screen.getByText("7 completed molecules preserved · 3 interrupted")).toBeInTheDocument();
+  const retry = screen.getByRole("button", { name: "Retry as new" });
+  expect(retry).toBeDisabled();
+  fireEvent.click(screen.getByLabelText(/I understand this creates a new immutable attempt/));
+  expect(retry).toBeEnabled();
+  fireEvent.click(retry);
+
+  await waitFor(() => expect(screen.getByText("New attempt queued")).toBeInTheDocument());
+  const retryRequest = requests.find(({ url }) => url.includes(`/${interruptedId}/retry`));
+  expect(retryRequest?.init?.method).toBe("POST");
+  expect(JSON.parse(String(retryRequest?.init?.body))).toEqual({
+    acknowledge_new_immutable_attempt: true,
+  });
+});
+
 it("renders the connected backend and tool states", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);

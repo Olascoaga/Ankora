@@ -15,7 +15,7 @@ import {
   type LigandLibraryStatusSummary,
 } from "../features/ligand/libraryProgress";
 import { ReceptorWorkspace } from "../features/receptor/ReceptorWorkspace";
-import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLibraryDockingInput, LigandRecord, ReceptorPreparationRecord, StructureRecord } from "../types/api";
+import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLibraryDockingInput, LigandRecord, ReceptorPreparationRecord, RecoveredWorkItem, StructureRecord, WorkRecoverySummary, WorkRetryResponse } from "../types/api";
 import { MolecularViewer } from "../viewer/MolecularViewer";
 import type { ViewerSelection } from "../viewer/adapter";
 import { createInitialApplicationState, type ApplicationState } from "./state";
@@ -48,6 +48,12 @@ export function App() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityTab, setActivityTab] = useState<ActivityTab>("activity");
   const [workspaceActivity, setWorkspaceActivity] = useState<WorkspaceActivity | null>(null);
+  const [workRecovery, setWorkRecovery] = useState<WorkRecoverySummary | null>(null);
+  const [recoveryLoadError, setRecoveryLoadError] = useState<string | null>(null);
+  const [retryAcknowledgements, setRetryAcknowledgements] = useState<Record<string, boolean>>({});
+  const [retryingWorkKey, setRetryingWorkKey] = useState<string | null>(null);
+  const [retryResponses, setRetryResponses] = useState<Record<string, WorkRetryResponse>>({});
+  const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
   const [toolsRefreshing, setToolsRefreshing] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme", ["dark", "light", "blue", "amethyst", "system"], "dark"));
   const [density, setDensity] = useState<DensityMode>(() => readUiSetting("ankora-density", ["comfortable", "compact"], "comfortable"));
@@ -78,6 +84,31 @@ export function App() {
   useEffect(() => {
     void initializeBackend();
   }, [initializeBackend]);
+
+  useEffect(() => {
+    let active = true;
+    void ankoraApi.workRecovery()
+      .then((summary) => {
+        if (!active) return;
+        // Keep the workbench tolerant of an older development backend while
+        // the desktop and API are being rebuilt independently.
+        const items = Array.isArray(summary.items) ? summary.items : [];
+        setWorkRecovery({ ...summary, items });
+        setRecoveryLoadError(null);
+        if (items.length) {
+          setActivityTab("activity");
+          setActivityOpen(true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setRecoveryLoadError(
+            error instanceof Error ? error.message : "Startup recovery could not be inspected",
+          );
+        }
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -268,6 +299,9 @@ export function App() {
         : "No structure imported";
   const generatedCommand = receptorRecord?.provenance.at(-1)?.command?.join(" ")
     ?? "No external preparation command executed";
+  const pendingRecoveredWork = workRecovery?.items.filter(
+    (item) => !retryResponses[recoveredWorkKey(item)],
+  ).length ?? 0;
 
   function openActivity(tab: ActivityTab) {
     setActivityTab(tab);
@@ -284,6 +318,23 @@ export function App() {
       setState((current) => ({ ...current, error: message }));
     } finally {
       setToolsRefreshing(false);
+    }
+  }
+
+  async function retryRecoveredWork(item: RecoveredWorkItem) {
+    const key = recoveredWorkKey(item);
+    setRetryingWorkKey(key);
+    setRetryErrors((current) => ({ ...current, [key]: "" }));
+    try {
+      const response = await ankoraApi.retryRecoveredWork(item.work_kind, item.work_id);
+      setRetryResponses((current) => ({ ...current, [key]: response }));
+    } catch (error: unknown) {
+      setRetryErrors((current) => ({
+        ...current,
+        [key]: error instanceof Error ? error.message : "The new attempt could not be started",
+      }));
+    } finally {
+      setRetryingWorkKey((current) => current === key ? null : current);
     }
   }
 
@@ -492,14 +543,26 @@ export function App() {
           <button type="button" className={`status-item ${state.connection}`} title={resources.detail} onClick={() => openActivity("tools")}><AppIcon name="activity" /><span><small>Machine</small><strong>{resources.label}</strong></span></button>
           <button type="button" className={`status-item ${activeWarningCount || state.error || state.structureError ? "has-warning" : ""}`} onClick={() => openActivity("warnings")}><AppIcon name="alert" /><span><small>Warnings</small><strong>{warningStatusLabel}</strong></span></button>
           <button type="button" className="status-item" onClick={() => openActivity("provenance")}><AppIcon name="provenance" /><span><small>Provenance</small><strong>{provenanceLabel}</strong></span></button>
-          <button type="button" className={`status-item activity-toggle${workspaceActivity ? " running" : ""}`} aria-expanded={activityOpen} onClick={() => setActivityOpen((value) => !value)}><AppIcon name="activity" /><span><small>Activity</small><strong>{workspaceActivity?.title ?? (activityOpen ? "Close center" : "Open details")}</strong></span><AppIcon name="chevron" /></button>
+          <button type="button" className={`status-item activity-toggle${workspaceActivity || pendingRecoveredWork ? " running" : ""}`} aria-expanded={activityOpen} onClick={() => setActivityOpen((value) => !value)}><AppIcon name="activity" /><span><small>Activity</small><strong>{workspaceActivity?.title ?? (pendingRecoveredWork ? `${pendingRecoveredWork} interrupted` : activityOpen ? "Close center" : "Open details")}</strong></span><AppIcon name="chevron" /></button>
         </div>
         {activityOpen ? <section className="activity-center" aria-label="Activity center">
           <nav aria-label="Activity sections">
             {(["activity", "warnings", "provenance", "tools", "about"] as const).map((tab) => <button type="button" key={tab} className={activityTab === tab ? "selected" : ""} onClick={() => setActivityTab(tab)}>{activityTabLabel(tab)}</button>)}
           </nav>
           <div className="activity-content">
-            {activityTab === "activity" ? workspaceActivity ? <ActiveWorkspaceJob activity={workspaceActivity} /> : <div className="activity-empty"><AppIcon name="activity" /><div><strong>No background operation is running</strong><p>Preparation and batch operations report progress and bounded worker usage here while they run.</p></div></div> : null}
+            {activityTab === "activity" ? <div className="activity-work-list">
+              {workRecovery?.items.length ? <RecoveryPanel
+                items={workRecovery.items}
+                acknowledgements={retryAcknowledgements}
+                retryingKey={retryingWorkKey}
+                responses={retryResponses}
+                errors={retryErrors}
+                onAcknowledge={(key, checked) => setRetryAcknowledgements((current) => ({ ...current, [key]: checked }))}
+                onRetry={(item) => void retryRecoveredWork(item)}
+              /> : recoveryLoadError ? <div className="recovery-load-error" role="alert">{recoveryLoadError}</div> : null}
+              {workspaceActivity ? <ActiveWorkspaceJob activity={workspaceActivity} /> : null}
+              {!workspaceActivity && !workRecovery?.items.length && !recoveryLoadError ? <div className="activity-empty"><AppIcon name="activity" /><div><strong>No background operation is running</strong><p>Preparation and batch operations report progress and bounded worker usage here while they run.</p></div></div> : null}
+            </div> : null}
             {activityTab === "warnings" ? <div className="activity-warning-list"><strong>{activeWarningCount ? `${activeWarningCount} retained warning${activeWarningCount === 1 ? "" : "s"}` : "No active warnings"}</strong><p>{activeStep === "Ligand" && ligandRecord ? ligandRecord.warnings.join(" · ") || "The selected ligand has no recorded warnings." : activeStep === "Receptor" && receptorRecord ? receptorRecord.warnings.join(" · ") || "The prepared receptor has no recorded warnings." : warningLabel}</p></div> : null}
             {activityTab === "provenance" ? <div className="activity-provenance"><div><small>Current artifact</small><strong>{provenanceLabel}</strong></div><div><small>Latest generated command</small><code>{generatedCommand}</code></div></div> : null}
             {activityTab === "tools" ? <div className="tools-activity-view">
@@ -532,6 +595,59 @@ function AppMenu({ label, children }: { label: string; children: ReactNode }) {
   }}><summary>{label}</summary><div className="app-menu-panel" onClick={(event) => {
     if ((event.target as HTMLElement).closest("button")) event.currentTarget.closest("details")?.removeAttribute("open");
   }}>{children}</div></details>;
+}
+
+function recoveredWorkKey(item: RecoveredWorkItem): string {
+  return `${item.work_kind}:${item.work_id}`;
+}
+
+function recoveredWorkLabel(item: RecoveredWorkItem): string {
+  const labels: Record<RecoveredWorkItem["work_kind"], string> = {
+    vina_job: "AutoDock Vina job",
+    vina_batch: "AutoDock Vina screening",
+    autogrid_job: "AutoGrid map generation",
+    autodock4_job: "AutoDock4 job",
+    autodock4_batch: "AutoDock4 screening",
+    autodock_gpu_job: "AutoDock-GPU job",
+    autodock_gpu_batch: "AutoDock-GPU screening",
+  };
+  return labels[item.work_kind];
+}
+
+function RecoveryPanel({
+  items,
+  acknowledgements,
+  retryingKey,
+  responses,
+  errors,
+  onAcknowledge,
+  onRetry,
+}: {
+  items: RecoveredWorkItem[];
+  acknowledgements: Record<string, boolean>;
+  retryingKey: string | null;
+  responses: Record<string, WorkRetryResponse>;
+  errors: Record<string, string>;
+  onAcknowledge: (key: string, checked: boolean) => void;
+  onRetry: (item: RecoveredWorkItem) => void;
+}) {
+  return <section className="recovery-panel" aria-label="Interrupted work recovered at startup">
+    <header><AppIcon name="alert" /><div><strong>{items.length} interrupted operation{items.length === 1 ? "" : "s"} recovered</strong><p>The abandoned attempts and their raw evidence were preserved. Nothing will restart without your confirmation.</p></div></header>
+    <div className="recovery-items">{items.map((item) => {
+      const key = recoveredWorkKey(item);
+      const response = responses[key];
+      const isRetrying = retryingKey === key;
+      return <article key={key} className={response ? "retried" : ""}>
+        <div className="recovery-item-heading"><div><strong>{recoveredWorkLabel(item)}</strong><code title={item.work_id}>{item.work_id.slice(0, 12)}…</code></div><span>{item.previous_status.replaceAll("_", " ")}</span></div>
+        {item.interrupted_entry_count || item.completed_entry_count ? <p className="recovery-counts">{item.completed_entry_count} completed molecule{item.completed_entry_count === 1 ? "" : "s"} preserved · {item.interrupted_entry_count} interrupted</p> : null}
+        {response ? <div className="retry-started"><AppIcon name="success" /><span><strong>New attempt {response.status.replaceAll("_", " ")}</strong><code title={response.new_work_id}>{response.new_work_id.slice(0, 12)}…</code></span></div> : <>
+          <label className="retry-acknowledgement"><input type="checkbox" checked={Boolean(acknowledgements[key])} onChange={(event) => onAcknowledge(key, event.target.checked)} /><span>I understand this creates a new immutable attempt; it does not resume or alter the interrupted one.</span></label>
+          <button type="button" disabled={!acknowledgements[key] || isRetrying} onClick={() => onRetry(item)}>{isRetrying ? "Starting a new attempt…" : "Retry as new"}</button>
+        </>}
+        {errors[key] ? <p className="retry-error" role="alert">{errors[key]}</p> : null}
+      </article>;
+    })}</div>
+  </section>;
 }
 
 function ActiveWorkspaceJob({ activity }: { activity: WorkspaceActivity }) {

@@ -52,3 +52,23 @@ class WorkRecoverySummary(BaseModel):
 
     reconciled_at: datetime
     items: list[RecoveredWorkItem] = Field(default_factory=list)
+
+
+class WorkRetryRequest(BaseModel):
+    """Explicit consent to create a fresh attempt from an interrupted request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    acknowledge_new_immutable_attempt: bool = False
+
+
+class WorkRetryResponse(BaseModel):
+    """Identity bridge between the preserved interruption and its new attempt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_kind: WorkKind
+    interrupted_work_id: str = Field(min_length=1)
+    new_work_id: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    created_at: datetime

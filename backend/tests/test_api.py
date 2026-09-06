@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from ankora_backend.api.app import create_app
+from ankora_backend.schemas.work_recovery import WorkKind, WorkRetryResponse
 
 
 def test_health_endpoint() -> None:
@@ -19,6 +20,29 @@ def test_work_recovery_endpoint_reports_startup_reconciliation(
 
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+def test_work_retry_endpoint_is_typed_and_requires_explicit_confirmation(
+    monkeypatch, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    app = create_app()
+    interrupted_id = "00000000-0000-0000-0000-000000000001"
+
+    response = TestClient(app).post(
+        f"/api/v1/work/recovery/{WorkKind.VINA_JOB.value}/{interrupted_id}/retry",
+        json={"acknowledge_new_immutable_attempt": False},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "WORK_RETRY_CONFIRMATION_REQUIRED"
+    specification = TestClient(app).get("/api/openapi.json").json()
+    operation = specification["paths"][
+        "/api/v1/work/recovery/{work_kind}/{work_id}/retry"
+    ]["post"]
+    assert operation["responses"]["201"]["content"]["application/json"]["schema"] == {
+        "$ref": f"#/components/schemas/{WorkRetryResponse.__name__}"
+    }
 
 
 def test_system_endpoint_reports_runtime() -> None:

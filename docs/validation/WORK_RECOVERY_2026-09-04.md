@@ -24,22 +24,32 @@ scientific scores.
   item handled during that startup.
 - Partial directories and raw engine output are retained and are not reused as
   successful work.
+- The activity center opens when startup recovered interruptions and reports
+  their prior state plus completed and interrupted molecule counts.
+- Retry is disabled until the scientist acknowledges that it creates a new
+  immutable attempt. The API enforces the same acknowledgement independently.
+- All seven Vina/AutoGrid/AutoDock4 CPU/AutoDock-GPU job and campaign kinds
+  revalidate the exact recorded request through their normal execution service
+  and return a distinct job or campaign identifier.
+- Only engine-specific startup-interruption codes are retryable through this
+  interface. Ordinary tool or scientific failures remain failures and require
+  their own diagnosis rather than being presented as resumable work.
 
 ## Evidence boundary
 
 The automated recovery fixtures are explicitly synthetic lifecycle records.
-They verify durable state transitions, not docking chemistry or engine
-checkpoint compatibility. Explicit retry-as-new controls are a separate
-interface increment; this recovery layer deliberately performs no automatic
-retry.
+They verify durable state transitions and retry dispatch, not docking chemistry
+or engine checkpoint compatibility. The interface deliberately performs no
+automatic retry, and “retry” never claims checkpoint resume: it is a new run of
+the preserved request against inputs and tools revalidated at that moment.
 
 ## Automated verification
 
 The repository-wide Windows gate passed after the implementation:
 
 - public-path check: no tracked absolute filesystem paths;
-- backend: 456 pytest tests, Ruff, and strict mypy across 107 source files;
-- frontend: 212 Vitest tests across 29 files, strict TypeScript, and production
+- backend: 466 pytest tests, Ruff, and strict mypy across 108 source files;
+- frontend: 213 Vitest tests across 29 files, strict TypeScript, and production
   Vite build;
 - native shell: rustfmt, strict Clippy, Rust unit/doc tests, and an optimized
   Tauri application build.

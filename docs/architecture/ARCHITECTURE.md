@@ -13,7 +13,9 @@ heartbeat. On backend startup, records left queued, running, or awaiting
 cancellation are reconciled to an explicit interrupted failure. Completed
 per-molecule results and raw partial outputs are retained. Ankora never resumes
 inside an abandoned output directory: a scientist-requested retry creates a
-new immutable attempt under ADR-020.
+new immutable attempt under ADR-020. The typed startup summary opens in the
+shared activity center, and retry requires acknowledgement in both the desktop
+and API before the original recorded request is revalidated and dispatched.
 
 The React interface uses a fixed-viewport scientific workbench under ADR-014. Application menus and project context sit above a stateful workflow navigator, central viewer/data plane, contextual decision inspector, status strip, and expandable activity center. The shell owns theme, density, panel resizing/collapse, warnings, provenance, commands, tool readiness, and active-job reporting so milestone screens can focus on scientific decisions. Shared semantic design tokens and accessibility rules are documented in `docs/design/UX_FOUNDATION.md`.
 
