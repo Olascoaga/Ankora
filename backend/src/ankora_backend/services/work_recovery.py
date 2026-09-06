@@ -144,7 +144,12 @@ class InterruptedWorkRecovery:
                             },
                         ),
                     }
-                )
+                ),
+                changed_entries=[
+                    entry
+                    for entry in entries
+                    if entry.revision == batch_record.revision + 1
+                ],
             )
             items.append(
                 _item(
@@ -246,7 +251,12 @@ class InterruptedWorkRecovery:
                             },
                         ),
                     }
-                )
+                ),
+                changed_entries=[
+                    entry
+                    for entry in entries
+                    if entry.revision == batch_record.revision + 1
+                ],
             )
             items.append(
                 _item(
@@ -324,7 +334,12 @@ class InterruptedWorkRecovery:
                             },
                         ),
                     }
-                )
+                ),
+                changed_entries=[
+                    entry
+                    for entry in entries
+                    if entry.revision == batch_record.revision + 1
+                ],
             )
             items.append(
                 _item(

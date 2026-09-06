@@ -8,11 +8,14 @@ listing as a CPU one. The layout and the create-only discipline are the same.
 import json
 import os
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.autodock_gpu import (
+    AutoDockGpuBatchLigandResult,
     AutoDockGpuBatchRecord,
     AutoDockGpuDockingJobRecord,
 )
@@ -20,10 +23,25 @@ from ankora_backend.schemas.autodock_gpu import (
 _STAGE = "autodock_gpu_storage"
 
 
+def _best_autodock_gpu_result(
+    entry: AutoDockGpuBatchLigandResult,
+) -> float | None:
+    if not entry.clusters:
+        return None
+    return float(
+        min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters)
+    )
+
+
 class AutoDockGpuJobStore:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
         self._record_lock = threading.RLock()
+        self._batch_state = IncrementalBatchStore(
+            record_type=AutoDockGpuBatchRecord,
+            entry_type=AutoDockGpuBatchLigandResult,
+            best_result=_best_autodock_gpu_result,
+        )
 
     @classmethod
     def from_environment(cls) -> "AutoDockGpuJobStore":
@@ -152,30 +170,69 @@ class AutoDockGpuJobStore:
                 record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
             )
             stream.write("\n")
+        self._batch_state.create(directory, record)
         return directory
 
-    def update_batch(self, record: AutoDockGpuBatchRecord) -> None:
+    def update_batch(
+        self,
+        record: AutoDockGpuBatchRecord,
+        *,
+        changed_entries: Sequence[AutoDockGpuBatchLigandResult] | None = None,
+    ) -> AutoDockGpuBatchRecord:
         with self._record_lock:
             directory = self._batch_dir(record.batch_id)
             if not directory.is_dir():
                 raise self._not_found(record.batch_id)
-            temporary = directory / "record.json.tmp"
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False
-                )
-                stream.write("\n")
-            os.replace(temporary, directory / "record.json")
+            return self._batch_state.update(
+                directory, record, changed_entries=changed_entries
+            )
 
     def load_batch(self, batch_id: str) -> AutoDockGpuBatchRecord:
         with self._record_lock:
             try:
-                raw = (self._batch_dir(batch_id) / "record.json").read_text(
-                    encoding="utf-8"
-                )
+                return self._batch_state.load(self._batch_dir(batch_id))
             except FileNotFoundError as error:
                 raise self._not_found(batch_id) from error
-        return AutoDockGpuBatchRecord.model_validate_json(raw)
+
+    def load_batch_overview(self, batch_id: str) -> AutoDockGpuBatchRecord:
+        try:
+            return self._batch_state.load_overview(self._batch_dir(batch_id))
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def load_batch_summary(self, batch_id: str) -> dict[str, object]:
+        try:
+            return self._batch_state.load_summary(self._batch_dir(batch_id))
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def load_batch_entry(
+        self, batch_id: str, ligand_id: str
+    ) -> AutoDockGpuBatchLigandResult | None:
+        try:
+            return self._batch_state.load_entry(self._batch_dir(batch_id), ligand_id)
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def page_batch_entries(
+        self,
+        batch_id: str,
+        *,
+        offset: int,
+        limit: int,
+        status: str | None = None,
+        search: str | None = None,
+    ) -> tuple[list[AutoDockGpuBatchLigandResult], int]:
+        try:
+            return self._batch_state.page(
+                self._batch_dir(batch_id),
+                offset=offset,
+                limit=limit,
+                status=status,
+                search=search,
+            )
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
 
     def list_batches(self) -> list[AutoDockGpuBatchRecord]:
         """Every GPU campaign persisted for this project."""
@@ -188,6 +245,20 @@ class AutoDockGpuJobStore:
                 continue
             try:
                 records.append(self.load_batch(candidate.name))
+            except (AnkoraDomainError, ValueError):
+                continue
+        return records
+
+    def list_batch_overviews(self) -> list[AutoDockGpuBatchRecord]:
+        directory = self._batches_dir()
+        if not directory.is_dir():
+            return []
+        records: list[AutoDockGpuBatchRecord] = []
+        for candidate in sorted(directory.iterdir(), key=lambda item: item.name):
+            if not candidate.is_dir():
+                continue
+            try:
+                records.append(self.load_batch_overview(candidate.name))
             except (AnkoraDomainError, ValueError):
                 continue
         return records
@@ -222,10 +293,7 @@ class AutoDockGpuJobStore:
     def batch_pose_content_path(
         self, batch_id: str, ligand_id: str, artifact_id: str
     ) -> Path:
-        record = self.load_batch(batch_id)
-        entry = next(
-            (item for item in record.entries if item.ligand_id == ligand_id), None
-        )
+        entry = self.load_batch_entry(batch_id, ligand_id)
         if entry is None:
             raise self._not_found(batch_id, artifact_id)
         artifact = next(

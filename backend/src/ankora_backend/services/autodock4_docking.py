@@ -603,26 +603,20 @@ class AutoDock4DockingService:
     def get_batch_progress(
         self, batch_id: str, after_revision: int
     ) -> AutoDock4BatchProgress:
-        record = self._job_store.load_batch(batch_id)
-        return AutoDock4BatchProgress(
-            batch_id=record.batch_id,
-            status=record.status,
-            revision=record.revision,
-            selected_count=record.selected_count,
-            completed_count=record.completed_count,
-            succeeded_count=record.succeeded_count,
-            failed_count=record.failed_count,
-            canceled_count=record.canceled_count,
-            running_ligand_ids=[
-                entry.ligand_id
-                for entry in record.entries
-                if entry.status is AutoDock4JobStatus.RUNNING
-            ],
+        summary = self._job_store.load_batch_summary(batch_id)
+        payload = {
+            key: value
+            for key, value in summary.items()
+            if key in AutoDock4BatchProgress.model_fields
+        }
+        payload["running_ligand_ids"] = self._job_store.batch_ligand_ids_with_status(
+            batch_id, AutoDock4JobStatus.RUNNING.value
         )
+        return AutoDock4BatchProgress.model_validate(payload)
 
     def cancel_batch(self, batch_id: str) -> AutoDock4CancelResponse:
         with self._lock:
-            record = self._job_store.load_batch(batch_id)
+            record = self._job_store.load_batch_overview(batch_id)
             if record.status in {
                 AutoDock4JobStatus.CANCELED,
                 AutoDock4JobStatus.COMPLETED,
@@ -645,7 +639,8 @@ class AutoDock4DockingService:
                         "status": AutoDock4JobStatus.CANCEL_REQUESTED,
                         "revision": record.revision + 1,
                     }
-                )
+                ),
+                changed_entries=[],
             )
         return AutoDock4CancelResponse(
             job_id=batch_id, status=AutoDock4JobStatus.CANCEL_REQUESTED
@@ -950,8 +945,14 @@ class AutoDock4DockingService:
                 batch_id, ligand_id, status=AutoDock4JobStatus.CANCELED
             )
             return
-        batch = self._job_store.load_batch(batch_id)
-        entry = next(item for item in batch.entries if item.ligand_id == ligand_id)
+        batch = self._job_store.load_batch_overview(batch_id)
+        entry = self._job_store.load_batch_entry(batch_id, ligand_id)
+        if entry is None:
+            raise self._input_error(
+                "AUTODOCK4_BATCH_LIGAND_NOT_FOUND",
+                "The AutoDock4 campaign no longer contains its selected ligand.",
+                {"batch_id": batch_id, "ligand_id": ligand_id},
+            )
         if entry.ligand_preparation_id is None:
             # A queued entry always carries one; a bare assert would vanish
             # under `python -O` and fail far less clearly downstream.
@@ -1185,35 +1186,15 @@ class AutoDock4DockingService:
         ligand_id: str,
         change: "Callable[[AutoDock4BatchLigandResult], AutoDock4BatchLigandResult]",
     ) -> None:
-        def apply(record: AutoDock4BatchRecord) -> AutoDock4BatchRecord:
-            entries = [
-                change(entry).model_copy(update={"revision": entry.revision + 1})
-                if entry.ligand_id == ligand_id
-                else entry
-                for entry in record.entries
-            ]
-            terminal = {
-                AutoDock4JobStatus.COMPLETED,
-                AutoDock4JobStatus.FAILED,
-                AutoDock4JobStatus.CANCELED,
-            }
-            return record.model_copy(
-                update={
-                    "entries": entries,
-                    "completed_count": sum(1 for e in entries if e.status in terminal),
-                    "succeeded_count": sum(
-                        1 for e in entries if e.status is AutoDock4JobStatus.COMPLETED
-                    ),
-                    "failed_count": sum(
-                        1 for e in entries if e.status is AutoDock4JobStatus.FAILED
-                    ),
-                    "canceled_count": sum(
-                        1 for e in entries if e.status is AutoDock4JobStatus.CANCELED
-                    ),
-                }
-            )
-
-        self._update_batch(batch_id, apply)
+        with self._batch_write_lock:
+            current = self._job_store.load_batch_entry(batch_id, ligand_id)
+            if current is None:
+                raise self._input_error(
+                    "AUTODOCK4_BATCH_LIGAND_NOT_FOUND",
+                    "The AutoDock4 campaign no longer contains its selected ligand.",
+                    {"batch_id": batch_id, "ligand_id": ligand_id},
+                )
+            self._job_store.update_batch_entry(batch_id, change(current))
 
     def _update_batch(
         self,
@@ -1225,7 +1206,8 @@ class AutoDock4DockingService:
             current = self._job_store.load_batch(batch_id)
             updated = change(current)
             self._job_store.update_batch(
-                updated.model_copy(update={"revision": current.revision + 1})
+                updated.model_copy(update={"revision": current.revision + 1}),
+                changed_entries=[],
             )
 
     def _validate_receptor_and_site(

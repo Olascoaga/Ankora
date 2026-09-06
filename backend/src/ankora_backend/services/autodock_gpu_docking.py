@@ -659,21 +659,18 @@ class AutoDockGpuDockingService:
         return self._job_store.load_batch(batch_id)
 
     def get_batch_progress(self, batch_id: str) -> AutoDockGpuBatchProgress:
-        record = self._job_store.load_batch(batch_id)
-        return AutoDockGpuBatchProgress(
-            batch_id=record.batch_id,
-            status=record.status,
-            revision=record.revision,
-            selected_count=record.selected_count,
-            completed_count=record.completed_count,
-            succeeded_count=record.succeeded_count,
-            failed_count=record.failed_count,
-            canceled_count=record.canceled_count,
+        summary = self._job_store.load_batch_summary(batch_id)
+        return AutoDockGpuBatchProgress.model_validate(
+            {
+                key: value
+                for key, value in summary.items()
+                if key in AutoDockGpuBatchProgress.model_fields
+            }
         )
 
     def cancel_batch(self, batch_id: str) -> AutoDockGpuCancelResponse:
         with self._lock:
-            record = self._job_store.load_batch(batch_id)
+            record = self._job_store.load_batch_overview(batch_id)
             if record.status in {
                 AutoDockJobStatus.CANCELED,
                 AutoDockJobStatus.COMPLETED,
@@ -696,7 +693,8 @@ class AutoDockGpuDockingService:
                         "status": AutoDockJobStatus.CANCEL_REQUESTED,
                         "revision": record.revision + 1,
                     }
-                )
+                ),
+                changed_entries=[],
             )
         return AutoDockGpuCancelResponse(
             job_id=batch_id, status=AutoDockJobStatus.CANCEL_REQUESTED
@@ -707,7 +705,7 @@ class AutoDockGpuDockingService:
     ) -> AutoDockGpuBatchRecord:
         matching = [
             record
-            for record in self._job_store.list_batches()
+            for record in self._job_store.list_batch_overviews()
             if record.receptor_id == receptor_id
             and record.binding_site_id == binding_site_id
             and record.request.filter_run_id == filter_run_id
@@ -860,7 +858,7 @@ class AutoDockGpuDockingService:
         try:
             self._execute_batch(batch_id, prepared, cancel_event)
         except AnkoraDomainError as error:
-            current = self._job_store.load_batch(batch_id)
+            current = self._job_store.load_batch_overview(batch_id)
             self._job_store.update_batch(
                 current.model_copy(
                     update={
@@ -874,7 +872,8 @@ class AutoDockGpuDockingService:
                         ),
                         "revision": current.revision + 1,
                     }
-                )
+                ),
+                changed_entries=[],
             )
         finally:
             with self._batch_lock:
@@ -891,7 +890,7 @@ class AutoDockGpuDockingService:
     ) -> None:
         work = self._job_store.batch_work_directory(batch_id)
         self._require_ascii_job_directory(work)
-        record = self._job_store.load_batch(batch_id)
+        record = self._job_store.load_batch_overview(batch_id)
         parameters = record.request.parameters
 
         # One staged directory, one file list, one invocation.
@@ -934,7 +933,8 @@ class AutoDockGpuDockingService:
                     "command": arguments,
                     "revision": record.revision + 1,
                 }
-            )
+            ),
+            changed_entries=[],
         )
         # AutoDock-GPU writes each molecule's log as it finishes, so progress is
         # read from the directory while the single process is still running.
@@ -981,7 +981,7 @@ class AutoDockGpuDockingService:
             done = sum(1 for path in work.glob("m*.dlg"))
             if done != seen:
                 seen = done
-                current = self._job_store.load_batch(batch_id)
+                current = self._job_store.load_batch_overview(batch_id)
                 if current.status is not AutoDockJobStatus.RUNNING:
                     return
                 unavailable = current.selected_count - total
@@ -991,7 +991,8 @@ class AutoDockGpuDockingService:
                             "completed_count": unavailable + done,
                             "revision": current.revision + 1,
                         }
-                    )
+                    ),
+                    changed_entries=[],
                 )
             if done >= total:
                 return
@@ -1093,7 +1094,8 @@ class AutoDockGpuDockingService:
                         command=evidence.command,
                     ),
                 }
-            )
+            ),
+            changed_entries=entries,
         )
 
     def _persist_batch_results(

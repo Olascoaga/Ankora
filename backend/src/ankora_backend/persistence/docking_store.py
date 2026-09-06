@@ -3,20 +3,34 @@
 import json
 import os
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.docking import (
     VinaBatchDockingRecord,
+    VinaBatchLigandResult,
     VinaDockingJobRecord,
 )
+
+
+def _best_vina_result(entry: VinaBatchLigandResult) -> float | None:
+    if not entry.poses:
+        return None
+    return float(entry.poses[0].affinity_kcal_mol)
 
 
 class DockingArtifactStore:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
         self._record_lock = threading.RLock()
+        self._batch_state = IncrementalBatchStore(
+            record_type=VinaBatchDockingRecord,
+            entry_type=VinaBatchLigandResult,
+            best_result=_best_vina_result,
+        )
 
     @classmethod
     def from_environment(cls) -> "DockingArtifactStore":
@@ -92,33 +106,87 @@ class DockingArtifactStore:
                 parents=True, exist_ok=False
             )
         self._write_batch_record(record)
+        self._batch_state.create(directory, record)
         return directory
 
-    def update_batch_record(self, record: VinaBatchDockingRecord) -> None:
+    def update_batch_record(
+        self,
+        record: VinaBatchDockingRecord,
+        *,
+        changed_entries: Sequence[VinaBatchLigandResult] | None = None,
+    ) -> VinaBatchDockingRecord:
         with self._record_lock:
             directory = self._batch_dir(record.batch_id)
             if not directory.is_dir():
                 raise self._not_found(record.batch_id)
-            temporary = directory / "record.json.tmp"
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"),
-                    stream,
-                    indent=2,
-                    ensure_ascii=False,
-                )
-                stream.write("\n")
-            os.replace(temporary, directory / "record.json")
+            return self._batch_state.update(
+                directory, record, changed_entries=changed_entries
+            )
 
     def load_batch_record(self, batch_id: str) -> VinaBatchDockingRecord:
         with self._record_lock:
             try:
-                raw = (self._batch_dir(batch_id) / "record.json").read_text(
-                    encoding="utf-8"
-                )
+                return self._batch_state.load(self._batch_dir(batch_id))
             except FileNotFoundError as error:
                 raise self._not_found(batch_id) from error
-        return VinaBatchDockingRecord.model_validate_json(raw)
+
+    def load_batch_overview(self, batch_id: str) -> VinaBatchDockingRecord:
+        try:
+            return self._batch_state.load_overview(self._batch_dir(batch_id))
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def load_batch_summary(self, batch_id: str) -> dict[str, object]:
+        try:
+            return self._batch_state.load_summary(self._batch_dir(batch_id))
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def load_batch_entry(
+        self, batch_id: str, ligand_id: str
+    ) -> VinaBatchLigandResult | None:
+        try:
+            return self._batch_state.load_entry(self._batch_dir(batch_id), ligand_id)
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def update_batch_entry(
+        self, batch_id: str, entry: VinaBatchLigandResult
+    ) -> VinaBatchLigandResult:
+        try:
+            return self._batch_state.update_entry(self._batch_dir(batch_id), entry)
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def load_batch_entries_after_revision(
+        self, batch_id: str, revision: int
+    ) -> list[VinaBatchLigandResult]:
+        try:
+            return self._batch_state.entries_after_revision(
+                self._batch_dir(batch_id), revision
+            )
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
+
+    def page_batch_entries(
+        self,
+        batch_id: str,
+        *,
+        offset: int,
+        limit: int,
+        status: str | None = None,
+        search: str | None = None,
+    ) -> tuple[list[VinaBatchLigandResult], int]:
+        try:
+            return self._batch_state.page(
+                self._batch_dir(batch_id),
+                offset=offset,
+                limit=limit,
+                status=status,
+                search=search,
+            )
+        except FileNotFoundError as error:
+            raise self._not_found(batch_id) from error
 
     def list_batch_records(self) -> list[VinaBatchDockingRecord]:
         directory = self._batches_dir()
@@ -131,6 +199,20 @@ class DockingArtifactStore:
             try:
                 records.append(self.load_batch_record(candidate.name))
             except AnkoraDomainError:
+                continue
+        return records
+
+    def list_batch_overviews(self) -> list[VinaBatchDockingRecord]:
+        directory = self._batches_dir()
+        if not directory.is_dir():
+            return []
+        records: list[VinaBatchDockingRecord] = []
+        for candidate in directory.iterdir():
+            if not candidate.is_dir():
+                continue
+            try:
+                records.append(self.load_batch_overview(candidate.name))
+            except (AnkoraDomainError, ValueError):
                 continue
         return records
 
@@ -179,10 +261,7 @@ class DockingArtifactStore:
     def batch_pose_content_path(
         self, batch_id: str, ligand_id: str, artifact_id: str
     ) -> Path:
-        record = self.load_batch_record(batch_id)
-        entry = next(
-            (item for item in record.entries if item.ligand_id == ligand_id), None
-        )
+        entry = self.load_batch_entry(batch_id, ligand_id)
         pose = next(
             (
                 item

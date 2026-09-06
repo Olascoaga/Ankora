@@ -528,29 +528,20 @@ class VinaDockingService:
     def get_batch_progress(self, batch_id: str, *, after_revision: int) -> VinaBatchProgress:
         """Return only ligand rows changed after the caller's last revision."""
 
-        record = self._docking_store.load_batch_record(batch_id)
-        return VinaBatchProgress(
-            batch_id=record.batch_id,
-            status=record.status,
-            phase=record.phase,
-            revision=record.revision,
-            started_at=record.started_at,
-            completed_at=record.completed_at,
-            selected_count=record.selected_count,
-            worker_count=record.worker_count,
-            threads_per_ligand=record.threads_per_ligand,
-            completed_count=record.completed_count,
-            succeeded_count=record.succeeded_count,
-            failed_count=record.failed_count,
-            canceled_count=record.canceled_count,
-            entries=[entry for entry in record.entries if entry.revision > after_revision],
-            failure=record.failure,
-            provenance=record.provenance,
+        summary = self._docking_store.load_batch_summary(batch_id)
+        payload = {
+            key: value
+            for key, value in summary.items()
+            if key in VinaBatchProgress.model_fields
+        }
+        payload["entries"] = self._docking_store.load_batch_entries_after_revision(
+            batch_id, after_revision
         )
+        return VinaBatchProgress.model_validate(payload)
 
     def cancel_batch(self, batch_id: str) -> DockingBatchCancelResponse:
         with self._lock:
-            record = self._docking_store.load_batch_record(batch_id)
+            record = self._docking_store.load_batch_overview(batch_id)
             if record.status in {
                 DockingJobStatus.CANCELED,
                 DockingJobStatus.COMPLETED,
@@ -573,7 +564,8 @@ class VinaDockingService:
                         "status": DockingJobStatus.CANCEL_REQUESTED,
                         "revision": record.revision + 1,
                     }
-                )
+                ),
+                changed_entries=[],
             )
         return DockingBatchCancelResponse(
             batch_id=batch_id, status=DockingJobStatus.CANCEL_REQUESTED
@@ -599,7 +591,7 @@ class VinaDockingService:
                 self._finish_batch(batch_id, canceled=True)
                 return
             with self._lock:
-                record = self._docking_store.load_batch_record(batch_id)
+                record = self._docking_store.load_batch_overview(batch_id)
                 self._docking_store.update_batch_record(
                     record.model_copy(
                         update={
@@ -608,7 +600,8 @@ class VinaDockingService:
                             "started_at": datetime.now(UTC),
                             "revision": record.revision + 1,
                         }
-                    )
+                    ),
+                    changed_entries=[],
                 )
             with ThreadPoolExecutor(
                 max_workers=record.worker_count,
@@ -632,7 +625,7 @@ class VinaDockingService:
             self._finish_batch(batch_id, cancel_event.is_set())
         except Exception as error:  # pragma: no cover - final supervisor containment
             with self._lock:
-                record = self._docking_store.load_batch_record(batch_id)
+                record = self._docking_store.load_batch_overview(batch_id)
                 self._docking_store.update_batch_record(
                     record.model_copy(
                         update={
@@ -646,7 +639,8 @@ class VinaDockingService:
                                 details={"reason": str(error)},
                             ),
                         }
-                    )
+                    ),
+                    changed_entries=[],
                 )
         finally:
             if self._leases is not None:
@@ -791,7 +785,7 @@ class VinaDockingService:
                 )
             )
         completed_at = datetime.now(UTC)
-        batch = self._docking_store.load_batch_record(batch_id)
+        batch = self._docking_store.load_batch_overview(batch_id)
         provenance = ProvenanceEvent(
             event_id=f"vina-batch-{batch_id}-{entry.ligand_id}",
             event_type="vina_library_ligand_completed",
@@ -913,6 +907,9 @@ class VinaDockingService:
                 },
                 warnings=record.warnings,
             )
+            changed_entries = [
+                entry for entry in entries if entry.revision == next_revision
+            ]
             self._docking_store.update_batch_record(
                 record.model_copy(
                     update={
@@ -926,42 +923,22 @@ class VinaDockingService:
                         "revision": next_revision,
                         **counts,
                     }
-                )
+                ),
+                changed_entries=changed_entries,
             )
 
     def _update_batch_entry(self, batch_id: str, updated: VinaBatchLigandResult) -> None:
         with self._lock:
-            record = self._docking_store.load_batch_record(batch_id)
-            next_revision = record.revision + 1
-            entries = list(record.entries)
-            index = next(
-                (
-                    position
-                    for position, entry in enumerate(entries)
-                    if entry.ligand_id == updated.ligand_id
-                ),
-                None,
-            )
-            if index is None:
+            if self._docking_store.load_batch_entry(batch_id, updated.ligand_id) is None:
                 raise self._input_error(
                     "DOCKING_BATCH_LIGAND_NOT_FOUND",
                     "The docking batch no longer contains its selected ligand.",
                     {"batch_id": batch_id, "ligand_id": updated.ligand_id},
                 )
-            entries[index] = updated.model_copy(update={"revision": next_revision})
-            self._docking_store.update_batch_record(
-                record.model_copy(
-                    update={
-                        "entries": entries,
-                        "revision": next_revision,
-                        **self._batch_counts(entries),
-                    }
-                )
-            )
+            self._docking_store.update_batch_entry(batch_id, updated)
 
     def _batch_entry(self, batch_id: str, ligand_id: str) -> VinaBatchLigandResult:
-        record = self._docking_store.load_batch_record(batch_id)
-        entry = next((item for item in record.entries if item.ligand_id == ligand_id), None)
+        entry = self._docking_store.load_batch_entry(batch_id, ligand_id)
         if entry is None:
             raise self._input_error(
                 "DOCKING_BATCH_LIGAND_NOT_FOUND",
@@ -1304,7 +1281,7 @@ class VinaDockingService:
         with self._lock:
             active_ids = tuple(self._active_batch_ids)
         for batch_id in active_ids:
-            record = self._docking_store.load_batch_record(batch_id)
+            record = self._docking_store.load_batch_overview(batch_id)
             if record.status not in {
                 DockingJobStatus.CANCELED,
                 DockingJobStatus.COMPLETED,

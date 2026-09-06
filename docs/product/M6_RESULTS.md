@@ -1,6 +1,7 @@
 # M6 Results workspace
 
-- Status: Implemented; recoverable campaign management added 2026-08-27
+- Status: Implemented; recoverable management and incremental campaign state
+  added through 2026-09-06
 - Date: 2026-08-26
 - Depends on: scientifically accepted M3-M5 records
 - Followed by: M7 Redocking Validation, M8 Export, then M9 Pose Interactions
@@ -57,6 +58,11 @@ The result catalog is a read model over those records. It must not copy pose
 files, rewrite a DLG, mutate a campaign, or create a second scientific truth.
 Any persisted catalog index is rebuildable metadata and must reference the
 authoritative record IDs and hashes.
+
+Large Vina, AutoDock4 CPU, and AutoDock-GPU campaigns use the rebuildable
+SQLite sidecar defined by ADR-021. Active progress updates one ligand row at a
+time, while `record.json` remains the portable terminal snapshot. Existing
+campaigns gain the sidecar without changing any prior artifact byte or hash.
 
 Campaign management is a separate operation over the authoritative trees, not
 an exception to the read model. Removing a result moves its complete directory

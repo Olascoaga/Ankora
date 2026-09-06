@@ -131,19 +131,42 @@ class ResultCatalogService:
         because the catalog is how a scientist finds the rest of their work.
         """
         entries: list[CatalogEntry] = []
+        for store, preferred, fallback, project in (
+            (
+                self._docking_store,
+                "list_batch_overviews",
+                "list_batch_records",
+                self._from_vina_batch,
+            ),
+            (
+                self._autodock4_store,
+                "list_batch_overviews",
+                "list_batches",
+                self._from_autodock4_batch,
+            ),
+            (
+                self._autodock_gpu_store,
+                "list_batch_overviews",
+                "list_batches",
+                self._from_gpu_batch,
+            ),
+        ):
+            try:
+                load = getattr(store, preferred, getattr(store, fallback))
+                batch_records: list[Any] = list(load())
+            except (AnkoraDomainError, OSError):
+                continue
+            entries.extend(project(record) for record in batch_records)
         for load, project in (
-            (self._docking_store.list_batch_records, self._from_vina_batch),
-            (self._autodock4_store.list_batches, self._from_autodock4_batch),
-            (self._autodock_gpu_store.list_batches, self._from_gpu_batch),
             (self._docking_store.list_jobs, self._from_vina_job),
             (self._autodock4_store.list_jobs, self._from_autodock4_job),
             (self._autodock_gpu_store.list_jobs, self._from_gpu_job),
         ):
             try:
-                records: list[Any] = list(load())
+                job_records: list[Any] = list(load())
             except (AnkoraDomainError, OSError):
                 continue
-            entries.extend(project(record) for record in records)
+            entries.extend(project(record) for record in job_records)
         assessments = self._reproducibility.all_assessments()
         return [
             entry.model_copy(
@@ -174,6 +197,26 @@ class ResultCatalogService:
         """
         engine_key, record_id = self._split(catalog_id)
         entry = self._project(engine_key, record_id)
+        persisted_page = self._persisted_page(
+            engine_key,
+            record_id,
+            offset=offset,
+            limit=limit,
+            status=status,
+            search=search,
+        )
+        if persisted_page is not None:
+            rows, total = persisted_page
+            return CompoundPage(
+                catalog_id=catalog_id,
+                engine_label=entry.engine_label,
+                value_label=VALUE_LABEL[entry.scoring_family],
+                rows=rows,
+                total=total,
+                offset=offset,
+                limit=limit,
+            )
+
         rows = self._rows(engine_key, record_id)
 
         if status is not None:
@@ -203,19 +246,66 @@ class ResultCatalogService:
             limit=limit,
         )
 
+    def _persisted_page(
+        self,
+        engine_key: str,
+        record_id: str,
+        *,
+        offset: int,
+        limit: int,
+        status: str | None,
+        search: str | None,
+    ) -> tuple[list[CompoundRow], int] | None:
+        """Use the entry index when available; legacy/fake stores still work."""
+        source: tuple[Any, Any] | None = None
+        if engine_key == VINA_BATCH:
+            source = (self._docking_store, self._vina_row)
+        elif engine_key == AUTODOCK4_BATCH:
+            source = (self._autodock4_store, self._autodock_row)
+        elif engine_key == AUTODOCK_GPU_BATCH:
+            source = (self._autodock_gpu_store, self._autodock_row)
+        if source is None:
+            return None
+        store, project = source
+        load_page = getattr(store, "page_batch_entries", None)
+        if load_page is None:
+            return None
+        entries, total = load_page(
+            record_id,
+            offset=offset,
+            limit=limit,
+            status=status,
+            search=search,
+        )
+        return [project(item) for item in entries], int(total)
+
     # --- projection -------------------------------------------------------
 
     def _project(self, engine_key: str, record_id: str) -> CatalogEntry:
         if engine_key == VINA_BATCH:
             return self._from_vina_batch(
-                self._docking_store.load_batch_record(record_id)
+                self._load_batch_overview(
+                    self._docking_store,
+                    "load_batch_record",
+                    record_id,
+                )
             )
         if engine_key == AUTODOCK4_BATCH:
             return self._from_autodock4_batch(
-                self._autodock4_store.load_batch(record_id)
+                self._load_batch_overview(
+                    self._autodock4_store,
+                    "load_batch",
+                    record_id,
+                )
             )
         if engine_key == AUTODOCK_GPU_BATCH:
-            return self._from_gpu_batch(self._autodock_gpu_store.load_batch(record_id))
+            return self._from_gpu_batch(
+                self._load_batch_overview(
+                    self._autodock_gpu_store,
+                    "load_batch",
+                    record_id,
+                )
+            )
         if engine_key == VINA_JOB:
             return self._from_vina_job(self._docking_store.load_record(record_id))
         if engine_key == AUTODOCK4_JOB:
@@ -223,6 +313,13 @@ class ResultCatalogService:
         if engine_key == AUTODOCK_GPU_JOB:
             return self._from_gpu_job(self._autodock_gpu_store.load_job(record_id))
         raise self._unknown(engine_key)
+
+    @staticmethod
+    def _load_batch_overview(store: Any, fallback: str, record_id: str) -> Any:
+        loader = getattr(store, "load_batch_overview", None)
+        if loader is not None:
+            return loader(record_id)
+        return getattr(store, fallback)(record_id)
 
     def _rows(self, engine_key: str, record_id: str) -> list[CompoundRow]:
         if engine_key == VINA_BATCH:

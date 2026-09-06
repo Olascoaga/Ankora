@@ -46,7 +46,7 @@ class _DockingStore:
     def update_record(self, record) -> None:
         self.jobs = [record]
 
-    def update_batch_record(self, record) -> None:
+    def update_batch_record(self, record, **_kwargs) -> None:
         self.batches = [record]
 
 
@@ -75,7 +75,7 @@ class _AutoDockStore:
     def update_job(self, record) -> None:
         self.jobs = [record]
 
-    def update_batch(self, record) -> None:
+    def update_batch(self, record, **_kwargs) -> None:
         self.batches = [record]
 
 
