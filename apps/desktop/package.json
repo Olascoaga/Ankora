@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --pretty false",
     "dev:tauri-prereq": "powershell -ExecutionPolicy Bypass -File ../../scripts/dev.ps1",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build --no-bundle",
+    "tauri:installer": "powershell -ExecutionPolicy Bypass -File ../../scripts/build_windows_installer.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

@@ -41,6 +41,12 @@ _AUTODOCK_GPU_EXECUTABLE_PATTERN = re.compile(
 _JAVA_DIRECTORY_PATTERN = re.compile(r"^(?:jdk|jre)[-_]?(\d+(?:\.\d+)*)", re.IGNORECASE)
 _JAVA_RELEASE_PATTERN = re.compile(r'^JAVA_VERSION="([^"]+)"$', re.MULTILINE)
 _P2RANK_JAVA_MAJOR_RANGE = range(17, 24)
+_PACKAGED_PYTHON_TOOLS = {
+    "mk_prepare_ligand": ("meeko", "meeko"),
+    "mk_prepare_receptor": ("meeko", "meeko"),
+    "pdb2pqr": ("pdb2pqr", "pdb2pqr"),
+    "propka3": ("propka", "propka"),
+}
 
 
 def build_windows_candidate(
@@ -92,10 +98,37 @@ def discover_tool(
                 if candidate is not None:
                     break
 
+    if candidate is None:
+        packaged_distribution = _PACKAGED_PYTHON_TOOLS.get(tool_name)
+        if packaged_distribution is not None and getattr(sys, "frozen", False):
+            distribution, module = packaged_distribution
+            if discover_python_package(distribution, module).available:
+                candidate = Path(sys.executable)
+
     if candidate is None or not candidate.is_file():
         return DiscoveredTool(available=False, path=None)
 
     return DiscoveredTool(available=True, path=str(candidate.resolve()))
+
+
+def packaged_console_arguments(
+    *, executable: str, worker: str, arguments: list[str]
+) -> list[str]:
+    """Route a bundled console tool through Ankora's frozen executable."""
+    if getattr(sys, "frozen", False) and Path(executable).resolve() == Path(
+        sys.executable
+    ).resolve():
+        return ["--worker", worker, *arguments]
+    return arguments
+
+
+def python_worker_arguments(
+    *, worker: str, module: str, arguments: list[str]
+) -> list[str]:
+    """Build a worker command for source and frozen Python runtimes."""
+    if getattr(sys, "frozen", False):
+        return ["--worker", worker, *arguments]
+    return ["-m", module, *arguments]
 
 
 def discover_p2rank(

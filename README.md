@@ -18,6 +18,11 @@ while retaining every original record and alternative branch for inspection.
 
 ## Prerequisites
 
+The Windows installer includes Ankora's Python backend and its Python scientific
+runtime. End users do not need Python, Conda, or Anaconda. The following list is
+for source development and for scientific executables that Ankora deliberately
+discovers outside the application:
+
 - Windows 11 x64
 - Node.js 22+ and npm
 - Python 3.12+
@@ -53,7 +58,7 @@ conda activate ankora-dev
 
 The basic M2 inspection and explicit structural-selection derivative work without these optional receptor tools. PDBFixer is supplied through conda-forge; PDB2PQR/PROPKA are installed from the backend's versioned `receptor` extra. Meeko and ProLIF are core backend dependencies because ligand/receptor PDBQT handling and exact-pose interaction analysis depend on them.
 
-`scripts/dev.ps1` automatically prefers an active Conda environment and then a locally installed environment named `ankora-dev`; it also adds that environment's executable directories for M2 tool discovery. Set `ANKORA_PYTHON_PATH` only when an explicit interpreter override is needed. `scripts/test.ps1` uses an active Conda environment or the normal `.venv` verification fallback. Future packaged releases will not require Anaconda.
+`scripts/dev.ps1` automatically prefers an active Conda environment and then a locally installed environment named `ankora-dev`; it also adds that environment's executable directories for M2 tool discovery. Set `ANKORA_PYTHON_PATH` only when an explicit interpreter override is needed. `scripts/test.ps1` uses an active Conda environment or the normal `.venv` verification fallback. The packaged Windows application does not require Anaconda.
 
 Ankora reports the Python environment used by its active backend in **Scientific tools**. Use **Rescan tools** after installing a console tool into that same environment. The development launcher now stops with a clear error if an older Ankora backend already owns port 8765; close that older development session instead of silently reusing the wrong Python environment.
 
@@ -133,6 +138,32 @@ The verification script checks the public-path and Windows-environment locks,
 then runs the Python and frontend checks plus Rust formatting, Clippy, native
 tests, and a release build of the Tauri application. Windows CI runs the same
 coverage.
+
+## Windows installer
+
+Build the current-user NSIS installer from the verified `ankora-locked`
+environment:
+
+```powershell
+conda activate ankora-locked
+npm run tauri:installer
+```
+
+The packaging command re-verifies the immutable Windows locks, freezes the
+backend and Python scientific dependencies, checks the bundled backend with
+Python and Conda absent from `PATH`, and then creates the desktop installer.
+Exercise the installed application, bundled-backend ownership, and silent
+uninstall path with:
+
+```powershell
+.\scripts\smoke_windows_installer.ps1
+```
+
+The installer intentionally uses the Evergreen WebView2 bootstrapper only when
+the runtime is missing. Vina, AutoGrid4, AutoDock4, AutoDock-GPU, and P2Rank are
+not redistributed by this packaging unit; Ankora continues to discover those
+separately configured executables. Third-party redistribution review, release
+signing, checksums, and automated publication remain separate release gates.
 
 The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
 

@@ -21,7 +21,8 @@ def collect_system_info() -> SystemResponse:
         platform=platform_name,
         architecture=_normalized_architecture(platform.machine()),
         python_version=platform.python_version() or sys.version.split()[0],
-        python_environment=os.getenv("CONDA_DEFAULT_ENV")
+        python_environment=os.getenv("ANKORA_PYTHON_ENVIRONMENT")
+        or os.getenv("CONDA_DEFAULT_ENV")
         or Path(sys.prefix).name
         or "system",
         app_mode=os.getenv("ANKORA_APP_MODE", "development"),

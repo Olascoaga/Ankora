@@ -12,7 +12,8 @@
     "test:frontend": "npm --workspace @ankora/desktop run test",
     "typecheck": "npm --workspace @ankora/desktop run typecheck",
     "tauri:dev": "npm --workspace @ankora/desktop run tauri:dev",
-    "tauri:build": "npm --workspace @ankora/desktop run tauri:build"
+    "tauri:build": "npm --workspace @ankora/desktop run tauri:build",
+    "tauri:installer": "npm --workspace @ankora/desktop run tauri:installer"
   },
   "engines": {
     "node": ">=22",

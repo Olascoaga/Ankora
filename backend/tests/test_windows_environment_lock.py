@@ -26,7 +26,11 @@ def _copy_environment_contract(destination: Path) -> None:
         REPOSITORY_ROOT / "environment" / "windows-64.conda.lock",
         destination / "environment" / "windows-64.conda.lock",
     )
-    for name in ("windows-py312.in", "windows-py312.lock"):
+    for name in (
+        "windows-py312.in",
+        "windows-py312.lock",
+        "windows-packaging.lock",
+    ):
         shutil.copy2(
             REPOSITORY_ROOT / "requirements" / name,
             destination / "requirements" / name,
@@ -37,7 +41,7 @@ def test_repository_windows_environment_locks_are_complete() -> None:
     result = _run_checker(REPOSITORY_ROOT)
 
     assert result.returncode == 0, result.stderr
-    assert "36 Conda packages, 74 Python packages" in result.stdout
+    assert "36 Conda packages, 74 Python packages, and 7 packaging tools" in result.stdout
 
 
 def test_conda_lock_rejects_a_package_without_sha256(tmp_path: Path) -> None:

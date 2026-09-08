@@ -36,6 +36,7 @@ class LockValidationError(ValueError):
 class LockSummary:
     conda_packages: int
     pip_packages: int
+    packaging_packages: int
 
 
 def _canonical_name(name: str) -> str:
@@ -81,9 +82,16 @@ def validate_repository_locks(root: Path) -> LockSummary:
     conda_path = root / "environment" / "windows-64.conda.lock"
     pip_input_path = root / "requirements" / "windows-py312.in"
     pip_lock_path = root / "requirements" / "windows-py312.lock"
+    packaging_lock_path = root / "requirements" / "windows-packaging.lock"
     environment_path = root / "environment.yml"
 
-    for path in (conda_path, pip_input_path, pip_lock_path, environment_path):
+    for path in (
+        conda_path,
+        pip_input_path,
+        pip_lock_path,
+        packaging_lock_path,
+        environment_path,
+    ):
         if not path.is_file():
             raise LockValidationError(f"required environment file is missing: {path}")
         _reject_local_references(path, path.read_text(encoding="utf-8"))
@@ -119,6 +127,7 @@ def validate_repository_locks(root: Path) -> LockSummary:
         )
     pip_input = _parse_pip_pins(pip_input_path, hashes_required=False)
     pip_lock = _parse_pip_pins(pip_lock_path, hashes_required=True)
+    packaging_lock = _parse_pip_pins(packaging_lock_path, hashes_required=True)
     for name, version in pip_input.items():
         if pip_lock.get(name) != version:
             raise LockValidationError(
@@ -138,7 +147,14 @@ def validate_repository_locks(root: Path) -> LockSummary:
                 f"environment.yml does not preserve {name}={version}"
             )
 
-    return LockSummary(conda_packages=len(conda_urls), pip_packages=len(pip_lock))
+    if packaging_lock.get("pyinstaller") is None:
+        raise LockValidationError("Packaging lock must include PyInstaller")
+
+    return LockSummary(
+        conda_packages=len(conda_urls),
+        pip_packages=len(pip_lock),
+        packaging_packages=len(packaging_lock),
+    )
 
 
 def validate_runtime(root: Path) -> None:
@@ -203,7 +219,8 @@ def main() -> int:
     print(
         "Windows environment locks"
         f"{runtime_note} verified: {summary.conda_packages} Conda packages, "
-        f"{summary.pip_packages} Python packages."
+        f"{summary.pip_packages} Python packages, and "
+        f"{summary.packaging_packages} packaging tools."
     )
     return 0
 

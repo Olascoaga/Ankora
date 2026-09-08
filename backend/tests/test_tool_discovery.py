@@ -13,6 +13,8 @@ from ankora_backend.adapters.tools.discovery import (
     discover_p2rank,
     discover_tool,
     discover_vina,
+    packaged_console_arguments,
+    python_worker_arguments,
 )
 
 
@@ -75,6 +77,48 @@ def test_active_python_environment_scripts_are_discovered(tmp_path) -> None:  # 
 
     assert discovered.available is True
     assert discovered.path == str(executable.resolve())
+
+
+def test_frozen_runtime_exposes_packaged_python_tools(
+    tmp_path: Path, monkeypatch  # type: ignore[no-untyped-def]
+) -> None:
+    runtime = tmp_path / "ankora-backend.exe"
+    runtime.write_bytes(b"synthetic frozen executable; never launched")
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(runtime))
+
+    discovered = discover_tool(
+        "mk_prepare_ligand",
+        path_lookup=lambda _: None,
+        candidate_directories=(),
+    )
+
+    assert discovered.available is True
+    assert discovered.path == str(runtime.resolve())
+    assert packaged_console_arguments(
+        executable=discovered.path,
+        worker="meeko-ligand",
+        arguments=["-i", "ligand.sdf"],
+    ) == ["--worker", "meeko-ligand", "-i", "ligand.sdf"]
+
+
+def test_python_worker_command_differs_between_source_and_frozen_runtime(
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    source_arguments = python_worker_arguments(
+        worker="pdbfixer",
+        module="ankora_backend.adapters.tools.pdbfixer_worker",
+        arguments=["--input", "receptor.pdb"],
+    )
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    frozen_arguments = python_worker_arguments(
+        worker="pdbfixer",
+        module="ankora_backend.adapters.tools.pdbfixer_worker",
+        arguments=["--input", "receptor.pdb"],
+    )
+
+    assert source_arguments[:2] == ["-m", "ankora_backend.adapters.tools.pdbfixer_worker"]
+    assert frozen_arguments == ["--worker", "pdbfixer", "--input", "receptor.pdb"]
 
 
 def test_portable_p2rank_distribution_is_discovered_and_versioned(tmp_path: Path) -> None:

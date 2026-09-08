@@ -2,6 +2,23 @@
 
 All notable project changes are recorded here.
 
+## Self-contained Windows installer runtime - 2026-09-08
+
+- Added a current-user NSIS build that freezes Ankora's localhost backend and
+  Python scientific dependencies from the verified Windows environment; an end
+  user no longer needs Python, Conda, or Anaconda.
+- Made the installed desktop own one bundled backend process, private data and
+  append-only diagnostic logs, and terminate that backend when the desktop
+  exits; an occupied API port is rejected rather than silently reused.
+- Routed packaged PDBFixer, PDB2PQR/PROPKA, and Meeko console work through the
+  frozen runtime while retaining external discovery for docking engines and
+  P2Rank.
+- Fixed the WebView2 distribution policy to the silent Evergreen download
+  bootstrapper and retained the measured WebView2 151 composition workaround
+  without disabling Mol* WebGL acceleration.
+- Added backend-only and installed-application smokes that remove Python and
+  Conda from `PATH`, plus a SHA-256-locked packaging-tool manifest.
+
 ## Native scientific-tool smoke matrix - 2026-09-08
 
 - Added one create-only Windows compatibility run covering all ten supported

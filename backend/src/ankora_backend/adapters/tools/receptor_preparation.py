@@ -9,7 +9,12 @@ from importlib import import_module, metadata
 from pathlib import Path
 from typing import cast
 
-from ankora_backend.adapters.tools.discovery import discover_python_package, discover_tool
+from ankora_backend.adapters.tools.discovery import (
+    discover_python_package,
+    discover_tool,
+    packaged_console_arguments,
+    python_worker_arguments,
+)
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
 from ankora_backend.schemas.receptors import ProtonationOverride, ResidueLocator
@@ -37,14 +42,16 @@ def run_pdbfixer(
     discovered = discover_python_package("pdbfixer", "pdbfixer")
     if not discovered.available:
         raise _unavailable("PDBFixer", "pdbfixer", "receptor_repair")
-    arguments = [
-        "-m",
-        "ankora_backend.adapters.tools.pdbfixer_worker",
-        "--input",
-        str(input_path),
-        "--output",
-        str(output_path),
-    ]
+    arguments = python_worker_arguments(
+        worker="pdbfixer",
+        module="ankora_backend.adapters.tools.pdbfixer_worker",
+        arguments=[
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+        ],
+    )
     for residue in residues:
         arguments.extend(
             [
@@ -186,9 +193,7 @@ def run_pdb2pqr_propka(
     discovered = discover_tool("pdb2pqr", os.getenv("ANKORA_PDB2PQR_PATH"))
     if not discovered.available or discovered.path is None:
         raise _unavailable("PDB2PQR", "pdb2pqr", "receptor_protonation")
-    arguments = [
-        "-m",
-        "ankora_backend.adapters.tools.pdb2pqr_worker",
+    worker_arguments = [
         "--input",
         str(input_path),
         "--pqr-output",
@@ -201,7 +206,7 @@ def run_pdb2pqr_propka(
         force_field,
     ]
     for override in overrides or []:
-        arguments.extend(
+        worker_arguments.extend(
             [
                 "--override",
                 json.dumps(
@@ -211,6 +216,11 @@ def run_pdb2pqr_propka(
                 ),
             ]
         )
+    arguments = python_worker_arguments(
+        worker="pdb2pqr",
+        module="ankora_backend.adapters.tools.pdb2pqr_worker",
+        arguments=worker_arguments,
+    )
     execution = run_tool(
         executable=sys.executable,
         arguments=arguments,
@@ -265,8 +275,9 @@ def run_meeko_receptor(
     if not discovered.available or discovered.path is None:
         raise _unavailable("Meeko", "mk_prepare_receptor", "receptor_pdbqt")
     output_basename = output_pdbqt_path.with_suffix("")
-    execution = run_tool(
+    arguments = packaged_console_arguments(
         executable=discovered.path,
+        worker="meeko-receptor",
         arguments=[
             "--read_pqr",
             str(input_pqr_path),
@@ -277,6 +288,10 @@ def run_meeko_receptor(
             "-p",
             str(output_pdbqt_path),
         ],
+    )
+    execution = run_tool(
+        executable=discovered.path,
+        arguments=arguments,
         cwd=output_pdbqt_path.parent,
         stage="receptor_pdbqt",
     )

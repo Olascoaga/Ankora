@@ -3,7 +3,10 @@
 import os
 from pathlib import Path
 
-from ankora_backend.adapters.tools.discovery import discover_tool
+from ankora_backend.adapters.tools.discovery import (
+    discover_tool,
+    packaged_console_arguments,
+)
 from ankora_backend.adapters.tools.receptor_preparation import package_version
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
@@ -27,8 +30,9 @@ def execute_meeko_ligand(
             status_code=422,
             details={"tool": "Meeko", "executable": "mk_prepare_ligand"},
         )
-    execution = run_tool(
+    arguments = packaged_console_arguments(
         executable=discovered.path,
+        worker="meeko-ligand",
         arguments=[
             "-i",
             str(input_sdf_path),
@@ -37,6 +41,10 @@ def execute_meeko_ligand(
             "--charge_model",
             charge_model.value,
         ],
+    )
+    execution = run_tool(
+        executable=discovered.path,
+        arguments=arguments,
         cwd=output_pdbqt_path.parent,
         stage="ligand_pdbqt",
     )
