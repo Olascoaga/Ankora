@@ -24,6 +24,16 @@ This document is the implementation contract for the professional scientific int
 - Mint is the primary interaction and success family. Amber indicates review, red indicates blocking/failure, blue indicates information, and violet distinguishes generated ligand state where appropriate.
 - Surfaces use restrained elevation and borders; glow is reserved for connection/activity emphasis rather than decoration.
 - Scientific values use tabular numerals. Units belong in headers or labels, for example `MW (g/mol)` and `Final MMFF E (kcal/mol)`.
+- Scientific quantities use the shared locale-neutral formatter: `.` is the
+  decimal mark and large values use a narrow no-break space between groups
+  (`102 600`, never `102,600` or `102.600`). This presentation contract is
+  independent of the Windows display language and does not alter stored
+  numbers. Do not call `toLocaleString` or `toFixed` directly for scientific
+  UI values.
+- Application dates use one English, day-first, 24-hour formatter in the
+  workstation's local time zone (`28 Aug 2026, 12:34`). Stored timestamps stay
+  unchanged. If a historical timestamp is invalid, show it literally rather
+  than manufacturing a date.
 - Dark, light, and Windows-following themes plus comfortable/compact densities are user settings and persist locally when the WebView permits it.
 
 ## Interaction and accessibility

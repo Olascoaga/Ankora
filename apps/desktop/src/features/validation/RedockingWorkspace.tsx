@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { ankoraApi } from "../../api/client";
 import type { RedockingRunRecord } from "../../types/api";
+import { formatScientificNumber } from "../../utils/format";
 
 /**
  * Redocking validation (M7).
@@ -132,7 +133,7 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
                     </small>
                   </span>
                   <span className="campaign-history-best">
-                    <b>{run.metrics.top1_rmsd_angstrom.toFixed(2)}</b>
+                    <b>{formatScientificNumber(run.metrics.top1_rmsd_angstrom, 2)}</b>
                     <small>Top-1 RMSD Å</small>
                   </span>
                 </button>
@@ -156,7 +157,7 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
         </div>
         <p>
           {OUTCOME_LABEL[metrics.outcome] ?? metrics.outcome}, at a{" "}
-          {metrics.threshold_angstrom.toFixed(1)} Å threshold. RMSD is symmetry-aware,
+          {formatScientificNumber(metrics.threshold_angstrom, 1)} Å threshold. RMSD is symmetry-aware,
           heavy-atom, and measured in place against the preserved crystallographic pose.
         </p>
       </div>
@@ -175,9 +176,9 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
       </div>
 
       <dl className="ligand-plan redocking-metrics">
-        <div><dt>Top-1</dt><dd>{metrics.top1_rmsd_angstrom.toFixed(3)} Å</dd></div>
-        <div><dt>Best of top 5</dt><dd>{metrics.best_top5_rmsd_angstrom.toFixed(3)} Å</dd></div>
-        <div><dt>Best overall</dt><dd>{metrics.best_overall_rmsd_angstrom.toFixed(3)} Å</dd></div>
+        <div><dt>Top-1</dt><dd>{formatScientificNumber(metrics.top1_rmsd_angstrom, 3)} Å</dd></div>
+        <div><dt>Best of top 5</dt><dd>{formatScientificNumber(metrics.best_top5_rmsd_angstrom, 3)} Å</dd></div>
+        <div><dt>Best overall</dt><dd>{formatScientificNumber(metrics.best_overall_rmsd_angstrom, 3)} Å</dd></div>
         <div>
           <dt>First recovering</dt>
           <dd>
@@ -209,8 +210,8 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
               <tr key={pose.rank} className={pose.recovered ? "best-ranked" : ""}>
                 <td>{pose.rank}</td>
                 <td>Run {pose.run}</td>
-                <td>{pose.binding_energy_kcal_mol.toFixed(2)}</td>
-                <td>{pose.rmsd_angstrom.toFixed(3)}</td>
+                <td>{formatScientificNumber(pose.binding_energy_kcal_mol, 2)}</td>
+                <td>{formatScientificNumber(pose.rmsd_angstrom, 3)}</td>
                 <td>{pose.recovered ? "Within threshold" : "—"}</td>
               </tr>
             ))}

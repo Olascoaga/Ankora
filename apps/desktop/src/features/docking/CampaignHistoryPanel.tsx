@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
 import type { CampaignHistory, CampaignSummary } from "../../types/api";
+import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 
 /**
  * Every campaign a project has run against one receptor and search space.
@@ -22,7 +23,6 @@ interface UseCampaignHistoryOptions {
   receptorId: string;
   bindingSiteId: string;
 }
-
 export function useCampaignHistory({
   engine,
   receptorId,
@@ -144,7 +144,7 @@ export function CampaignHistoryPanel({
                   aria-current={isActive ? "true" : undefined}
                 >
                   <span className="campaign-history-when">
-                    <b>{formatWhen(campaign.created_at)}</b>
+                    <b>{formatApplicationDateTime(campaign.created_at)}</b>
                     <small>
                       {campaign.is_running ? "running" : campaign.status.replaceAll("_", " ")}
                       {" · "}
@@ -156,7 +156,7 @@ export function CampaignHistoryPanel({
                       <b>—</b>
                     ) : (
                       <>
-                        <b>{campaign.best_result_kcal_mol.toFixed(2)}</b>
+                        <b>{formatScientificNumber(campaign.best_result_kcal_mol, 2)}</b>
                         <small>best {unit} kcal/mol</small>
                       </>
                     )}
@@ -175,11 +175,4 @@ export function CampaignHistoryPanel({
       )}
     </section>
   );
-}
-
-function formatWhen(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import type { BindingBox } from "../types/api";
+import { formatScientificNumber } from "../utils/format";
 import type {
   DockingBoxInteractionFeedback,
   DockingBoxInteractionMode,
@@ -218,7 +219,7 @@ export function MolecularViewer({
 
 function formatInteraction(feedback: DockingBoxInteractionFeedback): string {
   if (feedback.action === "move-screen") {
-    return `Move in view plane · center (${format(feedback.box.center_x)}, ${format(feedback.box.center_y)}, ${format(feedback.box.center_z)}) Å`;
+    return `Move in view plane · center (${formatScientificNumber(feedback.box.center_x, 2)}, ${formatScientificNumber(feedback.box.center_y, 2)}, ${formatScientificNumber(feedback.box.center_z, 2)}) Å`;
   }
   const axis = feedback.axis?.toUpperCase() ?? "";
   if (feedback.action === "move-axis") {
@@ -227,18 +228,14 @@ function formatInteraction(feedback: DockingBoxInteractionFeedback): string {
       : feedback.axis === "y"
         ? feedback.box.center_y
         : feedback.box.center_z;
-    return `Move ${axis} · center ${axis} ${format(center)} Å`;
+    return `Move ${axis} · center ${axis} ${formatScientificNumber(center, 2)} Å`;
   }
   const size = feedback.axis === "x"
     ? feedback.box.size_x
     : feedback.axis === "y"
       ? feedback.box.size_y
       : feedback.box.size_z;
-  return `Resize ${axis}${feedback.direction === 1 ? "+" : "−"} · size ${axis} ${format(size)} Å`;
-}
-
-function format(value: number): string {
-  return value.toFixed(2);
+  return `Resize ${axis}${feedback.direction === 1 ? "+" : "−"} · size ${axis} ${formatScientificNumber(size, 2)} Å`;
 }
 
 function viewerErrorMessage(reason: unknown): string {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { AppIcon } from "../../components/AppIcon";
+import { formatScientificNumber, formatSignedScientificNumber } from "../../utils/format";
 import type {
   LigandFilterEvaluation,
   LigandLibraryFilterPreview,
@@ -190,9 +191,9 @@ export function LigandLibraryTable({ library, preview, selectedLigandId, results
             <td><button type="button" className="ligand-row-select" aria-pressed={selectedLigandId === ligandId} onClick={() => onSelect(ligandId)}><span className="selection-radio" /><strong>{ligand.inspection.name}</strong></button></td>
             <td className="smiles-cell"><button type="button" aria-label={`Copy SMILES for ${ligand.inspection.name}`} title="Copy SMILES" onClick={(event) => { event.stopPropagation(); void copyText(evaluation?.canonical_isomeric_smiles ?? ligand.inspection.canonical_smiles ?? ""); }}>{evaluation?.canonical_isomeric_smiles ?? ligand.inspection.canonical_smiles ?? "—"}</button></td>
             {visibleColumns.has("formula") ? <td>{ligand.inspection.formula}</td> : null}
-            {visibleColumns.has("mw") ? <td>{descriptors?.molecular_weight_g_mol.toFixed(2) ?? ligand.inspection.molecular_weight_g_mol?.toFixed(2) ?? "—"}</td> : null}
-            {visibleColumns.has("clogp") ? <td>{descriptors?.clogp.toFixed(2) ?? "—"}</td> : null}
-            {visibleColumns.has("qed") ? <td>{descriptors?.qed.toFixed(3) ?? "—"}</td> : null}
+            {visibleColumns.has("mw") ? <td>{formatScientificNumber(descriptors?.molecular_weight_g_mol ?? ligand.inspection.molecular_weight_g_mol, 2)}</td> : null}
+            {visibleColumns.has("clogp") ? <td>{formatScientificNumber(descriptors?.clogp, 2)}</td> : null}
+            {visibleColumns.has("qed") ? <td>{formatScientificNumber(descriptors?.qed, 3)}</td> : null}
             {visibleColumns.has("rules") ? <td>{evaluation ? <RuleBadges evaluation={evaluation} /> : "—"}</td> : null}
             {visibleColumns.has("alerts") ? <td>{evaluation ? <AlertBadges evaluation={evaluation} preview={preview} /> : "—"}</td> : null}
             {visibleColumns.has("energy") ? <td><span title={energyDeltaEvidence(result)}>{formatEnergyDelta(result)}</span></td> : null}
@@ -224,13 +225,13 @@ function formatEnergyDelta(result: LigandBatchResult | undefined): string {
   const pair = energyPair(result);
   if (!pair) return "—";
   const delta = pair.final - pair.initial;
-  return `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`;
+  return formatSignedScientificNumber(delta, 3);
 }
 
 function energyDeltaEvidence(result: LigandBatchResult | undefined): string {
   const pair = energyPair(result);
   return pair
-    ? `Initial ${pair.initial.toFixed(3)} → final ${pair.final.toFixed(3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
+    ? `Initial ${formatScientificNumber(pair.initial, 3)} → final ${formatScientificNumber(pair.final, 3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
     : "Initial MMFF energy was not recorded for this historical row, so ΔE cannot be calculated.";
 }
 

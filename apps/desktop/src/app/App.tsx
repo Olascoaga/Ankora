@@ -20,6 +20,7 @@ import { ReceptorWorkspace } from "../features/receptor/ReceptorWorkspace";
 import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLibraryDockingInput, LigandRecord, ProjectCatalog, ProjectDependencyGraph, ProjectDependencyNode, ProjectRecord, ReceptorPreparationRecord, RecoveredWorkItem, StructureRecord, WorkRecoverySummary, WorkRetryResponse } from "../types/api";
 import { MolecularViewer } from "../viewer/MolecularViewer";
 import type { ViewerSelection } from "../viewer/adapter";
+import { formatApplicationDateTime, formatCount, formatScientificNumber } from "../utils/format";
 import { createInitialApplicationState, type ApplicationState } from "./state";
 import type { WorkspaceActivity } from "./activity";
 import { canNavigateTo, workflowSteps, type WorkflowStep } from "./workflow";
@@ -679,7 +680,7 @@ export function App() {
                 <label className="primary-action">Choose file<input type="file" accept=".pdb,.cif,.mmcif" onChange={handleFileChange} /></label>
                 {latestReceptor ? <button type="button" className="resume-receptor-action" onClick={() => void reopenLatestReceptor()}>
                   <strong>Reopen last receptor</strong>
-                  <small>{latestReceptor.status.replaceAll("_", " ")} · saved {formatSavedDate(latestReceptor.created_at)}</small>
+                  <small>{latestReceptor.status.replaceAll("_", " ")} · saved {formatApplicationDateTime(latestReceptor.created_at)}</small>
                 </button> : null}
                 <span>or use “Open structure” above</span>
               </div>
@@ -876,7 +877,7 @@ function workflowStepSummary(
     return ligand ? ligand.inspection.name : receptor?.status === "docking_ready" ? "Choose source" : "Requires receptor";
   }
   if (step === "Binding site") {
-    if (bindingSite) return `${bindingSite.box.size_x.toFixed(0)}×${bindingSite.box.size_y.toFixed(0)}×${bindingSite.box.size_z.toFixed(0)} Å box`;
+    if (bindingSite) return `${formatScientificNumber(bindingSite.box.size_x, 0)}×${formatScientificNumber(bindingSite.box.size_y, 0)}×${formatScientificNumber(bindingSite.box.size_z, 0)} Å box`;
     return receptor?.status === "docking_ready" ? "Choose source" : "Requires receptor";
   }
   if (step === "Docking") return bindingSite ? "Ready to configure" : "Requires binding site";
@@ -918,8 +919,8 @@ function StructureInspector({ structure, selection, onSelect }: { structure: Str
     <>
       <div className="inspector-heading"><span className="section-label">Structure inspector</span><h2>{metadata.entry_id ?? artifact.original_filename}</h2><p className="inspector-subtitle">{artifact.original_filename}</p></div>
       <section className="system-card metadata-card"><dl>
-        <div><dt>Models</dt><dd>{metadata.model_count}</dd></div><div><dt>Atoms</dt><dd>{metadata.atom_count.toLocaleString()}</dd></div>
-        <div><dt>Residues</dt><dd>{metadata.residue_count.toLocaleString()}</dd></div><div><dt>Resolution</dt><dd>{metadata.resolution_angstrom ? `${metadata.resolution_angstrom.toFixed(2)} Å` : "Not reported"}</dd></div>
+        <div><dt>Models</dt><dd>{metadata.model_count}</dd></div><div><dt>Atoms</dt><dd>{formatCount(metadata.atom_count)}</dd></div>
+        <div><dt>Residues</dt><dd>{formatCount(metadata.residue_count)}</dd></div><div><dt>Resolution</dt><dd>{metadata.resolution_angstrom !== null ? `${formatScientificNumber(metadata.resolution_angstrom, 2)} Å` : "Not reported"}</dd></div>
       </dl></section>
 
       <InspectorGroup title="Chains" count={metadata.chains.length}>
@@ -997,10 +998,6 @@ function formatBytes(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatSavedDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function readUiSetting<T extends string>(key: string, allowed: readonly T[], fallback: T): T {

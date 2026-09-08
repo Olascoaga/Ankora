@@ -16,6 +16,7 @@ import type {
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
+import { formatScientificNumber } from "../../utils/format";
 import { AutoDock4LibraryWorkspace } from "./AutoDock4LibraryWorkspace";
 import { EngineComparisonWorkspace } from "./EngineComparisonWorkspace";
 import { AutoDock4Workspace } from "./AutoDock4Workspace";
@@ -285,7 +286,7 @@ function SingleLigandDockingWorkspace({
         <section className="receptor-section">
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-          <InputState ready label="Binding site" detail={`${bindingSite.box.size_x.toFixed(1)} × ${bindingSite.box.size_y.toFixed(1)} × ${bindingSite.box.size_z.toFixed(1)} Å · ${bindingSite.binding_site_id.slice(0, 8)}…`} />
+          <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å · ${bindingSite.binding_site_id.slice(0, 8)}…`} />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand, minimize it, and generate PDBQT."} />
         </section>
         <section className="receptor-section">
@@ -383,9 +384,9 @@ function PoseResults({ poses, selectedMode, onSelect }: {
           <tbody>{poses.map((pose) => (
             <tr key={pose.mode} className={pose.mode === selectedMode ? "selected" : ""} onClick={() => onSelect(pose.mode)}>
               <td><button type="button" className="pose-select" aria-pressed={pose.mode === selectedMode} onClick={() => onSelect(pose.mode)}>Pose {pose.mode}</button></td>
-              <td>{pose.affinity_kcal_mol.toFixed(3)}</td>
-              <td>{pose.rmsd_lower_bound_angstrom.toFixed(3)}</td>
-              <td>{pose.rmsd_upper_bound_angstrom.toFixed(3)}</td>
+              <td>{formatScientificNumber(pose.affinity_kcal_mol, 3)}</td>
+              <td>{formatScientificNumber(pose.rmsd_lower_bound_angstrom, 3)}</td>
+              <td>{formatScientificNumber(pose.rmsd_upper_bound_angstrom, 3)}</td>
               <td><code>{pose.artifact.sha256.slice(0, 12)}…</code></td>
             </tr>
           ))}</tbody>

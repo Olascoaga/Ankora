@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ankoraApi, ApiError } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
+import { formatScientificNumber } from "../../utils/format";
 import type {
   ComponentAction,
   ProtonationOverride,
@@ -493,7 +494,7 @@ export function ReceptorWorkspace({
                     <div className="protonation-proposal-heading">
                       <button type="button" className="residue-focus" onClick={() => onSelect({ kind: "residue", residue: { chainId: proposal.residue.chain_id, residueName: proposal.residue.residue_name, sequenceNumber: proposal.residue.sequence_number, insertionCode: proposal.residue.insertion_code } })}>
                         <strong>{proposal.group_label}</strong>
-                        <span>pKa {proposal.predicted_pka.toFixed(2)} · pH {activeProtonationAnalysis.target_ph.toFixed(1)}</span>
+                        <span>pKa {formatScientificNumber(proposal.predicted_pka, 2)} · pH {formatScientificNumber(activeProtonationAnalysis.target_ph, 1)}</span>
                       </button>
                       <span className="protonation-prediction">PROPKA {protonationStateLabel(proposal.predicted_state)}</span>
                     </div>
@@ -513,7 +514,7 @@ export function ReceptorWorkspace({
                     <div className="protonation-proposal-flags">
                       {proposal.default_state !== proposal.predicted_state ? <span className="warning">Amber limitation</span> : null}
                       {proposal.near_reference ? <span>Near reference · {formatDistanceCompact(proposal.distance_to_reference_angstrom)}</span> : null}
-                      {proposal.nearby_metals.map((metal) => <span className="warning" key={metal.component_id}>Near {metal.name} · {metal.distance_angstrom.toFixed(1)} Å</span>)}
+                      {proposal.nearby_metals.map((metal) => <span className="warning" key={metal.component_id}>Near {metal.name} · {formatScientificNumber(metal.distance_angstrom, 1)} Å</span>)}
                       {proposal.warnings.includes("PKA_NEAR_TARGET_PH") ? <span className="warning">pKa near target pH</span> : null}
                       {proposal.coupled_group ? <span>Coupled · {proposal.coupled_group}</span> : null}
                     </div>
@@ -645,11 +646,11 @@ function decisionLabel(action: ReceptorDecisionAction, kind: string): string {
 }
 
 function formatDistance(distance: number | null): string {
-  return distance === null ? "distance unassessed" : `${distance.toFixed(1)} Å from reference`;
+  return distance === null ? "distance unassessed" : `${formatScientificNumber(distance, 1)} Å from reference`;
 }
 
 function formatDistanceCompact(distance: number | null): string {
-  return distance === null ? "Unassessed" : `${distance.toFixed(1)} Å`;
+  return distance === null ? "Unassessed" : `${formatScientificNumber(distance, 1)} Å`;
 }
 
 function issueFilterLabel(filter: IssueFilter): string {

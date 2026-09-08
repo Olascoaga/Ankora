@@ -14,6 +14,7 @@ import type {
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { DockingBoxInteractionMode, ViewerResidueSelection, ViewerSource } from "../../viewer/adapter";
+import { formatScientificNumber } from "../../utils/format";
 import { VinaSamplingGuidance } from "../docking/VinaSamplingGuidance";
 
 interface BindingSiteWorkspaceProps {
@@ -369,7 +370,7 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
         </section>
 
         <section className="receptor-section binding-box-editor-section">
-          {record ? <div className="state-resolved-note"><strong>Binding site defined</strong><small>{record.box.size_x.toFixed(1)} × {record.box.size_y.toFixed(1)} × {record.box.size_z.toFixed(1)} Å centered at ({record.box.center_x.toFixed(1)}, {record.box.center_y.toFixed(1)}, {record.box.center_z.toFixed(1)}) · {describeSource(record.decisions.source)}.</small></div> : null}
+          {record ? <div className="state-resolved-note"><strong>Binding site defined</strong><small>{formatScientificNumber(record.box.size_x, 1)} × {formatScientificNumber(record.box.size_y, 1)} × {formatScientificNumber(record.box.size_z, 1)} Å centered at ({formatScientificNumber(record.box.center_x, 1)}, {formatScientificNumber(record.box.center_y, 1)}, {formatScientificNumber(record.box.center_z, 1)}) · {describeSource(record.decisions.source)}.</small></div> : null}
           <div className="binding-box-mode" role="group" aria-label="Docking box interaction mode">
             <button type="button" className={boxInteractionMode === "move" ? "selected" : ""} aria-pressed={boxInteractionMode === "move"} onClick={() => setBoxInteractionMode("move")}>Move</button>
             <button type="button" className={boxInteractionMode === "resize" ? "selected" : ""} aria-pressed={boxInteractionMode === "resize"} onClick={() => setBoxInteractionMode("resize")}>Resize</button>
@@ -484,7 +485,10 @@ function boxesEqual(a: BindingBox | null, b: BindingBox | null): boolean {
 }
 
 function formatVolume(box: BindingBox): string {
-  return (box.size_x * box.size_y * box.size_z).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  return formatScientificNumber(box.size_x * box.size_y * box.size_z, {
+    maximumFractionDigits: 1,
+    groupThousands: true,
+  });
 }
 
 function asError(reason: unknown, fallback: string): Error {

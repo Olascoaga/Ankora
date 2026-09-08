@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Consistent scientific and date formatting - 2026-09-07
+
+- Centralized presentation of scientific quantities with a locale-neutral dot
+  decimal and narrow-space digit grouping, so one panel cannot mix Windows
+  locale commas with invariant energies, distances, masses, or coordinates.
+- Standardized application dates in English with local 24-hour time while
+  preserving invalid recorded timestamps literally instead of inventing a
+  replacement value.
+- Migrated the workflow shell, receptor, ligand, binding-site, docking,
+  Results, validation, and export views to the shared formatting contract.
+
 ## Shared accessible dialogs - 2026-09-06
 
 - Added one modal-dialog boundary with explicit initial focus, trapped forward

@@ -4,6 +4,7 @@ import { ankoraApi } from "../../api/client";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import { MethodsPanel } from "./MethodsPanel";
 import type { CatalogEntry, ExportEntry, ExportKind } from "../../types/api";
+import { formatApplicationDate, formatApplicationDateTime } from "../../utils/format";
 import { reproducibilityTitle } from "../results/reproducibility";
 
 /**
@@ -177,7 +178,7 @@ export function ExportWorkspace() {
               {campaigns.map((item) => (
                 <option key={item.catalog_id} value={item.catalog_id}>
                   {item.engine_label} · {item.succeeded_count}/{item.selected_count} · {
-                    new Date(item.created_at).toLocaleDateString()
+                    formatApplicationDate(item.created_at)
                   }
                 </option>
               ))}
@@ -218,7 +219,7 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
         </span>
       </div>
       <div className="export-card-meta">
-        <span>{formatMoment(entry.exported_at)}</span>
+        <span>{formatApplicationDateTime(entry.exported_at)}</span>
         {entry.subtitle ? <span>{entry.subtitle}</span> : null}
       </div>
       {entry.kind === "campaign" && entry.reproducibility?.status !== "measured_reproducible" ? (
@@ -260,12 +261,4 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-}
-
-function formatMoment(value: string): string {
-  const moment = new Date(value);
-  if (Number.isNaN(moment.getTime())) return value;
-  return moment.toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
 }

@@ -6,6 +6,7 @@ import type {
   EngineComparison,
   EngineComparisonRow,
 } from "../../types/api";
+import { formatScientificNumber } from "../../utils/format";
 
 interface EngineComparisonWorkspaceProps {
   receptorId: string;
@@ -157,7 +158,7 @@ export function EngineComparisonWorkspace({
                 <strong>
                   {comparison.agreement.spearman_rho === null
                     ? "Not enough shared molecules"
-                    : `Spearman ρ = ${comparison.agreement.spearman_rho.toFixed(3)}`}
+                    : `Spearman ρ = ${formatScientificNumber(comparison.agreement.spearman_rho, 3)}`}
                 </strong>
                 <small>
                   {comparison.agreement.spearman_rho === null
@@ -230,9 +231,9 @@ function ComparisonTable({ comparison, rows, sortKey, sortDirection, onSort }: {
                     : null}
                 </td>
                 <td>{row.vina_rank ?? "—"}</td>
-                <td>{row.vina_best_score_kcal_mol?.toFixed(2) ?? "—"}</td>
+                <td>{formatScientificNumber(row.vina_best_score_kcal_mol, 2)}</td>
                 <td>{row.autodock4_rank ?? "—"}</td>
-                <td>{row.autodock4_best_energy_kcal_mol?.toFixed(2) ?? "—"}</td>
+                <td>{formatScientificNumber(row.autodock4_best_energy_kcal_mol, 2)}</td>
                 <td>{row.autodock4_top_cluster_run_count ?? "—"}</td>
                 <td>{row.rank_difference ?? "—"}</td>
               </tr>

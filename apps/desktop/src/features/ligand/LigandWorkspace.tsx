@@ -2,6 +2,12 @@ import { type ChangeEvent, type ReactNode, useEffect, useMemo, useState } from "
 
 import { ankoraApi, ApiError } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
+import {
+  formatApplicationDateTime,
+  formatCount,
+  formatScientificNumber,
+  formatSignedScientificNumber,
+} from "../../utils/format";
 import type {
   HeterogenSummary,
   LigandChemicalStateRecord,
@@ -1419,7 +1425,7 @@ export function LigandWorkspace({
         </> : null}
         {pdbqt ? <section className="minimization-result converged ligand-pdbqt-result">
           <strong>Docking ligand prepared</strong>
-          <dl><div><dt>Tool</dt><dd>Meeko {pdbqt.tool.version}</dd></div><div><dt>Charges</dt><dd>{pdbqt.charge_model}</dd></div><div><dt>Size</dt><dd>{pdbqt.artifact.size_bytes.toLocaleString()} bytes</dd></div></dl>
+          <dl><div><dt>Tool</dt><dd>Meeko {pdbqt.tool.version}</dd></div><div><dt>Charges</dt><dd>{pdbqt.charge_model}</dd></div><div><dt>Size</dt><dd>{formatCount(pdbqt.artifact.size_bytes)} bytes</dd></div></dl>
           <small>PDBQT SHA-256 · {pdbqt.artifact.sha256.slice(0, 16)}…</small>
           <details><summary>Recorded command and raw output</summary><pre>{JSON.stringify({ command: pdbqt.command, stdout: pdbqt.stdout, stderr: pdbqt.stderr }, null, 2)}</pre></details>
         </section> : null}
@@ -1472,7 +1478,7 @@ function LibraryShelf({ libraries, busy, onOpen }: {
           >
             <strong>{entry.artifact.filename}</strong>
             <small>
-              {entry.artifact.record_count} records · {formatImported(entry.artifact.created_at)}
+              {entry.artifact.record_count} records · {formatApplicationDateTime(entry.artifact.created_at)}
               {entry.filter_run_count
                 ? ` · ${entry.filter_run_count} applied selection${entry.filter_run_count === 1 ? "" : "s"}`
                 : " · no selection applied"}
@@ -1482,14 +1488,6 @@ function LibraryShelf({ libraries, busy, onOpen }: {
       </div>
     </div>
   );
-}
-
-function formatImported(value: string): string {
-  const moment = new Date(value);
-  if (Number.isNaN(moment.getTime())) return value;
-  return moment.toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
 }
 
 interface LibraryFilterControlsProps {
@@ -1676,9 +1674,9 @@ function ConformerResult({ conformer }: { conformer: LigandConformerRecord }) {
       <div><dt>Origin</dt><dd>{conformer.minimization.embedding_method ? `${conformer.minimization.embedding_method} · seed ${conformer.minimization.random_seed}` : "Source geometry"}</dd></div>
       {pool ? <div><dt>Conformer pool</dt><dd>Best of {pool}</dd></div> : null}
       <div><dt>Method</dt><dd>{conformer.minimization.force_field}</dd></div>
-      <div><dt>Energy change (QC)</dt><dd>{delta > 0 ? "+" : ""}{delta.toFixed(3)} kcal/mol</dd></div>
-      <div><dt>Initial energy</dt><dd>{conformer.minimization.initial_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div>
-      <div><dt>Final energy</dt><dd>{conformer.minimization.final_energy_kcal_mol.toFixed(3)} kcal/mol</dd></div>
+      <div><dt>Energy change (QC)</dt><dd>{formatSignedScientificNumber(delta, 3)} kcal/mol</dd></div>
+      <div><dt>Initial energy</dt><dd>{formatScientificNumber(conformer.minimization.initial_energy_kcal_mol, 3)} kcal/mol</dd></div>
+      <div><dt>Final energy</dt><dd>{formatScientificNumber(conformer.minimization.final_energy_kcal_mol, 3)} kcal/mol</dd></div>
     </dl>
     <small>MMFF energies describe this prepared geometry only; do not compare them across compounds.</small>
     <small>Derivative SHA-256 · {conformer.artifact.sha256.slice(0, 16)}…</small>
@@ -1722,7 +1720,7 @@ function batchStatusFromPreparation(status: LigandPreparationStatus): LigandBatc
 }
 
 function formatMetric(value: number | null, decimals: number): string {
-  return value === null ? "Not recorded" : value.toFixed(decimals);
+  return value === null ? "Not recorded" : formatScientificNumber(value, decimals);
 }
 
 function clampNumber(value: string, minimum: number, maximum: number): number {

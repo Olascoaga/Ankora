@@ -14,6 +14,7 @@ import type {
   VinaBatchProgress,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
+import { formatScientificNumber, formatSignedScientificNumber } from "../../utils/format";
 import { CampaignExportPanel } from "./CampaignExportPanel";
 import { CampaignHistoryPanel, useCampaignHistory } from "./CampaignHistoryPanel";
 import type { ViewerSource } from "../../viewer/adapter";
@@ -343,7 +344,7 @@ export function LibraryDockingWorkspace({
       {batch ? <div className="operation-progress" role="progressbar" aria-label="AutoDock Vina library progress" aria-valuemin={0} aria-valuemax={batch.selected_count} aria-valuenow={batch.completed_count}><span className="determinate" style={{ width: `${progressPercent}%` }} /><p>{batch.completed_count} / {batch.selected_count} completed · {runningCount} running · {queuedCount} queued · {batch.succeeded_count} succeeded · {batch.failed_count} failed</p></div> : null}
       {error ? <div className="structure-error" role="alert">{error}</div> : null}
       {batch?.failure ? <div className="structure-error" role="alert"><strong>{batch.failure.message}</strong> <span>{batch.failure.code}</span></div> : null}
-      {bestEntry ? <button type="button" className="best-current-result" onClick={() => selectEntry(bestEntry)}><span><small>Most favorable current Vina score</small><strong>#{bestEntry.source_index + 1} · {bestEntry.name}</strong></span><b>{bestEntry.poses[0].affinity_kcal_mol.toFixed(3)} <small>kcal/mol</small></b></button> : null}
+      {bestEntry ? <button type="button" className="best-current-result" onClick={() => selectEntry(bestEntry)}><span><small>Most favorable current Vina score</small><strong>#{bestEntry.source_index + 1} · {bestEntry.name}</strong></span><b>{formatScientificNumber(bestEntry.poses[0].affinity_kcal_mol, 3)} <small>kcal/mol</small></b></button> : null}
       {viewerSources.length ? <MolecularViewer sources={viewerSources} selection={null} dockingBox={bindingSite.box} /> : <div className="viewer-placeholder ligand-placeholder"><div className="viewer-message"><div className="molecule-glyph">⬚</div><h3>Prepared receptor unavailable</h3></div></div>}
       {batch ? <LibraryResults batch={batch} selectedLigandId={selectedLigandId} selectedMode={selectedMode} onSelect={selectEntry} onSelectPose={(entry, mode) => { setSelectedLigandId(entry.ligand_id); setSelectedMode(mode); }} /> : null}
     </section>
@@ -353,7 +354,7 @@ export function LibraryDockingWorkspace({
       <section className="receptor-section">
         <div className="filter-heading"><span>1 · Scientific inputs</span></div>
         <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-        <InputState ready label="Binding site" detail={`${bindingSite.box.size_x.toFixed(1)} × ${bindingSite.box.size_y.toFixed(1)} × ${bindingSite.box.size_z.toFixed(1)} Å`} />
+        <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
         <InputState ready={preparedCount > 0} label="Applied library selection" detail={`${preparedCount} / ${libraryInput.selected_count} selected molecules prepared · ${libraryInput.library_name}`} />
         {unavailableCount > 0 ? <div className="protonation-blocker"><strong>{unavailableCount} selected {unavailableCount === 1 ? "molecule is" : "molecules are"} not docking-ready</strong><small>The complete manifest remains in the campaign. Ready molecules will run; every unavailable molecule will be retained as an explicit preflight failure.</small></div> : null}
         <p className="field-note">Manifest SHA-256 · {libraryInput.selection_manifest_sha256.slice(0, 16)}…</p>
@@ -475,7 +476,7 @@ function CampaignMonitor({
         onClick={() => onSelect(entry)}
       >
         <span><b>#{entry.source_index + 1}</b> {entry.name}</span>
-        <small>{entry.failure ? entry.failure.code : `${entry.poses[0]?.affinity_kcal_mol.toFixed(3) ?? "—"} kcal/mol`}</small>
+        <small>{entry.failure ? entry.failure.code : `${formatScientificNumber(entry.poses[0]?.affinity_kcal_mol, 3)} kcal/mol`}</small>
       </button>) : <small>{runningCount > 0 ? `Waiting for the first Vina result · ${runningCount} molecules active.` : "No molecule has finished yet."}</small>}
     </div>
   </section>;
@@ -514,7 +515,7 @@ function LibraryResults({ batch, selectedLigandId, selectedMode, onSelect, onSel
   }
 
   return <section className="docking-results library-docking-results" aria-label="Virtual-screening docking results">
-    <div className="docking-results-heading"><div><span className="eyebrow">Compound results</span><h3>AutoDock Vina library results</h3></div><p>{bestEntry ? <><strong>{bestEntry.name}</strong> currently ranks first at <strong>{bestEntry.poses[0].affinity_kcal_mol.toFixed(3)} kcal/mol</strong>. </> : null}Lower Vina scores rank more favorably only within this recorded campaign. MMFF ΔE is geometry QC and is not used for ranking.</p></div>
+    <div className="docking-results-heading"><div><span className="eyebrow">Compound results</span><h3>AutoDock Vina library results</h3></div><p>{bestEntry ? <><strong>{bestEntry.name}</strong> currently ranks first at <strong>{formatScientificNumber(bestEntry.poses[0].affinity_kcal_mol, 3)} kcal/mol</strong>. </> : null}Lower Vina scores rank more favorably only within this recorded campaign. MMFF ΔE is geometry QC and is not used for ranking.</p></div>
     <div className="docking-results-horizontal-scroll" ref={horizontalScrollRef} tabIndex={0} aria-label="Horizontal compound results scroll" onScroll={(event) => syncHorizontalScroll(event.currentTarget, tableScrollRef.current)}><div /></div>
     <div className="docking-results-scroll" ref={tableScrollRef} tabIndex={0} aria-label="Scrollable compound results table" onScroll={(event) => syncHorizontalScroll(event.currentTarget, horizontalScrollRef.current)}><table><thead><tr>
       <SortHeader label="#" sortKey="source_index" activeKey={sortKey} direction={sortDirection} onSort={changeSort} />
@@ -529,8 +530,8 @@ function LibraryResults({ batch, selectedLigandId, selectedMode, onSelect, onSel
       const topScore = entry.poses[0]?.affinity_kcal_mol;
       const expanded = entry.ligand_id === expandedLigandId;
       const classes = [entry.ligand_id === selectedLigandId ? "selected" : "", entry.ligand_id === bestEntry?.ligand_id ? "best-ranked" : ""].filter(Boolean).join(" ");
-      return <Fragment key={entry.ligand_id}><tr className={classes} onClick={() => toggleEntry(entry)} aria-expanded={expanded}><td>{entry.source_index + 1}</td><td><button type="button" className="compound-expand" aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); toggleEntry(entry); }}><span aria-hidden="true">{expanded ? "▾" : "▸"}</span>{entry.name}{entry.ligand_id === bestEntry?.ligand_id ? <small>Current best</small> : null}</button></td><td><code title={entry.canonical_smiles ?? undefined}>{entry.canonical_smiles ?? "—"}</code></td><td>{entry.molecular_weight_g_mol?.toFixed(2) ?? "—"}</td><td><span title={preparationDeltaEvidence(entry)}>{formatPreparationDelta(entry)}</span></td><td>{topScore?.toFixed(3) ?? "—"}</td><td>{entry.poses.length}</td><td><span className={`docking-status ${entry.status}`}>{entry.status.replaceAll("_", " ")}</span>{entry.failure ? <small title={entry.failure.message}>{entry.failure.code}</small> : null}</td></tr>
-        {expanded ? <tr className="pose-expansion"><td colSpan={8}>{entry.poses.length ? <div className="compound-poses"><div className="compound-poses-heading"><strong>{entry.name} · ranked poses</strong><small>Click a pose to display it in the 3D viewer.</small></div><table><thead><tr><th>Pose</th><th>Vina score (kcal/mol)</th><th>RMSD lower bound (Å)</th><th>RMSD upper bound (Å)</th><th>Artifact SHA-256</th></tr></thead><tbody>{entry.poses.map((pose) => <tr key={pose.mode} className={entry.ligand_id === selectedLigandId && pose.mode === selectedMode ? "selected" : ""}><td><button type="button" className="pose-select" aria-pressed={entry.ligand_id === selectedLigandId && pose.mode === selectedMode} onClick={(event) => { event.stopPropagation(); onSelectPose(entry, pose.mode); }}>Pose {pose.mode}</button></td><td>{pose.affinity_kcal_mol.toFixed(3)}</td><td>{pose.rmsd_lower_bound_angstrom.toFixed(3)}</td><td>{pose.rmsd_upper_bound_angstrom.toFixed(3)}</td><td><code>{pose.artifact.sha256.slice(0, 16)}…</code></td></tr>)}</tbody></table></div> : <p className="field-note">{entry.failure ? `${entry.failure.code} · ${entry.failure.message}` : "No poses are available while this molecule is still queued or running."}</p>}</td></tr> : null}</Fragment>;
+      return <Fragment key={entry.ligand_id}><tr className={classes} onClick={() => toggleEntry(entry)} aria-expanded={expanded}><td>{entry.source_index + 1}</td><td><button type="button" className="compound-expand" aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); toggleEntry(entry); }}><span aria-hidden="true">{expanded ? "▾" : "▸"}</span>{entry.name}{entry.ligand_id === bestEntry?.ligand_id ? <small>Current best</small> : null}</button></td><td><code title={entry.canonical_smiles ?? undefined}>{entry.canonical_smiles ?? "—"}</code></td><td>{formatScientificNumber(entry.molecular_weight_g_mol, 2)}</td><td><span title={preparationDeltaEvidence(entry)}>{formatPreparationDelta(entry)}</span></td><td>{formatScientificNumber(topScore, 3)}</td><td>{entry.poses.length}</td><td><span className={`docking-status ${entry.status}`}>{entry.status.replaceAll("_", " ")}</span>{entry.failure ? <small title={entry.failure.message}>{entry.failure.code}</small> : null}</td></tr>
+        {expanded ? <tr className="pose-expansion"><td colSpan={8}>{entry.poses.length ? <div className="compound-poses"><div className="compound-poses-heading"><strong>{entry.name} · ranked poses</strong><small>Click a pose to display it in the 3D viewer.</small></div><table><thead><tr><th>Pose</th><th>Vina score (kcal/mol)</th><th>RMSD lower bound (Å)</th><th>RMSD upper bound (Å)</th><th>Artifact SHA-256</th></tr></thead><tbody>{entry.poses.map((pose) => <tr key={pose.mode} className={entry.ligand_id === selectedLigandId && pose.mode === selectedMode ? "selected" : ""}><td><button type="button" className="pose-select" aria-pressed={entry.ligand_id === selectedLigandId && pose.mode === selectedMode} onClick={(event) => { event.stopPropagation(); onSelectPose(entry, pose.mode); }}>Pose {pose.mode}</button></td><td>{formatScientificNumber(pose.affinity_kcal_mol, 3)}</td><td>{formatScientificNumber(pose.rmsd_lower_bound_angstrom, 3)}</td><td>{formatScientificNumber(pose.rmsd_upper_bound_angstrom, 3)}</td><td><code>{pose.artifact.sha256.slice(0, 16)}…</code></td></tr>)}</tbody></table></div> : <p className="field-note">{entry.failure ? `${entry.failure.code} · ${entry.failure.message}` : "No poses are available while this molecule is still queued or running."}</p>}</td></tr> : null}</Fragment>;
     })}</tbody></table></div>
   </section>;
 }
@@ -587,13 +588,13 @@ function formatPreparationDelta(entry: VinaBatchLigandResult): string {
   const pair = preparationEnergyPair(entry);
   if (!pair) return "—";
   const delta = pair.final - pair.initial;
-  return `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`;
+  return formatSignedScientificNumber(delta, 3);
 }
 
 function preparationDeltaEvidence(entry: VinaBatchLigandResult): string {
   const pair = preparationEnergyPair(entry);
   return pair
-    ? `Initial ${pair.initial.toFixed(3)} → final ${pair.final.toFixed(3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
+    ? `Initial ${formatScientificNumber(pair.initial, 3)} → final ${formatScientificNumber(pair.final, 3)} kcal/mol. Internal geometry QC only; do not compare compounds.`
     : "Initial MMFF energy was not recorded for this historical campaign, so ΔE cannot be calculated.";
 }
 

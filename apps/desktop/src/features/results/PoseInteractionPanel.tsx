@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
+import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 import type {
   CatalogEntry,
   CompoundRow,
@@ -105,7 +106,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
         label: `${contact.display_type} · ${residueLabel(contact)}`
           + (contact.distance_angstrom === null
             ? ""
-            : ` · ${contact.distance_angstrom.toFixed(2)} Å`),
+            : ` · ${formatScientificNumber(contact.distance_angstrom, 2)} Å`),
         ligandPoint: [
           contact.ligand_point.x, contact.ligand_point.y, contact.ligand_point.z,
         ] as [number, number, number],
@@ -208,7 +209,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
             >
               {inventory.poses.map((item) => (
                 <option key={item.artifact_id} value={item.artifact_id}>
-                  {item.label} · {item.result_kcal_mol.toFixed(3)} kcal/mol
+                  {item.label} · {formatScientificNumber(item.result_kcal_mol, 3)} kcal/mol
                 </option>
               ))}
             </select>
@@ -230,7 +231,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
               >
                 {analyses.map((item) => (
                   <option key={item.analysis_id} value={item.analysis_id}>
-                    {new Date(item.created_at).toLocaleString()} · {item.detector.name} {item.detector.version}
+                    {formatApplicationDateTime(item.created_at)} · {item.detector.name} {item.detector.version}
                   </option>
                 ))}
               </select>
@@ -419,7 +420,7 @@ function InteractionTable({ contacts, selectedContactId, onSelect }: {
             >
               <td><button type="button" onClick={() => onSelect(contact)}>{contact.display_type}</button></td>
               <td>{residueLabel(contact)}</td>
-              <td>{contact.distance_angstrom === null ? "—" : `${contact.distance_angstrom.toFixed(2)} Å`}</td>
+              <td>{contact.distance_angstrom === null ? "—" : `${formatScientificNumber(contact.distance_angstrom, 2)} Å`}</td>
               <td>{angleLabel(contact)}</td>
               <td>{contact.ligand_atom_labels.join(", ") || "—"}</td>
               <td>{contact.protein_atom_labels.join(", ") || "—"}</td>
@@ -463,7 +464,9 @@ function firstAngle(contact: InteractionContact): number | null {
 function angleLabel(contact: InteractionContact): string {
   const entries = angleEntries(contact);
   if (!entries.length) return "—";
-  return entries.map(([key, value]) => `${key.replaceAll("_", " ")} ${value.toFixed(1)}°`).join(" · ");
+  return entries
+    .map(([key, value]) => `${key.replaceAll("_", " ")} ${formatScientificNumber(value, 1)}°`)
+    .join(" · ");
 }
 
 function sourcesFor(inventory: PoseInventory | null, pose: PoseReference | null): ViewerSource[] {

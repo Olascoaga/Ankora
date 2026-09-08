@@ -1,4 +1,5 @@
 import { ankoraApi } from "../../api/client";
+import { formatCount } from "../../utils/format";
 import type {
   AutoDock4BatchParameters,
   AutoDock4BatchRecord,
@@ -362,7 +363,7 @@ function fromCpuJob(record: AutoDock4DockingJobRecord): JobView {
     device_name: null,
     bitwise_reproducible: true,
     protocol_summary:
-      `${p.ga_runs} runs · ${p.ga_energy_evaluations.toLocaleString()} evals · `
+      `${p.ga_runs} runs · ${formatCount(p.ga_energy_evaluations)} evals · `
       + `Solis-Wets · seeds ${p.seed_1}/${p.seed_2}`,
     command: record.command,
     stdout: record.execution?.stdout ?? "",
@@ -378,7 +379,7 @@ function fromGpuJob(record: AutoDockGpuDockingJobRecord): JobView {
   const p = record.request.parameters;
   const budget = p.heuristics
     ? "heuristic evaluation count"
-    : `${p.energy_evaluations.toLocaleString()} evals`;
+    : `${formatCount(p.energy_evaluations)} evals`;
   return {
     job_id: record.job_id,
     backend: record.backend,

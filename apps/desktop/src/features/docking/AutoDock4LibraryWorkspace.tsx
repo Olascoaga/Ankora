@@ -14,6 +14,7 @@ import type {
   ToolsResponse,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
+import { formatScientificNumber } from "../../utils/format";
 import { CampaignExportPanel } from "./CampaignExportPanel";
 import { CampaignHistoryPanel, useCampaignHistory } from "./CampaignHistoryPanel";
 import {
@@ -605,7 +606,7 @@ function CampaignResults({
         <p>
           {best ? (
             <><strong>{best.name}</strong> currently ranks first at{" "}
-            <strong>{(bestEnergy(best) ?? 0).toFixed(2)} kcal/mol</strong>. </>
+            <strong>{formatScientificNumber(bestEnergy(best) ?? 0, 2)} kcal/mol</strong>. </>
           ) : null}
           Each molecule is clustered by AutoDock itself. Energies are computational estimates, not experimental affinities.
         </p>
@@ -660,7 +661,7 @@ function CampaignResults({
                         {best?.ligand_id === entry.ligand_id ? <small>Current best</small> : null}
                       </button>
                     </td>
-                    <td>{energy === null ? "—" : energy.toFixed(2)}</td>
+                    <td>{formatScientificNumber(energy, 2)}</td>
                     <td>{entry.clusters.length || "—"}</td>
                     <td>
                       <span className={`docking-status ${entry.status}`}>{entry.status.replaceAll("_", " ")}</span>
@@ -690,8 +691,8 @@ function CampaignResults({
                                 {entry.clusters.map((cluster) => (
                                   <tr key={cluster.cluster_rank}>
                                     <td>Rank {cluster.cluster_rank}</td>
-                                    <td>{cluster.lowest_binding_energy_kcal_mol.toFixed(2)}</td>
-                                    <td>{cluster.mean_binding_energy_kcal_mol.toFixed(2)}</td>
+                                    <td>{formatScientificNumber(cluster.lowest_binding_energy_kcal_mol, 2)}</td>
+                                    <td>{formatScientificNumber(cluster.mean_binding_energy_kcal_mol, 2)}</td>
                                     <td>{cluster.run_count}</td>
                                     <td>
                                       <div className="autodock4-run-buttons">

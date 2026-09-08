@@ -4,6 +4,7 @@ import { ankoraApi, ApiError } from "../../api/client";
 import { Dialog } from "../../components/Dialog";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
+import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
 import { reproducibilityDetail, reproducibilityTitle } from "./reproducibility";
 
@@ -416,7 +417,7 @@ export function ResultsWorkspace() {
                 <strong>{selected.engine_label}</strong>
                 <span>
                   {selected.mode === "screening" ? "Screening" : "Single ligand"}
-                  {` · ${formatMoment(selected.created_at)}`}
+                  {` · ${formatApplicationDateTime(selected.created_at)}`}
                 </span>
               </div>
               <span className="results-management-spacer" />
@@ -481,7 +482,7 @@ export function ResultsWorkspace() {
               {deletionSelection.map((entry) => (
                 <li key={entry.catalog_id}>
                   <strong>{entry.engine_label}</strong>
-                  <span>{entry.mode === "screening" ? "Screening" : "Single ligand"} · {formatMoment(entry.created_at)}</span>
+                  <span>{entry.mode === "screening" ? "Screening" : "Single ligand"} · {formatApplicationDateTime(entry.created_at)}</span>
                 </li>
               ))}
             </ul>
@@ -570,7 +571,7 @@ function CampaignBrowser({
             </div>
             <div className="results-card-meta">
               <span>{entry.mode === "screening" ? "Screening" : "Single ligand"}</span>
-              <span>{formatMoment(entry.created_at)}</span>
+              <span>{formatApplicationDateTime(entry.created_at)}</span>
               <span>
                 {entry.succeeded_count}/{entry.selected_count} docked
                 {entry.failed_count > 0 ? ` · ${entry.failed_count} failed` : ""}
@@ -580,7 +581,7 @@ function CampaignBrowser({
               <p className="results-card-best muted">No result was produced.</p>
             ) : (
               <p className="results-card-best">
-                <strong>{entry.best_result_kcal_mol.toFixed(2)} kcal/mol</strong>
+                <strong>{formatScientificNumber(entry.best_result_kcal_mol, 2)} kcal/mol</strong>
                 {/* Never a bare number: the engine's name travels with it. */}
                 <small>
                   best {entry.scoring_family === "vina" ? "Vina score" : "binding energy"}
@@ -731,10 +732,10 @@ function CompoundTable({ entry, onInspect }: {
                 <td>{row.source_index + 1}</td>
                 <td>{row.name}</td>
                 <td>{row.chemical_state_id ? <><code>{row.chemical_state_id.slice(0, 10)}…</code><small>charge {row.chemical_state_formal_charge !== null && row.chemical_state_formal_charge !== undefined ? `${row.chemical_state_formal_charge >= 0 ? "+" : ""}${row.chemical_state_formal_charge}` : "not recorded"}</small></> : "Historical · not recorded"}</td>
-                <td>{row.best_result_kcal_mol?.toFixed(2) ?? "—"}</td>
+                <td>{formatScientificNumber(row.best_result_kcal_mol, 2)}</td>
                 <td>{(clusterNative ? row.cluster_count : row.pose_count) ?? "—"}</td>
                 {clusterNative ? <td>{row.top_cluster_runs ?? "—"}</td> : null}
-                <td>{row.molecular_weight_g_mol?.toFixed(1) ?? "—"}</td>
+                <td>{formatScientificNumber(row.molecular_weight_g_mol, 1)}</td>
                 <td><code>{row.canonical_smiles ?? "—"}</code></td>
                 <td>
                   <span className={`docking-status ${row.status}`}>{row.status}</span>
@@ -777,9 +778,9 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
           <div><dt>Mode</dt><dd>{entry.mode === "screening" ? "Screening" : "Single ligand"}</dd></div>
           <div><dt>Engine</dt><dd>{entry.engine_label}</dd></div>
           <div><dt>Status</dt><dd>{entry.status}</dd></div>
-          <div><dt>Started</dt><dd>{formatMoment(entry.created_at)}</dd></div>
+          <div><dt>Started</dt><dd>{formatApplicationDateTime(entry.created_at)}</dd></div>
           {entry.completed_at
-            ? <div><dt>Finished</dt><dd>{formatMoment(entry.completed_at)}</dd></div>
+            ? <div><dt>Finished</dt><dd>{formatApplicationDateTime(entry.completed_at)}</dd></div>
             : null}
         </dl>
       </section>
@@ -810,13 +811,13 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
               <div>
                 <dt>Box centre</dt>
                 <dd>
-                  {box.center_x.toFixed(1)}, {box.center_y.toFixed(1)}, {box.center_z.toFixed(1)} Å
+                  {formatScientificNumber(box.center_x, 1)}, {formatScientificNumber(box.center_y, 1)}, {formatScientificNumber(box.center_z, 1)} Å
                 </dd>
               </div>
               <div>
                 <dt>Box size</dt>
                 <dd>
-                  {box.size_x.toFixed(0)}×{box.size_y.toFixed(0)}×{box.size_z.toFixed(0)} Å
+                  {formatScientificNumber(box.size_x, 0)}×{formatScientificNumber(box.size_y, 0)}×{formatScientificNumber(box.size_z, 0)} Å
                 </dd>
               </div>
             </>
@@ -919,14 +920,6 @@ function Choice({ label, value, options, onChange }: {
       </div>
     </div>
   );
-}
-
-function formatMoment(value: string): string {
-  const moment = new Date(value);
-  if (Number.isNaN(moment.getTime())) return value;
-  return moment.toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
 }
 
 export type { CompoundRow };

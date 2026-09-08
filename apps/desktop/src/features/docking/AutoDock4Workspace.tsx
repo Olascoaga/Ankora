@@ -16,6 +16,7 @@ import type {
   ReceptorPreparationRecord,
   ToolsResponse,
 } from "../../types/api";
+import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import {
   AUTODOCK_BACKENDS,
@@ -275,7 +276,7 @@ export function AutoDock4Workspace({
         <section className="receptor-section">
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-          <InputState ready label="Binding site" detail={`${bindingSite.box.size_x.toFixed(1)} × ${bindingSite.box.size_y.toFixed(1)} × ${bindingSite.box.size_z.toFixed(1)} Å`} />
+          <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand and generate PDBQT."} />
         </section>
         <section className="receptor-section">
@@ -496,7 +497,7 @@ function ClusterResults({ clusters, runs, selectedRun, onSelect }: {
           {best ? (
             <>
               <strong>Rank {best.cluster_rank}</strong> holds <strong>{best.run_count} of {totalRuns} runs</strong>
-              {" "}at <strong>{best.lowest_binding_energy_kcal_mol.toFixed(2)} kcal/mol</strong>.{" "}
+              {" "}at <strong>{formatScientificNumber(best.lowest_binding_energy_kcal_mol, 2)} kcal/mol</strong>.{" "}
             </>
           ) : null}
           AutoDock groups independent runs by RMSD. A larger cluster means the search kept finding the same
@@ -537,8 +538,8 @@ function ClusterResults({ clusters, runs, selectedRun, onSelect }: {
                         {cluster.cluster_rank === 1 ? <small>Best cluster</small> : null}
                       </button>
                     </td>
-                    <td>{cluster.lowest_binding_energy_kcal_mol.toFixed(2)}</td>
-                    <td>{cluster.mean_binding_energy_kcal_mol.toFixed(2)}</td>
+                    <td>{formatScientificNumber(cluster.lowest_binding_energy_kcal_mol, 2)}</td>
+                    <td>{formatScientificNumber(cluster.mean_binding_energy_kcal_mol, 2)}</td>
                     <td>{cluster.run_count}</td>
                     <td>Run {cluster.representative_run}</td>
                   </tr>
@@ -576,9 +577,9 @@ function ClusterResults({ clusters, runs, selectedRun, onSelect }: {
                                         Run {run}
                                       </button>
                                     </td>
-                                    <td>{result.binding_energy_kcal_mol.toFixed(2)}</td>
-                                    <td>{result.cluster_rmsd_angstrom.toFixed(2)}</td>
-                                    <td>{result.reference_rmsd_angstrom.toFixed(2)}</td>
+                                    <td>{formatScientificNumber(result.binding_energy_kcal_mol, 2)}</td>
+                                    <td>{formatScientificNumber(result.cluster_rmsd_angstrom, 2)}</td>
+                                    <td>{formatScientificNumber(result.reference_rmsd_angstrom, 2)}</td>
                                     <td><code>{result.artifact.sha256.slice(0, 16)}…</code></td>
                                   </tr>
                                 );

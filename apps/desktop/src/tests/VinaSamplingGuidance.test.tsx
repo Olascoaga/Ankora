@@ -17,7 +17,9 @@ it("uses Vina's exact 27,000 A^3 warning boundary", () => {
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   rerender(<VinaSamplingGuidance box={largeBox} />);
   expect(screen.getByText("Vina large search-space warning")).toBeInTheDocument();
-  expect(screen.getByText(/102,600 Å³.*3.8×.*27,000 Å³/)).toBeInTheDocument();
+  expect(screen.getByRole("status").textContent).toContain(
+    "102 600 Å³ (3.8× Vina's 27 000 Å³",
+  );
 });
 
 it("keeps exhaustiveness explicit and asks for a recorded sensitivity series", () => {
