@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ankoraApi, ApiError } from "../../api/client";
 import { Dialog } from "../../components/Dialog";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
+import { MethodsPanel } from "../export/MethodsPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
@@ -843,6 +844,7 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
           says whether two results searched the same space.
         </p>
       </section>
+      <MethodsPanel catalogId={entry.catalog_id} />
       {EXPORTABLE.has(entry.engine_key) ? (
         <CampaignExportPanel
           sourceKind={entry.engine_key as "vina_batch" | "autodock4_batch" | "autodock_gpu_batch"}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { MethodsPanel } from "../features/export/MethodsPanel";
 import type { MethodsReport } from "../types/api";
@@ -97,12 +97,31 @@ it("copies the markdown source, not the rendering", async () => {
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 
   await openDialog();
-  fireEvent.click(screen.getByRole("button", { name: "Copy to clipboard" }));
+  vi.useFakeTimers();
+  try {
+    const copyButton = screen.getByRole("button", { name: "Copy to clipboard" });
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
 
-  await waitFor(() => expect(writeText).toHaveBeenCalledWith(MARKDOWN));
-  // A manuscript takes the headings and the table pipes with it.
-  expect(writeText.mock.calls[0][0]).toContain("## Software");
-  await screen.findByRole("button", { name: "Copied as Markdown" });
+    expect(writeText).toHaveBeenCalledWith(MARKDOWN);
+    // A manuscript takes the headings and the table pipes with it.
+    expect(writeText.mock.calls[0][0]).toContain("## Software");
+    expect(screen.getByRole("status")).toHaveTextContent("Copied as Markdown");
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(copyButton).toHaveTextContent("Copy to clipboard");
+
+    act(() => { vi.advanceTimersByTime(2400); });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("opens as an accessible modal and restores focus after Escape", async () => {

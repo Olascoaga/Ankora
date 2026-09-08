@@ -2,6 +2,14 @@
 
 All notable project changes are recorded here.
 
+## Methods in Results - 2026-09-07
+
+- Exposed the exact record-derived Methods report in each selected Results
+  campaign, including single-ligand records that have no campaign-bundle action.
+- Kept copying as a repeatable action and moved success into a transient live
+  confirmation that clears automatically instead of permanently relabeling the
+  button.
+
 ## Distinguishable campaign bundles - 2026-09-07
 
 - Upgraded new campaign exports to format 3 with separate campaign, exact-input,

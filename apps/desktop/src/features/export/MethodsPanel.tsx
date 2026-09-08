@@ -41,6 +41,8 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const copyConfirmationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyAttempt = useRef(0);
 
   useEffect(() => {
     let disposed = false;
@@ -53,10 +55,29 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
     return () => { disposed = true; };
   }, [catalogId]);
 
+  useEffect(() => () => {
+    copyAttempt.current += 1;
+    if (copyConfirmationTimer.current !== null) {
+      clearTimeout(copyConfirmationTimer.current);
+    }
+  }, []);
+
   const copy = async () => {
     if (!report) return;
+    const attempt = copyAttempt.current + 1;
+    copyAttempt.current = attempt;
+    if (copyConfirmationTimer.current !== null) {
+      clearTimeout(copyConfirmationTimer.current);
+      copyConfirmationTimer.current = null;
+    }
+    setCopied(false);
     const written = await copyText(report.markdown);
-    setCopied(written);
+    if (!written || attempt !== copyAttempt.current) return;
+    setCopied(true);
+    copyConfirmationTimer.current = setTimeout(() => {
+      setCopied(false);
+      copyConfirmationTimer.current = null;
+    }, 2400);
   };
 
   return (
@@ -113,6 +134,11 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
         ) : null}
 
         <div className="methods-actions">
+          {copied ? (
+            <span className="methods-copy-confirmation" role="status" aria-live="polite">
+              Copied as Markdown
+            </span>
+          ) : null}
           <button ref={closeButtonRef} type="button" className="quiet-button" onClick={onClose}>Close</button>
           <button
             type="button"
@@ -120,7 +146,7 @@ function MethodsDialog({ catalogId, onClose }: { catalogId: string; onClose: () 
             disabled={!report}
             onClick={() => void copy()}
           >
-            {copied ? "Copied as Markdown" : "Copy to clipboard"}
+            Copy to clipboard
           </button>
         </div>
         <small className="field-note">

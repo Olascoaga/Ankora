@@ -591,6 +591,7 @@ button { font: inherit; }
 .methods-section .secondary-action { justify-self: start; }
 .methods-dialog { width: min(760px, calc(100vw - 48px)); border-color: var(--line); }
 .methods-dialog .methods-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.methods-dialog .methods-copy-confirmation { align-self: center; margin-right: auto; color: var(--accent); font-size: 12px; font-weight: 700; }
 .methods-dialog .methods-actions button { padding: 5px 11px; border-radius: 7px; font-size: 12px; cursor: pointer; }
 .methods-dialog .methods-actions .quiet-button { border: 1px solid var(--line); color: var(--text); background: transparent; }
 .methods-dialog .methods-actions button:disabled { opacity: 0.45; cursor: not-allowed; }

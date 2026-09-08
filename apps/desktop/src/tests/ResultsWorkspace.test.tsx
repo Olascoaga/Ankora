@@ -336,6 +336,37 @@ it("offers an export for a campaign and not for a single job", async () => {
   );
 });
 
+it("opens the selected campaign's Methods directly from Results", async () => {
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/methods")) {
+      return json({
+        catalog_id: baseEntry.catalog_id,
+        generated_at: "2026-09-07T20:00:00Z",
+        engine_label: baseEntry.engine_label,
+        markdown: "## Docking\n\nThe exact recorded Vina protocol was used.",
+        gaps: [],
+        software: [{ name: "AutoDock Vina", version: "1.2.7", role: "docking" }],
+      });
+    }
+    if (url.includes("/compounds")) return json(vinaCompounds);
+    return json(page);
+  });
+  render(<ResultsWorkspace />);
+
+  const browser = await screen.findByRole("list", { name: "Recorded results" });
+  fireEvent.click(within(browser).getAllByRole("listitem")[1]);
+  const inspector = await screen.findByRole("complementary", { name: "Results inspector" });
+  fireEvent.click(within(inspector).getByRole("button", { name: "Write the Methods section" }));
+
+  expect(await screen.findByRole("dialog", { name: "Methods section" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Docking" })).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.stringContaining("/results/campaigns/vina_batch/vina-1/methods"),
+    expect.objectContaining({ method: "GET" }),
+  );
+});
+
 it("survives a project with nothing recorded in it", async () => {
   mock(vinaCompounds, { entries: [], total: 0, offset: 0, limit: 25 });
   render(<ResultsWorkspace />);

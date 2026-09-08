@@ -156,7 +156,10 @@ Selecting a row updates Mol* and the contextual inspector.
 The right inspector shows compound identity, inherited chemical/preparation
 state, current engine-native result, and experiment identity. Expandable
 technical evidence exposes exact commands or GPF/DPF settings, hashes, tool and
-device identity, raw-output links, warnings, failures, and provenance.
+device identity, raw-output links, warnings, failures, and provenance. Every
+selected campaign also exposes the exact Methods prose supported by that
+record, whether it represents one ligand or a screening library; Results does
+not require a separate Export workflow or recompute any scientific result.
 
 The activity center remains the shared place for warnings and commands. Results
 must not pretend a historical campaign is currently running.
