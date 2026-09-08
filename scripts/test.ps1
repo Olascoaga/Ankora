@@ -94,13 +94,17 @@ function Assert-LastCommandSucceeded([string]$step) {
     }
 }
 
+$taskTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+$pytestBasetemp = Join-Path $taskTempRoot ("ankora-pytest-" + [guid]::NewGuid().ToString("N"))
+
 Push-Location $projectRoot
 try {
     & $pythonCommand scripts/check_public_paths.py
     Assert-LastCommandSucceeded "Public path check"
     & $pythonCommand scripts/verify_windows_environment_lock.py
     Assert-LastCommandSucceeded "Windows environment lock verification"
-    $pytestBasetemp = Join-Path $projectRoot "backend\.pytest_tmp"
+    & $pythonCommand scripts/run_native_tool_smoke.py --check
+    Assert-LastCommandSucceeded "Native scientific-tool smoke matrix verification"
     & $pythonCommand -m pytest backend -p no:cacheprovider --basetemp=$pytestBasetemp
     Assert-LastCommandSucceeded "Backend tests"
     & $pythonCommand -m ruff check backend
@@ -125,4 +129,19 @@ try {
 }
 finally {
     Pop-Location
+    if (Test-Path -LiteralPath $pytestBasetemp) {
+        $resolvedPytestBasetemp = [System.IO.Path]::GetFullPath($pytestBasetemp)
+        if (-not $resolvedPytestBasetemp.StartsWith(
+            $taskTempRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Refusing to clean a pytest directory outside the temporary root."
+        }
+        try {
+            Remove-Item -LiteralPath $resolvedPytestBasetemp -Recurse -Force
+        }
+        catch {
+            Write-Warning "Could not clean temporary pytest directory: $resolvedPytestBasetemp"
+        }
+    }
 }

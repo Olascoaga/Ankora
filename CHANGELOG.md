@@ -2,6 +2,23 @@
 
 All notable project changes are recorded here.
 
+## Native scientific-tool smoke matrix - 2026-09-08
+
+- Added one create-only Windows compatibility run covering all ten supported
+  process-launching boundaries: the locked Python scientific runtime,
+  PDBFixer, PDB2PQR/PROPKA, Meeko receptor and ligand preparation, P2Rank,
+  Vina, AutoGrid4, AutoDock4 CPU, and AutoDock-GPU.
+- Retained exact commands, versions, executable/fixture/output hashes, and raw
+  stdout/stderr below ignored local validation storage; a failed run cannot be
+  overwritten or mistaken for a passing one.
+- Kept docking-engine checks to their official version/limit/device probes, so
+  the matrix does not create docking scores or imply scientific validation.
+- Added an external-tool-free public matrix check to local verification and
+  Windows CI. GNINA remains explicitly deferred rather than silently skipped.
+- Moved pytest's aggregate-run scratch space to a fresh OS-temporary directory
+  per invocation, preventing a stale Windows ACL or file handle from turning a
+  scientifically green suite into hundreds of setup errors.
+
 ## Locked Windows scientific environment - 2026-09-08
 
 - Bound the validated native Conda stack to exact win-64 builds and channel

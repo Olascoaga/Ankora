@@ -79,6 +79,22 @@ files alone, run `python scripts/verify_windows_environment_lock.py`; inside the
 created environment, add `--runtime` to verify Python, architecture, Conda
 ownership, and every installed distribution against the lock.
 
+After configuring the external Windows tools, exercise every supported
+process-launching scientific adapter with:
+
+```powershell
+python scripts/run_native_tool_smoke.py
+```
+
+This bounded compatibility matrix repairs and protonates fixed fixtures,
+prepares receptor and ligand PDBQT, runs P2Rank on a fixed receptor, and probes
+the exact Vina/AutoGrid4/AutoDock4/AutoDock-GPU builds without starting a
+docking calculation. Commands, versions, fixture/output hashes, and raw
+stdout/stderr are retained in a create-only run below
+`.ankora-data/validation/native-tool-smoke/`; that machine-local evidence is
+intentionally excluded from Git. Use `--check` to validate only the public
+matrix contract without requiring the external executables.
+
 ### AutoDock Vina
 
 Ankora supports the official AutoDock Vina 1.2.7 Windows executable. Set `ANKORA_VINA_PATH` to the executable or its containing directory, add `vina.exe` to `PATH`, or place the official versioned executable below a narrowly named portable directory such as `%USERPROFILE%\tools\autodock-vina-1.2.7\vina_1.2.7_win.exe`. Ankora verifies the executable's reported version before every docking job; discovery alone does not authorize or launch a calculation.
