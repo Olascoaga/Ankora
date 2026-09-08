@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import designSystemStyles from "../design-system.css?raw";
 import responsiveStyles from "../styles.css?raw";
 import { FigureExportControls } from "../features/results/FigureExportControls";
 import { interactionFamily } from "../features/results/InteractionDiagram";
@@ -67,67 +68,39 @@ it("never lets a figure exceed what a browser can rasterize", () => {
   expect(figureGeometry(1, 1000, 1200).widthPx).toBe(8000);
 });
 
-it("returns the stacked M9 review to document flow before figure controls can overlap", () => {
-  const narrowReview = responsiveStyles.slice(
-    responsiveStyles.indexOf("@media (max-width: 1450px)"),
+it("gives the complete M9 document one vertical workspace scroll owner", () => {
+  expect(responsiveStyles).toMatch(
+    /\.results-interaction-workspace\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
   );
-
-  expect(narrowReview).toMatch(
+  expect(responsiveStyles).toMatch(
     /\.results-interaction-workspace \.pose-interaction-panel\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*auto;/,
   );
-  expect(narrowReview).toMatch(
+  expect(responsiveStyles).toMatch(
     /\.pose-interaction-review-grid\s*\{[^}]*flex:\s*0 0 auto;[^}]*grid-template-columns:\s*1fr;[^}]*min-height:\s*0;/,
   );
-  expect(narrowReview).toMatch(
-    /\.pose-interaction-evidence\s*\{[^}]*min-height:\s*auto;[^}]*overflow-y:\s*visible;/,
+  expect(responsiveStyles).toMatch(
+    /\.pose-interaction-viewer-column\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/,
   );
-  expect(narrowReview).toMatch(
-    /\.workspace\.results-interaction-workspace\s*\{[^}]*overflow-y:\s*auto;/,
-  );
-});
-
-it("keeps the wide 3D figure controls reachable in their own scroll column", () => {
-  const wideReview = responsiveStyles.slice(
-    responsiveStyles.indexOf(".pose-interaction-review-grid"),
-    responsiveStyles.indexOf("@media (max-width: 1450px)"),
-  );
-  const narrowReview = responsiveStyles.slice(
-    responsiveStyles.indexOf("@media (max-width: 1450px)"),
-  );
-
-  expect(wideReview).toMatch(
-    /\.pose-interaction-viewer-column\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
-  );
-  expect(narrowReview).toMatch(
-    /\.pose-interaction-viewer-column\s*\{[^}]*overflow-y:\s*visible;[^}]*scrollbar-gutter:\s*auto;/,
+  expect(responsiveStyles).toMatch(
+    /\.pose-interaction-evidence\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/,
   );
 });
 
-it("uses one workspace scrollbar on wide screens with limited height", () => {
-  const shortWideStart = responsiveStyles.indexOf(
-    "@media (min-width: 1451px) and (max-height: 1100px)",
+it("changes the M9 composition from usable workspace width rather than monitor width", () => {
+  expect(responsiveStyles).toContain("container-name: interaction-workspace");
+  expect(responsiveStyles).toContain("@container interaction-workspace (min-width: 980px)");
+  expect(responsiveStyles).toMatch(
+    /@container interaction-workspace \(min-width:\s*980px\)\s*\{[\s\S]*?\.pose-interaction-review-grid\s*\{[^}]*grid-template-columns:\s*minmax\(360px, 0\.9fr\) minmax\(480px, 1\.1fr\);/,
   );
-  const shortWideReview = responsiveStyles.slice(
-    shortWideStart,
-    responsiveStyles.indexOf("@media (max-width: 1450px)", shortWideStart),
-  );
+  expect(responsiveStyles).not.toContain("@media (min-width: 1451px) and (max-height: 1100px)");
+  expect(responsiveStyles).not.toContain("@media (max-width: 1450px)");
+});
 
-  expect(shortWideReview).toMatch(
-    /\.results-interaction-workspace \.pose-interaction-panel\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*auto;/,
-  );
-  expect(shortWideReview).toMatch(
-    /\.pose-interaction-review-grid\s*\{[^}]*flex:\s*0 0 auto;[^}]*align-items:\s*start;[^}]*min-height:\s*0;/,
-  );
-  expect(shortWideReview).toMatch(
-    /\.pose-interaction-viewer-column\s*\{[^}]*overflow-y:\s*visible;[^}]*scrollbar-gutter:\s*auto;/,
-  );
-  expect(shortWideReview).toMatch(
-    /\.pose-interaction-evidence\s*\{[^}]*min-height:\s*auto;[^}]*overflow-y:\s*visible;/,
-  );
-  expect(shortWideReview).toMatch(
-    /\.workspace\.results-interaction-workspace\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
-  );
-  expect(shortWideReview).not.toContain("grid-template-columns: 1fr");
+it("declares wide, medium, and small shell states without hiding application menus", () => {
+  for (const layout of ["wide", "medium", "small"]) {
+    expect(designSystemStyles).toContain(`.app-shell[data-layout="${layout}"]`);
+  }
+  expect(designSystemStyles).not.toMatch(/\.app-menu:nth-of-type/);
 });
 
 // --- the exported SVG has to look like the figure on screen ------------------

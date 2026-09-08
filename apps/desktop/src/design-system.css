@@ -20,8 +20,9 @@
   --control-height: 34px;
   --topbar-height: 64px;
   --status-height: 38px;
-  --workflow-width: 208px;
-  --inspector-width: 360px;
+  --activity-height: 220px;
+  --workflow-width: var(--workflow-preferred-width, 208px);
+  --inspector-width: var(--inspector-preferred-width, 360px);
   --canvas: #090f14;
   --panel-subtle: rgba(23, 35, 43, 0.72);
   --panel-solid: #111a21;
@@ -213,7 +214,7 @@ select:focus-visible,
 .panel-resizer:active::after { background: var(--focus); }
 .workflow-resizer { left: calc(var(--workflow-width) - 3px); }
 .inspector-resizer { right: calc(var(--inspector-width) - 3px); }
-.activity-open .panel-resizer { bottom: 258px; }
+.activity-open .panel-resizer { bottom: calc(var(--status-height) + var(--activity-height)); }
 .activity-open .scientific-workbench { grid-template-rows: minmax(155px, 1fr) minmax(145px, 42%); }
 
 .topbar {
@@ -840,7 +841,7 @@ button.project-context:hover { border-color: var(--line); background: var(--pane
 .activity-toggle > svg:last-child { margin-left: auto; transition: transform 140ms ease; }
 .activity-open .activity-toggle > svg:last-child { transform: rotate(180deg); }
 
-.activity-center { height: 220px; display: grid; grid-template-columns: 190px minmax(0, 1fr); border-top: 1px solid var(--line); }
+.activity-center { height: var(--activity-height); display: grid; grid-template-columns: 190px minmax(0, 1fr); border-top: 1px solid var(--line); }
 .activity-center > nav { display: flex; flex-direction: column; gap: 3px; padding: 10px; border-right: 1px solid var(--line); }
 .activity-center > nav button {
   min-height: 32px;
@@ -1070,18 +1071,48 @@ html[data-theme="light"] .receptor-error pre { background: var(--panel-solid); }
   html[data-theme="system"] .receptor-error pre { background: var(--panel-solid); }
 }
 
-@media (max-width: 1180px) {
-  :root { --workflow-width: 188px; --inspector-width: 330px; }
-  .brand-copy p, .project-context { display: none; }
-  .app-menus { margin-left: 0; }
+/* The shell has three named states derived from the effective CSS viewport.
+   Unlike physical-pixel media queries, this also follows Windows 125/150%
+   scaling. Preferred resizer widths are retained and restored when room
+   returns; compact states only cap their effective footprint. */
+.app-shell[data-layout="wide"] {
+  --workflow-width: var(--workflow-preferred-width, 208px);
+  --inspector-width: var(--inspector-preferred-width, 360px);
 }
 
-@media (max-width: 1000px) {
-  :root { --workflow-width: 176px; --inspector-width: 310px; }
-  .app-menu:nth-of-type(3),
-  .app-menu:nth-of-type(4) { display: none; }
-  .workspace { padding-inline: var(--space-3); }
+.app-shell[data-layout="medium"] {
+  --workflow-width: min(var(--workflow-preferred-width, 208px), 196px);
+  --inspector-width: min(var(--inspector-preferred-width, 360px), 340px);
 }
+
+.app-shell[data-layout="medium"] .brand-copy p,
+.app-shell[data-layout="medium"] .project-context { display: none; }
+.app-shell[data-layout="medium"] .app-menus { margin-left: 0; }
+.app-shell[data-layout="medium"] .connection-pill { margin-left: auto; }
+
+.app-shell[data-layout="small"] {
+  --topbar-height: 56px;
+  --status-height: 36px;
+  --activity-height: 176px;
+  --workflow-width: min(var(--workflow-preferred-width, 208px), 164px);
+  --inspector-width: min(var(--inspector-preferred-width, 360px), 280px);
+}
+
+.app-shell[data-layout="small"] .topbar { gap: var(--space-2); padding-inline: var(--space-2); }
+.app-shell[data-layout="small"] .brand-copy p,
+.app-shell[data-layout="small"] .project-context { display: none; }
+.app-shell[data-layout="small"] .app-menus { gap: 0; margin-left: 0; }
+.app-shell[data-layout="small"] .connection-pill { margin-left: auto; }
+.app-shell[data-layout="small"] .app-menu > summary { padding-inline: 6px; }
+.app-shell[data-layout="small"] .connection-pill { padding-inline: 8px; }
+.app-shell[data-layout="small"] .workflow { padding-inline: 6px; }
+.app-shell[data-layout="small"] .workflow li button { gap: 7px; padding-inline: 7px; }
+.app-shell[data-layout="small"] .workflow-note { display: none; }
+.app-shell[data-layout="small"] .workspace { padding-inline: var(--space-3); }
+.app-shell[data-layout="small"] .inspector { padding-inline: var(--space-3); }
+.app-shell[data-layout="small"] .activity-center { grid-template-columns: 150px minmax(0, 1fr); }
+.app-shell[data-layout="small"] .activity-center > nav,
+.app-shell[data-layout="small"] .activity-content { padding: var(--space-2); }
 
 @media (max-width: 860px) {
   .project-workspace-backdrop { padding: var(--space-2); }

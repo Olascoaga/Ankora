@@ -14,7 +14,22 @@ This document is the implementation contract for the professional scientific int
 
 - The application shell fills the viewport and must not create a document-level scrollbar at the authoritative desktop size.
 - Workflow and inspector widths are independently resizable and collapsible; double-clicking a divider restores its default width.
-- Each dense data plane or inspector may own one intentional scrollbar. Avoid stacking scroll containers inside the same task lane.
+- The shell reports one of three explicit states from the effective CSS viewport:
+  `wide` at 1800×1100 or greater, `medium` at 1180×700 or greater, and
+  `small` below that. Both dimensions are required. WebView CSS pixels—not
+  physical monitor pixels—are authoritative so Windows 125/150 percent
+  scaling selects the same layout as an equivalently sized viewport.
+- Medium and small states cap the visible workflow/inspector footprint without
+  discarding the user's preferred resized widths. All application menus remain
+  reachable at the 960 px supported minimum.
+- A screen has one vertical task-lane scroll owner. Long document views use the
+  center workspace; bounded tables, inspectors, and code/evidence panes may
+  scroll their own data, but two page-level vertical scroll regions must not be
+  nested in the same lane.
+- Component composition follows usable center-workspace width where side-panel
+  resizing matters. Pose-interaction review stacks below 980 px of workspace
+  width and uses two columns above it; monitor-width and viewport-height
+  exceptions must not be added for that screen.
 - Receptor review keeps residue issues in a filterable table below Mol*. Selecting a residue focuses it in the viewer.
 - Virtual screening keeps source order visible through a fixed source-index column and exposes search, status filtering, sorting, and optional descriptor columns.
 

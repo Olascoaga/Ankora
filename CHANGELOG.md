@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Explicit responsive workbench layouts - 2026-09-07
+
+- Replaced implicit width/height overflow exceptions with named wide, medium,
+  and small shell states computed from the effective CSS viewport, including
+  Windows display scaling.
+- Preserved all five application menus at the 960 px minimum while capping the
+  visible workflow and inspector widths and retaining each user's wider-panel
+  preference for when space returns.
+- Made Results the only vertical document-scroll owner for pose-interaction
+  review and switched its one/two-column composition from monitor breakpoints
+  to the center workspace's usable width.
+
 ## Methods in Results - 2026-09-07
 
 - Exposed the exact record-derived Methods report in each selected Results

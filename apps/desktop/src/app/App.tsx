@@ -25,6 +25,7 @@ import { createInitialApplicationState, type ApplicationState } from "./state";
 import type { WorkspaceActivity } from "./activity";
 import { canNavigateTo, workflowSteps, type WorkflowStep } from "./workflow";
 import { describeUsage, useResourceUsage } from "./useResourceUsage";
+import { useWorkbenchLayout } from "./workbenchLayout";
 
 type ActivityTab = "activity" | "warnings" | "provenance" | "tools" | "about";
 type ThemeMode = "dark" | "light" | "blue" | "amethyst" | "system";
@@ -41,6 +42,7 @@ const DEFAULT_PROJECT_CATALOG: ProjectCatalog = {
 };
 
 export function App() {
+  const workbenchLayout = useWorkbenchLayout();
   const [state, setState] = useState<ApplicationState>(createInitialApplicationState);
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [pdbId, setPdbId] = useState("");
@@ -533,7 +535,11 @@ export function App() {
 
   return (
     <>
-      <main style={{ "--workflow-width": `${workflowWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties} className={`app-shell${workflowCollapsed ? " workflow-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}${activityOpen ? " activity-open" : ""}`}>
+      <main
+        data-layout={workbenchLayout}
+        style={{ "--workflow-preferred-width": `${workflowWidth}px`, "--inspector-preferred-width": `${inspectorWidth}px` } as CSSProperties}
+        className={`app-shell${workflowCollapsed ? " workflow-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}${activityOpen ? " activity-open" : ""}`}
+      >
         <header className="topbar">
         <div className="brand-mark"><AppIcon name="molecule" /></div>
         <div className="brand-copy"><h1>Ankora</h1><p>Scientist-controlled docking workbench</p></div>
