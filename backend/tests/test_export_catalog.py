@@ -19,6 +19,12 @@ from ankora_backend.services.export_catalog import ExportCatalogService
 CAMPAIGN = "11111111-1111-1111-1111-111111111111"
 FIGURE = "22222222-2222-2222-2222-222222222222"
 COMPLEX = "33333333-3333-3333-3333-333333333333"
+INPUT_IDENTITY = "d" * 64
+BUNDLE_IDENTITY = "e" * 64
+ARCHIVE = (
+    "Ankora_AutoDock-GPU_autodock_gpu_batch-batch-1_inputs-dddddddd_"
+    "20260828-050000_export-eeeeeeee_bundle.zip"
+)
 
 
 def _exports(root: Path) -> Path:
@@ -31,44 +37,69 @@ def _write(path: Path, payload: Any) -> None:
 
 
 def _campaign(
-    root: Path, *, minute: int = 0, evidence_aware: bool = True
+    root: Path,
+    *,
+    minute: int = 0,
+    evidence_aware: bool = True,
+    display_name: str | None = None,
+    identified: bool = True,
 ) -> Path:
     directory = _exports(root) / CAMPAIGN
-    _write(directory / "manifest.json", {
-        "exported_at": datetime(2026, 8, 28, 5, minute, tzinfo=UTC).isoformat(),
-        "ankora_export_format": 2,
-        "source_kind": "autodock_gpu_batch",
-        "source_id": "batch-1",
-        "engine": {
-            "name": "AutoDock-GPU", "version": "1.6",
-            "device": "NVIDIA GeForce RTX 5050 Laptop GPU",
-        },
-        "reproducibility": (
-            {
-                "status": "measured_variable",
-                "protocol": "ankora-reproducibility-v1",
-                "scope": "parsed scientific outputs and retained pose-artifact bytes",
-                "input_fingerprint_sha256": "a" * 64,
-                "executions": [
-                    {
+    _write(
+        directory / "manifest.json",
+        {
+            "exported_at": datetime(2026, 8, 28, 5, minute, tzinfo=UTC).isoformat(),
+            "ankora_export_format": 3 if identified else 2,
+            "source_kind": "autodock_gpu_batch",
+            "source_id": "batch-1",
+            "engine": {
+                "name": "AutoDock-GPU",
+                "version": "1.6",
+                "device": "NVIDIA GeForce RTX 5050 Laptop GPU",
+            },
+            "reproducibility": (
+                {
+                    "status": "measured_variable",
+                    "protocol": "ankora-reproducibility-v1",
+                    "scope": "parsed scientific outputs and retained pose-artifact bytes",
+                    "input_fingerprint_sha256": "a" * 64,
+                    "executions": [
+                        {
+                            "catalog_id": "autodock_gpu_batch:batch-1",
+                            "output_fingerprint_sha256": "b" * 64,
+                        },
+                        {
+                            "catalog_id": "autodock_gpu_batch:batch-2",
+                            "output_fingerprint_sha256": "c" * 64,
+                        },
+                    ],
+                    "note": "Measured variable.",
+                }
+                if evidence_aware
+                else {"bitwise_reproducible": True, "note": "Legacy assumption."}
+            ),
+            "counts": {"selected": 25, "succeeded": 25, "failed": 0},
+            **(
+                {
+                    "bundle": {
+                        "export_id": CAMPAIGN,
                         "catalog_id": "autodock_gpu_batch:batch-1",
-                        "output_fingerprint_sha256": "b" * 64,
+                        "display_name": display_name,
+                        "input_identity_sha256": INPUT_IDENTITY,
+                        "bundle_identity_sha256": BUNDLE_IDENTITY,
+                        "archive_filename": ARCHIVE,
                     },
-                    {
-                        "catalog_id": "autodock_gpu_batch:batch-2",
-                        "output_fingerprint_sha256": "c" * 64,
-                    },
-                ],
-                "note": "Measured variable.",
-            }
-            if evidence_aware
-            else {"bitwise_reproducible": True, "note": "Legacy assumption."}
-        ),
-        "counts": {"selected": 25, "succeeded": 25, "failed": 0},
-    })
+                }
+                if identified
+                else {}
+            ),
+        },
+    )
     (directory / "results.csv").write_text("rank,molecule\n", encoding="utf-8")
     (directory / "README.txt").write_text("note\n", encoding="utf-8")
-    (directory / "campaign_bundle.zip").write_bytes(b"PK\x03\x04")
+    (directory / (ARCHIVE if identified else "campaign_bundle.zip")).write_bytes(
+        b"PK\x03\x04"
+    )
     return directory
 
 
@@ -140,6 +171,7 @@ def test_every_export_says_what_it_came_from(tmp_path: Path) -> None:
 
     assert entries[ExportKind.CAMPAIGN].source_id == "batch-1"
     assert entries[ExportKind.CAMPAIGN].source_kind == "autodock_gpu_batch"
+    assert entries[ExportKind.CAMPAIGN].catalog_id == "autodock_gpu_batch:batch-1"
     assert entries[ExportKind.FIGURE].catalog_id == "autodock_gpu_batch:batch-1"
     assert entries[ExportKind.FIGURE].analysis_id == "analysis-1"
 
@@ -181,7 +213,7 @@ def test_files_the_project_holds_are_offered_and_the_rest_are_named(
 
     campaign = entries[ExportKind.CAMPAIGN]
     assert {file.filename for file in campaign.files if file.content_url} == {
-        "manifest.json", "results.csv", "README.txt", "campaign_bundle.zip",
+        "manifest.json", "results.csv", "README.txt", ARCHIVE,
     }
     readme = next(file for file in campaign.files if file.filename == "README.txt")
     assert readme.content_url == f"/exports/{CAMPAIGN}/README.txt"
@@ -193,6 +225,34 @@ def test_files_the_project_holds_are_offered_and_the_rest_are_named(
 
     # No route serves a complex, so it is named rather than linked either way.
     assert all(file.content_url is None for file in entries[ExportKind.POSE_COMPLEX].files)
+
+
+def test_identified_campaigns_expose_a_human_name_and_three_distinct_identities(
+    tmp_path: Path,
+) -> None:
+    _campaign(tmp_path, display_name="PIK3CD validation · repeat 2")
+
+    entry = _service(tmp_path).list_exports().entries[0]
+
+    assert entry.title == "PIK3CD validation · repeat 2"
+    assert entry.display_name == "PIK3CD validation · repeat 2"
+    assert entry.catalog_id == "autodock_gpu_batch:batch-1"
+    assert entry.input_identity_sha256 == INPUT_IDENTITY
+    assert entry.bundle_identity_sha256 == BUNDLE_IDENTITY
+    assert entry.archive_filename == ARCHIVE
+
+
+def test_a_legacy_bundle_keeps_its_original_archive_download(tmp_path: Path) -> None:
+    _campaign(tmp_path, identified=False)
+
+    entry = _service(tmp_path).list_exports().entries[0]
+
+    assert entry.display_name is None
+    assert entry.input_identity_sha256 is None
+    assert entry.bundle_identity_sha256 is None
+    assert entry.archive_filename is None
+    archive = next(file for file in entry.files if file.filename == "campaign_bundle.zip")
+    assert archive.content_url == f"/exports/{CAMPAIGN}/campaign_bundle.zip"
 
 
 def test_a_listing_carries_no_payloads(tmp_path: Path) -> None:

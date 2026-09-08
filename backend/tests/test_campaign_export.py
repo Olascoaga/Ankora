@@ -464,14 +464,24 @@ def test_a_campaign_export_indexes_and_zips_its_existing_m9_evidence(
 
     assert exported["interaction_analysis_count"] == 1
     assert exported["figure_count"] == 1
-    assert "campaign_bundle.zip" in exported["files"]
+    archive_filename = str(exported["archive_filename"])
+    assert archive_filename in exported["files"]
     exported_manifest = json.loads(
         (Path(str(exported["directory"])) / "manifest.json").read_text(encoding="utf-8")
     )
+    assert exported_manifest["ankora_export_format"] == 3
     assert exported_manifest["source_kind"] == "vina_batch"
     assert exported_manifest["source_id"] == "synthetic-batch"
+    assert exported_manifest["bundle"] == {
+        "export_id": exported["export_id"],
+        "catalog_id": "vina_batch:synthetic-batch",
+        "display_name": None,
+        "input_identity_sha256": exported["input_identity_sha256"],
+        "bundle_identity_sha256": exported["bundle_identity_sha256"],
+        "archive_filename": archive_filename,
+    }
     assert len(exported_manifest["recorded_evidence"]["pose_interaction_analyses"]) == 1
-    archive = service.file_path(str(exported["export_id"]), "campaign_bundle.zip")
+    archive = service.file_path(str(exported["export_id"]), archive_filename)
     with ZipFile(archive) as opened:
         names = set(opened.namelist())
     assert "manifest.json" in names
@@ -511,7 +521,10 @@ def test_a_chosen_folder_receives_the_whole_bundle(tmp_path: Path) -> None:
     service = _exporter(tmp_path, _campaign())
 
     result = service.export_campaign(
-        source_kind="vina_batch", batch_id="batch-1", destination=str(destination)
+        source_kind="vina_batch",
+        batch_id="batch-1",
+        destination=str(destination),
+        display_name="PIK3CD validation · repeat 2",
     )
 
     written = Path(result["directory"])
@@ -520,7 +533,9 @@ def test_a_chosen_folder_receives_the_whole_bundle(tmp_path: Path) -> None:
     # Named for the campaign rather than a UUID: it is about to sit beside a
     # paper. The shared slug turns the version's dots into hyphens, which keeps
     # one sanitizer for every kind of export rather than two.
-    assert written.name.startswith("Ankora_AutoDock_4-2-6_")
+    assert written.name.startswith("Ankora_PIK3CD-validation-repeat-2_vina_batch-batch-1_")
+    assert f"inputs-{str(result['input_identity_sha256'])[:8]}" in written.name
+    assert f"export-{str(result['bundle_identity_sha256'])[:8]}" in written.name
     assert {"results.csv", "manifest.json", "README.txt"} <= {
         item.name for item in written.iterdir()
     }
@@ -548,6 +563,9 @@ def test_exporting_twice_into_one_folder_never_replaces_the_first(
     )
 
     assert Path(first["directory"]) != Path(second["directory"])
+    assert first["input_identity_sha256"] == second["input_identity_sha256"]
+    assert first["bundle_identity_sha256"] != second["bundle_identity_sha256"]
+    assert first["archive_filename"] != second["archive_filename"]
     assert len(list(destination.iterdir())) == 2
 
 
@@ -558,6 +576,45 @@ def test_no_destination_keeps_the_bundle_in_the_project(tmp_path: Path) -> None:
 
     assert result["outside_project"] is False
     assert result["directory"] == result["record_directory"]
+
+
+def test_bundle_name_is_normalized_without_becoming_scientific_evidence(
+    tmp_path: Path,
+) -> None:
+    service = _exporter(tmp_path, _campaign())
+
+    result = service.export_campaign(
+        source_kind="vina_batch",
+        batch_id="batch-1",
+        display_name="  PIK3CD   validation repeat 2  ",
+    )
+
+    assert result["display_name"] == "PIK3CD validation repeat 2"
+    directory = Path(str(result["record_directory"]))
+    payload = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert payload["bundle"]["display_name"] == "PIK3CD validation repeat 2"
+    readme_text = (
+        directory / "README.txt"
+    ).read_text(encoding="utf-8")
+    assert "Name          PIK3CD validation repeat 2" in readme_text
+    assert "Bundle identity SHA-256" in readme_text
+    assert str(result["archive_filename"]) in readme_text
+
+
+def test_an_empty_bundle_name_is_rejected_before_an_export_directory_exists(
+    tmp_path: Path,
+) -> None:
+    from ankora_backend.domain.errors import AnkoraDomainError
+
+    service = _exporter(tmp_path, _campaign())
+
+    with pytest.raises(AnkoraDomainError) as error:
+        service.export_campaign(
+            source_kind="vina_batch", batch_id="batch-1", display_name="   "
+        )
+
+    assert error.value.code == "EXPORT_NAME_INVALID"
+    assert not (tmp_path / "projects" / "default" / "exports").exists()
 
 
 def test_a_destination_that_does_not_exist_is_refused(tmp_path: Path) -> None:

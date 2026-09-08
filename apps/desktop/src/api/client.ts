@@ -598,12 +598,14 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     sourceKind: string,
     sourceId: string,
     destination?: string | null,
+    displayName?: string | null,
   ): Promise<CampaignExport> => {
     const parameters = new URLSearchParams({
       source_kind: sourceKind,
       source_id: sourceId,
     });
     if (destination) parameters.set("destination", destination);
+    if (displayName?.trim()) parameters.set("display_name", displayName.trim());
     return requestJson<CampaignExport>(
       `/exports/campaigns?${parameters.toString()}`,
       { method: "POST" },

@@ -1,6 +1,7 @@
 import {
   formatApplicationDate,
   formatApplicationDateTime,
+  formatApplicationTimestamp,
   formatCount,
   formatScientificNumber,
   formatSignedScientificNumber,
@@ -26,6 +27,9 @@ it("keeps missing or non-finite scientific values explicit", () => {
 it("uses one English application date language with local 24-hour time", () => {
   expect(formatApplicationDate("2026-08-28T12:34:00")).toBe("28 Aug 2026");
   expect(formatApplicationDateTime("2026-08-28T12:34:00")).toBe("28 Aug 2026, 12:34");
+  expect(formatApplicationTimestamp("2026-08-28T12:34:56")).toBe(
+    "28 Aug 2026, 12:34:56",
+  );
 });
 
 it("preserves an invalid recorded timestamp instead of inventing a date", () => {

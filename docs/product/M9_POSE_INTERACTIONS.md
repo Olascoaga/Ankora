@@ -24,11 +24,12 @@ geometric contact map with experimental binding evidence.
 
 The first implementation lives inside Results. Individual figures can be saved
 as SVG/PNG/TIFF/PDF with journal-scale width and DPI plus a project-retained
-manifest. Campaign export format 2 includes the immutable interaction JSON,
+manifest. Campaign export format 3 includes the immutable interaction JSON,
 figure manifests, and still-available rendered figure files in a portable ZIP.
-The bundle indexes the copied bytes by SHA-256 and never recomputes an analysis
-or redraws a figure; a historical external file that is no longer present is
-listed explicitly as unavailable.
+It distinguishes the source campaign, exact inputs, and export event; legacy
+format-2 bundles remain readable. The bundle indexes the copied bytes by SHA-256
+and never recomputes an analysis or redraws a figure; a historical external file
+that is no longer present is listed explicitly as unavailable.
 
 ## Interface defaults
 

@@ -77,24 +77,48 @@ class ExportCatalogService:
             engine = manifest.get("engine") or {}
             counts = manifest.get("counts") or {}
             reproducibility = manifest.get("reproducibility") or {}
+            bundle = manifest.get("bundle") or {}
             assessment = _assessment(reproducibility)
+            archive_filename = _archive_filename(bundle)
+            served = set(_CAMPAIGN_SERVED)
+            if archive_filename is not None:
+                served.add(archive_filename)
+            display_name = _display_name(bundle)
+            source_kind = manifest.get("source_kind")
+            source_id = manifest.get("source_id")
+            catalog_id = bundle.get("catalog_id") if isinstance(bundle, dict) else None
+            if (
+                not isinstance(catalog_id, str)
+                and isinstance(source_kind, str)
+                and isinstance(source_id, str)
+            ):
+                catalog_id = f"{source_kind}:{source_id}"
             entries.append(
                 ExportEntry(
                     export_id=directory.name,
                     kind=ExportKind.CAMPAIGN,
                     exported_at=_moment(manifest.get("exported_at"), directory),
-                    title=_engine_label(engine),
+                    title=display_name or _engine_label(engine),
                     subtitle=(
                         f"{counts.get('succeeded', 0)}/{counts.get('selected', 0)} molecules docked"
                     ),
-                    source_kind=manifest.get("source_kind"),
-                    source_id=manifest.get("source_id"),
+                    catalog_id=catalog_id,
+                    source_kind=source_kind,
+                    source_id=source_id,
+                    display_name=display_name,
+                    input_identity_sha256=_sha256_value(
+                        bundle.get("input_identity_sha256")
+                    ),
+                    bundle_identity_sha256=_sha256_value(
+                        bundle.get("bundle_identity_sha256")
+                    ),
+                    archive_filename=archive_filename,
                     reproducibility=assessment,
                     bitwise_reproducible=reproducibility.get("bitwise_reproducible"),
                     directory=str(directory),
                     files=_files(
                         directory,
-                        served=_CAMPAIGN_SERVED,
+                        served=served,
                         url_prefix=f"/exports/{directory.name}",
                     ),
                 )
@@ -206,6 +230,30 @@ def _assessment(value: Any) -> ReproducibilityAssessment | None:
         return ReproducibilityAssessment.model_validate(evidence)
     except ValueError:
         return None
+
+
+def _display_name(bundle: Any) -> str | None:
+    if not isinstance(bundle, dict):
+        return None
+    value = bundle.get("display_name")
+    return value if isinstance(value, str) and 1 <= len(value) <= 80 else None
+
+
+def _sha256_value(value: Any) -> str | None:
+    if not isinstance(value, str) or len(value) != 64:
+        return None
+    return value if all(character in "0123456789abcdef" for character in value) else None
+
+
+def _archive_filename(bundle: Any) -> str | None:
+    if not isinstance(bundle, dict):
+        return None
+    value = bundle.get("archive_filename")
+    if not isinstance(value, str):
+        return None
+    if Path(value).name != value or not value.lower().endswith(".zip"):
+        return None
+    return value
 
 
 def _names(manifest: dict[str, Any]) -> set[str]:

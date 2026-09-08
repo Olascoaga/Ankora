@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
 import {
@@ -8,6 +8,7 @@ import {
   rememberedFolder,
 } from "../results/chooseFolder";
 import type { CampaignExport } from "../../types/api";
+import { formatApplicationTimestamp } from "../../utils/format";
 import { reproducibilityTitle } from "../results/reproducibility";
 
 /**
@@ -41,6 +42,9 @@ export function CampaignExportPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [destination, setDestination] = useState<string | null>(() => rememberedFolder());
+  const [displayName, setDisplayName] = useState("");
+  const displayNameId = useId();
+  const displayNameNoteId = useId();
   const canBrowse = folderChooserAvailable();
 
   async function browse() {
@@ -61,7 +65,12 @@ export function CampaignExportPanel({
     setBusy(true);
     setError(null);
     try {
-      setBundle(await ankoraApi.exportCampaign(sourceKind, sourceId, destination));
+      setBundle(await ankoraApi.exportCampaign(
+        sourceKind,
+        sourceId,
+        destination,
+        displayName || null,
+      ));
       onExported?.();
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "The export failed.");
@@ -80,6 +89,25 @@ export function CampaignExportPanel({
         travel with it in a portable ZIP. Nothing is recomputed.
       </p>
       {error ? <p className="protonation-blocker" role="alert">{error}</p> : null}
+      <div className="export-bundle-name">
+        <label className="section-label" htmlFor={displayNameId}>Bundle name (optional)</label>
+        <input
+          id={displayNameId}
+          type="text"
+          maxLength={80}
+          value={displayName}
+          placeholder="For example: PIK3CD validation · repeat 2"
+          disabled={busy}
+          aria-describedby={displayNameNoteId}
+          onChange={(event) => {
+            setDisplayName(event.target.value);
+            setBundle(null);
+          }}
+        />
+        <small id={displayNameNoteId}>
+          A human label only; it never changes the campaign or its evidence.
+        </small>
+      </div>
       <div className="figure-export-destination">
         <span className="section-label">Save into</span>
         <span className="figure-export-folder" title={destination ?? undefined}>
@@ -115,11 +143,18 @@ export function CampaignExportPanel({
       ) : null}
       {bundle ? (
         <div className="state-resolved-note">
-          <strong>{bundle.row_count} molecules exported</strong>
+          <strong>{bundle.display_name || "Campaign bundle written"}</strong>
+          <small>{bundle.row_count} molecules exported</small>
           <small>
             {bundle.engine} {bundle.engine_version}
             {` · ${reproducibilityTitle(bundle.reproducibility).toLowerCase()}`}
           </small>
+          <small>{formatApplicationTimestamp(bundle.exported_at)}</small>
+          <div className="export-identity" aria-label="Export identity">
+            <span>Campaign <code title={bundle.catalog_id}>{shortIdentity(bundle.source_id)}</code></span>
+            <span>Inputs <code title={bundle.input_identity_sha256}>{shortIdentity(bundle.input_identity_sha256)}</code></span>
+            <span>Bundle <code title={bundle.bundle_identity_sha256}>{shortIdentity(bundle.bundle_identity_sha256)}</code></span>
+          </div>
           <small>
             {bundle.interaction_analysis_count} pose analyses · {bundle.figure_count} saved figures
           </small>
@@ -144,4 +179,8 @@ export function CampaignExportPanel({
       ) : null}
     </section>
   );
+}
+
+function shortIdentity(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 12)}…` : value;
 }

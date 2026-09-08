@@ -29,6 +29,10 @@ const exports: ExportPage = {
       catalog_id: "vina_job:job-1",
       source_kind: null,
       source_id: null,
+      display_name: null,
+      input_identity_sha256: null,
+      bundle_identity_sha256: null,
+      archive_filename: null,
       analysis_id: "analysis-1",
       ligand_id: "ligand-1",
       reproducibility: null,
@@ -43,11 +47,15 @@ const exports: ExportPage = {
       export_id: "bundle-1",
       kind: "campaign",
       exported_at: "2026-08-28T05:12:00Z",
-      title: "AutoDock-GPU 1.6 · NVIDIA GeForce RTX 5050 Laptop GPU",
+      title: "PIK3CD validation · repeat 2",
       subtitle: "25/25 molecules docked",
-      catalog_id: null,
+      catalog_id: "autodock_gpu_batch:batch-1",
       source_kind: "autodock_gpu_batch",
       source_id: "batch-1",
+      display_name: "PIK3CD validation · repeat 2",
+      input_identity_sha256: "a".repeat(64),
+      bundle_identity_sha256: "e".repeat(64),
+      archive_filename: "Ankora_PIK3CD-validation-repeat-2_bundle.zip",
       analysis_id: null,
       ligand_id: null,
       reproducibility: {
@@ -65,7 +73,11 @@ const exports: ExportPage = {
       outside_project: false,
       files: [
         { filename: "results.csv", size_bytes: 4096, content_url: "/exports/bundle-1/results.csv" },
-        { filename: "campaign_bundle.zip", size_bytes: 131072, content_url: "/exports/bundle-1/campaign_bundle.zip" },
+        {
+          filename: "Ankora_PIK3CD-validation-repeat-2_bundle.zip",
+          size_bytes: 131072,
+          content_url: "/exports/bundle-1/Ankora_PIK3CD-validation-repeat-2_bundle.zip",
+        },
       ],
     },
   ],
@@ -139,8 +151,11 @@ it("lists every kind of export this project has produced", async () => {
   expect(cards).toHaveLength(2);
   expect(cards[0]).toHaveTextContent("RV2 · interaction diagram");
   expect(cards[0]).toHaveTextContent("Figure");
-  expect(cards[1]).toHaveTextContent("AutoDock-GPU 1.6");
+  expect(cards[1]).toHaveTextContent("PIK3CD validation · repeat 2");
   expect(cards[1]).toHaveTextContent("Campaign bundle");
+  expect(cards[1]).toHaveTextContent("Campaign batch-1");
+  expect(cards[1]).toHaveTextContent("Inputs aaaaaaaaaaaa…");
+  expect(cards[1]).toHaveTextContent("Bundle eeeeeeeeeeee…");
 });
 
 it("offers the files the project holds and only names the rest", async () => {
@@ -155,7 +170,7 @@ it("offers the files the project holds and only names the rest", async () => {
   expect(within(bundle).getByRole("link", { name: /results\.csv/ })).toHaveAttribute(
     "href", expect.stringContaining("/exports/bundle-1/results.csv"),
   );
-  expect(within(bundle).getByRole("link", { name: /campaign_bundle\.zip/ }))
+  expect(within(bundle).getByRole("link", { name: /Ankora_PIK3CD.*bundle\.zip/ }))
     .toHaveTextContent("128 KiB");
 
   expect(within(figure).queryAllByRole("link")).toHaveLength(0);

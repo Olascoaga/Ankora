@@ -53,6 +53,10 @@ class ExportEntry(BaseModel):
     catalog_id: str | None = None
     source_kind: str | None = None
     source_id: str | None = None
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    input_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    bundle_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    archive_filename: str | None = None
     analysis_id: str | None = None
     ligand_id: str | None = None
     # New campaign manifests carry comparison evidence. The boolean remains

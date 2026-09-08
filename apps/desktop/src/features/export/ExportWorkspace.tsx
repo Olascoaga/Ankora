@@ -4,7 +4,11 @@ import { ankoraApi } from "../../api/client";
 import { CampaignExportPanel } from "../docking/CampaignExportPanel";
 import { MethodsPanel } from "./MethodsPanel";
 import type { CatalogEntry, ExportEntry, ExportKind } from "../../types/api";
-import { formatApplicationDate, formatApplicationDateTime } from "../../utils/format";
+import {
+  formatApplicationDate,
+  formatApplicationDateTime,
+  formatApplicationTimestamp,
+} from "../../utils/format";
 import { reproducibilityTitle } from "../results/reproducibility";
 
 /**
@@ -219,9 +223,26 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
         </span>
       </div>
       <div className="export-card-meta">
-        <span>{formatApplicationDateTime(entry.exported_at)}</span>
+        <span>
+          {entry.kind === "campaign"
+            ? formatApplicationTimestamp(entry.exported_at)
+            : formatApplicationDateTime(entry.exported_at)}
+        </span>
         {entry.subtitle ? <span>{entry.subtitle}</span> : null}
       </div>
+      {entry.kind === "campaign" ? (
+        <div className="export-identity" aria-label="Export identity">
+          <span>
+            Campaign <code title={entry.catalog_id ?? undefined}>{shortIdentity(entry.source_id)}</code>
+          </span>
+          <span>
+            Inputs <code title={entry.input_identity_sha256 ?? undefined}>{shortIdentity(entry.input_identity_sha256)}</code>
+          </span>
+          <span>
+            Bundle <code title={entry.bundle_identity_sha256 ?? undefined}>{shortIdentity(entry.bundle_identity_sha256)}</code>
+          </span>
+        </div>
+      ) : null}
       {entry.kind === "campaign" && entry.reproducibility?.status !== "measured_reproducible" ? (
         <p className="results-card-warning">
           {reproducibilityTitle(entry.reproducibility)}
@@ -261,4 +282,9 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function shortIdentity(value: string | null): string {
+  if (!value) return "Historical";
+  return value.length > 12 ? `${value.slice(0, 12)}…` : value;
 }

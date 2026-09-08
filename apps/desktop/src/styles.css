@@ -574,6 +574,12 @@ button { font: inherit; }
 .export-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .export-card-heading strong { color: var(--text); font-size: 12px; }
 .export-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 11px; }
+.export-identity { display: flex; flex-wrap: wrap; gap: 5px 12px; color: var(--muted); font-size: 10px; }
+.export-identity span { display: inline-flex; align-items: baseline; gap: 4px; }
+.export-identity code { color: var(--text); font-size: inherit; }
+.export-bundle-name { display: grid; gap: 5px; }
+.export-bundle-name input { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); background: var(--panel); font-size: 12px; }
+.export-bundle-name small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .export-card .export-files { display: flex; flex-wrap: wrap; gap: 5px; }
 .export-card .export-files a { display: grid; gap: 1px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--accent); font-size: 11px; text-decoration: none; }
 .export-card .export-files small { color: var(--muted); font-size: 10px; }

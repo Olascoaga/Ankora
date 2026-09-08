@@ -26,6 +26,16 @@ const applicationDateTimeFormatter = new Intl.DateTimeFormat(APPLICATION_LOCALE,
   hourCycle: "h23",
 });
 
+const applicationTimestampFormatter = new Intl.DateTimeFormat(APPLICATION_LOCALE, {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 /**
  * Render a scientific value with a stable dot decimal, independent of the
  * Windows display language. A numeric second argument requests fixed decimal
@@ -85,6 +95,10 @@ export function formatApplicationDate(value: string): string {
 
 export function formatApplicationDateTime(value: string): string {
   return formatApplicationMoment(value, applicationDateTimeFormatter);
+}
+
+export function formatApplicationTimestamp(value: string): string {
+  return formatApplicationMoment(value, applicationTimestampFormatter);
 }
 
 function formatApplicationMoment(value: string, formatter: Intl.DateTimeFormat): string {

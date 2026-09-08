@@ -1789,6 +1789,11 @@ export interface CampaignExport {
   exported_at: string;
   source_kind: string;
   source_id: string;
+  catalog_id: string;
+  display_name: string | null;
+  input_identity_sha256: string;
+  bundle_identity_sha256: string;
+  archive_filename: string;
   engine: string;
   engine_version: string;
   reproducibility: ReproducibilityAssessment;
@@ -2103,6 +2108,10 @@ export interface ExportEntry {
   catalog_id: string | null;
   source_kind: string | null;
   source_id: string | null;
+  display_name: string | null;
+  input_identity_sha256: string | null;
+  bundle_identity_sha256: string | null;
+  archive_filename: string | null;
   analysis_id: string | null;
   ligand_id: string | null;
   reproducibility: ReproducibilityAssessment | null;

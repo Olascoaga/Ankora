@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Distinguishable campaign bundles - 2026-09-07
+
+- Upgraded new campaign exports to format 3 with separate campaign, exact-input,
+  and export-event identities plus an optional scientist-assigned presentation
+  name that does not alter scientific evidence.
+- Made project folders and ZIP filenames self-distinguishing with the campaign,
+  short input hash, second-resolution timestamp, and short bundle hash; repeated
+  exports can no longer present as identical files.
+- Kept format-2 bundles and their historical `campaign_bundle.zip` downloads
+  readable without inventing identities for old records.
+
 ## Consistent scientific and date formatting - 2026-09-07
 
 - Centralized presentation of scientific quantities with a locale-neutral dot

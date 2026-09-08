@@ -1520,6 +1520,7 @@ def export_campaign(
     source_kind: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str, Query(min_length=1)],
     destination: Annotated[str | None, Query(min_length=1)] = None,
+    display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
 ) -> dict[str, object]:
     """Write a reproducible bundle for a campaign that already ran.
 
@@ -1527,7 +1528,10 @@ def export_campaign(
     export is itself something that happened and can be found again.
     """
     return CampaignExportService.from_environment().export_campaign(
-        source_kind=source_kind, batch_id=source_id, destination=destination
+        source_kind=source_kind,
+        batch_id=source_id,
+        destination=destination,
+        display_name=display_name,
     )
 
 

@@ -125,6 +125,28 @@ def _empty_evidence() -> RecordedEvidence:
     return RecordedEvidence(analyses=[], figures=[], collection_warnings=[])
 
 
+@dataclass(frozen=True, slots=True)
+class CampaignBundleIdentity:
+    """Human-visible and machine-verifiable identity of one export event."""
+
+    export_id: str
+    catalog_id: str
+    display_name: str | None
+    input_identity_sha256: str
+    bundle_identity_sha256: str
+    archive_filename: str
+
+    def manifest_payload(self) -> dict[str, str | None]:
+        return {
+            "export_id": self.export_id,
+            "catalog_id": self.catalog_id,
+            "display_name": self.display_name,
+            "input_identity_sha256": self.input_identity_sha256,
+            "bundle_identity_sha256": self.bundle_identity_sha256,
+            "archive_filename": self.archive_filename,
+        }
+
+
 def results_csv(campaign: ExportedCampaign) -> str:
     """One row per selected molecule, in the engine's own ranking order.
 
@@ -152,12 +174,13 @@ def manifest(
     evidence: RecordedEvidence | None = None,
     source_kind: str | None = None,
     source_id: str | None = None,
+    bundle_identity: CampaignBundleIdentity | None = None,
 ) -> str:
     """Everything needed to know what the table is, and to ask for it again."""
     moment = exported_at or datetime.now(UTC)
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
-        "ankora_export_format": 2,
+        "ankora_export_format": 3 if bundle_identity is not None else 2,
         "source_kind": source_kind,
         "source_id": source_id,
         "engine": {
@@ -171,17 +194,7 @@ def manifest(
             **campaign.reproducibility.model_dump(mode="json"),
             "note": _reproducibility_note(campaign.reproducibility),
         },
-        "inputs": {
-            "receptor_id": campaign.receptor_id,
-            "receptor_pdbqt_sha256": campaign.receptor_sha256,
-            "binding_site_id": campaign.binding_site_id,
-            "search_box": campaign.box,
-            "map_set_id": campaign.map_set_id,
-            "map_set_identity_key": campaign.map_set_identity_key,
-            "library_id": campaign.library_id,
-            "filter_run_id": campaign.filter_run_id,
-            "selection_manifest_sha256": campaign.selection_manifest_sha256,
-        },
+        "inputs": _campaign_inputs(campaign),
         "protocol": campaign.parameters,
         "counts": {
             "selected": campaign.selected_count,
@@ -201,10 +214,18 @@ def manifest(
             ),
         ],
     }
+    if bundle_identity is not None:
+        payload["bundle"] = bundle_identity.manifest_payload()
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
-def readme(campaign: ExportedCampaign, *, evidence: RecordedEvidence | None = None) -> str:
+def readme(
+    campaign: ExportedCampaign,
+    *,
+    evidence: RecordedEvidence | None = None,
+    exported_at: datetime | None = None,
+    bundle_identity: CampaignBundleIdentity | None = None,
+) -> str:
     """A plain-text note for whoever opens the folder without Ankora."""
     lines = [
         "Ankora campaign export",
@@ -214,6 +235,15 @@ def readme(campaign: ExportedCampaign, *, evidence: RecordedEvidence | None = No
     ]
     if campaign.device_name:
         lines.append(f"Device        {campaign.device_name}")
+    if bundle_identity is not None:
+        lines += [
+            f"Name          {bundle_identity.display_name or '(not assigned)'}",
+            f"Campaign      {bundle_identity.catalog_id}",
+            f"Exported      {(exported_at or datetime.now(UTC)).isoformat()}",
+            f"Inputs SHA-256 {bundle_identity.input_identity_sha256}",
+            f"Bundle identity SHA-256 {bundle_identity.bundle_identity_sha256}",
+            f"Archive       {bundle_identity.archive_filename}",
+        ]
     recorded = evidence or _empty_evidence()
     lines += [
         f"Molecules     {campaign.selected_count} selected, "
@@ -224,7 +254,8 @@ def readme(campaign: ExportedCampaign, *, evidence: RecordedEvidence | None = No
         "              their row and carry the reason.",
         "manifest.json the receptor, search space, map set, executable hash and",
         "              complete search protocol these numbers came from.",
-        "campaign_bundle.zip a portable copy of these files plus every retained",
+        f"{(bundle_identity.archive_filename if bundle_identity else 'campaign_bundle.zip')} ",
+        "              is a portable copy of these files plus every retained",
         "              interaction record and saved figure for this campaign.",
         "",
         f"M9 evidence   {len(recorded.analyses)} interaction analyses, "
@@ -593,9 +624,13 @@ def collect_recorded_evidence(
     )
 
 
-def _write_portable_bundle(directory: Path) -> Path:
+def _write_portable_bundle(
+    directory: Path, filename: str = "campaign_bundle.zip"
+) -> Path:
     """Zip the complete folder without ever adding the ZIP to itself."""
-    target = directory / "campaign_bundle.zip"
+    if Path(filename).name != filename or not filename.lower().endswith(".zip"):
+        raise ValueError("Campaign archive filename must be a plain ZIP filename")
+    target = directory / filename
     with zipfile.ZipFile(
         target, mode="x", compression=zipfile.ZIP_DEFLATED, compresslevel=9
     ) as archive:
@@ -647,7 +682,12 @@ class CampaignExportService:
         )
 
     def export_campaign(
-        self, *, source_kind: str, batch_id: str, destination: str | None = None
+        self,
+        *,
+        source_kind: str,
+        batch_id: str,
+        destination: str | None = None,
+        display_name: str | None = None,
     ) -> dict[str, Any]:
         campaign = self._load(source_kind, batch_id)
         campaign = replace(
@@ -655,10 +695,19 @@ class CampaignExportService:
             reproducibility=self._reproducibility.assessment(f"{source_kind}:{batch_id}"),
         )
         campaign = self._with_box(campaign)
+        normalized_name = _normalize_display_name(display_name)
         export_id = str(uuid4())
         directory = self._export_dir(export_id)
         directory.mkdir(parents=True, exist_ok=False)
         exported_at = datetime.now(UTC)
+        bundle_identity = _bundle_identity(
+            campaign=campaign,
+            export_id=export_id,
+            source_kind=source_kind,
+            source_id=batch_id,
+            exported_at=exported_at,
+            display_name=normalized_name,
+        )
         evidence = collect_recorded_evidence(
             root=self._root,
             catalog_id=f"{source_kind}:{batch_id}",
@@ -673,8 +722,14 @@ class CampaignExportService:
                 evidence=evidence,
                 source_kind=source_kind,
                 source_id=batch_id,
+                bundle_identity=bundle_identity,
             ),
-            "README.txt": readme(campaign, evidence=evidence),
+            "README.txt": readme(
+                campaign,
+                evidence=evidence,
+                exported_at=exported_at,
+                bundle_identity=bundle_identity,
+            ),
         }
         # The Methods section this campaign's own records support. Rendered
         # here rather than left for the author to reconstruct from the
@@ -685,7 +740,7 @@ class CampaignExportService:
         for name, content in files.items():
             with (directory / name).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(content)
-        portable = _write_portable_bundle(directory)
+        portable = _write_portable_bundle(directory, bundle_identity.archive_filename)
 
         # The bundle is assembled in the project first, so the record and the
         # files it serves back exist whatever happens next; a chosen folder
@@ -693,14 +748,16 @@ class CampaignExportService:
         chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         written_to = directory
         if chosen is not None:
-            written_to = free_directory(chosen, _bundle_name(campaign, exported_at))
+            written_to = free_directory(
+                chosen, _bundle_name(campaign, exported_at, bundle_identity)
+            )
             shutil.copytree(directory, written_to)
 
         return {
-            "export_id": export_id,
             "exported_at": exported_at,
             "source_kind": source_kind,
             "source_id": batch_id,
+            **bundle_identity.manifest_payload(),
             "engine": campaign.engine,
             "engine_version": campaign.engine_version,
             "reproducibility": campaign.reproducibility.model_dump(mode="json"),
@@ -714,15 +771,29 @@ class CampaignExportService:
         }
 
     def file_path(self, export_id: str, filename: str) -> Path:
-        if filename not in {
+        allowed = {
             "results.csv",
             "methods.md",
             "manifest.json",
             "README.txt",
             "campaign_bundle.zip",
-        }:
+        }
+        directory = self._export_dir(export_id)
+        try:
+            payload = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            payload = {}
+        bundle = payload.get("bundle") if isinstance(payload, dict) else None
+        archive = bundle.get("archive_filename") if isinstance(bundle, dict) else None
+        if (
+            isinstance(archive, str)
+            and Path(archive).name == archive
+            and archive.lower().endswith(".zip")
+        ):
+            allowed.add(archive)
+        if filename not in allowed:
             raise self._not_found(export_id, filename)
-        path = self._export_dir(export_id) / filename
+        path = directory / filename
         if not path.is_file():
             raise self._not_found(export_id, filename)
         return path
@@ -771,19 +842,101 @@ class CampaignExportService:
         )
 
 
-def _bundle_name(campaign: ExportedCampaign, exported_at: datetime) -> str:
-    """`Ankora_AutoDock-GPU_1.6_20260828-2311` - readable beside a manuscript.
+def _bundle_name(
+    campaign: ExportedCampaign,
+    exported_at: datetime,
+    identity: CampaignBundleIdentity,
+) -> str:
+    """A compact but complete identity for a folder beside a manuscript.
 
     A folder called after a UUID says nothing about which campaign it holds,
     and the scientist is about to file it next to a paper.
     """
+    label = slug(identity.display_name or campaign.engine)[:40] or "campaign"
+    source_kind, source_id = identity.catalog_id.split(":", 1)
+    source = f"{slug(source_kind)}-{slug(source_id)[:8]}"
     parts = [
         "Ankora",
-        slug(campaign.engine),
-        slug(campaign.engine_version),
+        label,
+        source,
+        f"inputs-{identity.input_identity_sha256[:8]}",
         exported_at.strftime("%Y%m%d-%H%M%S"),
+        f"export-{identity.bundle_identity_sha256[:8]}",
     ]
     return "_".join(part for part in parts if part)
+
+
+def _campaign_inputs(campaign: ExportedCampaign) -> dict[str, Any]:
+    return {
+        "receptor_id": campaign.receptor_id,
+        "receptor_pdbqt_sha256": campaign.receptor_sha256,
+        "binding_site_id": campaign.binding_site_id,
+        "search_box": campaign.box,
+        "map_set_id": campaign.map_set_id,
+        "map_set_identity_key": campaign.map_set_identity_key,
+        "library_id": campaign.library_id,
+        "filter_run_id": campaign.filter_run_id,
+        "selection_manifest_sha256": campaign.selection_manifest_sha256,
+    }
+
+
+def _json_sha256(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
+
+
+def _bundle_identity(
+    *,
+    campaign: ExportedCampaign,
+    export_id: str,
+    source_kind: str,
+    source_id: str,
+    exported_at: datetime,
+    display_name: str | None,
+) -> CampaignBundleIdentity:
+    catalog_id = f"{source_kind}:{source_id}"
+    input_identity_sha256 = _json_sha256(_campaign_inputs(campaign))
+    bundle_identity_sha256 = _json_sha256(
+        {
+            "protocol": "ankora-campaign-bundle-identity-v1",
+            "export_id": export_id,
+            "exported_at": exported_at.isoformat(),
+            "catalog_id": catalog_id,
+            "display_name": display_name,
+            "input_identity_sha256": input_identity_sha256,
+        }
+    )
+    provisional = CampaignBundleIdentity(
+        export_id=export_id,
+        catalog_id=catalog_id,
+        display_name=display_name,
+        input_identity_sha256=input_identity_sha256,
+        bundle_identity_sha256=bundle_identity_sha256,
+        archive_filename="",
+    )
+    archive_filename = f"{_bundle_name(campaign, exported_at, provisional)}_bundle.zip"
+    return replace(provisional, archive_filename=archive_filename)
+
+
+def _normalize_display_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split())
+    if (
+        not normalized
+        or len(normalized) > 80
+        or any(ord(character) < 32 for character in normalized)
+    ):
+        raise AnkoraDomainError(
+            code="EXPORT_NAME_INVALID",
+            stage=_STAGE,
+            message="A bundle name must contain between 1 and 80 visible characters.",
+            status_code=422,
+            details={"display_name": value},
+        )
+    return normalized
 
 
 def _methods_markdown(source_kind: str, batch_id: str) -> str | None:
