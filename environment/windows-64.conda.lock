@@ -1,0 +1,41 @@
+# Ankora Windows scientific environment lock
+# platform: win-64
+# created-by: conda 26.5.3
+# Every package URL is bound to the exact SHA-256 reported by the channel.
+@EXPLICIT
+https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda#95e8e74062a5fe5f870ac8c90302b6e89945165fdaed7810606e84ddee6aac12
+https://conda.anaconda.org/conda-forge/noarch/cuda-version-13.3-hcbadf70_3.conda#bd8ee668f416bdd0f6548b2413550ae83d3834665a5be869a2daf99233ec526e
+https://repo.anaconda.com/pkgs/main/win-64/python_abi-3.12-4_cp312.conda#bf28c0a8618332ee6333cfb934141f845e463b7b493e5b444d847a94eb0e61f2
+https://repo.anaconda.com/pkgs/main/noarch/tzdata-2026c-he532380_0.conda#52adc4b0a9cce2ffb8ad319d54b7c940ae7961f7caf7ce6851eec4b3f542c368
+https://repo.anaconda.com/pkgs/main/win-64/ucrt-10.0.22621.0-haa95532_0.conda#9dfca4fb23f20e62a48b9c52e2fdf4d0d34bb31eb6a930c2195fcd10651b3cc3
+https://repo.anaconda.com/pkgs/main/win-64/vc14_runtime-14.44.35208-h4927774_12.conda#492ba65a50d99120e047469057f5eaddd3043cf17a18761653d1b3ae5d9d6c84
+https://repo.anaconda.com/pkgs/main/win-64/vc-14.3-h2df5915_12.conda#81f68bd3f7e74032547fc3c2b1d7d914b2688cc11f2470625c5c65d49d1474bd
+https://repo.anaconda.com/pkgs/main/win-64/vs2015_runtime-14.44.35208-ha6b5a95_12.conda#5b484a4b7df0133f60fd9e12dcf1926f868eaa34a2c3ddad8475169a1a99d9fa
+https://repo.anaconda.com/pkgs/main/win-64/bzip2-1.0.8-h2bbff1b_6.conda#4e30c9bfd4501555b0859c863e95ea044290babf3bf190b9d4fb38b06cf15c3c
+https://conda.anaconda.org/conda-forge/win-64/cuda-nvrtc-13.3.33-hac47afa_0.conda#7306b27c3a70cf1c35d4d200c1936037c9d6484322a39fac1967439a20585003
+https://conda.anaconda.org/conda-forge/win-64/libcufft-12.3.0.29-hac47afa_0.conda#bdf02b0485d21bfc27b47eaefbec0f6ab41546bea5ff2cc31b6034198e0ea44a
+https://repo.anaconda.com/pkgs/main/win-64/libexpat-2.8.2-hd7fb8db_1.conda#a4f6a14ae8fd1f754c7508ab509fcf90cabbb26ce5228d8bee51ec9f69b3ac40
+https://repo.anaconda.com/pkgs/main/win-64/libffi-3.4.8-h42d73b9_3.conda#52fa61549a14619aa53c0ae875f6d969fd97c92edffce64bfd7277e2557a726e
+https://conda.anaconda.org/conda-forge/win-64/libopenblas-0.3.34-pthreads_h877e47f_0.conda#8c34545ceb2431d1b67ba321c1750de2110be005bd2805abd591fc6b131c0a58
+https://repo.anaconda.com/pkgs/main/win-64/libzlib-1.3.2-h1c6eee0_0.conda#ee9ff49405717b96ec8d9b586beaaf96b741ffc4d37df6623f1d599ab8bdbb14
+https://conda.anaconda.org/conda-forge/win-64/llvm-openmp-22.1.8-h4fa8253_0.conda#50c02902bb516eeb56680358f052be38b5bf74b40e78ea4b2a675e84957e7307
+https://conda.anaconda.org/conda-forge/win-64/opencl-headers-2025.06.13-h826ebb9_0.conda#3acfdfe4b914a9fd8c950da6c13cfe563896744709eb5c4c7a926919c3e0b630
+https://conda.anaconda.org/conda-forge/win-64/openssl-3.6.3-hf411b9b_1.conda#2ebff5a1b5793e82495bf33c91fba040e11ff23333c2385ac66d0c3aee2cc14c
+https://repo.anaconda.com/pkgs/main/win-64/sqlite-3.53.2-hee5a0db_0.conda#2810e058702910c30cdfab5190090d8f4bb384870a5526980f437475567ed704
+https://repo.anaconda.com/pkgs/main/win-64/xz-5.8.2-h53af0af_0.conda#e09005f52c41234213bd52ebd07092d945855b6d631dd709dcf35dbc71a15c63
+https://conda.anaconda.org/conda-forge/win-64/khronos-opencl-icd-loader-2024.10.24-h2466b09_1.conda#881f92399f706df1185ec4372e59c5c9832f2dbb8e7587c6030a2a9a6e8ce7f8
+https://conda.anaconda.org/conda-forge/win-64/libblas-3.11.0-9_h0adab6e_openblas.conda#c603ba6779b8f42e78b478b822b5929fe767607b9fbe51f70d23889b375e49ca
+https://repo.anaconda.com/pkgs/main/win-64/zlib-1.3.2-h1c6eee0_0.conda#538f7c9b5ed6fa388c51bd499c736fd474826bcd7f2908456e9d2050b486e476
+https://conda.anaconda.org/conda-forge/win-64/libcblas-3.11.0-9_h2a8eebe_openblas.conda#d7711ffe17833bbbd59b0fdb541457456998240bcfe0d121c932e3edb5147a83
+https://conda.anaconda.org/conda-forge/win-64/liblapack-3.11.0-9_hd232482_openblas.conda#29af6696603f747aa7c9a5e573f43fa78f867cc5c8dd269177dee895e3b941d6
+https://repo.anaconda.com/pkgs/main/win-64/tk-8.6.15-hf199647_0.conda#2f7e9d06b513bcabce6d9ae195e45ccf94fd249edfefc591a5430a9f6f92a7fa
+https://repo.anaconda.com/pkgs/main/win-64/python-3.12.13-hd7b1df3_3.conda#6c6862152ca12711eaf2efb6dbfd50cdf773266ac63ab630fc7ef905ab955ac5
+https://conda.anaconda.org/conda-forge/noarch/legacy-cgi-2.6.4-pyhcf101f3_0.conda#403f11e1a3a9f539aceb009c6f0939098075d2b2efdc6dd9c0d0dd02eb404fc4
+https://conda.anaconda.org/conda-forge/win-64/numpy-2.5.2-py312ha3f287d_0.conda#1001b7aec66a029e43ced0981f804063f21779989f5be92afbe57ba6dbc9b0e0
+https://repo.anaconda.com/pkgs/main/win-64/packaging-26.2-py312haa95532_0.conda#03d14e1558bb1e6b25f04680a3ec82a224a6816e92ae7f2180971daaede11991
+https://repo.anaconda.com/pkgs/main/win-64/setuptools-83.0.0-py312haa95532_0.conda#fe020c48f79b0eac8d4cece368226d46f8bd1b1dc37a7666b591e31b5977bf25
+https://conda.anaconda.org/conda-forge/win-64/scipy-1.18.0-py312h9b3c559_0.conda#68e7c49be1e409ed2ac44f2977581d58a9a4d12e6724a4a5c5470348e5e40f34
+https://repo.anaconda.com/pkgs/main/win-64/wheel-0.47.0-py312haa95532_0.conda#df4602884a5ba42105bcdccdccad37c29c26d4d2bda4b94916e0cc72a7c4bc3e
+https://conda.anaconda.org/conda-forge/win-64/openmm-8.5.2-py312h8a30e60_0.conda#ed1b15bac23e8056f2c674759baac09867b433a28c69355f4c27cae6ad9ec759
+https://conda.anaconda.org/conda-forge/noarch/pip-26.2.1-pyh8b19718_0.conda#c205bae42eb11b364fe3663a817cbcbc20a8ef544c6b2ff6f391013487117259
+https://conda.anaconda.org/conda-forge/noarch/pdbfixer-1.12-pyhd8ed1ab_1.conda#00d71eb14af7634d48c32600c55ae385b8d45b3d4c74b6c75c404f5af358cd4d

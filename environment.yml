@@ -3,6 +3,11 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
-  - pdbfixer
-  - pip
+  # Human-maintained development specification. The release-grade, transitive
+  # Windows lock is environment/windows-64.conda.lock.
+  - python=3.12.13
+  - numpy=2.5.2
+  - scipy=1.18.0
+  - openmm=8.5.2
+  - pdbfixer=1.12
+  - pip=26.2.1

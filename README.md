@@ -59,6 +59,26 @@ Ankora reports the Python environment used by its active backend in **Scientific
 
 If `conda` is unavailable in PowerShell after installation, open Anaconda Prompt or run `conda init powershell` from Anaconda Prompt and restart PowerShell.
 
+### Locked Windows scientific environment
+
+`environment.yml` is the readable development specification. Validation and
+release work use two stricter locks: `environment/windows-64.conda.lock` binds
+every native Conda package to its exact win-64 build and SHA-256, while
+`requirements/windows-py312.lock` binds every Python wheel selected for CPython
+3.12 on Windows x86-64. Neither lock contains a machine-local path.
+
+Create a fresh locked environment without altering `ankora-dev`:
+
+```powershell
+.\scripts\bootstrap-locked-windows.ps1
+conda activate ankora-locked
+```
+
+The command refuses to modify an environment that already exists. To audit the
+files alone, run `python scripts/verify_windows_environment_lock.py`; inside the
+created environment, add `--runtime` to verify Python, architecture, Conda
+ownership, and every installed distribution against the lock.
+
 ### AutoDock Vina
 
 Ankora supports the official AutoDock Vina 1.2.7 Windows executable. Set `ANKORA_VINA_PATH` to the executable or its containing directory, add `vina.exe` to `PATH`, or place the official versioned executable below a narrowly named portable directory such as `%USERPROFILE%\tools\autodock-vina-1.2.7\vina_1.2.7_win.exe`. Ankora verifies the executable's reported version before every docking job; discovery alone does not authorize or launch a calculation.
@@ -93,7 +113,10 @@ If PowerShell blocks `npm.ps1`, use `npm.cmd` for direct commands (for example, 
 .\scripts\test.ps1
 ```
 
-The verification script runs the Python and frontend checks plus Rust formatting, Clippy, native tests, and a release build of the Tauri application. Windows CI runs the same native coverage.
+The verification script checks the public-path and Windows-environment locks,
+then runs the Python and frontend checks plus Rust formatting, Clippy, native
+tests, and a release build of the Tauri application. Windows CI runs the same
+coverage.
 
 The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
 

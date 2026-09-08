@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Locked Windows scientific environment - 2026-09-08
+
+- Bound the validated native Conda stack to exact win-64 builds and channel
+  SHA-256 values, and the CPython 3.12 dependency graph to exact Windows wheels
+  and SHA-256 values.
+- Added a static/runtime verifier that rejects missing hashes, version drift,
+  non-Windows runtimes, and machine-local paths; CI and the local verification
+  script now enforce the static contract.
+- Added a create-only locked-environment bootstrap that refuses to mutate an
+  existing environment and installs Ankora itself without re-resolving its
+  scientific dependencies.
+
 ## Explicit responsive workbench layouts - 2026-09-07
 
 - Replaced implicit width/height overflow exceptions with named wide, medium,

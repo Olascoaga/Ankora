@@ -1,0 +1,32 @@
+# Direct PyPI dependencies tested for the locked Windows scientific environment.
+# Transitive versions and artifact hashes are generated into windows-py312.lock.
+# These transitive constraints preserve the exact environment that passed the
+# Windows scientific validation; upgrading one is a deliberate revalidation.
+anyio==4.14.2
+click==8.4.2
+dimorphite-dl==2.0.2
+fastapi==0.141.1
+filelock==3.32.4
+fonttools==4.63.0
+gemmi==0.7.5
+httpx==0.28.1
+joblib==1.5.3
+kiwisolver==1.5.0
+meeko==0.7.1
+msgpack==1.2.1
+mypy==1.20.2
+numpy==2.5.2
+packaging==26.2
+pdb2pqr==3.7.1
+prolif==2.2.1
+propka==3.5.1
+psutil==7.2.2
+pydantic==2.13.4
+pytest==8.4.2
+python-multipart==0.0.32
+rdkit==2025.9.6
+ruff==0.16.3
+scipy==1.18.0
+tqdm==4.70.0
+uvicorn[standard]==0.52.4
+websockets==17.0.1

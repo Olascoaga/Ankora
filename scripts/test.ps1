@@ -98,6 +98,8 @@ Push-Location $projectRoot
 try {
     & $pythonCommand scripts/check_public_paths.py
     Assert-LastCommandSucceeded "Public path check"
+    & $pythonCommand scripts/verify_windows_environment_lock.py
+    Assert-LastCommandSucceeded "Windows environment lock verification"
     $pytestBasetemp = Join-Path $projectRoot "backend\.pytest_tmp"
     & $pythonCommand -m pytest backend -p no:cacheprovider --basetemp=$pytestBasetemp
     Assert-LastCommandSucceeded "Backend tests"
