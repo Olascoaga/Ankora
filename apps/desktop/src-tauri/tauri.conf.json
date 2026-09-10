@@ -29,7 +29,8 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
-      "resources/backend/": "backend/"
+      "resources/backend/": "backend/",
+      "resources/legal/": "legal/"
     },
     "windows": {
       "webviewInstallMode": {

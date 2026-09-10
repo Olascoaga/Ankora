@@ -46,7 +46,8 @@ Packaged PDBFixer, PDB2PQR/PROPKA, and Meeko requests route back through
 isolated worker modes of the frozen executable. The frontend still never
 executes a scientific tool. AutoDock Vina, AutoGrid4, AutoDock4,
 AutoDock-GPU, and P2Rank remain external discoveries and are not present in
-this installer pending Gate E item 24d's redistribution review.
+this installer. The subsequent Gate E item 24d review records and enforces that
+boundary in `THIRD_PARTY_REDISTRIBUTION_2026-09-08.md`.
 
 ## WebView2 decision
 
@@ -97,6 +98,6 @@ signing, and publication automation.
 
 Gate E item 24c is accepted: the Windows desktop is installable and owns a
 self-contained backend that does not depend on a user's Python distribution.
-Items 24d (third-party notices and redistribution decisions) and 24e (release
-artifact verification, signing, and publication) remain open and cannot be
-inferred from this result.
+The subsequent item 24d closes third-party notices and redistribution
+decisions. Item 24e (release artifact verification, signing, and publication)
+remains open and cannot be inferred from this result.

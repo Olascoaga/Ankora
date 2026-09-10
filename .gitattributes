@@ -5,3 +5,7 @@
 *.jpeg binary
 *.jpg binary
 *.png binary
+
+# Preserve upstream legal texts verbatim, including their source whitespace.
+apps/desktop/src-tauri/resources/legal/THIRD_PARTY_NOTICES.txt -whitespace
+resources/legal-sources/NSIS_COPYING.txt -whitespace

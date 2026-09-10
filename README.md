@@ -108,7 +108,7 @@ Ankora supports the official AutoDock Vina 1.2.7 Windows executable. Set `ANKORA
 
 ADR-015 accepts AutoDock4 as Ankora's second native scoring family and AutoDock-GPU as an optional execution backend for that same scoring family. The backend discovers `autogrid4.exe`, `autodock4.exe`, and `AutoDock-GPU.exe` independently through `ANKORA_AUTOGRID4_PATH`, `ANKORA_AUTODOCK4_PATH`, and `ANKORA_AUTODOCK_GPU_PATH`, `PATH`, the active Python runtime, or narrowly named portable folders below `%USERPROFILE%\tools`. Discovery records architecture and SHA-256 without launching a calculation; every execution performs its own version/device probe.
 
-Official AutoGrid4/AutoDock4 4.2.6 CPU and AutoDock-GPU 1.6 Windows binaries are verified on the development machine. Production integration includes immutable map persistence and reuse, cancellable single-ligand and library CPU jobs, cluster-native DLG review, one-process GPU `--filelist` campaigns, exact progress and preserved raw evidence. See `docs/validation/AUTODOCK4_PHASE0_WINDOWS.md`, `docs/validation/AUTODOCK4_PHASE1_MAPS.md`, and `docs/validation/AUTODOCK_CPU_VS_GPU_BENCHMARK.md`. Redistribution of third-party binaries remains subject to a separate license/package review.
+Official AutoGrid4/AutoDock4 4.2.6 CPU and AutoDock-GPU 1.6 Windows binaries are verified on the development machine. Production integration includes immutable map persistence and reuse, cancellable single-ligand and library CPU jobs, cluster-native DLG review, one-process GPU `--filelist` campaigns, exact progress and preserved raw evidence. See `docs/validation/AUTODOCK4_PHASE0_WINDOWS.md`, `docs/validation/AUTODOCK4_PHASE1_MAPS.md`, and `docs/validation/AUTODOCK_CPU_VS_GPU_BENCHMARK.md`. These engines remain user-supplied external tools and are not redistributed by Ankora.
 
 ## Development
 
@@ -135,9 +135,9 @@ If PowerShell blocks `npm.ps1`, use `npm.cmd` for direct commands (for example, 
 ```
 
 The verification script checks the public-path and Windows-environment locks,
-then runs the Python and frontend checks plus Rust formatting, Clippy, native
-tests, and a release build of the Tauri application. Windows CI runs the same
-coverage.
+the generated third-party redistribution inventory, then the Python and
+frontend checks plus Rust formatting, Clippy, native tests, and a release build
+of the Tauri application. Windows CI runs the same coverage.
 
 ## Windows installer
 
@@ -150,8 +150,10 @@ npm run tauri:installer
 ```
 
 The packaging command re-verifies the immutable Windows locks, freezes the
-backend and Python scientific dependencies, checks the bundled backend with
-Python and Conda absent from `PATH`, and then creates the desktop installer.
+backend and Python scientific dependencies, checks that the resulting
+third-party inventory still matches the reviewed legal payload, exercises the
+bundled backend with Python and Conda absent from `PATH`, and then creates the
+desktop installer.
 Exercise the installed application, bundled-backend ownership, and silent
 uninstall path with:
 
@@ -162,8 +164,12 @@ uninstall path with:
 The installer intentionally uses the Evergreen WebView2 bootstrapper only when
 the runtime is missing. Vina, AutoGrid4, AutoDock4, AutoDock-GPU, and P2Rank are
 not redistributed by this packaging unit; Ankora continues to discover those
-separately configured executables. Third-party redistribution review, release
-signing, checksums, and automated publication remain separate release gates.
+separately configured executables. Every installation includes Ankora's MIT
+license, a machine-readable component inventory, consolidated third-party
+notices, and version-specific source-availability locations. The reviewed
+redistribution boundary is recorded in
+`docs/validation/THIRD_PARTY_REDISTRIBUTION_2026-09-08.md`. Release signing,
+checksums, and automated publication remain a separate release gate.
 
 The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
 

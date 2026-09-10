@@ -1,0 +1,40 @@
+ANKORA THIRD-PARTY SOURCE AVAILABILITY
+======================================
+
+Ankora redistributes the unmodified components below in executable form.
+The version-specific locations provide the source or the release page from
+which source can be obtained. Ankora does not restrict replacement or reverse
+engineering of LGPL-covered libraries for debugging modifications to them.
+The corresponding Ankora application source and deterministic rebuild scripts
+are published at https://github.com/Olascoaga/Ankora and will be frozen with
+each release tag (for this package: v0.1.0). No listed reciprocal component
+has been locally modified by Ankora.
+
+- [native-runtime] openmm 8.5.2 (LGPL-3.0-or-later): https://github.com/openmm/openmm/tree/36a30cb
+- [python] certifi 2026.7.22 (OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)): https://pypi.org/project/certifi/2026.7.22/
+- [python] gemmi 0.7.5 (OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)): https://pypi.org/project/gemmi/0.7.5/
+- [python] GridDataFormats 1.2.0 (LGPL-3.0-or-later): https://pypi.org/project/GridDataFormats/1.2.0/
+- [python] MDAnalysis 2.10.0 (OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)): https://pypi.org/project/MDAnalysis/2.10.0/
+- [python] meeko 0.7.1 (LGPL-2.1-or-later): https://pypi.org/project/meeko/0.7.1/
+- [python] OpenMM 8.5.2 (LGPL-3.0-or-later): https://pypi.org/project/OpenMM/8.5.2/
+- [python] propka 3.5.1 (LGPL-2.1-or-later): https://pypi.org/project/propka/3.5.1/
+- [python] pyinstaller 6.22.2 (OSI Approved :: GNU General Public License v2 (GPLv2)): https://pypi.org/project/pyinstaller/6.22.2/
+- [python] tqdm 4.70.0 (MPL-2.0 AND MIT): https://pypi.org/project/tqdm/4.70.0/
+- [rust] cssparser 0.36.0 (MPL-2.0): https://crates.io/api/v1/crates/cssparser/0.36.0/download
+- [rust] cssparser-macros 0.6.1 (MPL-2.0): https://crates.io/api/v1/crates/cssparser-macros/0.6.1/download
+- [rust] dtoa-short 0.3.5 (MPL-2.0): https://crates.io/api/v1/crates/dtoa-short/0.3.5/download
+- [rust] option-ext 0.2.0 (MPL-2.0): https://crates.io/api/v1/crates/option-ext/0.2.0/download
+- [rust] selectors 0.36.1 (MPL-2.0): https://crates.io/api/v1/crates/selectors/0.36.1/download
+
+EXTERNAL SCIENTIFIC TOOLS NOT REDISTRIBUTED
+--------------------------------------------
+The following tools may be detected and launched from user-configured paths,
+but are not included in the Ankora installer and are not covered by its
+third-party inventory:
+
+- AutoDock Vina
+- AutoGrid4
+- AutoDock4
+- AutoDock-GPU
+- GNINA
+- P2Rank

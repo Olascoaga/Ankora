@@ -12,6 +12,7 @@ $workRoot = Join-Path $buildRoot "pyinstaller"
 $resourceRoot = Join-Path $projectRoot "apps\desktop\src-tauri\resources\backend"
 $specPath = Join-Path $projectRoot "backend\packaging\ankora_backend.spec"
 $packagingLock = Join-Path $projectRoot "requirements\windows-packaging.lock"
+$legalGenerator = Join-Path $projectRoot "scripts\generate_third_party_notices.py"
 $tauriCommand = Join-Path $projectRoot "node_modules\.bin\tauri.cmd"
 
 function Assert-LastCommandSucceeded([string]$step) {
@@ -86,6 +87,11 @@ try {
     if (-not (Test-Path -LiteralPath $builtExecutable -PathType Leaf)) {
         throw "PyInstaller did not create $builtExecutable"
     }
+
+    & $PythonPath $legalGenerator `
+        --analysis (Join-Path $workRoot "ankora_backend\Analysis-00.toc") `
+        --check
+    Assert-LastCommandSucceeded "Third-party redistribution notice verification"
 
     $resourceParent = Split-Path -Parent $resourceRoot
     if (-not (Test-Path -LiteralPath $resourceParent)) {

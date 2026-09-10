@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Third-party redistribution notices - 2026-09-08
+
+- Derived the Windows redistribution inventory from PyInstaller's actual file
+  analysis, exact Conda file ownership, the installed package-lock production
+  closure, and Cargo's normal Windows dependency graph.
+- Added consolidated license/notice text, machine-readable component records,
+  reciprocal-license source locations, and Ankora's own MIT license to every
+  installed application.
+- Made local verification reject JavaScript/Rust dependency drift and made the
+  installer build reject any frozen Python/Conda payload that differs from the
+  reviewed inventory.
+- Kept Vina, AutoGrid4, AutoDock4, AutoDock-GPU, GNINA, P2Rank, and the
+  on-demand WebView2 bootstrapper outside the redistributed-component claim.
+
 ## Self-contained Windows installer runtime - 2026-09-08
 
 - Added a current-user NSIS build that freezes Ankora's localhost backend and

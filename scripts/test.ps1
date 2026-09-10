@@ -105,6 +105,8 @@ try {
     Assert-LastCommandSucceeded "Windows environment lock verification"
     & $pythonCommand scripts/run_native_tool_smoke.py --check
     Assert-LastCommandSucceeded "Native scientific-tool smoke matrix verification"
+    & $pythonCommand scripts/generate_third_party_notices.py --static-check
+    Assert-LastCommandSucceeded "Third-party redistribution notice verification"
     & $pythonCommand -m pytest backend -p no:cacheprovider --basetemp=$pytestBasetemp
     Assert-LastCommandSucceeded "Backend tests"
     & $pythonCommand -m ruff check backend

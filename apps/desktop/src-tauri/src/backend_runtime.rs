@@ -102,8 +102,8 @@ mod tests {
     #[test]
     fn bundled_backend_has_one_stable_resource_location() {
         assert_eq!(
-            bundled_backend_path(Path::new(r"C:\Program Files\Ankora")),
-            PathBuf::from(r"C:\Program Files\Ankora\backend\ankora-backend.exe")
+            bundled_backend_path(Path::new("installation")),
+            PathBuf::from("installation/backend/ankora-backend.exe")
         );
     }
 }

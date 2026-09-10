@@ -60,13 +60,55 @@ try {
         throw "Installed application or uninstaller was not found in $installDir."
     }
 
+    $legalDir = Join-Path $installDir "legal"
+    foreach ($legalFile in @(
+        "ANKORA_LICENSE.txt",
+        "SOURCE_AVAILABILITY.txt",
+        "THIRD_PARTY_INVENTORY.json",
+        "THIRD_PARTY_NOTICES.txt"
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $legalDir $legalFile) -PathType Leaf)) {
+            throw "Installed third-party legal payload is missing $legalFile."
+        }
+    }
+    $inventory = Get-Content `
+        (Join-Path $legalDir "THIRD_PARTY_INVENTORY.json") `
+        -Raw |
+        ConvertFrom-Json
+    if ($inventory.components.Count -lt 1) {
+        throw "Installed third-party inventory is empty."
+    }
+    $bundledNames = @($inventory.components | ForEach-Object { $_.name })
+    foreach ($externalTool in @(
+        "AutoDock Vina",
+        "AutoGrid4",
+        "AutoDock4",
+        "AutoDock-GPU",
+        "GNINA",
+        "P2Rank"
+    )) {
+        if ($bundledNames -contains $externalTool) {
+            throw "External tool was incorrectly represented as bundled: $externalTool"
+        }
+    }
+    $sourceAvailability = Get-Content `
+        (Join-Path $legalDir "SOURCE_AVAILABILITY.txt") `
+        -Raw
+    foreach ($requiredSource in @("OpenMM", "Meeko", "Gemmi", "MPL-2.0")) {
+        if ($sourceAvailability -notmatch [regex]::Escape($requiredSource)) {
+            throw "Installed source-availability notice is missing $requiredSource."
+        }
+    }
+
     $env:Path = "$env:WINDIR\System32;$env:WINDIR"
     $desktopProcess = Start-Process `
         -FilePath $desktopExecutable.FullName `
         -PassThru `
         -WindowStyle Hidden
     $system = $null
-    for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    # First launch from a newly installed, unsigned scientific runtime can spend
+    # more than 30 seconds in Windows application-control/antivirus inspection.
+    for ($attempt = 0; $attempt -lt 240; $attempt++) {
         if ($desktopProcess.HasExited) {
             throw "Installed Ankora exited before its backend became healthy."
         }
@@ -111,7 +153,7 @@ try {
     if (-not $backendStopped) {
         throw "Bundled backend outlived the installed desktop process."
     }
-    Write-Host "Installed Ankora started and stopped its bundled backend without Python on PATH."
+    Write-Host "Installed Ankora includes verified legal notices and runs without Python on PATH."
 }
 finally {
     if ($null -ne $desktopProcess -and -not $desktopProcess.HasExited) {
