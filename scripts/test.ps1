@@ -101,6 +101,8 @@ Push-Location $projectRoot
 try {
     & $pythonCommand scripts/check_public_paths.py
     Assert-LastCommandSucceeded "Public path check"
+    & $pythonCommand scripts/check_public_validation_status.py
+    Assert-LastCommandSucceeded "Public validation status check"
     & $pythonCommand scripts/verify_windows_environment_lock.py
     Assert-LastCommandSucceeded "Windows environment lock verification"
     & $pythonCommand scripts/run_native_tool_smoke.py --check

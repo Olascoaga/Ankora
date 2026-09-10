@@ -9,9 +9,21 @@ claim of transferability. The independent PIK3CD 6OCO/M5V inputs and pre-run
 protocol are frozen in `reference_cases/PIK3CD_6OCO_M5V.manifest.json` with
 evidence SHA-256
 `7fe1ac4cc8aa1fb46569d5e8bce77b376fab3138e01238efa4d23197e25e8cfb`.
-No docking result contributed to that protocol; its execution and result
-evidence remain pending. The 3UT3/EMJ case is adversarial and must not alone
-fail the entire scientific suite.
+No docking result contributed to that protocol. Its execution is now complete:
+the independent result package freezes 29 records and 122 artifacts with
+evidence SHA-256
+`c62d8d2e7f813c1a4799dfad3c264d3cfbeca48918979c53e2653e12c396f1dd`.
+The fixed 2.0 Å boundary classifies Vina as a near miss, AutoDock4 CPU as
+recovered but misranked, and all six AutoDock-GPU repeats as not recovered.
+These case-level findings do not establish virtual-screening enrichment,
+affinity prediction, biological activity, or cross-target generality. The
+3UT3/EMJ case is adversarial and must not alone fail the entire scientific
+suite.
+
+`VALIDATION_STATUS.json` is the canonical public status index. Its adjacent
+Markdown rendering and the README summary are checked against frozen manifests
+by `scripts/check_public_validation_status.py`; CI fails when the public status
+or evidence metadata diverges.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

@@ -2,6 +2,16 @@
 
 All notable project changes are recorded here.
 
+## Synchronized public validation status - 2026-09-10
+
+- Published one machine-readable status index for Ankora's frozen reference
+  cases, their evidence identities, recorded conclusions, and unresolved
+  scientific boundaries.
+- Corrected the validation strategy to record the completed pre-registered
+  6OCO/M5V execution without overstating its single-target evidence.
+- Added a CI-enforced check that rejects drift between the status index, README,
+  rendered status page, and frozen validation manifests.
+
 ## Verified Windows release artifacts - 2026-09-10
 
 - Added create-only Windows release assembly with an exact source/tree

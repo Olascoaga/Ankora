@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "synchronized_on": "2026-09-10",
+  "implemented_workspaces": [
+    "M1",
+    "M2",
+    "M3",
+    "M4",
+    "M5",
+    "M6",
+    "M7",
+    "M8",
+    "M9"
+  ],
+  "reference_cases": [
+    {
+      "case_id": "SERPINE1_7AQF_RV2",
+      "label": "SERPINE1 7AQF / RV2",
+      "status": "frozen_with_known_gaps",
+      "manifest": "docs/validation/reference_cases/SERPINE1_7AQF_RV2.manifest.json",
+      "matrix": "docs/validation/reference_cases/SERPINE1_7AQF_RV2.md",
+      "record_count": 26,
+      "artifact_count": 54,
+      "evidence_sha256": "03d525417e7455dc40354648877a050675fdd8d5fcd1275c547fd007873cdd00",
+      "conclusion": "Retrospective evidence is frozen, but the Vina run lacks an in-place crystallographic RMSD verdict and the CPU/GPU comparison did not use one common ligand chemical state. This case does not establish transferability."
+    },
+    {
+      "case_id": "PIK3CD_6OCO_M5V_RESULTS",
+      "label": "PIK3CD 6OCO / M5V",
+      "status": "completed",
+      "manifest": "docs/validation/reference_cases/PIK3CD_6OCO_M5V_RESULTS.manifest.json",
+      "matrix": "docs/validation/reference_cases/PIK3CD_6OCO_M5V_RESULTS.md",
+      "record_count": 29,
+      "artifact_count": 122,
+      "evidence_sha256": "c62d8d2e7f813c1a4799dfad3c264d3cfbeca48918979c53e2653e12c396f1dd",
+      "conclusion": "The pre-registered case is complete. Vina was a 2.0596 Å near miss; AutoDock4 CPU sampled a 1.2274 Å pose but first recovered at rank 5; none of six AutoDock-GPU repeats recovered below the fixed 2.0 Å boundary."
+    }
+  ],
+  "claims_not_established": [
+    "Two single-ligand reference systems do not validate virtual-screening enrichment, cross-target performance, affinity prediction, or biological activity.",
+    "Vina scores and AutoDock4 binding energies are different quantities and are not compared on one numerical scale.",
+    "The completed 6OCO/M5V protocol does not determine the dominant physiological ligand microstate or quantify sensitivity to receptor preparation, search box, seed, or sampling."
+  ],
+  "next_validation_boundary": "Freeze and execute multi-target virtual-screening benchmarks with actives and decoys or inactives, report EF1%, BEDROC, ROC-AUC, and PR-AUC, and measure sensitivity to chemical state, receptor, box, seed, and sampling without relaxing the frozen protocol after observing results."
+}

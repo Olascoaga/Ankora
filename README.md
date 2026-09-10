@@ -16,6 +16,12 @@ record-derived dependency graph: scientists may mark an input stale with an
 explicit reason, after which Ankora marks only its downstream dependents stale
 while retaining every original record and alternative branch for inspection.
 
+<!-- BEGIN GENERATED VALIDATION STATUS -->
+## Scientific validation status
+
+Ankora implements the M1-M9 workflow. Frozen completed evidence exists for PIK3CD 6OCO / M5V; other cases and known gaps remain visible in the [public validation status](docs/validation/VALIDATION_STATUS.md). This evidence does not yet establish virtual-screening enrichment, affinity prediction, biological activity, or cross-target generality.
+<!-- END GENERATED VALIDATION STATUS -->
+
 ## Prerequisites
 
 The Windows installer includes Ankora's Python backend and its Python scientific

@@ -31,6 +31,9 @@ jobs:
       - name: Reject private absolute paths
         run: python scripts/check_public_paths.py
 
+      - name: Verify public validation status
+        run: python scripts/check_public_validation_status.py
+
       - name: Verify Windows environment locks
         run: python scripts/verify_windows_environment_lock.py
 
