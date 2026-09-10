@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$PythonPath,
+    [string]$CertificateThumbprint,
+    [string]$TimestampUrl,
     [switch]$BackendOnly
 )
 
@@ -14,6 +16,7 @@ $specPath = Join-Path $projectRoot "backend\packaging\ankora_backend.spec"
 $packagingLock = Join-Path $projectRoot "requirements\windows-packaging.lock"
 $legalGenerator = Join-Path $projectRoot "scripts\generate_third_party_notices.py"
 $tauriCommand = Join-Path $projectRoot "node_modules\.bin\tauri.cmd"
+$signingConfig = Join-Path $buildRoot "tauri-signing-config.json"
 
 function Assert-LastCommandSucceeded([string]$step) {
     if ($LASTEXITCODE -ne 0) {
@@ -34,6 +37,28 @@ function Reset-BuildDirectory([string]$path, [string]$allowedRoot) {
         Remove-Item -LiteralPath $resolvedPath -Recurse -Force
     }
     New-Item -ItemType Directory -Path $resolvedPath | Out-Null
+}
+
+$hasThumbprint = -not [string]::IsNullOrWhiteSpace($CertificateThumbprint)
+$hasTimestampUrl = -not [string]::IsNullOrWhiteSpace($TimestampUrl)
+if ($hasThumbprint -ne $hasTimestampUrl) {
+    throw "CertificateThumbprint and TimestampUrl must be supplied together."
+}
+if ($hasThumbprint) {
+    if ($CertificateThumbprint -notmatch '^[A-Fa-f0-9]{40}$') {
+        throw "CertificateThumbprint must contain exactly 40 hexadecimal characters."
+    }
+    $parsedTimestampUrl = $null
+    if (
+        -not [System.Uri]::TryCreate(
+            $TimestampUrl,
+            [System.UriKind]::Absolute,
+            [ref]$parsedTimestampUrl
+        ) -or
+        $parsedTimestampUrl.Scheme -ne "https"
+    ) {
+        throw "TimestampUrl must be an absolute HTTPS URL."
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($PythonPath)) {
@@ -184,7 +209,30 @@ try {
     }
     Push-Location (Join-Path $projectRoot "apps\desktop")
     try {
-        & $tauriCommand build --bundles nsis
+        $tauriArguments = @("build", "--bundles", "nsis", "--ci")
+        if ($hasThumbprint) {
+            $override = @{
+                bundle = @{
+                    windows = @{
+                        certificateThumbprint = $CertificateThumbprint.ToUpperInvariant()
+                        digestAlgorithm = "sha256"
+                        timestampUrl = $TimestampUrl
+                    }
+                }
+            }
+            $overrideJson = $override | ConvertTo-Json -Depth 4
+            [System.IO.File]::WriteAllText(
+                $signingConfig,
+                $overrideJson,
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            $tauriArguments += @("--config", $signingConfig)
+            Write-Host "Building with a user-controlled Authenticode identity."
+        }
+        elseif (Test-Path -LiteralPath $signingConfig) {
+            Remove-Item -LiteralPath $signingConfig -Force
+        }
+        & $tauriCommand @tauriArguments
         Assert-LastCommandSucceeded "Building the Ankora NSIS installer"
     }
     finally {

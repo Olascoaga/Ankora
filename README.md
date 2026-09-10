@@ -169,7 +169,23 @@ license, a machine-readable component inventory, consolidated third-party
 notices, and version-specific source-availability locations. The reviewed
 redistribution boundary is recorded in
 `docs/validation/THIRD_PARTY_REDISTRIBUTION_2026-09-08.md`. Release signing,
-checksums, and automated publication remain a separate release gate.
+checksums, and publication are controlled by the manual **Windows release**
+workflow. It checks out an existing version tag, rebuilds from the immutable
+Windows locks, creates `SHA256SUMS` plus a source/signature manifest, attests
+every indexed file, and uploads the verified set as a workflow artifact.
+
+A public GitHub Release is fail-closed: the `windows-release` environment must
+provide `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`, and
+`WINDOWS_TIMESTAMP_URL`; the certificate must import with a private key, and
+the resulting installer must have a valid timestamped Authenticode signature.
+Without those three user-controlled secrets, the workflow can create only an
+unsigned candidate and will refuse publication. Create the exact tag (for
+example `v0.1.0`) at the reviewed commit before dispatching the workflow, and
+enable GitHub's immutable-releases setting for the repository before the first
+public release. See
+`docs/validation/WINDOWS_RELEASE_ARTIFACTS_2026-09-10.md` for the boundary and
+verification contract. Ankora indexes the exact released bytes; independent
+bit-for-bit rebuild reproducibility is not yet claimed.
 
 The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
 

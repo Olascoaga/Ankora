@@ -2,6 +2,21 @@
 
 All notable project changes are recorded here.
 
+## Verified Windows release artifacts - 2026-09-10
+
+- Added create-only Windows release assembly with an exact source/tree
+  manifest, immutable-input hashes, Authenticode evidence, legal payload, and
+  a standard `SHA256SUMS` index.
+- Added independent verification that rejects changed, missing, duplicated, or
+  extra files and rechecks the installer's Authenticode state instead of
+  trusting recorded metadata.
+- Added a manual SHA-pinned GitHub Actions workflow that rebuilds from the
+  locked Windows environment, attests every indexed artifact, and uploads an
+  unsigned candidate when no signing identity is configured.
+- Made public release publication require an existing matching tag and a valid
+  timestamped signature from a user-controlled certificate; partial signing
+  configuration and attempts to replace an existing release fail closed.
+
 ## Third-party redistribution notices - 2026-09-08
 
 - Derived the Windows redistribution inventory from PyInstaller's actual file

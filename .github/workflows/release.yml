@@ -1,0 +1,269 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable tag to build, for example v0.1.0
+        required: true
+        type: string
+      publish_release:
+        description: Publish a signed GitHub Release after verification
+        required: true
+        default: false
+        type: boolean
+      prerelease:
+        description: Mark the published GitHub Release as a prerelease
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    name: Build and attest Windows artifacts
+    runs-on: windows-2025
+    timeout-minutes: 120
+    environment: windows-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Verify requested tag matches the application version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $expectedTag = "v$version"
+          if ("${{ inputs.release_tag }}" -ne $expectedTag) {
+            throw "Requested tag must be $expectedTag for this source tree."
+          }
+
+      - name: Set up the exact Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup default 1.97.1
+
+      - name: Expose the runner's Miniconda installation
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CONDA)) {
+            throw "The Windows runner did not expose its documented CONDA path."
+          }
+          $condaScripts = Join-Path $env:CONDA "Scripts"
+          if (-not (Test-Path -LiteralPath (Join-Path $condaScripts "conda.exe"))) {
+            throw "The Windows runner's documented Miniconda installation is missing."
+          }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $condaScripts
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Create the SHA-256-locked backend environment
+        id: runtime
+        shell: pwsh
+        run: |
+          $environmentName = "ankora-release-${{ github.run_id }}-${{ github.run_attempt }}"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-locked-windows.ps1 `
+            -EnvironmentName $environmentName
+          if ($LASTEXITCODE -ne 0) {
+            throw "Locked backend environment creation failed with exit code $LASTEXITCODE."
+          }
+          $pythonPath = Join-Path $env:CONDA "envs\$environmentName\python.exe"
+          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "The locked backend Python executable was not created."
+          }
+          "python_path=$pythonPath" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Import the optional user-controlled signing identity
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)
+          $hasTimestamp = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)
+          $provided = @($hasCertificate, $hasPassword, $hasTimestamp) | Where-Object { $_ }
+          if ($provided.Count -eq 0) {
+            "signed=false" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "thumbprint=" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "No signing identity configured; this run can only produce a candidate artifact."
+            exit 0
+          }
+          if ($provided.Count -ne 3) {
+            throw "All three Windows signing secrets must be configured together."
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP "ankora-release-signing.pfx"
+          try {
+            [System.IO.File]::WriteAllBytes(
+              $pfxPath,
+              [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+            )
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD `
+              -AsPlainText `
+              -Force
+            $certificates = @(Import-PfxCertificate `
+              -FilePath $pfxPath `
+              -CertStoreLocation Cert:\CurrentUser\My `
+              -Password $password)
+            $certificate = $certificates | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
+            if ($null -eq $certificate) {
+              throw "The configured PFX did not import a certificate with a private key."
+            }
+            "signed=true" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "thumbprint=$($certificate.Thumbprint)" | Out-File `
+              -LiteralPath $env:GITHUB_OUTPUT `
+              -Append `
+              -Encoding utf8
+          }
+          finally {
+            if (Test-Path -LiteralPath $pfxPath) {
+              Remove-Item -LiteralPath $pfxPath -Force
+            }
+          }
+
+      - name: Build signed Windows installer
+        if: steps.signing.outputs.signed == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_installer.ps1 `
+            -PythonPath "${{ steps.runtime.outputs.python_path }}" `
+            -CertificateThumbprint "${{ steps.signing.outputs.thumbprint }}" `
+            -TimestampUrl $env:WINDOWS_TIMESTAMP_URL
+
+      - name: Build unsigned Windows candidate
+        if: steps.signing.outputs.signed != 'true'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_installer.ps1 `
+            -PythonPath "${{ steps.runtime.outputs.python_path }}"
+
+      - name: Assemble checksum-indexed release artifacts
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem `
+            apps/desktop/src-tauri/target/release/bundle/nsis `
+            -Filter "Ankora_*-setup.exe" |
+            Select-Object -Single
+          $arguments = @(
+            "scripts/prepare_windows_release.py",
+            "prepare",
+            "--installer", $installer.FullName,
+            "--output-dir", "build/windows-runtime/release-assets",
+            "--source-ref", "HEAD",
+            "--require-clean",
+            "--require-tag"
+          )
+          if ("${{ inputs.publish_release }}" -eq "true") {
+            $arguments += "--require-signed"
+          }
+          & "${{ steps.runtime.outputs.python_path }}" @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release artifact assembly failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Independently verify release artifacts
+        shell: pwsh
+        run: |
+          $arguments = @(
+            "scripts/prepare_windows_release.py",
+            "verify",
+            "--release-dir", "build/windows-runtime/release-assets"
+          )
+          if ("${{ inputs.publish_release }}" -eq "true") {
+            $arguments += "--require-signed"
+          }
+          & "${{ steps.runtime.outputs.python_path }}" @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release artifact verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Attest every checksum-indexed artifact
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-checksums: build/windows-runtime/release-assets/SHA256SUMS
+
+      - name: Upload verified release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ankora-windows-${{ inputs.release_tag }}
+          path: build/windows-runtime/release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish signed GitHub Release
+    if: inputs.publish_release
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 20
+    environment: windows-release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Download attested release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ankora-windows-${{ inputs.release_tag }}
+          path: build/windows-runtime/release-assets
+
+      - name: Verify signed artifacts before publication
+        shell: pwsh
+        run: |
+          python scripts/prepare_windows_release.py verify `
+            --release-dir build/windows-runtime/release-assets `
+            --require-signed
+
+      - name: Create the release as a draft, attach assets, then publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists; refusing to replace immutable artifacts."
+          }
+          $assets = Get-ChildItem build/windows-runtime/release-assets -File |
+            Sort-Object Name |
+            ForEach-Object { $_.FullName }
+          gh release create $tag @assets `
+            --draft `
+            --verify-tag `
+            --generate-notes `
+            --title "Ankora $tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Draft release creation failed with exit code $LASTEXITCODE."
+          }
+          $editArguments = @("release", "edit", $tag, "--draft=false")
+          if ("${{ inputs.prerelease }}" -eq "true") {
+            $editArguments += "--prerelease"
+          }
+          gh @editArguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release publication failed; the release remains a draft."
+          }
