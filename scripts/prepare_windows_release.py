@@ -121,12 +121,18 @@ $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPa
   timestamp_subject = if ($signature.TimeStamperCertificate) { $signature.TimeStamperCertificate.Subject } else { $null }
   timestamp_thumbprint = if ($signature.TimeStamperCertificate) { $signature.TimeStamperCertificate.Thumbprint } else { $null }
 } | ConvertTo-Json -Compress
-"""
+    """
     environment = os.environ.copy()
     environment["ANKORA_SIGNATURE_TARGET"] = str(installer.resolve())
-    windows_root = Path(environment.get("WINDIR", r"C:\Windows"))
+    windows_root_value = environment.get("WINDIR") or environment.get("SystemRoot")
+    if not windows_root_value:
+        raise RuntimeError("Windows did not provide WINDIR or SystemRoot.")
+    program_files_value = environment.get("ProgramFiles")
+    if not program_files_value:
+        raise RuntimeError("Windows did not provide ProgramFiles.")
+    windows_root = Path(windows_root_value)
     system_modules = windows_root / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
-    program_files = Path(environment.get("ProgramFiles", r"C:\Program Files"))
+    program_files = Path(program_files_value)
     shared_modules = program_files / "WindowsPowerShell" / "Modules"
     environment["PSModulePath"] = os.pathsep.join((str(shared_modules), str(system_modules)))
     powershell = windows_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"

@@ -112,6 +112,17 @@ def test_publication_rejects_unsigned_installer(
     assert not release_dir.exists()
 
 
+def test_signature_check_requires_windows_environment_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_release_module()
+    monkeypatch.setattr(module.os, "name", "nt")
+    monkeypatch.setattr(module.os, "environ", {})
+
+    with pytest.raises(RuntimeError, match="WINDIR or SystemRoot"):
+        module.signature_evidence(tmp_path / "synthetic-installer.exe")
+
+
 def test_release_workflow_is_manual_pinned_and_fails_closed() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
     action_references = re.findall(r"uses:\s*([^\s#]+)", workflow)
