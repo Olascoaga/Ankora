@@ -1,16 +1,35 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "evaluation_contract_and_cohort_frozen_before_acquisition_or_results",
+  "status": "exact_ave_unbiased_source_acquired_before_results_with_amendment_001",
   "frozen_on": "2026-09-11",
+  "source_acquired_on": "2026-09-11",
+  "amendments": [
+    {
+      "amendment_id": "001",
+      "path": "LIT_PCBA_ANKORA_VS_V1.amendment-001.json",
+      "sha256": "331c52dad62bcf4731bf6f4be7f32c829f0f9176fbbb002c5e49a500a14a6483"
+    }
+  ],
   "primary_evidence": {
-    "dataset": "LIT-PCBA full target sets",
+    "dataset": "LIT-PCBA AVE-unbiased target sets, combining supplied training and validation rows",
     "dataset_page": "https://lab.drugdesign.unistra.fr/datasets/lit-pcba/",
+    "dataset_archive_url": "https://drugdesign.unistra.fr/downloads/datasets/LIT-PCBA_AVE_unbiased.tar.gz",
     "publication_doi": "10.1021/acs.jcim.0c00155",
+    "source_archive": {
+      "filename": "LIT-PCBA_AVE_unbiased.tar.gz",
+      "size_bytes": 57399933,
+      "sha256": "1f50ef6bf66b8e987f056a2d2528f1d5a9031ad542ddc97f8ee2fbfd651c8de3"
+    },
+    "source_layout": {
+      "active_files": ["active_T.smi", "active_V.smi"],
+      "inactive_files": ["inactive_T.smi", "inactive_V.smi"]
+    },
     "selection_rule": "distinct target/phenotype, at least 20 reported actives, at most 5000 reported compounds",
     "targets": [
       {
         "target_id": "ESR_antago",
+        "source_directory": "ESR1_ant",
         "pubchem_aid": 743080,
         "reported_actives": 88,
         "reported_inactives": 3820,
@@ -18,6 +37,7 @@
       },
       {
         "target_id": "PPARG",
+        "source_directory": "PPARG",
         "pubchem_aid": 743094,
         "reported_actives": 24,
         "reported_inactives": 4071,
@@ -25,6 +45,7 @@
       },
       {
         "target_id": "TP53",
+        "source_directory": "TP53",
         "pubchem_aid": 651631,
         "reported_actives": 64,
         "reported_inactives": 3345,

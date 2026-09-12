@@ -2,8 +2,18 @@
 
 Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
-Status: **evaluation contract and target cohort frozen before acquisition or
-docking**. No enrichment result exists yet.
+Status: **evaluation contract, target cohort, and exact AVE-unbiased source
+population frozen before docking**. No enrichment result exists yet.
+
+The first acquisition attempt is recorded in
+[`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
+The exact maintainer archives were acquired and identified. A pre-result
+amendment records that the frozen counts correspond to the AVE-unbiased
+training-plus-validation population rather than the differently sized `full`
+archive. A derived nine-target Zenodo archive failed the source contract and
+was not substituted. The fail-closed inspector generated the path-free
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.inputs.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.inputs.json)
+manifest without executing docking.
 
 This is the first bounded unit of adversarial-audit point 26. The machine-
 readable source of truth is
@@ -14,7 +24,7 @@ may stop the run; it may not be silently replaced.
 
 ## Evidence hierarchy and cohort
 
-The primary evidence will use LIT-PCBA because its labels come from
+The primary evidence uses LIT-PCBA because its labels come from
 confirmatory PubChem dose-response assays and include measured inactives. The
 authors report 15 final target sets, 7,844 confirmed actives, and 407,381
 confirmed inactives after assay-artifact and physicochemical-bias controls
@@ -33,10 +43,21 @@ actives, and have no more than 5,000 reported compounds:
 | TP53 | 651631 | 64 | 3,345 | 6 |
 
 These source censuses come from the [maintainer's LIT-PCBA dataset
-page](https://lab.drugdesign.unistra.fr/datasets/lit-pcba/). Acquisition must
-preserve and hash the exact archive and used members, then reconcile raw,
-parsed, duplicate, conflict, preparation-failure, scored, and unscored counts.
-The reported counts are expectations to check, not values to force.
+page](https://lab.drugdesign.unistra.fr/datasets/lit-pcba/) and close exactly
+against the AVE-unbiased archive when its supplied training and validation
+rows are combined. The acquired archive and every used member are hashed in
+the input manifest. It records 176 active and 11,236 inactive rows with zero
+unparsed rows, within-class duplicates, or cross-class canonical conflicts.
+Preparation failures, scored compounds, and unscored compounds remain future
+execution accounting and may not disappear from these denominators.
+
+Before extraction or docking, the project ran
+`scripts/inspect_screening_benchmark_source.py` against the frozen specification
+and exact archive. The inspector rejects missing or mismatched target
+censuses and template pairs, unsafe members, and ambiguous archive paths. Its
+path-free manifest records archive/member SHA-256 identities plus duplicate,
+parse-failure, and cross-label-conflict accounting. It also verifies the hash,
+protocol identity, and pre-result declaration of Amendment 001.
 
 DUD-E may later be run only as a secondary decoy diagnostic. Its original
 construction provides property-matched, topologically dissimilar computational

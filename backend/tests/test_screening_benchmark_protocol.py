@@ -1,5 +1,6 @@
 """Keep the public point-26 preregistration aligned with executable metrics."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -30,7 +31,9 @@ SPEC_PATH = (
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"].endswith("before_acquisition_or_results")
+    assert spec["status"] == (
+        "exact_ave_unbiased_source_acquired_before_results_with_amendment_001"
+    )
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -56,12 +59,44 @@ def test_frozen_protocol_matches_the_metric_implementation() -> None:
     }
 
 
+def test_frozen_source_and_pre_result_amendment_are_exactly_identified() -> None:
+    spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    evidence = spec["primary_evidence"]
+
+    assert evidence["source_archive"] == {
+        "filename": "LIT-PCBA_AVE_unbiased.tar.gz",
+        "size_bytes": 57399933,
+        "sha256": (
+            "1f50ef6bf66b8e987f056a2d2528f1d5a9031ad542ddc97f8ee2fbfd651c8de3"
+        ),
+    }
+    assert evidence["source_layout"] == {
+        "active_files": ["active_T.smi", "active_V.smi"],
+        "inactive_files": ["inactive_T.smi", "inactive_V.smi"],
+    }
+
+    [reference] = spec["amendments"]
+    amendment_path = SPEC_PATH.parent / reference["path"]
+    amendment_bytes = amendment_path.read_bytes()
+    amendment = json.loads(amendment_bytes)
+    assert hashlib.sha256(amendment_bytes).hexdigest() == reference["sha256"]
+    assert amendment["amendment_id"] == reference["amendment_id"] == "001"
+    assert amendment["protocol_id"] == spec["protocol_id"]
+    assert amendment["invariants"]["scores_seen"] is False
+    assert amendment["result_status"] == "pre_result_source_identity_correction"
+
+
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
     targets = spec["primary_evidence"]["targets"]
     assert [target["target_id"] for target in targets] == [
         "ESR_antago",
+        "PPARG",
+        "TP53",
+    ]
+    assert [target["source_directory"] for target in targets] == [
+        "ESR1_ant",
         "PPARG",
         "TP53",
     ]

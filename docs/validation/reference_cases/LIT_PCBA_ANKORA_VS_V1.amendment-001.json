@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "amendment_id": "001",
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "recorded_on": "2026-09-11",
+  "timing": "recorded after source census inspection and before any Ankora preparation, docking, score, or enrichment result",
+  "trigger": "the frozen target counts match the maintainer's AVE-unbiased archive, while the archive originally described as full has different populations",
+  "observations": {
+    "full_archive": {
+      "filename": "LIT-PCBA_full.tar.gz",
+      "size_bytes": 53808785,
+      "sha256": "81f361fb5bd2c219cd72f1b580dbc8980311911703df53598134163a8282df34",
+      "target_census": {
+        "ESR_antago": [102, 4948],
+        "PPARG": [27, 5211],
+        "TP53": [79, 4168]
+      }
+    },
+    "ave_unbiased_archive": {
+      "filename": "LIT-PCBA_AVE_unbiased.tar.gz",
+      "size_bytes": 57399933,
+      "sha256": "1f50ef6bf66b8e987f056a2d2528f1d5a9031ad542ddc97f8ee2fbfd651c8de3",
+      "combined_training_validation_census": {
+        "ESR_antago": [88, 3820],
+        "PPARG": [24, 4071],
+        "TP53": [64, 3345]
+      }
+    }
+  },
+  "changes": {
+    "dataset": "LIT-PCBA AVE-unbiased target sets, combining the supplied training and validation rows",
+    "active_files": ["active_T.smi", "active_V.smi"],
+    "inactive_files": ["inactive_T.smi", "inactive_V.smi"],
+    "source_target_directories": {
+      "ESR_antago": "ESR1_ant",
+      "PPARG": "PPARG",
+      "TP53": "TP53"
+    }
+  },
+  "invariants": {
+    "target_set_and_phenotype": "unchanged",
+    "target_census": "unchanged",
+    "ranking_and_failure_policy": "unchanged",
+    "metrics_and_bootstrap": "unchanged",
+    "docking_protocol": "unchanged",
+    "scores_seen": false
+  },
+  "result_status": "pre_result_source_identity_correction"
+}

@@ -30,8 +30,19 @@ Point 26 begins with the pre-result
 It freezes a three-target LIT-PCBA cohort, loss-preserving and tie-aware metric
 definitions, AutoDock Vina settings, and one-factor sensitivity boundaries.
 The protocol is not yet executed and is not listed as completed evidence in
-`VALIDATION_STATUS.json`; exact source bytes, receptor/template identities, and
-all input manifests still have to be acquired and frozen before docking.
+`VALIDATION_STATUS.json`. The exact LIT-PCBA AVE-unbiased source bytes and
+three-target population are now acquired, hashed, reconciled, and frozen in a
+path-free input manifest; receptor/template choices, prepared derivatives,
+boxes, and the execution-input manifest still have to be frozen before docking.
+The [2026-09-11 acquisition record](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md)
+documents the successful maintainer-source acquisition, the pre-result
+Amendment 001 distinguishing the AVE-unbiased population from the differently
+sized `full` archive, and why a processed nine-target candidate did not satisfy
+the frozen cohort or chemical-state contract. No benchmark run was made. The
+tested source inspector fails closed on source and amendment identity, census,
+template pairing, archive safety, duplicates, parse loss, and cross-label
+conflicts. The frozen population contains 176 active and 11,236 inactive
+evaluation units with no losses or conflicts at source inspection.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
