@@ -25,6 +25,14 @@ Markdown rendering and the README summary are checked against frozen manifests
 by `scripts/check_public_validation_status.py`; CI fails when the public status
 or evidence metadata diverges.
 
+Point 26 begins with the pre-result
+[`LIT_PCBA_ANKORA_VS_V1`](VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) contract.
+It freezes a three-target LIT-PCBA cohort, loss-preserving and tie-aware metric
+definitions, AutoDock Vina settings, and one-factor sensitivity boundaries.
+The protocol is not yet executed and is not listed as completed evidence in
+`VALIDATION_STATUS.json`; exact source bytes, receptor/template identities, and
+all input manifests still have to be acquired and frozen before docking.
+
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
 See `M1_STRUCTURE_WORKSPACE.md` for the complete M1 criteria and recorded evidence.

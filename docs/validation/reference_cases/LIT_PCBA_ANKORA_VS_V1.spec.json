@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "status": "evaluation_contract_and_cohort_frozen_before_acquisition_or_results",
+  "frozen_on": "2026-09-11",
+  "primary_evidence": {
+    "dataset": "LIT-PCBA full target sets",
+    "dataset_page": "https://lab.drugdesign.unistra.fr/datasets/lit-pcba/",
+    "publication_doi": "10.1021/acs.jcim.0c00155",
+    "selection_rule": "distinct target/phenotype, at least 20 reported actives, at most 5000 reported compounds",
+    "targets": [
+      {
+        "target_id": "ESR_antago",
+        "pubchem_aid": 743080,
+        "reported_actives": 88,
+        "reported_inactives": 3820,
+        "reported_templates": 15
+      },
+      {
+        "target_id": "PPARG",
+        "pubchem_aid": 743094,
+        "reported_actives": 24,
+        "reported_inactives": 4071,
+        "reported_templates": 15
+      },
+      {
+        "target_id": "TP53",
+        "pubchem_aid": 651631,
+        "reported_actives": 64,
+        "reported_inactives": 3345,
+        "reported_templates": 6
+      }
+    ],
+    "acquisition_gate": "hash exact source archive and used members; reconcile raw, parsed, duplicate, conflict, preparation-failure, scored, and unscored counts before results"
+  },
+  "secondary_diagnostic": {
+    "dataset": "DUD-E",
+    "publication_doi": "10.1021/jm300687e",
+    "pooled_with_primary": false,
+    "claim_boundary": "generated property-matched decoys are vulnerable to analogue and decoy bias and do not establish performance on measured inactives"
+  },
+  "ranking": {
+    "unit": "one canonical parent compound",
+    "duplicate_key": "RDKit canonical isomeric SMILES of the sanitized source graph without uncharging, tautomerization, or fragment removal",
+    "primary_state_policy": "exact_imported_state",
+    "score_direction": "lower_is_better",
+    "tie_policy": "fractional membership and expected rank within exact score ties",
+    "failure_policy": "unscored parents retained as one worst-ranked tie group",
+    "cross_engine_pooling": false
+  },
+  "metrics": {
+    "top_fraction": 0.01,
+    "top_count_rounding": "ceil",
+    "bedroc_alpha": 20.0,
+    "pr_auc_definition": "non-interpolated average precision at distinct score thresholds",
+    "aggregate": "equal-target macro average",
+    "bootstrap": {
+      "method": "stratified parent bootstrap percentile interval",
+      "replicates": 2000,
+      "confidence_level": 0.95,
+      "seed": 20260911
+    }
+  },
+  "primary_run": {
+    "engine": "AutoDock Vina",
+    "version": "1.2.7",
+    "seed": 20260911,
+    "exhaustiveness": 8,
+    "maximum_poses": 9,
+    "minimum_rmsd_angstrom": 1.0,
+    "energy_range_kcal_mol": 3.0,
+    "library_filters": "descriptive_only_no_exclusion"
+  },
+  "sensitivity": {
+    "design": "one_factor_at_a_time_on_a_constant_predeclared_paired_population",
+    "chemical_state": "all bounded states on a hash-selected sentinel panel; report ranges, never best-state enrichment",
+    "receptor": "primary holo receptor versus one predeclared alternate experimental holo receptor of the same phenotype",
+    "box": "primary co-crystal box versus the same center with 3.0 additional angstrom on every face",
+    "seeds": [20260911, 20260912, 20260913],
+    "sampling_exhaustiveness": [8, 32]
+  },
+  "amendment_policy": "Any change requires a numbered amendment recorded before inspecting docking scores; unavailable inputs may stop but never silently alter the run.",
+  "result_status": "not_executed"
+}
