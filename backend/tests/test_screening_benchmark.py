@@ -13,7 +13,10 @@ from ankora_backend.schemas.screening_benchmark import (
     ScreeningBenchmarkObservation,
 )
 from ankora_backend.services.screening_benchmark import (
+    BOOTSTRAP_METHOD,
     DEFAULT_BEDROC_ALPHA,
+    PERCENTILE_METHOD,
+    bootstrap_benchmark,
     evaluate_target,
     summarize_targets,
 )
@@ -144,3 +147,63 @@ def test_multi_target_summary_is_an_equal_target_macro_average() -> None:
     assert report.macro.enrichment_factor == pytest.approx(
         (perfect.enrichment_factor + reverse.enrichment_factor) / 2
     )
+
+
+def test_stratified_bootstrap_is_deterministic_and_records_its_method() -> None:
+    target_a = [
+        _row(index, index < 3, float(index % 4)) for index in range(12)
+    ]
+    target_b = [
+        _row(index + 20, index < 4, float((11 - index) % 5)) for index in range(12)
+    ]
+
+    first = bootstrap_benchmark(
+        [("target-a", target_a), ("target-b", target_b)],
+        replicates=40,
+        seed=71,
+    )
+    second = bootstrap_benchmark(
+        [("target-a", target_a), ("target-b", target_b)],
+        replicates=40,
+        seed=71,
+    )
+
+    assert first == second
+    assert first.bootstrap_replicates == 40
+    assert first.bootstrap_seed == 71
+    assert first.bootstrap_method == BOOTSTRAP_METHOD
+    assert first.percentile_method == PERCENTILE_METHOD
+    assert first.macro_point.target_count == 2
+
+
+def test_perfect_rankings_have_degenerate_perfect_auc_intervals() -> None:
+    first_rows = [_row(index, index < 4, float(index)) for index in range(20)]
+    second_rows = [
+        _row(index + 30, index < 5, float(index)) for index in range(20)
+    ]
+
+    estimate = bootstrap_benchmark(
+        [("target-a", first_rows), ("target-b", second_rows)],
+        replicates=25,
+        seed=72,
+    )
+
+    for target in estimate.targets:
+        assert target.intervals.roc_auc.lower == pytest.approx(1.0)
+        assert target.intervals.roc_auc.upper == pytest.approx(1.0)
+        assert target.intervals.pr_auc.lower == pytest.approx(1.0)
+        assert target.intervals.pr_auc.upper == pytest.approx(1.0)
+    assert estimate.macro_intervals.roc_auc.lower == pytest.approx(1.0)
+    assert estimate.macro_intervals.roc_auc.upper == pytest.approx(1.0)
+
+
+def test_bootstrap_rejects_invalid_sampling_contracts() -> None:
+    targets = [
+        ("target-a", [_row(0, True, -8.0), _row(1, False, -7.0)]),
+        ("target-b", [_row(2, True, -8.0), _row(3, False, -7.0)]),
+    ]
+
+    with pytest.raises(AnkoraDomainError, match="replicate count"):
+        bootstrap_benchmark(targets, replicates=0)
+    with pytest.raises(AnkoraDomainError, match="confidence level"):
+        bootstrap_benchmark(targets, confidence_level=1.0)

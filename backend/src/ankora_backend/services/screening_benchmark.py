@@ -11,23 +11,43 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from math import ceil, exp, expm1
+from random import Random
 from statistics import fmean
+from typing import NamedTuple
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.schemas.screening_benchmark import (
     ScoreDirection,
+    ScreeningBenchmarkEstimate,
     ScreeningBenchmarkObservation,
     ScreeningBenchmarkReport,
     ScreeningMacroMetrics,
+    ScreeningMetricInterval,
+    ScreeningMetricIntervals,
+    ScreeningTargetEstimate,
     ScreeningTargetMetrics,
 )
 
 _STAGE = "screening_benchmark"
 DEFAULT_TOP_FRACTION = 0.01
 DEFAULT_BEDROC_ALPHA = 20.0
+DEFAULT_BOOTSTRAP_REPLICATES = 2000
+DEFAULT_BOOTSTRAP_SEED = 20260911
+DEFAULT_CONFIDENCE_LEVEL = 0.95
 TIE_POLICY = "fractional membership and expected rank within exact score ties"
 FAILURE_POLICY = "unscored parents retained as one worst-ranked tie group"
 PR_AUC_DEFINITION = "non-interpolated average precision at distinct score thresholds"
+BOOTSTRAP_METHOD = "stratified parent bootstrap with fixed class counts"
+PERCENTILE_METHOD = "linear interpolation at (n - 1) * p"
+
+
+class _MetricValues(NamedTuple):
+    enrichment_factor: float
+    bedroc: float
+    roc_auc: float
+    pr_auc: float
+    top_count: int
+    expected_active_hits: float
 
 
 def evaluate_target(
@@ -67,11 +87,15 @@ def evaluate_target(
             details={"active_count": active_count, "inactive_count": inactive_count},
         )
 
-    groups = _rank_groups(observations, score_direction)
     total_count = len(observations)
-    top_count = min(total_count, ceil(total_count * top_fraction))
-    hits = _fractional_top_hits(groups, top_count)
-    enrichment = (hits / top_count) / (active_count / total_count)
+    values = _metric_values(
+        observations,
+        score_direction=score_direction,
+        top_fraction=top_fraction,
+        bedroc_alpha=bedroc_alpha,
+        active_count=active_count,
+        inactive_count=inactive_count,
+    )
 
     return ScreeningTargetMetrics(
         target_id=target_id,
@@ -81,17 +105,99 @@ def evaluate_target(
         scored_count=sum(observation.score is not None for observation in observations),
         failed_count=sum(observation.score is None for observation in observations),
         top_fraction=top_fraction,
-        top_count=top_count,
-        expected_active_hits_at_top_fraction=hits,
-        enrichment_factor=enrichment,
+        top_count=values.top_count,
+        expected_active_hits_at_top_fraction=values.expected_active_hits,
+        enrichment_factor=values.enrichment_factor,
         bedroc_alpha=bedroc_alpha,
-        bedroc=_bedroc(groups, total_count, active_count, bedroc_alpha),
-        roc_auc=_roc_auc(groups, active_count, inactive_count),
-        pr_auc=_average_precision(groups, active_count),
+        bedroc=values.bedroc,
+        roc_auc=values.roc_auc,
+        pr_auc=values.pr_auc,
         score_direction=score_direction,
         tie_policy=TIE_POLICY,
         failure_policy=FAILURE_POLICY,
         pr_auc_definition=PR_AUC_DEFINITION,
+    )
+
+
+def bootstrap_benchmark(
+    target_observations: Sequence[tuple[str, Sequence[ScreeningBenchmarkObservation]]],
+    *,
+    score_direction: ScoreDirection = ScoreDirection.LOWER_IS_BETTER,
+    top_fraction: float = DEFAULT_TOP_FRACTION,
+    bedroc_alpha: float = DEFAULT_BEDROC_ALPHA,
+    replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
+    seed: int = DEFAULT_BOOTSTRAP_SEED,
+    confidence_level: float = DEFAULT_CONFIDENCE_LEVEL,
+) -> ScreeningBenchmarkEstimate:
+    """Estimate per-target and macro uncertainty with fixed-class resampling.
+
+    Each replicate samples active and inactive parent units independently with
+    replacement inside every target.  The same replicate index is then macro-
+    averaged across targets, retaining target equality and class prevalence.
+    """
+
+    if replicates < 1:
+        _invalid("Bootstrap replicate count must be at least one.")
+    if not 0 < confidence_level < 1:
+        _invalid("Bootstrap confidence level must be between zero and one.")
+
+    points = [
+        evaluate_target(
+            target_id,
+            observations,
+            score_direction=score_direction,
+            top_fraction=top_fraction,
+            bedroc_alpha=bedroc_alpha,
+        )
+        for target_id, observations in target_observations
+    ]
+    point_report = summarize_targets(points)
+    rows_by_target = {
+        target_id: (
+            [row for row in observations if row.is_active],
+            [row for row in observations if not row.is_active],
+        )
+        for target_id, observations in target_observations
+    }
+    samples: dict[str, dict[str, list[float]]] = {
+        target.target_id: _empty_samples() for target in points
+    }
+    macro_samples = _empty_samples()
+    generator = Random(seed)
+
+    for _ in range(replicates):
+        replicate_values: list[_MetricValues] = []
+        for target in points:
+            active_rows, inactive_rows = rows_by_target[target.target_id]
+            resampled = generator.choices(active_rows, k=len(active_rows))
+            resampled.extend(generator.choices(inactive_rows, k=len(inactive_rows)))
+            values = _metric_values(
+                resampled,
+                score_direction=score_direction,
+                top_fraction=top_fraction,
+                bedroc_alpha=bedroc_alpha,
+                active_count=len(active_rows),
+                inactive_count=len(inactive_rows),
+            )
+            _append_values(samples[target.target_id], values)
+            replicate_values.append(values)
+        _append_macro_values(macro_samples, replicate_values)
+
+    return ScreeningBenchmarkEstimate(
+        targets=[
+            ScreeningTargetEstimate(
+                point=target,
+                intervals=_intervals(samples[target.target_id], confidence_level),
+            )
+            for target in points
+        ],
+        macro_point=point_report.macro,
+        macro_intervals=_intervals(macro_samples, confidence_level),
+        bootstrap_replicates=replicates,
+        bootstrap_seed=seed,
+        confidence_level=confidence_level,
+        bootstrap_method=BOOTSTRAP_METHOD,
+        percentile_method=PERCENTILE_METHOD,
     )
 
 
@@ -119,6 +225,84 @@ def summarize_targets(targets: Sequence[ScreeningTargetMetrics]) -> ScreeningBen
             pr_auc=fmean(target.pr_auc for target in targets),
         ),
     )
+
+
+def _metric_values(
+    observations: Sequence[ScreeningBenchmarkObservation],
+    *,
+    score_direction: ScoreDirection,
+    top_fraction: float,
+    bedroc_alpha: float,
+    active_count: int,
+    inactive_count: int,
+) -> _MetricValues:
+    groups = _rank_groups(observations, score_direction)
+    total_count = len(observations)
+    top_count = min(total_count, ceil(total_count * top_fraction))
+    hits = _fractional_top_hits(groups, top_count)
+    return _MetricValues(
+        enrichment_factor=(hits / top_count) / (active_count / total_count),
+        bedroc=_bedroc(groups, total_count, active_count, bedroc_alpha),
+        roc_auc=_roc_auc(groups, active_count, inactive_count),
+        pr_auc=_average_precision(groups, active_count),
+        top_count=top_count,
+        expected_active_hits=hits,
+    )
+
+
+def _empty_samples() -> dict[str, list[float]]:
+    return {
+        "enrichment_factor": [],
+        "bedroc": [],
+        "roc_auc": [],
+        "pr_auc": [],
+    }
+
+
+def _append_values(samples: dict[str, list[float]], values: _MetricValues) -> None:
+    samples["enrichment_factor"].append(values.enrichment_factor)
+    samples["bedroc"].append(values.bedroc)
+    samples["roc_auc"].append(values.roc_auc)
+    samples["pr_auc"].append(values.pr_auc)
+
+
+def _append_macro_values(
+    samples: dict[str, list[float]], values: Sequence[_MetricValues]
+) -> None:
+    samples["enrichment_factor"].append(
+        fmean(value.enrichment_factor for value in values)
+    )
+    samples["bedroc"].append(fmean(value.bedroc for value in values))
+    samples["roc_auc"].append(fmean(value.roc_auc for value in values))
+    samples["pr_auc"].append(fmean(value.pr_auc for value in values))
+
+
+def _intervals(
+    samples: dict[str, list[float]], confidence_level: float
+) -> ScreeningMetricIntervals:
+    tail = (1 - confidence_level) / 2
+    return ScreeningMetricIntervals(
+        enrichment_factor=_interval(samples["enrichment_factor"], tail),
+        bedroc=_interval(samples["bedroc"], tail),
+        roc_auc=_interval(samples["roc_auc"], tail),
+        pr_auc=_interval(samples["pr_auc"], tail),
+    )
+
+
+def _interval(values: Sequence[float], tail: float) -> ScreeningMetricInterval:
+    ordered = sorted(values)
+    return ScreeningMetricInterval(
+        lower=_quantile(ordered, tail),
+        upper=_quantile(ordered, 1 - tail),
+    )
+
+
+def _quantile(ordered: Sequence[float], probability: float) -> float:
+    position = (len(ordered) - 1) * probability
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(ordered) - 1)
+    weight = position - lower_index
+    return ordered[lower_index] * (1 - weight) + ordered[upper_index] * weight
 
 
 def _counts(values: Iterable[str]) -> dict[str, int]:

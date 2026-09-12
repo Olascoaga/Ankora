@@ -5,9 +5,14 @@ from pathlib import Path
 
 from ankora_backend.schemas.screening_benchmark import ScoreDirection
 from ankora_backend.services.screening_benchmark import (
+    BOOTSTRAP_METHOD,
     DEFAULT_BEDROC_ALPHA,
+    DEFAULT_BOOTSTRAP_REPLICATES,
+    DEFAULT_BOOTSTRAP_SEED,
+    DEFAULT_CONFIDENCE_LEVEL,
     DEFAULT_TOP_FRACTION,
     FAILURE_POLICY,
+    PERCENTILE_METHOD,
     PR_AUC_DEFINITION,
     TIE_POLICY,
 )
@@ -42,6 +47,13 @@ def test_frozen_protocol_matches_the_metric_implementation() -> None:
     assert spec["metrics"]["top_fraction"] == DEFAULT_TOP_FRACTION
     assert spec["metrics"]["bedroc_alpha"] == DEFAULT_BEDROC_ALPHA
     assert spec["metrics"]["pr_auc_definition"] == PR_AUC_DEFINITION
+    assert spec["metrics"]["bootstrap"] == {
+        "method": BOOTSTRAP_METHOD,
+        "replicates": DEFAULT_BOOTSTRAP_REPLICATES,
+        "confidence_level": DEFAULT_CONFIDENCE_LEVEL,
+        "seed": DEFAULT_BOOTSTRAP_SEED,
+        "percentile_method": PERCENTILE_METHOD,
+    }
 
 
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:

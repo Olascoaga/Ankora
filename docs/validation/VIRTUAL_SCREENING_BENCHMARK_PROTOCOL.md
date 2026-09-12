@@ -83,9 +83,12 @@ the other targets.
   thresholds. The label `PR-AUC` is never used without this definition.
 
 Point estimates must be accompanied by deterministic 95% stratified bootstrap
-intervals over parent compounds (2,000 replicates, seed `20260911`). With only
-24 reported PPARG actives, uncertainty is part of the result rather than a
-footnote.
+intervals over parent compounds with fixed active/inactive counts (2,000
+replicates, seed `20260911`). Percentiles use linear interpolation at
+`(replicates - 1) * p`. Per-target resamples at the same replicate index are
+macro-averaged, so the macro interval also gives every target equal weight.
+With only 24 reported PPARG actives, uncertainty is part of the result rather
+than a footnote.
 
 ## Primary preparation and docking boundary
 

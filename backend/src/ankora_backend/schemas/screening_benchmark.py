@@ -77,6 +77,32 @@ class ScreeningMacroMetrics(BaseModel):
     pr_auc: float = Field(ge=0, le=1)
 
 
+class ScreeningMetricInterval(BaseModel):
+    """One deterministic percentile interval over parent-level resamples."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lower: float = Field(ge=0)
+    upper: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def lower_does_not_exceed_upper(self) -> "ScreeningMetricInterval":
+        if self.lower > self.upper:
+            raise ValueError("a confidence interval lower bound cannot exceed its upper bound")
+        return self
+
+
+class ScreeningMetricIntervals(BaseModel):
+    """Intervals for the four preregistered ranking measures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enrichment_factor: ScreeningMetricInterval
+    bedroc: ScreeningMetricInterval
+    roc_auc: ScreeningMetricInterval
+    pr_auc: ScreeningMetricInterval
+
+
 class ScreeningBenchmarkReport(BaseModel):
     """Per-target evidence plus a deliberately unweighted macro summary."""
 
@@ -84,3 +110,27 @@ class ScreeningBenchmarkReport(BaseModel):
 
     targets: list[ScreeningTargetMetrics] = Field(min_length=2)
     macro: ScreeningMacroMetrics
+
+
+class ScreeningTargetEstimate(BaseModel):
+    """One target's point estimates and parent-bootstrap uncertainty."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    point: ScreeningTargetMetrics
+    intervals: ScreeningMetricIntervals
+
+
+class ScreeningBenchmarkEstimate(BaseModel):
+    """A complete multi-target estimate under one immutable metric protocol."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[ScreeningTargetEstimate] = Field(min_length=2)
+    macro_point: ScreeningMacroMetrics
+    macro_intervals: ScreeningMetricIntervals
+    bootstrap_replicates: int = Field(ge=1)
+    bootstrap_seed: int
+    confidence_level: float = Field(gt=0, lt=1)
+    bootstrap_method: str = Field(min_length=1)
+    percentile_method: str = Field(min_length=1)
