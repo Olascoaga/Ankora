@@ -15,6 +15,13 @@ was not substituted. The fail-closed inspector generated the path-free
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.inputs.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.inputs.json)
 manifest without executing docking.
 
+The subsequent pre-result
+[`LIT_PCBA_TEMPLATE_SELECTION_2026-09-14.md`](LIT_PCBA_TEMPLATE_SELECTION_2026-09-14.md)
+record freezes primary/alternate holo templates by best experimental resolution
+with PDB ID as an exact-tie breaker. The complete 36-candidate RCSB metadata
+snapshot and selected source-member hashes are preserved in
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.templates.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.templates.json).
+
 This is the first bounded unit of adversarial-audit point 26. The machine-
 readable source of truth is
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.spec.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.spec.json).
@@ -125,8 +132,9 @@ than a footnote.
   energy range `3 kcal/mol`. The executable hash and observed version must be
   captured at execution.
 - Each target uses one exact holo receptor and its co-crystallized ligand from
-  the acquired LIT-PCBA source. Exact PDB identifiers, receptor preparation,
-  and box coordinates must be frozen in an input manifest before any library
+  the acquired LIT-PCBA source. Primary PDB identifiers are now frozen as 5UFX,
+  3B1M, and 3ZME; alternates are 2IOG, 5Y2T, and 5O1I. Exact receptor
+  preparation and box coordinates must still be frozen before any library
   docking begins.
 
 ## Sensitivity boundary
@@ -146,9 +154,9 @@ comparison.
    unchanged.
 5. **Sampling:** exhaustiveness `8` versus `32` with the primary seed.
 
-Exact receptor and sentinel identities remain an acquisition deliverable, not
-a post-result choice. The acquisition manifest must close those fields before
-execution.
+Exact template identities are closed. Prepared-receptor, box, and sentinel
+identities remain pre-execution deliverables, not post-result choices. Their
+manifest must close before execution.
 
 ## Claims this protocol cannot establish
 

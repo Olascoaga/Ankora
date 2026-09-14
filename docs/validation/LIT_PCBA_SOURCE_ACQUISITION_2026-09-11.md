@@ -77,11 +77,11 @@ and strain-analysis products. It omits the frozen `PPARG` and `TP53` sets and
 does not preserve the required population or chemical-state boundary. It was
 not substituted for primary evidence and remains Git-ignored.
 
-## Remaining acquisition boundary
+## Subsequent template-selection boundary
 
-The source population is now closed. Before any library docking begins, point
-26 still requires a separate immutable execution-input manifest selecting one
-exact primary holo template per target, freezing receptor preparation and
-co-crystal-derived box coordinates, and recording the sentinel identities for
-the bounded sensitivity analyses. Those choices must be made without looking
-at benchmark scores.
+The source population is closed. The subsequent
+[`LIT_PCBA_TEMPLATE_SELECTION_2026-09-14.md`](LIT_PCBA_TEMPLATE_SELECTION_2026-09-14.md)
+record deterministically selects primary and alternate holo templates from all
+36 exact source pairs. Before any library docking begins, point 26 still
+requires explicit receptor-preparation records, co-crystal-derived boxes, and
+hash-selected sentinel identities for bounded sensitivity analysis.

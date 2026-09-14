@@ -1,0 +1,789 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "source_population_manifest_sha256": "ebc5170e741939ef0e0b3e6c53129f15747cfdf0d54727746fc53c481372645b",
+  "metadata_source": {
+    "endpoint": "https://data.rcsb.org/graphql",
+    "retrieved_on": "2026-09-14",
+    "query_sha256": "ca26f686af70c281511b2e48d08a6d3b488877522d9985a423828b35838f46cf"
+  },
+  "selection_boundary": "all candidates are exact paired holo templates from the frozen LIT-PCBA source; no docking score or enrichment result was inspected",
+  "targets": [
+    {
+      "target_id": "ESR_antago",
+      "selection_rule": "lowest positive experimental resolution in angstrom, then lexicographically smallest lowercase PDB ID",
+      "primary_template": {
+        "pdb_id": "5ufx",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.5503,
+        "title": "Estrogen Receptor Alpha Ligand Binding Domain in Complex with OP1074",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_protein.mol2",
+          "size_bytes": 472829,
+          "sha256": "62dc98d64e992008f1a1b10b10f22812526b402512696513a38fdcd7f1a0e0f3"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_ligand.mol2",
+          "size_bytes": 6789,
+          "sha256": "85134b11ef9806db3bb0967238c4c901c8f4bbdf5cd2e58d2a5f5320b5342680"
+        }
+      },
+      "alternate_template": {
+        "pdb_id": "2iog",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.6,
+        "title": "Human estrogen receptor alpha ligand-binding domain in complex with compound 11F",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_protein.mol2",
+          "size_bytes": 493481,
+          "sha256": "4ab989bec5ddefff92d5be6cb19a7ff766677a62a2909f24b014665aea063631"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_ligand.mol2",
+          "size_bytes": 7857,
+          "sha256": "6f0305333b4768fcd019017f556fe9603485dd3abf0f1d65b5db65ff348950f3"
+        }
+      },
+      "candidates": [
+        {
+          "pdb_id": "5ufx",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.5503,
+          "title": "Estrogen Receptor Alpha Ligand Binding Domain in Complex with OP1074",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_protein.mol2",
+            "size_bytes": 472829,
+            "sha256": "62dc98d64e992008f1a1b10b10f22812526b402512696513a38fdcd7f1a0e0f3"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_ligand.mol2",
+            "size_bytes": 6789,
+            "sha256": "85134b11ef9806db3bb0967238c4c901c8f4bbdf5cd2e58d2a5f5320b5342680"
+          }
+        },
+        {
+          "pdb_id": "2iog",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.6,
+          "title": "Human estrogen receptor alpha ligand-binding domain in complex with compound 11F",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_protein.mol2",
+            "size_bytes": 493481,
+            "sha256": "4ab989bec5ddefff92d5be6cb19a7ff766677a62a2909f24b014665aea063631"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_ligand.mol2",
+            "size_bytes": 7857,
+            "sha256": "6f0305333b4768fcd019017f556fe9603485dd3abf0f1d65b5db65ff348950f3"
+          }
+        },
+        {
+          "pdb_id": "5fqv",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.74,
+          "title": "Selective estrogen receptor downregulator antagonists: Tetrahydroisoquinoline phenols 5.",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5fqv_protein.mol2",
+            "size_bytes": 467529,
+            "sha256": "d37016e38cd72ba3c717cfb454cc6874eb34670fa037a63397cb18b866375ac3"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5fqv_ligand.mol2",
+            "size_bytes": 5575,
+            "sha256": "7706e77c483fc3fc50da9cf66d97657b206c848675bf9e917f2b548b67b227cd"
+          }
+        },
+        {
+          "pdb_id": "1xp1",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.8,
+          "title": "HUMAN ESTROGEN RECEPTOR ALPHA LIGAND-BINDING DOMAIN IN COMPLEX WITH COMPOUND 15",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/1xp1_protein.mol2",
+            "size_bytes": 497374,
+            "sha256": "693b424ae7ebd306af2fa5d4f36864c0704308212bee3d377134e8be1f863ee3"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/1xp1_ligand.mol2",
+            "size_bytes": 6595,
+            "sha256": "0fd01a990c1119ae7bbaa9f9b5c4169c2a076ab1c7dd788ec070fcf4767d3849"
+          }
+        },
+        {
+          "pdb_id": "2pog",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.84,
+          "title": "Benzopyrans as Selective Estrogen Receptor b Agonists (SERBAs). Part 2: Structure Activity Relationship Studies on the Benzopyran Scaffold.",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2pog_protein.mol2",
+            "size_bytes": 476527,
+            "sha256": "71bc0569baa3afa525b763e392b238610a603c2d7e9b03cb2ae8b966d91ff047"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2pog_ligand.mol2",
+            "size_bytes": 3951,
+            "sha256": "df86746521e1fc4ef5fd1a23f8013e2fb214e23b06193be07d4165dec49aa941"
+          }
+        },
+        {
+          "pdb_id": "6chw",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.89,
+          "title": "Estrogen Receptor Alpha Y537S covalently bound to antagonist H3B-5942.",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/6chw_protein.mol2",
+            "size_bytes": 498837,
+            "sha256": "046dab6dd1293d26548f524a7e320f65c429b07e1f97441c3e94cc9abaf8a931"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/6chw_ligand.mol2",
+            "size_bytes": 8165,
+            "sha256": "79d12dfe69df333cce77559c9db48e4d2f3b1c8530ff7d8e80fdc44eb0a0f935"
+          }
+        },
+        {
+          "pdb_id": "2ayr",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.9,
+          "title": "A SERM Designed for the Treatment of Uterine Leiomyoma with Unique Tissue Specificity for Uterus and Ovaries in Rats",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2ayr_protein.mol2",
+            "size_bytes": 500141,
+            "sha256": "dbcfd37b943c314c4f356c5b5240baded0274f4fcc33cc4d5bcd6b2e0961ed92"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2ayr_ligand.mol2",
+            "size_bytes": 6891,
+            "sha256": "c4e3a4c1dff35d2d48100add5f895e9ec561fb8ffb33e384c730f590f53ff243"
+          }
+        },
+        {
+          "pdb_id": "5aau",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.9,
+          "title": "Optimization of a novel binding motif to to (E)-3-(3,5-difluoro-4-((1R,3R)-2-(2-fluoro-2-methylpropyl)-3-methyl-2,3,4,9-tetrahydro-1H- pyrido(3,4-b)indol-1-yl)phenyl)acrylic acid (AZD9496), a potent and orally bioavailable selective estrogen receptor downregulator and antagonist",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5aau_protein.mol2",
+            "size_bytes": 459341,
+            "sha256": "2639aef6283a1aae093bcd8a54c27e0d98412a4919410774b0ab417287a2aab0"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5aau_ligand.mol2",
+            "size_bytes": 5244,
+            "sha256": "8eea1b14c12aee05dc409cbb235b6af786696bbf2990852b9ec74ac8e43bbebb"
+          }
+        },
+        {
+          "pdb_id": "2ouz",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.0,
+          "title": "Crystal Structure of Estrogen Receptor alpha-lasofoxifene complex",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2ouz_protein.mol2",
+            "size_bytes": 493379,
+            "sha256": "c6f9b3cd22a4bb5b10538acdc53ba4b94c969458c015a266b5b5be3d7d8b113a"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2ouz_ligand.mol2",
+            "size_bytes": 6304,
+            "sha256": "5a5cb76b56674fb2b0f6b6e35a6c26d196371c393fd5e98d75914714e965c9d5"
+          }
+        },
+        {
+          "pdb_id": "2r6w",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.0,
+          "title": "Estrogen receptor alpha ligand-binding domain complexed to a SERM",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2r6w_protein.mol2",
+            "size_bytes": 465135,
+            "sha256": "552216c22d97b1ebb4acc4a638928cfc35a77f3b1f322ad45925c45fe5793dac"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2r6w_ligand.mol2",
+            "size_bytes": 6498,
+            "sha256": "42db24a9687cb54f87e78f6402c2a35f422fe485ce7cbf1255b05bcff9c4329f"
+          }
+        },
+        {
+          "pdb_id": "1xqc",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.05,
+          "title": "X-ray structure of ERalpha LBD bound to a tetrahydroisoquinoline SERM ligand at 2.05A resolution",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/1xqc_protein.mol2",
+            "size_bytes": 457639,
+            "sha256": "c5a027291da9634a18f2edf435cef12e85874615a8d587d8e30f1846fcdb012b"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/1xqc_ligand.mol2",
+            "size_bytes": 6711,
+            "sha256": "6e5d4f1de9fe76e8c63f6b32498abc9213bf5d8fc016099bf2a8b88cdebb74e4"
+          }
+        },
+        {
+          "pdb_id": "5t92",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.22,
+          "title": "ESTROGEN RECEPTOR ALPHA LIGAND BINDING DOMAIN IN COMPLEX WITH (2E)-3-{4-[(1R)-2-(4-fluorophenyl)-6-hydroxy-1-methy l-1,2,3,4- tetrahydroisoquinolin-1-yl]phenyl}prop-2-enoic acid",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5t92_protein.mol2",
+            "size_bytes": 371951,
+            "sha256": "931a1bc863f4afed7b6806b1948af47a99bce2c3af86259204c2e75030fd7e1e"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5t92_ligand.mol2",
+            "size_bytes": 5121,
+            "sha256": "100e2c669cec7a4e82f4e6276945cfb595582f482765f0fc6dbd957b9f68479b"
+          }
+        },
+        {
+          "pdb_id": "2iok",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.4,
+          "title": "Human estrogen receptor alpha ligand-binding domain in complex with compound 1D",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iok_protein.mol2",
+            "size_bytes": 460417,
+            "sha256": "2f47f04032668756c75658fc4f469f9eba60256895266ac51b5257f3190f2421"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iok_ligand.mol2",
+            "size_bytes": 5607,
+            "sha256": "4b2ccb0089f1e3d03aefd26546d2a090b40b29b62f88b59b3955275163ff4269"
+          }
+        },
+        {
+          "pdb_id": "3dt3",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.4,
+          "title": "Human Estrogen receptor alpha LBD with GW368",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/3dt3_protein.mol2",
+            "size_bytes": 473430,
+            "sha256": "408a792727928c425c3bfb95420a3d93a04aebbd4c71004c6156ed827c31363e"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/3dt3_ligand.mol2",
+            "size_bytes": 4544,
+            "sha256": "a8e6eaa8f31ff37483af49e3a5af40b56280b1fabd560bd5db42803f1ae27033"
+          }
+        },
+        {
+          "pdb_id": "6b0f",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.86,
+          "title": "ESTROGEN RECEPTOR ALPHA LIGAND BINDING DOMAIN IN COMPLEX WITH LSZ102",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/6b0f_protein.mol2",
+            "size_bytes": 416140,
+            "sha256": "3c88324ccdcecab7719160e98d0b257db26272ab13b1f9210b8725a700beede6"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/6b0f_ligand.mol2",
+            "size_bytes": 4927,
+            "sha256": "5c057420cf91821b1b1beeed11d0a2d0e999f46b9ac0ad14d40343856e7b86e2"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "PPARG",
+      "selection_rule": "lowest positive experimental resolution in angstrom, then lexicographically smallest lowercase PDB ID",
+      "primary_template": {
+        "pdb_id": "3b1m",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.6,
+        "title": "Crystal structure of the PPARgamma-LBD complexed with a cercosporamide derivative modulator Cerco-A",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_protein.mol2",
+          "size_bytes": 530627,
+          "sha256": "a07a9efc9cfe4a28b3bd536b29b04109f6a0d2c7d6ee5eea8e3bf6233a28822c"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_ligand.mol2",
+          "size_bytes": 6401,
+          "sha256": "3da51e11a7bad075e20596cd870c4ace007bd2fd9fa7c8a1f94d8d570733e544"
+        }
+      },
+      "alternate_template": {
+        "pdb_id": "5y2t",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.7,
+        "title": "Structure of PPARgamma ligand binding domain - lobeglitazone complex",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_protein.mol2",
+          "size_bytes": 532548,
+          "sha256": "83091a4f366797f880a4a189054dfa3312311486cd0dd1c3d0979bcc1296f539"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_ligand.mol2",
+          "size_bytes": 6678,
+          "sha256": "04c001be5c78abbabc819a188c96d4d88a4316dd0728ab9cdbce80dd06b7057f"
+        }
+      },
+      "candidates": [
+        {
+          "pdb_id": "3b1m",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.6,
+          "title": "Crystal structure of the PPARgamma-LBD complexed with a cercosporamide derivative modulator Cerco-A",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_protein.mol2",
+            "size_bytes": 530627,
+            "sha256": "a07a9efc9cfe4a28b3bd536b29b04109f6a0d2c7d6ee5eea8e3bf6233a28822c"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_ligand.mol2",
+            "size_bytes": 6401,
+            "sha256": "3da51e11a7bad075e20596cd870c4ace007bd2fd9fa7c8a1f94d8d570733e544"
+          }
+        },
+        {
+          "pdb_id": "5y2t",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.7,
+          "title": "Structure of PPARgamma ligand binding domain - lobeglitazone complex",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_protein.mol2",
+            "size_bytes": 532548,
+            "sha256": "83091a4f366797f880a4a189054dfa3312311486cd0dd1c3d0979bcc1296f539"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_ligand.mol2",
+            "size_bytes": 6678,
+            "sha256": "04c001be5c78abbabc819a188c96d4d88a4316dd0728ab9cdbce80dd06b7057f"
+          }
+        },
+        {
+          "pdb_id": "4ci5",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.77,
+          "title": "Structural basis for GL479 a dual Peroxisome Proliferator-Activated Receptor gamma agonist",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4ci5_protein.mol2",
+            "size_bytes": 519022,
+            "sha256": "37beec85b97cc49f2e293056e285ee248ba9e145c0440e818a1ea11d578c6a67"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4ci5_ligand.mol2",
+            "size_bytes": 5296,
+            "sha256": "cf5e5f3bbcf2cd556606ff2b20577110c51eb30f4bfcb68684863acb553180e8"
+          }
+        },
+        {
+          "pdb_id": "1zgy",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.8,
+          "title": "Structural and Biochemical Basis for Selective Repression of the Orphan Nuclear Receptor LRH-1 by SHP",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/1zgy_protein.mol2",
+            "size_bytes": 556688,
+            "sha256": "f7a15d1827155682848e62dfa269cb75cf957ceab1f5c27c25a4ac15853dbe4c"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/1zgy_ligand.mol2",
+            "size_bytes": 4871,
+            "sha256": "61c74245bedfaf6b38daeca9ecfc151819a79f892a6c1404b02c2c0e075ceae9"
+          }
+        },
+        {
+          "pdb_id": "5z5s",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.8,
+          "title": "Crystal structure of the PPARgamma-LBD complexed with compound 13ab",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5z5s_protein.mol2",
+            "size_bytes": 530663,
+            "sha256": "b048078226f5772d40603f573c64954c8393d4af5e7d427f5d3a2dd3ca2ab1e2"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5z5s_ligand.mol2",
+            "size_bytes": 5359,
+            "sha256": "07862de1c9cf770848305466ddafac19c4547e66baf9aabd2912b5097d2e7010"
+          }
+        },
+        {
+          "pdb_id": "5two",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.927,
+          "title": "Peroxisome proliferator-activated receptor gamma ligand binding domain in complex with a novel selectively PPAR gamma-modulating ligand VSP-51",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5two_protein.mol2",
+            "size_bytes": 551151,
+            "sha256": "2ea97cd1d07d8d5952291ac8b2ecabb40a3c566dbac93cdeb6080326ada5e7bb"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5two_ligand.mol2",
+            "size_bytes": 4728,
+            "sha256": "9a93168749b58a770b0e8ecb89fe3fdefe303573c1b7610d162a5548d9539a47"
+          }
+        },
+        {
+          "pdb_id": "2yfe",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.0,
+          "title": "Ligand binding domain of human PPAR gamma in complex with amorfrutin 1",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2yfe_protein.mol2",
+            "size_bytes": 537326,
+            "sha256": "dd034bca4a59e8d4bd57faeed1a68fa8bca70f0d87974d821294c73db4471349"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2yfe_ligand.mol2",
+            "size_bytes": 4786,
+            "sha256": "65c54f89ee63e7be1441a9516e9f0f99e52ef7693510b89fc95c6a15ebad1543"
+          }
+        },
+        {
+          "pdb_id": "2q5s",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.05,
+          "title": "Crystal Structure of PPARgamma bound to partial agonist nTZDpa",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2q5s_protein.mol2",
+            "size_bytes": 516421,
+            "sha256": "2b65ece858670160080fd646066e1bd9c831c8617bc37e3756293b6f463aa49d"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2q5s_ligand.mol2",
+            "size_bytes": 4248,
+            "sha256": "f32799e2533ba1137404dda47e157f2a677773554397d70bfa6b08f73d1b4401"
+          }
+        },
+        {
+          "pdb_id": "2i4j",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.1,
+          "title": "Crystal structure of the complex between PPARgamma and the agonist LT160 (ureidofibrate derivative)",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2i4j_protein.mol2",
+            "size_bytes": 552371,
+            "sha256": "bf9ef1d448b330773ca95a80eb79c186cdf85eb80316023963474b49d2b083ec"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2i4j_ligand.mol2",
+            "size_bytes": 6745,
+            "sha256": "ecaae117a740eb7b46939ce0c9ef1afae0b50f2de50432cca6c6ddb36af883f9"
+          }
+        },
+        {
+          "pdb_id": "3hod",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.1,
+          "title": "Crystal structure of the PPARgamma-LBD complexed with a new aryloxy-3phenylpropanoic acid",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3hod_protein.mol2",
+            "size_bytes": 552031,
+            "sha256": "2db2530bb465890ae172edda3dd2c56d334afda98048fbe33a8155ecea18eb17"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3hod_ligand.mol2",
+            "size_bytes": 4423,
+            "sha256": "df7962ef6797c286cbbc5604dc8a5a6ba09981ae14544e8b51f37fa18b9f4bed"
+          }
+        },
+        {
+          "pdb_id": "5tto",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.246,
+          "title": "X-ray crystal structure of PPARgamma in complex with SR1643",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5tto_protein.mol2",
+            "size_bytes": 523842,
+            "sha256": "a8472db95adf75910701c7b40d66d693232b407090e811855bf80b2284bd38c7"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/5tto_ligand.mol2",
+            "size_bytes": 4350,
+            "sha256": "1f81d26978df22948f3aa76474f30ba077abe015ef7431ee66470f39b53ccc9c"
+          }
+        },
+        {
+          "pdb_id": "2p4y",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.25,
+          "title": "Crystal structure of human PPAR-gamma-ligand binding domain complexed with an indole-based modulator",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2p4y_protein.mol2",
+            "size_bytes": 499576,
+            "sha256": "b25e39b0ac0eb3dff7e6abfd080c39287e63eb618889fb47c9121a707d616b12"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/2p4y_ligand.mol2",
+            "size_bytes": 6110,
+            "sha256": "f8a66b74380a4c44e25a6fbeb22c1741e93157265cd367b39a5830ee31e18055"
+          }
+        },
+        {
+          "pdb_id": "3r8a",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.41,
+          "title": "X-ray crystal structure of the nuclear hormone receptor PPAR-gamma in a complex with a compound with dual PPAR gamma agonism and Angiotensin II Type I receptor antagonism activity",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3r8a_protein.mol2",
+            "size_bytes": 510709,
+            "sha256": "25cc308af7220b06be1b5acef5ca161d1c465421e68630cd1ed5c9f2a799b9f7"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/3r8a_ligand.mol2",
+            "size_bytes": 6026,
+            "sha256": "2d52d7d39fbbc2af7eafc83b0520782493e7ff41efbb40a1908622002f0c93d7"
+          }
+        },
+        {
+          "pdb_id": "4fgy",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.84,
+          "title": "Identification of a unique PPAR ligand with an unexpected binding mode and antibetic activity",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4fgy_protein.mol2",
+            "size_bytes": 539777,
+            "sha256": "042914d8cc665d8fdbaa5339f9541ae7f4b4a45237b6972ac65d65a00b35a49e"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4fgy_ligand.mol2",
+            "size_bytes": 13157,
+            "sha256": "5f2e9e08b373bfe443d115a13835a744ae02531184d4c723540871e6e8ee4a3c"
+          }
+        },
+        {
+          "pdb_id": "4prg",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 2.9,
+          "title": "0072 PARTIAL AGONIST PPAR GAMMA COCRYSTAL",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4prg_protein.mol2",
+            "size_bytes": 552037,
+            "sha256": "e3886916590d32359b846548643259c068911a3b0c0f7e0eb3ab70652c9d593c"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/PPARG/4prg_ligand.mol2",
+            "size_bytes": 8809,
+            "sha256": "86f423fb5feddd0ef51bba88ce5a3b32b2d6a1db6790ecbf8c37443658caef54"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "TP53",
+      "selection_rule": "lowest positive experimental resolution in angstrom, then lexicographically smallest lowercase PDB ID",
+      "primary_template": {
+        "pdb_id": "3zme",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.35,
+        "title": "Structure of the p53 core domain mutant Y220C bound to the small molecule PhiKan7242",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_protein.mol2",
+          "size_bytes": 382808,
+          "sha256": "c63e16734685f44affe75ff094f46967d9870c1ee9aa84950abb39540240642c"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_ligand.mol2",
+          "size_bytes": 4120,
+          "sha256": "4f5c438daf764993baa0d26de028939c1835589de696dd27060c5ec51e58c5ad"
+        }
+      },
+      "alternate_template": {
+        "pdb_id": "5o1i",
+        "experimental_methods": [
+          "X-RAY DIFFRACTION"
+        ],
+        "resolution_angstrom": 1.4,
+        "title": "p53 cancer mutant Y220C in complex with compound MB710",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_protein.mol2",
+          "size_bytes": 377641,
+          "sha256": "fa16bbdafef9b24542c16720a6f68df6b21420613ff21615d8686ee6f295fb12"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_ligand.mol2",
+          "size_bytes": 3926,
+          "sha256": "afab9c7c249ae3899a99a48ac2a7bd72ece954b58c2f6fb9ff31ac13ac629b1c"
+        }
+      },
+      "candidates": [
+        {
+          "pdb_id": "3zme",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.35,
+          "title": "Structure of the p53 core domain mutant Y220C bound to the small molecule PhiKan7242",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_protein.mol2",
+            "size_bytes": 382808,
+            "sha256": "c63e16734685f44affe75ff094f46967d9870c1ee9aa84950abb39540240642c"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_ligand.mol2",
+            "size_bytes": 4120,
+            "sha256": "4f5c438daf764993baa0d26de028939c1835589de696dd27060c5ec51e58c5ad"
+          }
+        },
+        {
+          "pdb_id": "5o1i",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.4,
+          "title": "p53 cancer mutant Y220C in complex with compound MB710",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_protein.mol2",
+            "size_bytes": 377641,
+            "sha256": "fa16bbdafef9b24542c16720a6f68df6b21420613ff21615d8686ee6f295fb12"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_ligand.mol2",
+            "size_bytes": 3926,
+            "sha256": "afab9c7c249ae3899a99a48ac2a7bd72ece954b58c2f6fb9ff31ac13ac629b1c"
+          }
+        },
+        {
+          "pdb_id": "4agq",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.42,
+          "title": "Structure of the p53 core domain mutant Y220C bound to the stabilizing small molecule PhiKan5196",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/4agq_protein.mol2",
+            "size_bytes": 384009,
+            "sha256": "62ec46c203bc6004af499ca57f50d8ffd8cb9b3d558ef1116bcff96616f987f9"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/4agq_ligand.mol2",
+            "size_bytes": 6357,
+            "sha256": "6ea376d127577daa2d74993c5b9a56cddc109b2648f07e653b6a19f84b3e9578"
+          }
+        },
+        {
+          "pdb_id": "4ago",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.45,
+          "title": "Structure of the p53 core domain mutant Y220C bound to the stabilizing small molecule PhiKan5174",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/4ago_protein.mol2",
+            "size_bytes": 386698,
+            "sha256": "ed38fee6e59b15012d42ca0e5e070736f1fba28549a3aff5bab8e100476efd03"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/4ago_ligand.mol2",
+            "size_bytes": 6818,
+            "sha256": "7f0d79c44bf820dd52653338d82dd57292227c49676084a41cba8b1cc261e938"
+          }
+        },
+        {
+          "pdb_id": "5g4o",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.48,
+          "title": "Crystal structure of the p53 cancer mutant Y220C in complex with a trifluorinated derivative of the small molecule stabilizer Phikan083",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/5g4o_protein.mol2",
+            "size_bytes": 384613,
+            "sha256": "ce78f4ddff18f50fca321862ba582ef102204b4f88f34936020ed60c5450bfd0"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/5g4o_ligand.mol2",
+            "size_bytes": 4798,
+            "sha256": "695379455dc0f89680be4e9792f1188b93dad878379f38a7546aafbf5e51f9f1"
+          }
+        },
+        {
+          "pdb_id": "2vuk",
+          "experimental_methods": [
+            "X-RAY DIFFRACTION"
+          ],
+          "resolution_angstrom": 1.5,
+          "title": "Structure of the p53 core domain mutant Y220C bound to the stabilizing small-molecule drug PhiKan083",
+          "source_receptor": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/2vuk_protein.mol2",
+            "size_bytes": 383380,
+            "sha256": "a6a5c1c67de033496ae9bc46917db94fe35a238ee02e1562d4d90601d6aacd7f"
+          },
+          "source_ligand": {
+            "path": "LIT-PCBA_AVE_unbiased/TP53/2vuk_ligand.mol2",
+            "size_bytes": 3738,
+            "sha256": "9e4cd9e939d3023493787f61eb7e3bca7b4786c65772d2b338c75db67ef24275"
+          }
+        }
+      ]
+    }
+  ],
+  "result_status": "templates_selected_no_docking_executed",
+  "manifest_sha256": "105607968656e9af12e757ee4ec154c19567926f049db9f26a5420d4b8434743"
+}

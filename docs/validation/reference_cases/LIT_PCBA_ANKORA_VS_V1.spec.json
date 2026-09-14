@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "exact_ave_unbiased_source_acquired_before_results_with_amendment_001",
+  "status": "exact_source_and_holo_templates_frozen_before_results",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
+  "templates_frozen_on": "2026-09-14",
   "amendments": [
     {
       "amendment_id": "001",
@@ -11,6 +12,16 @@
       "sha256": "331c52dad62bcf4731bf6f4be7f32c829f0f9176fbbb002c5e49a500a14a6483"
     }
   ],
+  "acquisition_manifests": {
+    "source_population": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.inputs.json",
+      "manifest_sha256": "ebc5170e741939ef0e0b3e6c53129f15747cfdf0d54727746fc53c481372645b"
+    },
+    "holo_templates": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.templates.json",
+      "manifest_sha256": "105607968656e9af12e757ee4ec154c19567926f049db9f26a5420d4b8434743"
+    }
+  },
   "primary_evidence": {
     "dataset": "LIT-PCBA AVE-unbiased target sets, combining supplied training and validation rows",
     "dataset_page": "https://lab.drugdesign.unistra.fr/datasets/lit-pcba/",

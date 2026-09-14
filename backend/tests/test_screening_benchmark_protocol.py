@@ -17,6 +17,9 @@ from ankora_backend.services.screening_benchmark import (
     PR_AUC_DEFINITION,
     TIE_POLICY,
 )
+from ankora_backend.validation.screening_benchmark_templates import (
+    verify_template_manifest,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = (
@@ -26,14 +29,14 @@ SPEC_PATH = (
     / "reference_cases"
     / "LIT_PCBA_ANKORA_VS_V1.spec.json"
 )
+INPUT_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.inputs.json")
+TEMPLATE_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.templates.json")
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == (
-        "exact_ave_unbiased_source_acquired_before_results_with_amendment_001"
-    )
+    assert spec["status"] == "exact_source_and_holo_templates_frozen_before_results"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -84,6 +87,40 @@ def test_frozen_source_and_pre_result_amendment_are_exactly_identified() -> None
     assert amendment["protocol_id"] == spec["protocol_id"]
     assert amendment["invariants"]["scores_seen"] is False
     assert amendment["result_status"] == "pre_result_source_identity_correction"
+
+
+def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> None:
+    spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    manifest = verify_template_manifest(
+        input_manifest_path=INPUT_MANIFEST_PATH,
+        template_manifest_path=TEMPLATE_MANIFEST_PATH,
+    )
+
+    assert spec["acquisition_manifests"] == {
+        "source_population": {
+            "path": INPUT_MANIFEST_PATH.name,
+            "manifest_sha256": (
+                "ebc5170e741939ef0e0b3e6c53129f15747cfdf0d54727746fc53c481372645b"
+            ),
+        },
+        "holo_templates": {
+            "path": TEMPLATE_MANIFEST_PATH.name,
+            "manifest_sha256": manifest["manifest_sha256"],
+        },
+    }
+    assert [
+        (
+            target["target_id"],
+            target["primary_template"]["pdb_id"],
+            target["alternate_template"]["pdb_id"],
+        )
+        for target in manifest["targets"]
+    ] == [
+        ("ESR_antago", "5ufx", "2iog"),
+        ("PPARG", "3b1m", "5y2t"),
+        ("TP53", "3zme", "5o1i"),
+    ]
+    assert manifest["result_status"] == "templates_selected_no_docking_executed"
 
 
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:
