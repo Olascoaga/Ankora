@@ -3,8 +3,9 @@
 Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
 Status: **evaluation contract, target cohort, exact AVE-unbiased source,
-templates, numerical boxes, and chemical-state sentinels frozen before
-docking**. No enrichment result exists yet.
+templates, numerical boxes, chemical-state sentinels, official structure
+bytes, and coordinate frames frozen before docking**. No enrichment result
+exists yet.
 
 The first acquisition attempt is recorded in
 [`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
@@ -30,6 +31,15 @@ sensitivity parents without looking at a score. The path-free
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json)
 reproduces from the exact source archive, source-population manifest, and
 template manifest.
+
+The official-structure intake record,
+[`LIT_PCBA_STRUCTURE_INTAKE_2026-09-15.md`](LIT_PCBA_STRUCTURE_INTAKE_2026-09-15.md),
+hashes the six selected RCSB mmCIF files and proves their coordinate frames
+against the exact paired source receptor and ligand MOL2 files without fitting
+or superposition. The path-free
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.structures.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.structures.json)
+retains the exact chain, co-crystal residue, alternate-location, coordinate,
+and source-preparation-difference evidence.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is
@@ -145,8 +155,11 @@ than a footnote.
   3B1M, and 3ZME; alternates are 2IOG, 5Y2T, and 5O1I. Exact primary box
   coordinates are frozen from the heavy atoms in the corresponding source
   ligand MOL2 with 5 Å padding on each face; modeled explicit hydrogens cannot
-  move the bounds. Exact receptor preparation must still be frozen before any
-  library docking begins.
+  move the bounds. Official mmCIF bytes for all six structures are now hashed,
+  and every source ligand heavy atom matches its official co-crystal residue
+  at the same Cartesian coordinate within 0.001 Å without superposition.
+  Exact receptor preparation must still be frozen before any library docking
+  begins.
 
 ## Sensitivity boundary
 
@@ -165,12 +178,13 @@ comparison.
    unchanged.
 5. **Sampling:** exhaustiveness `8` versus `32` with the primary seed.
 
-Exact template, box, and sentinel identities are closed. The sentinel panel
-contains 16 active and 16 inactive parents per target, ranked solely by a
-protocol/target/class/canonical-state SHA-256 key. Prepared-receptor identities
-remain the final open pre-execution deliverable, not a post-result choice. The
-source `protein.mol2` files are exact benchmark inputs, but they are not
-silently relabelled as Ankora docking-ready receptor derivatives.
+Exact template, box, sentinel, official-structure, and coordinate-frame
+identities are closed. The sentinel panel contains 16 active and 16 inactive
+parents per target, ranked solely by a protocol/target/class/canonical-state
+SHA-256 key. Prepared-receptor identities remain the final open pre-execution
+deliverable, not a post-result choice. The source `protein.mol2` files are
+exact benchmark inputs, but they are not silently relabelled as Ankora
+docking-ready receptor derivatives.
 
 ## Claims this protocol cannot establish
 

@@ -48,10 +48,14 @@ templates by a resolution-first rule across all 36 source pairs. The choice
 reproduces offline from a hash-bound RCSB metadata snapshot and source-member
 identities. Numerical boxes and 96 hash-selected sensitivity parents are now
 frozen in `LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json`; the manifest
-rebuilds from the exact archive and never reads a docking score. Prepared
-primary and alternate receptor derivatives remain the final open execution
-inputs. Source protein MOL2 bytes will not be treated as if Ankora had produced
-a reviewed, docking-ready receptor.
+rebuilds from the exact archive and never reads a docking score. The six
+official RCSB mmCIF files and their direct, no-superposition coordinate-frame
+evidence are frozen in `LIT_PCBA_ANKORA_VS_V1.structures.json`: every source
+ligand heavy atom maps exactly to one official co-crystal residue, and more
+than 98% of source receptor heavy atoms match same-element official coordinates
+for every template. Prepared primary and alternate receptor derivatives remain
+the final open execution inputs. Source protein MOL2 bytes will not be treated
+as if Ankora had produced a reviewed, docking-ready receptor.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

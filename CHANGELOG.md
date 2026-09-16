@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Frozen screening structure frames - 2026-09-15
+
+- Acquired and hash-bound the six selected official RCSB mmCIF structures for
+  the LIT-PCBA primary and receptor-sensitivity templates.
+- Proved the official/source coordinate frames directly, without fitting or
+  superposition: all co-crystal ligand heavy atoms match within 0.001 Å and
+  every source receptor exceeds the frozen 98% same-element match threshold.
+- Preserved the source-side heavy atoms that differ from the official entries
+  as explicit evidence instead of silently calling either representation a
+  prepared receptor; receptor preparation and docking remain unexecuted.
+
 ## Synchronized public validation status - 2026-09-10
 
 - Published one machine-readable status index for Ankora's frozen reference

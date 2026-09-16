@@ -1,0 +1,687 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "dependencies": {
+    "source_population_manifest_sha256": "ebc5170e741939ef0e0b3e6c53129f15747cfdf0d54727746fc53c481372645b",
+    "holo_template_manifest_sha256": "105607968656e9af12e757ee4ec154c19567926f049db9f26a5420d4b8434743",
+    "geometry_sentinel_manifest_sha256": "fea2d678f492317d874492b7c21c5732a70cb0e056aead4c11b5f702aa7d57fb"
+  },
+  "official_structure_source": {
+    "url_template": "https://files.rcsb.org/download/{pdb_id}.cif",
+    "retrieved_on": "2026-09-15",
+    "format": "PDBx/mmCIF",
+    "parser": {
+      "name": "gemmi",
+      "version": "0.7.5"
+    }
+  },
+  "coordinate_frame_policy": {
+    "comparison": "direct same-element Cartesian coordinate matching without translation, rotation, fitting, or superposition",
+    "tolerance_angstrom": 0.001,
+    "minimum_source_receptor_heavy_atom_match_fraction": 0.98,
+    "required_source_ligand_heavy_atom_match_fraction": 1.0,
+    "model_policy": "exactly one official coordinate model"
+  },
+  "targets": [
+    {
+      "target_id": "ESR_antago",
+      "primary_template": {
+        "role": "primary",
+        "pdb_id": "5ufx",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_protein.mol2",
+          "size_bytes": 472829,
+          "sha256": "62dc98d64e992008f1a1b10b10f22812526b402512696513a38fdcd7f1a0e0f3"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/5ufx_ligand.mol2",
+          "size_bytes": 6789,
+          "sha256": "85134b11ef9806db3bb0967238c4c901c8f4bbdf5cd2e58d2a5f5320b5342680"
+        },
+        "official_structure": {
+          "filename": "5ufx.cif",
+          "size_bytes": 839529,
+          "sha256": "6b8da02081a6f9c4c4b7e9868e0907623da2a9f464a7229a0255bb90638c2344",
+          "source_uri": "https://files.rcsb.org/download/5UFX.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 1859,
+          "exact_element_coordinate_matches": 1845,
+          "exact_match_fraction": 0.992469,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 14,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 990,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN375"
+            },
+            {
+              "atom_id": 991,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN375"
+            },
+            {
+              "atom_id": 2294,
+              "atom_name": "OD1",
+              "element": "O",
+              "residue_label": "ASN455"
+            },
+            {
+              "atom_id": 2295,
+              "atom_name": "ND2",
+              "element": "N",
+              "residue_label": "ASN455"
+            },
+            {
+              "atom_id": 3185,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3186,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3187,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3188,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3492,
+              "atom_name": "OD1",
+              "element": "O",
+              "residue_label": "ASN532"
+            },
+            {
+              "atom_id": 3493,
+              "atom_name": "ND2",
+              "element": "N",
+              "residue_label": "ASN532"
+            },
+            {
+              "atom_id": 3726,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3727,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3728,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3729,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS547"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 34,
+          "exact_element_coordinate_matches": 34,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "86Y",
+            "author_sequence_number": 601,
+            "insertion_code": "",
+            "alternate_locations": []
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      },
+      "alternate_template": {
+        "role": "alternate",
+        "pdb_id": "2iog",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_protein.mol2",
+          "size_bytes": 493481,
+          "sha256": "4ab989bec5ddefff92d5be6cb19a7ff766677a62a2909f24b014665aea063631"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/ESR1_ant/2iog_ligand.mol2",
+          "size_bytes": 7857,
+          "sha256": "6f0305333b4768fcd019017f556fe9603485dd3abf0f1d65b5db65ff348950f3"
+        },
+        "official_structure": {
+          "filename": "2iog.cif",
+          "size_bytes": 267564,
+          "sha256": "bcd85235213d549532dd1733c17807016c86211ca0dcdb105d65fe07582e8d77",
+          "source_uri": "https://files.rcsb.org/download/2IOG.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 1939,
+          "exact_element_coordinate_matches": 1915,
+          "exact_match_fraction": 0.987622,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 24,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 576,
+              "atom_name": "OD1",
+              "element": "O",
+              "residue_label": "ASN348"
+            },
+            {
+              "atom_id": 577,
+              "atom_name": "ND2",
+              "element": "N",
+              "residue_label": "ASN348"
+            },
+            {
+              "atom_id": 1407,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS398"
+            },
+            {
+              "atom_id": 1408,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS398"
+            },
+            {
+              "atom_id": 1409,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS398"
+            },
+            {
+              "atom_id": 1410,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS398"
+            },
+            {
+              "atom_id": 1671,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN414"
+            },
+            {
+              "atom_id": 1672,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN414"
+            },
+            {
+              "atom_id": 2623,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS474"
+            },
+            {
+              "atom_id": 2624,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS474"
+            },
+            {
+              "atom_id": 2625,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS474"
+            },
+            {
+              "atom_id": 2626,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS474"
+            },
+            {
+              "atom_id": 2659,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS476"
+            },
+            {
+              "atom_id": 2660,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS476"
+            },
+            {
+              "atom_id": 2661,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS476"
+            },
+            {
+              "atom_id": 2662,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS476"
+            },
+            {
+              "atom_id": 3281,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3282,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3283,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3284,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS513"
+            },
+            {
+              "atom_id": 3843,
+              "atom_name": "ND1",
+              "element": "N",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3844,
+              "atom_name": "CD2",
+              "element": "C",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3845,
+              "atom_name": "CE1",
+              "element": "C",
+              "residue_label": "HIS547"
+            },
+            {
+              "atom_id": 3846,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "HIS547"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 39,
+          "exact_element_coordinate_matches": 39,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "IOG",
+            "author_sequence_number": 600,
+            "insertion_code": "",
+            "alternate_locations": []
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      }
+    },
+    {
+      "target_id": "PPARG",
+      "primary_template": {
+        "role": "primary",
+        "pdb_id": "3b1m",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_protein.mol2",
+          "size_bytes": 530627,
+          "sha256": "a07a9efc9cfe4a28b3bd536b29b04109f6a0d2c7d6ee5eea8e3bf6233a28822c"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/3b1m_ligand.mol2",
+          "size_bytes": 6401,
+          "sha256": "3da51e11a7bad075e20596cd870c4ace007bd2fd9fa7c8a1f94d8d570733e544"
+        },
+        "official_structure": {
+          "filename": "3b1m.cif",
+          "size_bytes": 296412,
+          "sha256": "10530a434245e955a3ea966424443d6cfb58abaab24240b58a156a03fffdc89e",
+          "source_uri": "https://files.rcsb.org/download/3B1M.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 2083,
+          "exact_element_coordinate_matches": 2073,
+          "exact_match_fraction": 0.995199,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 10,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 1063,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN283"
+            },
+            {
+              "atom_id": 1064,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN283"
+            },
+            {
+              "atom_id": 1098,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN286"
+            },
+            {
+              "atom_id": 1099,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN286"
+            },
+            {
+              "atom_id": 2028,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN345"
+            },
+            {
+              "atom_id": 2029,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN345"
+            },
+            {
+              "atom_id": 3109,
+              "atom_name": "OD1",
+              "element": "O",
+              "residue_label": "ASN412"
+            },
+            {
+              "atom_id": 3110,
+              "atom_name": "ND2",
+              "element": "N",
+              "residue_label": "ASN412"
+            },
+            {
+              "atom_id": 3766,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN451"
+            },
+            {
+              "atom_id": 3767,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN451"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 38,
+          "exact_element_coordinate_matches": 38,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "KRC",
+            "author_sequence_number": 1,
+            "insertion_code": "",
+            "alternate_locations": []
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      },
+      "alternate_template": {
+        "role": "alternate",
+        "pdb_id": "5y2t",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_protein.mol2",
+          "size_bytes": 532548,
+          "sha256": "83091a4f366797f880a4a189054dfa3312311486cd0dd1c3d0979bcc1296f539"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/PPARG/5y2t_ligand.mol2",
+          "size_bytes": 6678,
+          "sha256": "04c001be5c78abbabc819a188c96d4d88a4316dd0728ab9cdbce80dd06b7057f"
+        },
+        "official_structure": {
+          "filename": "5y2t.cif",
+          "size_bytes": 540967,
+          "sha256": "be6e8212d21c3d12b71f65d8d0db85dc66ac02c025ebe746995a89d35f73b8f1",
+          "source_uri": "https://files.rcsb.org/download/5Y2T.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 2087,
+          "exact_element_coordinate_matches": 2083,
+          "exact_match_fraction": 0.998083,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 4,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 1134,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN286"
+            },
+            {
+              "atom_id": 1135,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN286"
+            },
+            {
+              "atom_id": 3858,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN454"
+            },
+            {
+              "atom_id": 3859,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN454"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 34,
+          "exact_element_coordinate_matches": 34,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "8LX",
+            "author_sequence_number": 501,
+            "insertion_code": "",
+            "alternate_locations": []
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      }
+    },
+    {
+      "target_id": "TP53",
+      "primary_template": {
+        "role": "primary",
+        "pdb_id": "3zme",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_protein.mol2",
+          "size_bytes": 382808,
+          "sha256": "c63e16734685f44affe75ff094f46967d9870c1ee9aa84950abb39540240642c"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/3zme_ligand.mol2",
+          "size_bytes": 4120,
+          "sha256": "4f5c438daf764993baa0d26de028939c1835589de696dd27060c5ec51e58c5ad"
+        },
+        "official_structure": {
+          "filename": "3zme.cif",
+          "size_bytes": 732443,
+          "sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251",
+          "source_uri": "https://files.rcsb.org/download/3ZME.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 1532,
+          "exact_element_coordinate_matches": 1528,
+          "exact_match_fraction": 0.997389,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 4,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 1076,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN165"
+            },
+            {
+              "atom_id": 1077,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN165"
+            },
+            {
+              "atom_id": 1785,
+              "atom_name": "OD1",
+              "element": "O",
+              "residue_label": "ASN210"
+            },
+            {
+              "atom_id": 1786,
+              "atom_name": "ND2",
+              "element": "N",
+              "residue_label": "ASN210"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 22,
+          "exact_element_coordinate_matches": 22,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "QC5",
+            "author_sequence_number": 1291,
+            "insertion_code": "",
+            "alternate_locations": []
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      },
+      "alternate_template": {
+        "role": "alternate",
+        "pdb_id": "5o1i",
+        "source_receptor": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_protein.mol2",
+          "size_bytes": 377641,
+          "sha256": "fa16bbdafef9b24542c16720a6f68df6b21420613ff21615d8686ee6f295fb12"
+        },
+        "source_ligand": {
+          "path": "LIT-PCBA_AVE_unbiased/TP53/5o1i_ligand.mol2",
+          "size_bytes": 3926,
+          "sha256": "afab9c7c249ae3899a99a48ac2a7bd72ece954b58c2f6fb9ff31ac13ac629b1c"
+        },
+        "official_structure": {
+          "filename": "5o1i.cif",
+          "size_bytes": 714863,
+          "sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd",
+          "source_uri": "https://files.rcsb.org/download/5O1I.cif"
+        },
+        "source_receptor_frame_evidence": {
+          "source_heavy_atom_count": 1511,
+          "exact_element_coordinate_matches": 1507,
+          "exact_match_fraction": 0.997353,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_author_chain_ids": [
+            "A"
+          ],
+          "unmatched_source_heavy_atom_count": 4,
+          "unmatched_source_heavy_atoms": [
+            {
+              "atom_id": 60,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN100"
+            },
+            {
+              "atom_id": 61,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN100"
+            },
+            {
+              "atom_id": 1063,
+              "atom_name": "OE1",
+              "element": "O",
+              "residue_label": "GLN165"
+            },
+            {
+              "atom_id": 1064,
+              "atom_name": "NE2",
+              "element": "N",
+              "residue_label": "GLN165"
+            }
+          ]
+        },
+        "source_ligand_frame_evidence": {
+          "source_heavy_atom_count": 23,
+          "exact_element_coordinate_matches": 23,
+          "exact_match_fraction": 1.0,
+          "matched_coordinate_rmsd_angstrom": 0.0,
+          "matched_official_residue": {
+            "author_chain_id": "A",
+            "residue_name": "9GH",
+            "author_sequence_number": 402,
+            "insertion_code": "",
+            "alternate_locations": [
+              "A"
+            ]
+          },
+          "unmatched_source_heavy_atom_count": 0
+        },
+        "coordinate_frame_congruent": true
+      }
+    }
+  ],
+  "receptor_preparation_boundary": {
+    "status": "not_yet_executed",
+    "required_next": "freeze and execute explicit chain/component, repair, protonation, and receptor-PDBQT plans for every primary and alternate template",
+    "source_protein_policy": "source protein MOL2 files prove the benchmark frame but are not silently converted into docking-ready receptors"
+  },
+  "result_status": "official_structures_and_coordinate_frames_frozen_no_receptor_preparation_or_docking_executed",
+  "manifest_sha256": "d7bcac2269f70432ff4cd35f7288e07ca8d0f766ab23372558e3ac32b82e459f"
+}
