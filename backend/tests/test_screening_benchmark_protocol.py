@@ -17,6 +17,9 @@ from ankora_backend.services.screening_benchmark import (
     PR_AUC_DEFINITION,
     TIE_POLICY,
 )
+from ankora_backend.validation.screening_benchmark_geometry import (
+    SENTINELS_PER_CLASS_PER_TARGET,
+)
 from ankora_backend.validation.screening_benchmark_templates import (
     verify_template_manifest,
 )
@@ -31,12 +34,17 @@ SPEC_PATH = (
 )
 INPUT_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.inputs.json")
 TEMPLATE_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.templates.json")
+GEOMETRY_MANIFEST_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == "exact_source_and_holo_templates_frozen_before_results"
+    assert spec["status"] == (
+        "exact_source_templates_boxes_and_sentinels_frozen_before_results"
+    )
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -107,6 +115,12 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             "path": TEMPLATE_MANIFEST_PATH.name,
             "manifest_sha256": manifest["manifest_sha256"],
         },
+        "geometry_and_sentinels": {
+            "path": GEOMETRY_MANIFEST_PATH.name,
+            "manifest_sha256": (
+                "fea2d678f492317d874492b7c21c5732a70cb0e056aead4c11b5f702aa7d57fb"
+            ),
+        },
     }
     assert [
         (
@@ -121,6 +135,29 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
         ("TP53", "3zme", "5o1i"),
     ]
     assert manifest["result_status"] == "templates_selected_no_docking_executed"
+
+
+def test_box_and_sentinel_manifest_closes_without_results() -> None:
+    manifest = json.loads(GEOMETRY_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+    assert manifest["manifest_sha256"] == (
+        "fea2d678f492317d874492b7c21c5732a70cb0e056aead4c11b5f702aa7d57fb"
+    )
+    assert manifest["result_status"] == (
+        "boxes_and_sentinels_frozen_no_docking_executed"
+    )
+    assert manifest["receptor_preparation_boundary"]["status"] == "not_yet_frozen"
+    assert [target["primary_template_id"] for target in manifest["targets"]] == [
+        "5ufx",
+        "3b1m",
+        "3zme",
+    ]
+    assert all(
+        len(target["chemical_state_sentinels"][label])
+        == SENTINELS_PER_CLASS_PER_TARGET
+        for target in manifest["targets"]
+        for label in ("active", "inactive")
+    )
 
 
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:

@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "exact_source_and_holo_templates_frozen_before_results",
+  "status": "exact_source_templates_boxes_and_sentinels_frozen_before_results",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
+  "geometry_and_sentinels_frozen_on": "2026-09-15",
   "amendments": [
     {
       "amendment_id": "001",
@@ -20,6 +21,10 @@
     "holo_templates": {
       "path": "LIT_PCBA_ANKORA_VS_V1.templates.json",
       "manifest_sha256": "105607968656e9af12e757ee4ec154c19567926f049db9f26a5420d4b8434743"
+    },
+    "geometry_and_sentinels": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json",
+      "manifest_sha256": "fea2d678f492317d874492b7c21c5732a70cb0e056aead4c11b5f702aa7d57fb"
     }
   },
   "primary_evidence": {

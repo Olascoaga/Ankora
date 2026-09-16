@@ -31,9 +31,8 @@ It freezes a three-target LIT-PCBA cohort, loss-preserving and tie-aware metric
 definitions, AutoDock Vina settings, and one-factor sensitivity boundaries.
 The protocol is not yet executed and is not listed as completed evidence in
 `VALIDATION_STATUS.json`. The exact LIT-PCBA AVE-unbiased source bytes and
-three-target population are now acquired, hashed, reconciled, and frozen in a
-path-free input manifest; prepared receptor derivatives, numerical boxes,
-sentinels, and the execution-input manifest still have to be frozen before docking.
+three-target population are acquired, hashed, reconciled, and frozen in a
+path-free input manifest.
 The [2026-09-11 acquisition record](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md)
 documents the successful maintainer-source acquisition, the pre-result
 Amendment 001 distinguishing the AVE-unbiased population from the differently
@@ -47,8 +46,12 @@ The [2026-09-14 template record](LIT_PCBA_TEMPLATE_SELECTION_2026-09-14.md)
 then freezes primary 5UFX/3B1M/3ZME and alternate 2IOG/5Y2T/5O1I holo
 templates by a resolution-first rule across all 36 source pairs. The choice
 reproduces offline from a hash-bound RCSB metadata snapshot and source-member
-identities. Receptor preparation, numerical boxes, and chemical-state
-sentinels remain open pre-docking inputs.
+identities. Numerical boxes and 96 hash-selected sensitivity parents are now
+frozen in `LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json`; the manifest
+rebuilds from the exact archive and never reads a docking score. Prepared
+primary and alternate receptor derivatives remain the final open execution
+inputs. Source protein MOL2 bytes will not be treated as if Ankora had produced
+a reviewed, docking-ready receptor.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

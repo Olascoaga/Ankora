@@ -2,8 +2,9 @@
 
 Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
-Status: **evaluation contract, target cohort, and exact AVE-unbiased source
-population frozen before docking**. No enrichment result exists yet.
+Status: **evaluation contract, target cohort, exact AVE-unbiased source,
+templates, numerical boxes, and chemical-state sentinels frozen before
+docking**. No enrichment result exists yet.
 
 The first acquisition attempt is recorded in
 [`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
@@ -22,8 +23,16 @@ with PDB ID as an exact-tie breaker. The complete 36-candidate RCSB metadata
 snapshot and selected source-member hashes are preserved in
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.templates.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.templates.json).
 
-This is the first bounded unit of adversarial-audit point 26. The machine-
-readable source of truth is
+The next pre-result record,
+[`LIT_PCBA_BOX_AND_SENTINEL_FREEZE_2026-09-15.md`](LIT_PCBA_BOX_AND_SENTINEL_FREEZE_2026-09-15.md),
+derives three exact numerical co-crystal boxes and selects 96 chemical-state
+sensitivity parents without looking at a score. The path-free
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json)
+reproduces from the exact source archive, source-population manifest, and
+template manifest.
+
+This protocol initiated adversarial-audit point 26. The machine-readable
+source of truth is
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.spec.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.spec.json).
 Any scientific change after this commit requires a numbered amendment written
 before looking at docking scores. An unavailable source or infeasible protocol
@@ -132,10 +141,12 @@ than a footnote.
   energy range `3 kcal/mol`. The executable hash and observed version must be
   captured at execution.
 - Each target uses one exact holo receptor and its co-crystallized ligand from
-  the acquired LIT-PCBA source. Primary PDB identifiers are now frozen as 5UFX,
-  3B1M, and 3ZME; alternates are 2IOG, 5Y2T, and 5O1I. Exact receptor
-  preparation and box coordinates must still be frozen before any library
-  docking begins.
+  the acquired LIT-PCBA source. Primary PDB identifiers are frozen as 5UFX,
+  3B1M, and 3ZME; alternates are 2IOG, 5Y2T, and 5O1I. Exact primary box
+  coordinates are frozen from the heavy atoms in the corresponding source
+  ligand MOL2 with 5 Å padding on each face; modeled explicit hydrogens cannot
+  move the bounds. Exact receptor preparation must still be frozen before any
+  library docking begins.
 
 ## Sensitivity boundary
 
@@ -154,9 +165,12 @@ comparison.
    unchanged.
 5. **Sampling:** exhaustiveness `8` versus `32` with the primary seed.
 
-Exact template identities are closed. Prepared-receptor, box, and sentinel
-identities remain pre-execution deliverables, not post-result choices. Their
-manifest must close before execution.
+Exact template, box, and sentinel identities are closed. The sentinel panel
+contains 16 active and 16 inactive parents per target, ranked solely by a
+protocol/target/class/canonical-state SHA-256 key. Prepared-receptor identities
+remain the final open pre-execution deliverable, not a post-result choice. The
+source `protein.mol2` files are exact benchmark inputs, but they are not
+silently relabelled as Ankora docking-ready receptor derivatives.
 
 ## Claims this protocol cannot establish
 
