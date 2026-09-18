@@ -4,8 +4,9 @@ Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
 Status: **evaluation contract, target cohort, exact AVE-unbiased source,
 templates, numerical boxes, chemical-state sentinels, official structure
-bytes, coordinate frames, and six explicit receptor plans frozen before
-docking**. No enrichment result exists yet.
+bytes, coordinate frames, six explicit receptor plans, and six structured
+protonation previews frozen before docking**. Scientist review is pending and
+no enrichment result exists yet.
 
 The first acquisition attempt is recorded in
 [`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
@@ -50,6 +51,19 @@ selects chain A, removes waters and co-crystal/solvent ligands, retains the two
 TP53 structural zinc ions, leaves missing loops unmodelled, repairs reported
 missing atoms, and selects only the source-coordinate-matched altloc A. Final
 receptor creation remains gated on six structured PROPKA previews and review.
+
+The review-only preview execution is recorded in
+[`LIT_PCBA_PROTONATION_PREVIEW_2026-09-17.md`](LIT_PCBA_PROTONATION_PREVIEW_2026-09-17.md).
+All six plans completed with PDB2PQR 3.7.1 and PROPKA 3.5.1, producing 449
+structured proposals, of which 102 carry one or more focused-review flags. The
+path-free
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-previews.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-previews.json)
+retains the exact proposals and evidence hashes. No default or override is yet
+accepted, and the previews were not promoted to final receptors or PDBQT. The
+retained TP53 outputs expose a blocking tautomer issue: automatic neutral
+HIS179 protonates the ND1 atom that coordinates zinc. Explicit neutral
+histidine-tautomer control and corrected TP53 previews are therefore required
+before scientific review can close.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is
@@ -169,8 +183,9 @@ than a footnote.
   and every source ligand heavy atom matches its official co-crystal residue
   at the same Cartesian coordinate within 0.001 Å without superposition.
   Exact structural preparation requests are frozen for all six templates.
-  Their pH 7.4 AMBER protonation previews and reviews must now execute before
-  any final receptor PDBQT or library docking begins.
+  Their pH 7.4 AMBER protonation previews have executed without creating final
+  receptors. Scientist review and a frozen default/override decision set remain
+  mandatory before any final receptor PDBQT or library docking begins.
 
 ## Sensitivity boundary
 
@@ -190,10 +205,10 @@ comparison.
 5. **Sampling:** exhaustiveness `8` versus `32` with the primary seed.
 
 Exact template, box, sentinel, official-structure, coordinate-frame, and
-structural receptor-plan identities are closed. The sentinel panel contains
+structural receptor-plan and protonation-preview identities are closed. The sentinel panel contains
 16 active and 16 inactive parents per target, ranked solely by a
-protocol/target/class/canonical-state SHA-256 key. PROPKA review and final
-prepared-receptor identities remain the final open pre-execution deliverable,
+protocol/target/class/canonical-state SHA-256 key. Scientist acceptance or
+override of the recorded PROPKA proposals and final prepared-receptor identities remain the final open pre-execution deliverable,
 not a post-result choice. The source `protein.mol2` files are exact benchmark
 inputs, but they are not silently relabelled as Ankora docking-ready receptor
 derivatives.

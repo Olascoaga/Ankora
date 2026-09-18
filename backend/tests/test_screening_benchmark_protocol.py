@@ -20,6 +20,9 @@ from ankora_backend.services.screening_benchmark import (
 from ankora_backend.validation.screening_benchmark_geometry import (
     SENTINELS_PER_CLASS_PER_TARGET,
 )
+from ankora_backend.validation.screening_benchmark_protonation_previews import (
+    verify_protonation_preview_manifest,
+)
 from ankora_backend.validation.screening_benchmark_templates import (
     verify_template_manifest,
 )
@@ -41,15 +44,19 @@ STRUCTURE_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.structures.
 RECEPTOR_PLAN_MANIFEST_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.receptor-plans.json"
 )
+PROTONATION_PREVIEW_MANIFEST_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.protonation-previews.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
     assert spec["status"] == (
-        "exact_source_templates_boxes_sentinels_official_structure_frames_and_"
-        "receptor_plans_frozen_before_results"
+        "exact_inputs_and_protonation_previews_frozen_scientist_review_"
+        "pending_before_results"
     )
+    assert spec["protonation_previews_executed_on"] == "2026-09-17"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -136,6 +143,12 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             "path": RECEPTOR_PLAN_MANIFEST_PATH.name,
             "manifest_sha256": (
                 "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55"
+            ),
+        },
+        "protonation_previews": {
+            "path": PROTONATION_PREVIEW_MANIFEST_PATH.name,
+            "manifest_sha256": (
+                "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa"
             ),
         },
     }
@@ -268,6 +281,37 @@ def test_explicit_receptor_plans_are_frozen_without_execution() -> None:
         for decision in template["preparation_request"]["component_decisions"]
         if decision["action"] == "keep"
     } == {"metal|A|ZN|313|", "metal|A|ZN|401|"}
+
+
+def test_protonation_previews_are_frozen_without_final_receptors() -> None:
+    manifest = verify_protonation_preview_manifest(PROTONATION_PREVIEW_MANIFEST_PATH)
+
+    assert manifest["manifest_sha256"] == (
+        "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa"
+    )
+    assert manifest["preview_census"] == {
+        "requested": 6,
+        "completed": 6,
+        "failed": 0,
+        "proposal_count": 449,
+        "review_attention_count": 102,
+    }
+    assert manifest["scientist_review"]["status"] == "pending"
+    assert manifest["scientist_review"]["accepted_default_proposals"] == []
+    assert manifest["scientist_review"]["approved_overrides"] == []
+    assert all(
+        preview["final_receptor_created"] is False
+        and preview["final_pdbqt_created"] is False
+        for preview in manifest["previews"]
+    )
+    assert [preview["pdb_id"] for preview in manifest["previews"]] == [
+        "5ufx",
+        "2iog",
+        "3b1m",
+        "5y2t",
+        "3zme",
+        "5o1i",
+    ]
 
 
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:

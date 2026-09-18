@@ -27,6 +27,7 @@ from ankora_backend.services.receptor_preparation import (
     _assert_heavy_atoms_unchanged,
     _assert_restrained_atoms_stable,
     _normalize_pqr_for_meeko,
+    _partition_authorized_terminal_additions,
     prepare_receptor,
 )
 from ankora_backend.services.structure_inspection import import_structure_bytes
@@ -490,6 +491,56 @@ def test_terminal_oxt_authorization_is_rejected_for_an_internal_residue(
         )
 
     assert captured.value.code == "RECEPTOR_TERMINAL_ADDITION_INVALID"
+
+
+def test_terminal_oxt_added_during_repair_is_not_reauthorized_for_pdb2pqr(
+    tmp_path: Path,
+) -> None:
+    selected_path = tmp_path / "selected.pdb"
+    repaired_path = tmp_path / "repaired.pdb"
+    original = (FIXTURES / "synthetic_m1.pdb").read_text()
+    selected_path.write_text(original)
+    repaired_path.write_text(
+        original.replace(
+            "ATOM      5  O   ALA A   1      14.500  12.700   9.000",
+            "ATOM      5  O   ALA A   1      14.500  12.700   9.000\n"
+            "ATOM     10  OXT ALA A   1      15.000  12.900   9.400  1.00 20.00           O  ",
+        )
+    )
+    addition = TerminalHeavyAtomAddition(
+        chain_id="A", residue_name="ALA", sequence_number=1
+    )
+
+    pending, applied = _partition_authorized_terminal_additions(
+        selected_path=selected_path,
+        current_path=repaired_path,
+        additions=[addition],
+    )
+
+    assert pending == []
+    assert applied == ["A|ALA|1||OXT"]
+
+
+def test_terminal_oxt_absent_after_repair_remains_pending_for_pdb2pqr(
+    tmp_path: Path,
+) -> None:
+    selected_path = tmp_path / "selected.pdb"
+    repaired_path = tmp_path / "repaired.pdb"
+    original = (FIXTURES / "synthetic_m1.pdb").read_text()
+    selected_path.write_text(original)
+    repaired_path.write_text(original)
+    addition = TerminalHeavyAtomAddition(
+        chain_id="A", residue_name="ALA", sequence_number=1
+    )
+
+    pending, applied = _partition_authorized_terminal_additions(
+        selected_path=selected_path,
+        current_path=repaired_path,
+        additions=[addition],
+    )
+
+    assert pending == [addition]
+    assert applied == []
 
 
 def test_terminal_oxt_authorization_does_not_allow_another_heavy_atom(

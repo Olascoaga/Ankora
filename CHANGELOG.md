@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Executed screening protonation previews - 2026-09-17
+
+- Executed all six frozen LIT-PCBA receptor plans through review-only
+  PDB2PQR/PROPKA previews with bounded parallelism and retained raw local
+  evidence plus a path-free, hash-bound public manifest.
+- Recorded 449 structured protonation proposals and 102 focused-review items;
+  no default, override, final receptor, PDBQT, or docking result was accepted.
+- Exposed a blocking TP53 zinc-site issue: automatic neutral HIS179 protonates
+  the ND1 zinc-contact atom, so explicit neutral-tautomer control and corrected
+  previews are required before final receptor creation.
+- Corrected terminal-OXT stage attribution when PDBFixer applies an explicitly
+  authorized addition before PDB2PQR, preserving the authorization and exact
+  provenance instead of rejecting the derivative as a duplicate request.
+
 ## Frozen screening receptor plans - 2026-09-17
 
 - Froze six complete, typed receptor structural requests for the selected

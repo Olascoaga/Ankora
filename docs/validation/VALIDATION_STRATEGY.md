@@ -60,8 +60,16 @@ missing-residue, missing-atom, source-aligned altloc, terminal-OXT,
 relaxation, pH, and force-field choices are all fixed before execution. Source
 protein MOL2 bytes are used only to identify the exact retained alternate
 coordinates and will not be treated as if Ankora had produced a reviewed,
-docking-ready receptor. Six structured PROPKA previews and their explicit
-reviews remain pending before final PDBQT creation.
+docking-ready receptor. Six structured PDB2PQR/PROPKA previews have now
+completed and are frozen in
+`LIT_PCBA_ANKORA_VS_V1.protonation-previews.json`: 449 proposals were retained,
+102 carry focused-review flags, and no final receptor or PDBQT was created.
+Scientist acceptance of defaults or explicit allowed overrides remains pending,
+with the TP53 Cys3-His zinc sites called out for deliberate review. In both
+TP53 previews the automatic neutral HIS179 tautomer protonated the ND1 atom
+that contacts zinc at approximately 2.01 A. Because the current override model
+cannot choose the alternate neutral tautomer, explicit HID/HIE control and a
+verified rerun are a hard prerequisite for final TP53 receptors.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

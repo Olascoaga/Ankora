@@ -260,6 +260,16 @@ def prepare_receptor(
         pqr_path: Path | None = None
         pqr_output: ReceptorOutputArtifact | None = None
         if request.protonation.enabled:
+            (
+                pending_terminal_additions,
+                terminal_additions_applied_before_protonation,
+            ) = _partition_authorized_terminal_additions(
+                selected_path=selected_path,
+                current_path=current_pdb,
+                additions=(
+                    request.protonation.authorized_terminal_heavy_atom_additions
+                ),
+            )
             pqr_path = receptor_store.output_path(receptor_id, "protonated_receptor.pqr")
             protonated_pdb_path = receptor_store.output_path(
                 receptor_id, "protonated_receptor.pdb"
@@ -288,9 +298,7 @@ def prepare_receptor(
                 input_path=current_pdb,
                 output_path=protonated_pdb_path,
                 execution=execution,
-                authorized_terminal_additions=(
-                    request.protonation.authorized_terminal_heavy_atom_additions
-                ),
+                authorized_terminal_additions=pending_terminal_additions,
             )
             pqr_output = _record_output(
                 receptor_id=receptor_id,
@@ -347,6 +355,9 @@ def prepare_receptor(
                         ],
                         "applied_terminal_heavy_atom_additions": (
                             applied_terminal_additions
+                        ),
+                        "terminal_heavy_atom_additions_applied_before_protonation": (
+                            terminal_additions_applied_before_protonation
                         ),
                         "raw_logs": log_files,
                     },
@@ -762,6 +773,30 @@ def _assert_heavy_atoms_unchanged(
     )
 
 
+def _partition_authorized_terminal_additions(
+    *,
+    selected_path: Path,
+    current_path: Path,
+    additions: list[TerminalHeavyAtomAddition],
+) -> tuple[list[TerminalHeavyAtomAddition], list[str]]:
+    """Separate terminal additions already applied by an earlier explicit stage.
+
+    PDBFixer can add OXT while repairing the selected terminal residue.  The
+    authorization is validated against the selected derivative, where OXT must
+    still be absent, and then carried forward without asking PDB2PQR to add the
+    same atom a second time.
+    """
+    authorized = _authorized_terminal_addition_keys(selected_path, additions)
+    present = _heavy_atom_keys(current_path)
+    applied = sorted(authorized & present)
+    pending = [
+        addition
+        for addition in additions
+        if _terminal_addition_key(addition) not in applied
+    ]
+    return pending, applied
+
+
 def _authorized_terminal_addition_keys(
     input_path: Path, additions: list[TerminalHeavyAtomAddition]
 ) -> set[str]:
@@ -826,6 +861,18 @@ def _authorized_terminal_addition_keys(
             )
         )
     return keys
+
+
+def _terminal_addition_key(addition: TerminalHeavyAtomAddition) -> str:
+    return "|".join(
+        (
+            addition.chain_id,
+            _canonical_residue_name(addition.residue_name),
+            str(addition.sequence_number),
+            addition.insertion_code,
+            addition.atom_name,
+        )
+    )
 
 
 def _terminal_addition_error(
