@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Frozen screening receptor plans - 2026-09-17
+
+- Froze six complete, typed receptor structural requests for the selected
+  primary and alternate LIT-PCBA templates before running a scientific tool.
+- Retained TP53 structural zinc, removed waters and non-metal components,
+  prohibited loop invention, and made every missing-atom and terminal-OXT
+  decision explicit.
+- Selected deposited alternate conformations by unique coordinate agreement
+  with the frozen source receptor instead of silently choosing by occupancy;
+  final preparation remains gated on structured PROPKA review.
+
 ## Frozen screening structure frames - 2026-09-15
 
 - Acquired and hash-bound the six selected official RCSB mmCIF structures for

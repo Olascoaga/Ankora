@@ -38,14 +38,17 @@ GEOMETRY_MANIFEST_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.geometry-sentinels.json"
 )
 STRUCTURE_MANIFEST_PATH = SPEC_PATH.with_name("LIT_PCBA_ANKORA_VS_V1.structures.json")
+RECEPTOR_PLAN_MANIFEST_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.receptor-plans.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
     assert spec["status"] == (
-        "exact_source_templates_boxes_sentinels_and_official_structure_frames_"
-        "frozen_before_results"
+        "exact_source_templates_boxes_sentinels_official_structure_frames_and_"
+        "receptor_plans_frozen_before_results"
     )
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
@@ -129,6 +132,12 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
                 "d7bcac2269f70432ff4cd35f7288e07ca8d0f766ab23372558e3ac32b82e459f"
             ),
         },
+        "explicit_receptor_plans": {
+            "path": RECEPTOR_PLAN_MANIFEST_PATH.name,
+            "manifest_sha256": (
+                "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55"
+            ),
+        },
     }
     assert [
         (
@@ -202,6 +211,63 @@ def test_official_structures_close_the_coordinate_frames_without_results() -> No
         == ["A"]
         for template in templates
     )
+
+
+def test_explicit_receptor_plans_are_frozen_without_execution() -> None:
+    manifest = json.loads(RECEPTOR_PLAN_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+    assert manifest["manifest_sha256"] == (
+        "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55"
+    )
+    assert manifest["plan_census"] == {
+        "target_count": 3,
+        "template_plan_count": 6,
+    }
+    assert manifest["execution_boundary"]["status"] == (
+        "plans_frozen_propka_reviews_not_yet_executed"
+    )
+    assert manifest["result_status"] == (
+        "receptor_plans_frozen_no_protonation_preview_receptor_derivative_or_"
+        "docking_result_executed"
+    )
+    templates = [
+        target[role]
+        for target in manifest["targets"]
+        for role in ("primary_template", "alternate_template")
+    ]
+    assert [template["pdb_id"] for template in templates] == [
+        "5ufx",
+        "2iog",
+        "3b1m",
+        "5y2t",
+        "3zme",
+        "5o1i",
+    ]
+    assert all(
+        template["preparation_request"]["selected_chains"] == ["A"]
+        for template in templates
+    )
+    assert all(
+        template["preparation_request"]["water_action"] == "remove"
+        for template in templates
+    )
+    assert all(
+        template["execution_gate"]
+        == "structured_propka_preview_and_review_required"
+        for template in templates
+    )
+    assert {
+        decision["selected_altloc"]
+        for template in templates
+        for decision in template["preparation_request"]["issue_decisions"]
+        if decision["selected_altloc"] is not None
+    } == {"A"}
+    assert {
+        decision["component_id"]
+        for template in templates
+        for decision in template["preparation_request"]["component_decisions"]
+        if decision["action"] == "keep"
+    } == {"metal|A|ZN|313|", "metal|A|ZN|401|"}
 
 
 def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:

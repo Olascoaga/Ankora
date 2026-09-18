@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "exact_source_templates_boxes_sentinels_and_official_structure_frames_frozen_before_results",
+  "status": "exact_source_templates_boxes_sentinels_official_structure_frames_and_receptor_plans_frozen_before_results",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
   "geometry_and_sentinels_frozen_on": "2026-09-15",
   "official_structures_frozen_on": "2026-09-15",
+  "receptor_plans_frozen_on": "2026-09-17",
   "amendments": [
     {
       "amendment_id": "001",
@@ -30,6 +31,10 @@
     "official_structures_and_frames": {
       "path": "LIT_PCBA_ANKORA_VS_V1.structures.json",
       "manifest_sha256": "d7bcac2269f70432ff4cd35f7288e07ca8d0f766ab23372558e3ac32b82e459f"
+    },
+    "explicit_receptor_plans": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.receptor-plans.json",
+      "manifest_sha256": "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55"
     }
   },
   "primary_evidence": {

@@ -54,8 +54,14 @@ evidence are frozen in `LIT_PCBA_ANKORA_VS_V1.structures.json`: every source
 ligand heavy atom maps exactly to one official co-crystal residue, and more
 than 98% of source receptor heavy atoms match same-element official coordinates
 for every template. Prepared primary and alternate receptor derivatives remain
-the final open execution inputs. Source protein MOL2 bytes will not be treated
-as if Ankora had produced a reviewed, docking-ready receptor.
+the final open execution inputs. Six explicit structural requests are now
+frozen in `LIT_PCBA_ANKORA_VS_V1.receptor-plans.json`: chain/component,
+missing-residue, missing-atom, source-aligned altloc, terminal-OXT,
+relaxation, pH, and force-field choices are all fixed before execution. Source
+protein MOL2 bytes are used only to identify the exact retained alternate
+coordinates and will not be treated as if Ankora had produced a reviewed,
+docking-ready receptor. Six structured PROPKA previews and their explicit
+reviews remain pending before final PDBQT creation.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
