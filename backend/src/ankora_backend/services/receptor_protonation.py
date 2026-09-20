@@ -57,6 +57,7 @@ def build_protonation_analysis(
     metal_positions = _metal_positions(model, inspection)
     terminal_identities = _terminal_identities(input_path)
     override_map = {_identity(item.residue): item.state for item in overrides}
+    output_state_map = _output_state_map(worker_report)
     matched_overrides: set[tuple[str, str, int, str]] = set()
 
     proposals: list[ReceptorProtonationProposal] = []
@@ -72,6 +73,7 @@ def build_protonation_analysis(
             ph=ph,
             force_field=force_field,
             override_map=override_map,
+            output_state_map=output_state_map,
             near_reference_cutoff_angstrom=inspection.near_reference_cutoff_angstrom,
         )
         if proposal is None:
@@ -121,7 +123,7 @@ def validate_protonation_overrides(
         "ASP": {"ASP", "ASH"},
         "GLU": {"GLU", "GLH"},
         "CYS": {"CYS", "CYM"},
-        "HIS": {"HIS_NEUTRAL_AUTO", "HIP"},
+        "HIS": {"HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"},
         "LYS": {"LYS", "LYN"},
     }
     for override in overrides:
@@ -162,6 +164,7 @@ def _proposal_from_row(
     ph: float,
     force_field: str,
     override_map: dict[tuple[str, str, int, str], str],
+    output_state_map: dict[tuple[str, str, int, str], str],
     near_reference_cutoff_angstrom: float,
 ) -> ReceptorProtonationProposal | None:
     try:
@@ -205,6 +208,21 @@ def _proposal_from_row(
             },
         )
     selected_state = override or default_state
+    output_state = output_state_map.get(identity)
+    if residue.residue_name == "HIS" and output_state is None:
+        raise _analysis_error(
+            "PDB2PQR did not report the written histidine tautomer.",
+            {"residue": residue.model_dump(mode="json")},
+        )
+    if override in {"HID", "HIE", "HIP"} and output_state != override:
+        raise _analysis_error(
+            "The written histidine tautomer does not match the explicit override.",
+            {
+                "residue": residue.model_dump(mode="json"),
+                "requested_state": override,
+                "output_state": output_state,
+            },
+        )
     positions = _residue_positions(model, residue)
     reference_distance = _minimum_distance(positions, reference_positions)
     nearby_metals: list[ProtonationMetalContact] = []
@@ -256,6 +274,7 @@ def _proposal_from_row(
         predicted_state=predicted_state,
         default_state=default_state,
         selected_state=selected_state,
+        output_state=output_state,
         allowed_states=allowed_states,
         decision_source=(
             ProtonationDecisionSource.SCIENTIST_OVERRIDE
@@ -305,7 +324,7 @@ def _states_for(
         allowed = ["CYS", "CYM"]
     elif name == "HIS":
         predicted = "HIP" if ph < pka else "HIS_NEUTRAL_AUTO"
-        allowed = ["HIS_NEUTRAL_AUTO", "HIP"]
+        allowed = ["HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"]
         if predicted == "HIS_NEUTRAL_AUTO":
             warnings.append("HISTIDINE_TAUTOMER_OPTIMIZED_BY_PDB2PQR")
     elif name == "LYS":
@@ -379,6 +398,40 @@ def _identity(residue: ResidueLocator) -> tuple[str, str, int, str]:
         residue.sequence_number,
         residue.insertion_code,
     )
+
+
+def _output_state_map(
+    worker_report: dict[str, object],
+) -> dict[tuple[str, str, int, str], str]:
+    raw_states = worker_report.get("output_states")
+    if not isinstance(raw_states, list):
+        raise _analysis_error(
+            "The structured PDB2PQR report has no written-state verification."
+        )
+    output: dict[tuple[str, str, int, str], str] = {}
+    for raw in raw_states:
+        if not isinstance(raw, dict):
+            raise _analysis_error("A written-state verification row is not an object.")
+        try:
+            identity = (
+                str(raw["chain_id"]),
+                str(raw["residue_name"]),
+                int(str(raw["sequence_number"])),
+                str(raw.get("insertion_code") or ""),
+            )
+            state = str(raw["state"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise _analysis_error(
+                "A written-state verification row is incomplete.",
+                {"row": {str(key): value for key, value in raw.items()}},
+            ) from error
+        if identity in output:
+            raise _analysis_error(
+                "PDB2PQR reported a duplicate written residue state.",
+                {"residue": list(identity)},
+            )
+        output[identity] = state
+    return output
 
 
 def _optional_float(value: object) -> float | None:

@@ -219,7 +219,8 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
       predicted_state: "HIS_NEUTRAL_AUTO",
       default_state: "HIS_NEUTRAL_AUTO",
       selected_state: "HIS_NEUTRAL_AUTO",
-      allowed_states: ["HIS_NEUTRAL_AUTO", "HIP"],
+      output_state: "HID",
+      allowed_states: ["HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"],
       decision_source: "propka_prediction",
       distance_to_reference_angstrom: 4.2,
       near_reference: true,
@@ -323,6 +324,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   fireEvent.click(screen.getByRole("checkbox", { name: /Generate receptor PDBQT/ }));
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await screen.findByText("1 pKa proposals");
+  expect(screen.getByText(/Written output · HID · neutral, ND1 protonated/)).toBeInTheDocument();
   expect(apply).not.toBeDisabled();
   fireEvent.click(apply);
   await screen.findByText("PDB2PQR proposed exact terminal oxygen completion:");
@@ -338,7 +340,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   expect(screen.getByRole("button", { name: "1 affected residue marked for removal" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await waitFor(() => expect(apply).not.toBeDisabled());
-  fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIP" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIE" } });
   fireEvent.click(apply);
   await screen.findByText(/1 immutable outputs/);
   expect(screen.getByRole("button", { name: "Prepared" })).toHaveClass("selected");
@@ -367,7 +369,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
       }],
       overrides: [{
         residue: { chain_id: "A", residue_name: "HIS", sequence_number: 5, insertion_code: "" },
-        state: "HIP",
+        state: "HIE",
       }],
     }),
   }));

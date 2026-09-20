@@ -1,8 +1,10 @@
-"""Isolated PDB2PQR/PROPKA worker with structured pKa output.
+"""Isolated PDB2PQR/PROPKA worker with structured state evidence.
 
-The compatibility hook changes only the pKa value presented to PDB2PQR for
-an explicitly overridden residue. PDB2PQR still applies its own topology
-patch, hydrogen optimization, charge assignment, and output generation.
+Ordinary overrides change only the pKa value presented to PDB2PQR.  An exact
+neutral histidine override additionally fixes the PDB2PQR residue to HID or
+HIE after native hydrogen construction and before native hydrogen optimization
+and AMBER charge/radius assignment.  The written PDB and PQR are then checked
+independently; no output file is edited after PDB2PQR returns.
 """
 
 import argparse
@@ -32,6 +34,13 @@ def main() -> None:
     overrides = _parse_overrides(args.override)
     applied: list[dict[str, object]] = []
     original_apply = biomolecule.Biomolecule.apply_pka_values
+    original_hold = biomolecule.Biomolecule.hold_residues
+    explicit_histidines = {
+        identity: state
+        for identity, state in overrides.items()
+        if identity[1] == "HIS" and state in {"HID", "HIE"}
+    }
+    fixed_histidines: set[tuple[str, str, int, str]] = set()
 
     def apply_with_overrides(
         instance: Any, force_field: str, ph: float, pkadic: dict[str, float]
@@ -70,7 +79,35 @@ def main() -> None:
             ]
             raise ValueError(f"Unapplied protonation overrides: {missing}")
 
+    def hold_with_tautomer_overrides(instance: Any, hlist: object) -> None:
+        if explicit_histidines and not fixed_histidines:
+            fixed_keys: list[tuple[int, str, str]] = []
+            for residue in instance.residues:
+                identity = (
+                    str(residue.chain_id),
+                    str(residue.name),
+                    int(residue.res_seq),
+                    str(residue.ins_code or "").strip(),
+                )
+                state = explicit_histidines.get(identity)
+                if state is None:
+                    continue
+                _fix_histidine_tautomer(residue, state)
+                fixed_histidines.add(identity)
+                fixed_keys.append(
+                    (int(residue.res_seq), str(residue.chain_id), str(residue.ins_code))
+                )
+            missing = set(explicit_histidines) - fixed_histidines
+            if missing:
+                raise ValueError(
+                    "Explicit histidine tautomer overrides did not match PDB2PQR "
+                    f"residues: {sorted(missing)}"
+                )
+            original_hold(instance, fixed_keys)
+        original_hold(instance, hlist)
+
     biomolecule.Biomolecule.apply_pka_values = apply_with_overrides
+    biomolecule.Biomolecule.hold_residues = hold_with_tautomer_overrides
     io.setup_logger(str(args.pqr_output), "INFO")
     _, pka_rows, _ = run_pdb2pqr(
         [
@@ -83,11 +120,39 @@ def main() -> None:
             str(args.pqr_output),
         ]
     )
+    predictions = [_json_row(row) for row in (pka_rows or [])]
+    output_states = _histidine_output_states(
+        pdb_path=args.pdb_output,
+        pqr_path=args.pqr_output,
+        predictions=predictions,
+    )
+    output_state_map = {
+        _output_identity(item): str(item["state"]) for item in output_states
+    }
+    for item in applied:
+        identity = (
+            str(item["chain_id"]),
+            str(item["residue_name"]),
+            int(str(item["sequence_number"])),
+            str(item["insertion_code"]),
+        )
+        if identity[1] != "HIS":
+            continue
+        observed = output_state_map.get(identity)
+        if observed is None:
+            raise ValueError(f"No written histidine state was found for {identity}.")
+        item["output_state"] = observed
+        requested = str(item["state"])
+        if requested in {"HID", "HIE", "HIP"} and observed != requested:
+            raise ValueError(
+                f"PDB2PQR wrote {observed} for {identity}, not requested {requested}."
+            )
     print(
         json.dumps(
             {
-                "predictions": [_json_row(row) for row in (pka_rows or [])],
+                "predictions": predictions,
                 "applied_overrides": applied,
+                "output_states": output_states,
             },
             sort_keys=True,
         )
@@ -120,7 +185,7 @@ def _forced_pka(residue_name: str, state: str, ph: float) -> float:
         "ASP": {"ASP": low, "ASH": high},
         "GLU": {"GLU": low, "GLH": high},
         "CYS": {"CYS": high, "CYM": low},
-        "HIS": {"HIS_NEUTRAL_AUTO": low, "HIP": high},
+        "HIS": {"HIS_NEUTRAL_AUTO": low, "HID": low, "HIE": low, "HIP": high},
         "LYS": {"LYS": high, "LYN": low},
     }
     try:
@@ -129,6 +194,111 @@ def _forced_pka(residue_name: str, state: str, ph: float) -> float:
         raise ValueError(
             f"State {state} is not a supported PDB2PQR override for {residue_name}."
         ) from error
+
+
+def _fix_histidine_tautomer(residue: Any, state: str) -> None:
+    """Fix one native PDB2PQR histidine before optimization and force-field use."""
+
+    if state not in {"HID", "HIE"}:
+        raise ValueError(f"Exact neutral histidine state must be HID or HIE, not {state}.")
+    required = "HD1" if state == "HID" else "HE2"
+    removed = "HE2" if state == "HID" else "HD1"
+    if not residue.has_atom(required) or not residue.has_atom(removed):
+        raise ValueError(
+            f"PDB2PQR did not construct both neutral histidine candidates before {state}."
+        )
+    residue.remove_atom(removed)
+
+
+def _histidine_output_states(
+    *, pdb_path: Path, pqr_path: Path, predictions: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    identities = {
+        (
+            str(row.get("chain_id") or ""),
+            "HIS",
+            int(str(row["res_num"])),
+            str(row.get("ins_code") or ""),
+        )
+        for row in predictions
+        if str(row.get("res_name") or "") == "HIS"
+        and str(row.get("group_label") or "").startswith("HIS")
+    }
+    pdb_atoms = _residue_atom_names(pdb_path, identities)
+    pqr_atoms = _residue_atom_names(pqr_path, identities)
+    output: list[dict[str, object]] = []
+    for identity in sorted(identities):
+        pdb_state = _histidine_state(pdb_atoms.get(identity, set()), identity, "PDB")
+        pqr_state = _histidine_state(pqr_atoms.get(identity, set()), identity, "PQR")
+        if pdb_state != pqr_state:
+            raise ValueError(
+                f"Written PDB/PQR histidine states disagree for {identity}: "
+                f"{pdb_state} versus {pqr_state}."
+            )
+        output.append(
+            {
+                "chain_id": identity[0],
+                "residue_name": identity[1],
+                "sequence_number": identity[2],
+                "insertion_code": identity[3],
+                "state": pdb_state,
+                "ring_hydrogens": sorted(
+                    pdb_atoms[identity].intersection({"HD1", "HE2"})
+                ),
+                "verified_in": ["pdb", "pqr"],
+            }
+        )
+    return output
+
+
+def _residue_atom_names(
+    path: Path, identities: set[tuple[str, str, int, str]]
+) -> dict[tuple[str, str, int, str], set[str]]:
+    atoms: dict[tuple[str, str, int, str], set[str]] = {
+        identity: set() for identity in identities
+    }
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith(("ATOM  ", "HETATM")) or len(line) < 27:
+            continue
+        try:
+            identity = (
+                line[21].strip(),
+                "HIS" if line[17:20].strip() in {"HIS", "HID", "HIE", "HIP"} else "",
+                int(line[22:26]),
+                line[26].strip(),
+            )
+        except ValueError:
+            continue
+        if identity in atoms:
+            atoms[identity].add(line[12:16].strip())
+    return atoms
+
+
+def _histidine_state(
+    atom_names: set[str], identity: tuple[str, str, int, str], label: str
+) -> str:
+    if not atom_names:
+        raise ValueError(f"Written {label} has no histidine residue for {identity}.")
+    hd1 = "HD1" in atom_names
+    he2 = "HE2" in atom_names
+    if hd1 and he2:
+        return "HIP"
+    if hd1:
+        return "HID"
+    if he2:
+        return "HIE"
+    raise ValueError(
+        f"Written {label} histidine {identity} has neither HD1 nor HE2."
+    )
+
+
+def _output_identity(item: dict[str, object]) -> tuple[str, str, int, str]:
+    return (
+        str(item["chain_id"]),
+        str(item["residue_name"]),
+        int(str(item["sequence_number"])),
+        str(item["insertion_code"]),
+    )
 
 
 def _json_row(row: dict[str, object]) -> dict[str, object]:

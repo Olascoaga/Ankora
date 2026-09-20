@@ -161,7 +161,7 @@ class ProtonationMetalContact(BaseModel):
 
 
 class ReceptorProtonationProposal(BaseModel):
-    """PROPKA evidence and the exact state Ankora asked PDB2PQR to use."""
+    """PROPKA evidence plus requested and verified written states."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -176,6 +176,7 @@ class ReceptorProtonationProposal(BaseModel):
     predicted_state: str = Field(min_length=1)
     default_state: str = Field(min_length=1)
     selected_state: str = Field(min_length=1)
+    output_state: str | None = Field(default=None, min_length=1)
     allowed_states: list[str] = Field(min_length=1)
     decision_source: ProtonationDecisionSource
     distance_to_reference_angstrom: float | None = Field(default=None, ge=0)

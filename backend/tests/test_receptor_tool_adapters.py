@@ -191,7 +191,9 @@ def test_pdb2pqr_adapter_records_explicit_propka_parameters(
         return ToolExecution(
             command=[executable, *arguments],
             exit_code=0,
-            stdout=json.dumps({"predictions": [], "applied_overrides": []}),
+            stdout=json.dumps(
+                {"predictions": [], "applied_overrides": [], "output_states": []}
+            ),
             stderr="synthetic PDB2PQR log",
         )
 
@@ -249,7 +251,11 @@ def test_pdb2pqr_adapter_records_explicit_propka_parameters(
     ]
     assert tool_version.startswith("pdb2pqr ")
     assert "; propka " in tool_version
-    assert report == {"predictions": [], "applied_overrides": []}
+    assert report == {
+        "predictions": [],
+        "applied_overrides": [],
+        "output_states": [],
+    }
 
 
 def test_meeko_adapter_reads_pqr_and_writes_named_pdbqt(

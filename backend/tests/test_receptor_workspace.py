@@ -296,7 +296,7 @@ def test_prepare_receptor_preserves_and_traces_exact_meeko_pqr_input(
                 stderr="",
                 ),
                 "pdb2pqr synthetic; propka synthetic",
-                {"predictions": [], "applied_overrides": []},
+                {"predictions": [], "applied_overrides": [], "output_states": []},
             )
 
     def fake_run_meeko_receptor(

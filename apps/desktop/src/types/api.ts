@@ -267,6 +267,7 @@ export interface ReceptorProtonationProposal {
   predicted_state: string;
   default_state: string;
   selected_state: string;
+  output_state: string | null;
   allowed_states: string[];
   decision_source: ProtonationDecisionSource;
   distance_to_reference_angstrom: number | null;

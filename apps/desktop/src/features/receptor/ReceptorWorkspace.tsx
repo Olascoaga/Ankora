@@ -486,7 +486,7 @@ export function ReceptorWorkspace({
                 <span>{activeProtonationAnalysis.proposals.filter((item) => item.nearby_metals.length).length} near metals</span>
                 <span>{Object.keys(protonationOverrides).length} overrides</span>
               </div>
-              <p className="field-note">PROPKA predicts; the selected state is Ankora's recorded decision. Amber-incompatible states remain visible as warnings but cannot be selected.</p>
+              <p className="field-note">PROPKA predicts; the selected state is Ankora's recorded decision. For histidine, Ankora also verifies the tautomer actually written to both PDB and PQR. Amber-incompatible states remain visible but cannot be selected.</p>
               <div className="protonation-proposal-list">
                 {activeProtonationAnalysis.proposals.map((proposal) => {
                   const selectedState = protonationOverrides[proposal.proposal_id] ?? proposal.default_state;
@@ -513,6 +513,7 @@ export function ReceptorWorkspace({
                     </select>
                     <div className="protonation-proposal-flags">
                       {proposal.default_state !== proposal.predicted_state ? <span className="warning">Amber limitation</span> : null}
+                      {proposal.output_state ? <span>Written output · {protonationStateLabel(proposal.output_state)}</span> : null}
                       {proposal.near_reference ? <span>Near reference · {formatDistanceCompact(proposal.distance_to_reference_angstrom)}</span> : null}
                       {proposal.nearby_metals.map((metal) => <span className="warning" key={metal.component_id}>Near {metal.name} · {formatScientificNumber(metal.distance_angstrom, 1)} Å</span>)}
                       {proposal.warnings.includes("PKA_NEAR_TARGET_PH") ? <span className="warning">pKa near target pH</span> : null}
@@ -746,6 +747,8 @@ function protonationStateLabel(state: string): string {
     GLU: "GLU · deprotonated",
     GLH: "GLH · protonated",
     HIP: "HIP · doubly protonated",
+    HID: "HID · neutral, ND1 protonated",
+    HIE: "HIE · neutral, NE2 protonated",
     HIS_NEUTRAL_AUTO: "HIS · neutral tautomer optimized",
     LYS: "LYS · protonated",
     LYN: "LYN · neutral",

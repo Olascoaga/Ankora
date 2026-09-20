@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "verification_id": "LIT_PCBA_ANKORA_VS_V1_TP53_HIS179_HIE_V1",
+  "frozen_at": "2026-09-20T00:00:00-06:00",
+  "scores_seen": false,
+  "source_receptor_plan_manifest_sha256": "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55",
+  "source_protonation_preview_manifest_sha256": "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa",
+  "purpose": "Verify that the alternate neutral histidine tautomer leaves the deposited zinc-coordinating ND1 atom unprotonated before any TP53 receptor is accepted.",
+  "templates": [
+    {
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "override": {
+        "residue": {
+          "chain_id": "A",
+          "residue_name": "HIS",
+          "sequence_number": 179,
+          "insertion_code": ""
+        },
+        "state": "HIE"
+      },
+      "selection_basis": "The retained zinc is 2.009 A from ND1; HIE places the neutral imidazole proton on NE2 and leaves ND1 available for zinc coordination."
+    },
+    {
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "override": {
+        "residue": {
+          "chain_id": "A",
+          "residue_name": "HIS",
+          "sequence_number": 179,
+          "insertion_code": ""
+        },
+        "state": "HIE"
+      },
+      "selection_basis": "The retained zinc is 2.010 A from ND1; HIE places the neutral imidazole proton on NE2 and leaves ND1 available for zinc coordination."
+    }
+  ],
+  "acceptance_boundary": "The two written PDB and PQR outputs must both contain HE2 and omit HD1 at HIS A:179. This is candidate-state verification only; CYS A:238 and CYS A:242 remain undecided and no final receptor, PDBQT, docking score, or enrichment result may be created.",
+  "spec_sha256": "2751b5b9b721c20ea72a743008b248fb19fb7f3b892f95defc5bc3bea24fce30"
+}

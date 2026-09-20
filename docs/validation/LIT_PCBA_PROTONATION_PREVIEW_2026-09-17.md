@@ -58,14 +58,24 @@ rows, distances, coupled groups, warning codes, and allowed states remain in
 the machine-readable record so review cannot be reconstructed from this
 summary alone.
 
-The retained protonated PDB files show `HD1` on HIS A:179 in both TP53
-templates. ND1 is the deposited zinc-contact atom at 2.009 A in 3ZME and 2.010
-A in 5O1I, so the automatic neutral tautomer protonates the coordinating
-nitrogen. This is a blocking result, not a review preference. Ankora's current
-override vocabulary exposes only `HIS_NEUTRAL_AUTO` and `HIP`; it cannot yet
-request the alternate neutral histidine tautomer explicitly. Exact HID/HIE
-selection plus output-state verification must be implemented and the TP53
-previews rerun before either receptor can be accepted.
+The retained protonated PDB files show `HD1` on HIS A:179 in both original
+TP53 previews. ND1 is the deposited zinc-contact atom at 2.009 A in 3ZME and
+2.010 A in 5O1I, so the automatic neutral tautomer protonates the coordinating
+nitrogen. This is a blocking result, not a review preference.
+
+Ankora now exposes exact HID and HIE selection before PDB2PQR optimization and
+AMBER assignment, and independently verifies the state written to both PDB and
+PQR. A pre-result, hash-bound verification requested HIE at HIS A:179 for only
+the two TP53 templates. The full production preparation path completed 2/2
+review-only reruns; both PDB and PQR outputs contain `HE2`, omit `HD1`, and
+therefore leave the zinc-coordinating ND1 unprotonated. The frozen request is
+`reference_cases/LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.spec.json`
+(SHA-256 `2751b5b9b721c20ea72a743008b248fb19fb7f3b892f95defc5bc3bea24fce30`).
+The path-free result manifest is
+`reference_cases/LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.json`
+(internal manifest SHA-256
+`2ac5f7abdc65d116cc1b209cb6b6421ace83a480f03cd43b39363dc3c2be7826`).
+No docking score was seen before freezing or executing this verification.
 
 ## Stage-attribution correction discovered during execution
 
@@ -85,6 +95,7 @@ created only by the subsequent clean 6/6 execution.
 The preview derivatives are review material, not benchmark receptors. Before
 creating any final receptor or PDBQT, the scientist must freeze, for every
 proposal, either acceptance of the recorded default or an explicit allowed
-override. The two TP53 zinc sites additionally require explicit histidine
-tautomer support and corrected reruns before that gate can close. No docking
-score has been generated or inspected.
+override. The exact HIE mechanism and both corrected TP53 candidate previews
+are verified, but HIE has not yet been scientifically accepted and the
+protonation decisions for CYS A:238 and CYS A:242 remain open. No docking score
+has been generated or inspected.

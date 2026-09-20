@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from ankora_backend.adapters.tools.pdb2pqr_worker import _forced_pka
+from ankora_backend.adapters.tools.pdb2pqr_worker import (
+    _fix_histidine_tautomer,
+    _forced_pka,
+    _histidine_output_states,
+)
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.schemas.receptors import (
@@ -51,6 +55,7 @@ def _raw_prediction() -> dict[str, object]:
             }
         ],
         "applied_overrides": [],
+        "output_states": [],
     }
 
 
@@ -137,6 +142,8 @@ def test_amber_rejects_a_terminal_acid_override_the_tool_cannot_apply(
         ("ASP", "ASH", "high"),
         ("ASP", "ASP", "low"),
         ("CYS", "CYM", "low"),
+        ("HIS", "HID", "low"),
+        ("HIS", "HIE", "low"),
         ("HIS", "HIP", "high"),
         ("LYS", "LYN", "low"),
     ],
@@ -147,3 +154,156 @@ def test_worker_override_forces_the_pdb2pqr_titration_branch(
     ph = 7.4
     forced = _forced_pka(residue_name, state, ph)
     assert (forced > ph) is (expected_relation == "high")
+
+
+class _SyntheticHistidine:
+    def __init__(self) -> None:
+        self.atoms = {"HD1", "HE2"}
+
+    def has_atom(self, name: str) -> bool:
+        return name in self.atoms
+
+    def remove_atom(self, name: str) -> None:
+        self.atoms.remove(name)
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"), [("HID", {"HD1"}), ("HIE", {"HE2"})]
+)
+def test_worker_fixes_exact_histidine_before_native_force_field_assignment(
+    state: str, expected: set[str]
+) -> None:
+    residue = _SyntheticHistidine()
+
+    _fix_histidine_tautomer(residue, state)
+
+    assert residue.atoms == expected
+
+
+def _histidine_atom_line(serial: int, atom_name: str) -> str:
+    return (
+        f"ATOM  {serial:5d} {atom_name:>4s} HIS A{5:4d}    "
+        "  10.000  10.000  10.000  0.0000 1.5000\n"
+    )
+
+
+def test_worker_verifies_same_written_hie_in_pdb_and_pqr(tmp_path: Path) -> None:
+    pdb = tmp_path / "output.pdb"
+    pqr = tmp_path / "output.pqr"
+    content = _histidine_atom_line(1, "ND1") + _histidine_atom_line(2, "HE2")
+    pdb.write_text(content, encoding="utf-8")
+    pqr.write_text(content, encoding="utf-8")
+
+    states = _histidine_output_states(
+        pdb_path=pdb,
+        pqr_path=pqr,
+        predictions=[
+            {
+                "chain_id": "A",
+                "res_name": "HIS",
+                "res_num": 5,
+                "ins_code": "",
+                "group_label": "HIS   5 A",
+            }
+        ],
+    )
+
+    assert states == [
+        {
+            "chain_id": "A",
+            "residue_name": "HIS",
+            "sequence_number": 5,
+            "insertion_code": "",
+            "state": "HIE",
+            "ring_hydrogens": ["HE2"],
+            "verified_in": ["pdb", "pqr"],
+        }
+    ]
+
+
+def test_analysis_records_and_requires_exact_histidine_output_state(
+    tmp_path: Path,
+) -> None:
+    store = StructureArtifactStore(tmp_path)
+    content = _synthetic_active_site("HIS")
+    source = import_structure_bytes(
+        content=content,
+        filename="synthetic_histidine_site.pdb",
+        source=StructureSource.LOCAL,
+        source_uri=None,
+        store=store,
+    )
+    inspection = inspect_receptor(
+        artifact_id=source.artifact.artifact_id,
+        store=store,
+        reference_component_id="ligand|A|LIG|101|",
+    )
+    input_path = tmp_path / "selected-his.pdb"
+    input_path.write_bytes(content)
+    override = ProtonationOverride(
+        residue=ResidueLocator(
+            chain_id="A", residue_name="HIS", sequence_number=1
+        ),
+        state="HIE",
+    )
+    report = {
+        "predictions": [
+            {
+                "res_num": 1,
+                "ins_code": "",
+                "res_name": "HIS",
+                "chain_id": "A",
+                "group_label": "HIS   1 A",
+                "group_type": "HIS",
+                "pKa": 5.0,
+                "model_pKa": 6.5,
+                "buried": 0.25,
+                "coupled_group": None,
+            }
+        ],
+        "applied_overrides": [],
+        "output_states": [
+            {
+                "chain_id": "A",
+                "residue_name": "HIS",
+                "sequence_number": 1,
+                "insertion_code": "",
+                "state": "HIE",
+                "ring_hydrogens": ["HE2"],
+                "verified_in": ["pdb", "pqr"],
+            }
+        ],
+    }
+
+    analysis = build_protonation_analysis(
+        source_artifact_id=source.artifact.artifact_id,
+        input_path=input_path,
+        inspection=inspection,
+        structure_store=store,
+        worker_report=report,
+        ph=7.4,
+        force_field="AMBER",
+        tool_version="pdb2pqr synthetic; propka synthetic",
+        overrides=[override],
+    )
+
+    proposal = analysis.proposals[0]
+    assert proposal.allowed_states == ["HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"]
+    assert proposal.selected_state == "HIE"
+    assert proposal.output_state == "HIE"
+
+    report["output_states"][0]["state"] = "HID"  # type: ignore[index]
+    with pytest.raises(
+        AnkoraDomainError, match="does not match the explicit override"
+    ):
+        build_protonation_analysis(
+            source_artifact_id=source.artifact.artifact_id,
+            input_path=input_path,
+            inspection=inspection,
+            structure_store=store,
+            worker_report=report,
+            ph=7.4,
+            force_field="AMBER",
+            tool_version="pdb2pqr synthetic; propka synthetic",
+            overrides=[override],
+        )

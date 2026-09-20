@@ -67,9 +67,16 @@ completed and are frozen in
 Scientist acceptance of defaults or explicit allowed overrides remains pending,
 with the TP53 Cys3-His zinc sites called out for deliberate review. In both
 TP53 previews the automatic neutral HIS179 tautomer protonated the ND1 atom
-that contacts zinc at approximately 2.01 A. Because the current override model
-cannot choose the alternate neutral tautomer, explicit HID/HIE control and a
-verified rerun are a hard prerequisite for final TP53 receptors.
+that contacts zinc at approximately 2.01 A. Exact HID/HIE control and
+independent PDB/PQR output-state verification are now implemented. A frozen,
+pre-result request reran both TP53 templates with HIE at HIS179 through the
+full production path; both outputs wrote HE2, omitted HD1, and left ND1
+unprotonated. The request and 2/2 result are frozen in
+`LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.spec.json` and
+`LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.json`. This establishes that
+Ankora writes the requested candidate state; it does not accept that state.
+Scientist acceptance and the CYS238/CYS242 zinc-site decisions remain hard
+prerequisites for final TP53 receptors.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

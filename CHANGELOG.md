@@ -2,6 +2,19 @@
 
 All notable project changes are recorded here.
 
+## Verified explicit histidine tautomers - 2026-09-20
+
+- Added exact HID/HIE controls inside the isolated PDB2PQR worker before
+  hydrogen optimization and AMBER charge/radius assignment, without editing
+  completed scientific outputs.
+- Added independent PDB and PQR output-state checks for every histidine; a run
+  now fails if the files disagree or an explicit HID/HIE/HIP request is not
+  written exactly.
+- Froze and executed a pre-result TP53 verification: both 3ZME and 5O1I wrote
+  HIE at HIS A:179, placing HE2 and leaving zinc-coordinating ND1
+  unprotonated. These remain review-only candidate previews; no final receptor,
+  PDBQT, or docking result was created.
+
 ## Executed screening protonation previews - 2026-09-17
 
 - Executed all six frozen LIT-PCBA receptor plans through review-only

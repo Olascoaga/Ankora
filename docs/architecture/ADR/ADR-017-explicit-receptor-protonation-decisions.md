@@ -38,16 +38,26 @@ automatic state changes. Distances are calculated from the immutable source
 coordinate frame already used by receptor inspection.
 
 AMBER overrides are limited to states that PDB2PQR 3.7.1 can apply safely:
-ASP/ASH, GLU/GLH, CYS/CYM, HIS neutral-auto/HIP, and LYS/LYN, with the
-tool-specific terminal restrictions enforced. Insertion-code overrides are
-rejected because PDB2PQR's pKa assignment key does not retain that identity.
-Unsupported predicted states remain visible as limitations but cannot be
-selected.
+ASP/ASH, GLU/GLH, CYS/CYM, HIS neutral-auto/HID/HIE/HIP, and LYS/LYN, with
+the tool-specific terminal restrictions enforced. Insertion-code overrides
+are rejected because PDB2PQR's pKa assignment key does not retain that
+identity. Unsupported predicted states remain visible as limitations but
+cannot be selected.
 
-An explicit override changes only the pKa branch presented to PDB2PQR inside
-an isolated worker process. PDB2PQR still performs its own topology patching,
-hydrogen optimization, force-field charge/radius assignment, and file output.
-Ankora never applies a post-hoc hydrogen edit.
+An explicit acid/base override changes the pKa branch presented to PDB2PQR
+inside an isolated worker process. Exact HID/HIE selection is applied after
+PDB2PQR has constructed its native hydrogen topology but before hydrogen
+optimization and AMBER charge/radius assignment: Ankora removes only the
+opposite ring hydrogen and asks PDB2PQR to fix the selected residue through
+its own residue-holding mechanism. PDB2PQR still performs topology patching,
+hydrogen optimization, force-field assignment, and file output. Ankora never
+edits a completed PDB or PQR post hoc.
+
+For every histidine proposal, Ankora independently infers the written state
+from both output files (`HD1` = HID, `HE2` = HIE, both = HIP). A preview or
+final preparation fails if PDB and PQR disagree or if an explicit request was
+not written exactly. The observed output state is retained beside the
+prediction and scientist selection.
 
 The preview is review material, not a retained scientific result. Any change
 to the structural or protonation plan invalidates it. Final receptor creation

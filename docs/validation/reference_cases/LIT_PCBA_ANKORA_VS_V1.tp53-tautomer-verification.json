@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "verification_id": "LIT_PCBA_ANKORA_VS_V1_TP53_HIS179_HIE_V1",
+  "created_at": "2026-09-20T23:04:17.709798+00:00",
+  "spec_sha256": "2751b5b9b721c20ea72a743008b248fb19fb7f3b892f95defc5bc3bea24fce30",
+  "source_receptor_plan_manifest_sha256": "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55",
+  "source_protonation_preview_manifest_sha256": "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa",
+  "scores_seen": false,
+  "execution_policy": {
+    "scope": "review-only TP53 exact-histidine-tautomer verification",
+    "worker_count": 2,
+    "create_only_local_evidence": true,
+    "preview_outputs_are_final_receptors": false,
+    "scientist_acceptance_required": true
+  },
+  "verification_census": {
+    "requested": 2,
+    "completed": 2,
+    "failed": 0
+  },
+  "previews": [
+    {
+      "sequence": 1,
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "status": "completed",
+      "selection_basis": "The retained zinc is 2.009 A from ND1; HIE places the neutral imidazole proton on NE2 and leaves ND1 available for zinc coordination.",
+      "requested_state": "HIE",
+      "output_state": "HIE",
+      "ring_hydrogen": "HE2",
+      "coordinating_atom_left_unprotonated": "ND1",
+      "proposal": {
+        "proposal_id": "A|HIS|179||HIS 179 A",
+        "residue": {
+          "chain_id": "A",
+          "residue_name": "HIS",
+          "sequence_number": 179,
+          "insertion_code": ""
+        },
+        "group_label": "HIS 179 A",
+        "group_type": "HIS",
+        "predicted_pka": 3.9993075571368712,
+        "model_pka": 6.5,
+        "buried_fraction": 0.26071428571428573,
+        "coupled_group": null,
+        "predicted_state": "HIS_NEUTRAL_AUTO",
+        "default_state": "HIS_NEUTRAL_AUTO",
+        "selected_state": "HIE",
+        "output_state": "HIE",
+        "allowed_states": [
+          "HIS_NEUTRAL_AUTO",
+          "HID",
+          "HIE",
+          "HIP"
+        ],
+        "decision_source": "scientist_override",
+        "distance_to_reference_angstrom": 29.133212747652802,
+        "near_reference": false,
+        "nearby_metals": [
+          {
+            "component_id": "metal|A|ZN|313|",
+            "name": "ZN",
+            "chain_id": "A",
+            "sequence_number": 313,
+            "insertion_code": "",
+            "distance_angstrom": 2.0094083706404633
+          }
+        ],
+        "warnings": [
+          "HISTIDINE_TAUTOMER_OPTIMIZED_BY_PDB2PQR",
+          "METAL_COORDINATION_REVIEW"
+        ]
+      },
+      "tool_version": "pdb2pqr 3.7.1; propka 3.5.1",
+      "preview_receptor_id": "a2631618-e454-4b0d-a02a-7c8d749b86ca",
+      "raw_evidence_files": [
+        {
+          "path": "01-TP53-primary-3zme/3zme.cif",
+          "size_bytes": 732443,
+          "sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/pdb2pqr-propka.stderr.log",
+          "size_bytes": 36928,
+          "sha256": "f25fe35723c8f8f0ab82bf092237de87a6b71f067dc37e470d6d72c9b7402266"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/pdb2pqr-propka.stdout.log",
+          "size_bytes": 16304,
+          "sha256": "704ff520c558dd8910ecbb3100a0f1485b7b17e8184d44f8605485037c017302"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/protonated_receptor.log",
+          "size_bytes": 39605,
+          "sha256": "756e2d0cd07f038216c8c515924b2971bb8e1084fd0312caf3f107194cae39f1"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/protonated_receptor.pdb",
+          "size_bytes": 248058,
+          "sha256": "9cbccee6f0af8647eaa6710c45a9972fd4f76b6c5b4392ee51bac1e2b6875320"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/protonated_receptor.pqr",
+          "size_bytes": 214712,
+          "sha256": "165059a47183605b516f20689bd7a563a9902620fac68cb4d36d39dbeb74381c"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/record.json",
+          "size_bytes": 227699,
+          "sha256": "66ed2a46e008733653a4d44a52a150bbbe10132a0f21d5a492d87632000b6449"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/derived/receptors/a2631618-e454-4b0d-a02a-7c8d749b86ca/selected_receptor.pdb",
+          "size_bytes": 254907,
+          "sha256": "25575a10ccbe194eea1786538dd2da1b102e2812aed7ac0a15296b0d07ef468b"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/original/structures/aee74ad8-4708-4188-a1cd-2873cd798d71/3zme.cif",
+          "size_bytes": 732443,
+          "sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251"
+        },
+        {
+          "path": "01-TP53-primary-3zme/ankora-data/projects/tautomer-preview/original/structures/aee74ad8-4708-4188-a1cd-2873cd798d71/record.json",
+          "size_bytes": 94285,
+          "sha256": "9e3e7a0999ca7743c5c804f25e8584d441ff1a2745a5df688778cf63f24b2f60"
+        }
+      ],
+      "final_receptor_created": false,
+      "final_pdbqt_created": false
+    },
+    {
+      "sequence": 2,
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "status": "completed",
+      "selection_basis": "The retained zinc is 2.010 A from ND1; HIE places the neutral imidazole proton on NE2 and leaves ND1 available for zinc coordination.",
+      "requested_state": "HIE",
+      "output_state": "HIE",
+      "ring_hydrogen": "HE2",
+      "coordinating_atom_left_unprotonated": "ND1",
+      "proposal": {
+        "proposal_id": "A|HIS|179||HIS 179 A",
+        "residue": {
+          "chain_id": "A",
+          "residue_name": "HIS",
+          "sequence_number": 179,
+          "insertion_code": ""
+        },
+        "group_label": "HIS 179 A",
+        "group_type": "HIS",
+        "predicted_pka": 3.9901547417179293,
+        "model_pka": 6.5,
+        "buried_fraction": 0.26785714285714285,
+        "coupled_group": null,
+        "predicted_state": "HIS_NEUTRAL_AUTO",
+        "default_state": "HIS_NEUTRAL_AUTO",
+        "selected_state": "HIE",
+        "output_state": "HIE",
+        "allowed_states": [
+          "HIS_NEUTRAL_AUTO",
+          "HID",
+          "HIE",
+          "HIP"
+        ],
+        "decision_source": "scientist_override",
+        "distance_to_reference_angstrom": 28.35588342831166,
+        "near_reference": false,
+        "nearby_metals": [
+          {
+            "component_id": "metal|A|ZN|401|",
+            "name": "ZN",
+            "chain_id": "A",
+            "sequence_number": 401,
+            "insertion_code": "",
+            "distance_angstrom": 2.0095526865449482
+          }
+        ],
+        "warnings": [
+          "HISTIDINE_TAUTOMER_OPTIMIZED_BY_PDB2PQR",
+          "METAL_COORDINATION_REVIEW"
+        ]
+      },
+      "tool_version": "pdb2pqr 3.7.1; propka 3.5.1",
+      "preview_receptor_id": "113f81a9-732c-41cb-9757-fab80cb4313a",
+      "raw_evidence_files": [
+        {
+          "path": "02-TP53-alternate-5o1i/5o1i.cif",
+          "size_bytes": 714863,
+          "sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/pdb2pqr-propka.stderr.log",
+          "size_bytes": 36656,
+          "sha256": "0004be87f5e23d6ba102ac501a506e939815a3d2d3cd0096e58aad59d40182c7"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/pdb2pqr-propka.stdout.log",
+          "size_bytes": 16499,
+          "sha256": "9cf3014f953e4250191652dce5ae79adbaf3034681405d05f57998e0cc2dd3b9"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/pdbfixer.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/pdbfixer.stdout.log",
+          "size_bytes": 368,
+          "sha256": "00109d8a3faf79937ccfbd5f528a6828ff5e2fd24f9b608d6373d5a0c5e5984d"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/protonated_receptor.log",
+          "size_bytes": 39092,
+          "sha256": "845d552e2f39de03a44405b835fbc9db7e064943449bbcbd3369fe3e6373b77a"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/protonated_receptor.pdb",
+          "size_bytes": 249862,
+          "sha256": "8955700f19637cd6f87454b7ab011c0737b9599cc616915d6a562579615f2347"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/protonated_receptor.pqr",
+          "size_bytes": 216274,
+          "sha256": "f4dbf9705f06e2895f920a0bdf769b101dbfa315a9d3805716cd6269a33a1bfc"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/record.json",
+          "size_bytes": 250517,
+          "sha256": "484d5a2c6cb59712281d980e506e9ea7a18c889efac3791637d00d1337e1f5ec"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/relaxed_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "1132b0b9370d5492e30c1b810eb24355fd6dcd734515e959cb9dbcf4f9aa51f6"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/repaired_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "ef6dd39c82dfe0bfcf588784d579a33ef9b16f9427656e42a419fb8a731ed7af"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/derived/receptors/113f81a9-732c-41cb-9757-fab80cb4313a/selected_receptor.pdb",
+          "size_bytes": 251343,
+          "sha256": "e0197ed36b0b0b4046437b6f121a417c94c79fa26803e7b10bb7db81a0d092ac"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/original/structures/fdb48aed-ea50-41ef-b27c-d07acf736b43/5o1i.cif",
+          "size_bytes": 714863,
+          "sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd"
+        },
+        {
+          "path": "02-TP53-alternate-5o1i/ankora-data/projects/tautomer-preview/original/structures/fdb48aed-ea50-41ef-b27c-d07acf736b43/record.json",
+          "size_bytes": 79095,
+          "sha256": "0dc51ca6979cc46a02ba4b8f9dbf99e8b76ed5b718469fc929683376b4c780bf"
+        }
+      ],
+      "final_receptor_created": false,
+      "final_pdbqt_created": false
+    }
+  ],
+  "scientist_review": {
+    "status": "pending",
+    "candidate_override": "HIE at HIS A:179",
+    "remaining_tp53_decisions": [
+      "CYS A:238",
+      "CYS A:242"
+    ],
+    "boundary": "This verifies that Ankora can write the requested tautomer. It does not accept the TP53 zinc-site protonation plan or create a final receptor/PDBQT."
+  },
+  "result_status": "two_hie_candidates_verified_scientist_review_pending",
+  "manifest_sha256": "2ac5f7abdc65d116cc1b209cb6b6421ace83a480f03cd43b39363dc3c2be7826"
+}
