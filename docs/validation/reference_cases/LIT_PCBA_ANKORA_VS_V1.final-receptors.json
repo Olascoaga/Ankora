@@ -1,0 +1,1029 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "created_at": "2026-09-21T04:26:36.077570+00:00",
+  "scores_seen": false,
+  "source_receptor_plan_manifest_sha256": "117bc6a50589b0f02c952584291598b5f3aeeaa29d54d127e63dc0bfb21fae55",
+  "source_protonation_preview_manifest_sha256": "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa",
+  "source_protonation_decision_review_sha256": "4d01857a5ef7df41eeb8a81ffd76a32d1d0292057562323e16dbd42d6c7743f4",
+  "execution_policy": {
+    "scope": "create-only final receptor and receptor-PDBQT production",
+    "worker_count": 6,
+    "accepted_decisions_only": true,
+    "ligand_preparation_executed": false,
+    "docking_executed": false,
+    "scores_or_metrics_computed": false,
+    "raw_evidence_retained_locally": true
+  },
+  "decision_census": {
+    "templates": 6,
+    "source_proposals": 449,
+    "accepted_by_default_policy": 443,
+    "explicit_overrides": 6
+  },
+  "receptor_census": {
+    "requested": 6,
+    "completed": 6,
+    "failed": 0,
+    "docking_ready": 6,
+    "pdbqt_created": 6
+  },
+  "receptors": [
+    {
+      "sequence": 1,
+      "target_id": "ESR_antago",
+      "role": "primary",
+      "pdb_id": "5ufx",
+      "status": "completed",
+      "official_structure_sha256": "6b8da02081a6f9c4c4b7e9868e0907623da2a9f464a7229a0255bb90638c2344",
+      "accepted_decisions_sha256": "f945ab5644b07e0f3512735e3949a0c4252d4ddd22e683bb4b8fa5914efca308",
+      "request_sha256": "8bb607c13945d376c7333d8908a055fccf5389c6dcbfe759e6df3d28ceab7e9c",
+      "source_artifact_id": "23ae2249-531f-4b14-bbbc-8f95dbb62116",
+      "final_receptor_id": "9f28b527-8815-4e7f-bfce-eddfcb0e647a",
+      "final_record_path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/record.json",
+      "final_record_sha256": "a628dc93ba9d767127e0e70ed99a6aa992d55fb5f84af0fa76ffdd6c7a5b2bf8",
+      "final_status": "docking_ready",
+      "proposal_count": 68,
+      "explicit_override_count": 0,
+      "accepted_overrides": [],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/selected_receptor.pdb",
+          "size_bytes": 305127,
+          "sha256": "04f621051ed6c328cbdad44a6412785b1147dd9719985ccb43b1e18fb4815aff"
+        },
+        {
+          "stage": "repaired",
+          "filename": "repaired_receptor.pdb",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/repaired_receptor.pdb",
+          "size_bytes": 151622,
+          "sha256": "dc4a71aee27412ab07f95af1b4add80b318d646b307b8e1283041764c6c14df3"
+        },
+        {
+          "stage": "relaxed",
+          "filename": "relaxed_receptor.pdb",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/relaxed_receptor.pdb",
+          "size_bytes": 151622,
+          "sha256": "96fd7d9233f622d5cbec38d9dc1bfbbbfcee65cd6a38754de67f9655076b9c23"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/protonated_receptor.pqr",
+          "size_bytes": 268601,
+          "sha256": "fd44c1b0ba1e997644ce164ce44e4179a804a42eaf632c2becc8a11a34c82afd"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/protonated_receptor.pdb",
+          "size_bytes": 310214,
+          "sha256": "1883cfe518c31b2a50b0d2378a73592ab52cc9492c08257f4f18a37edadaa7ba"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/meeko_input_receptor.pqr",
+          "size_bytes": 268601,
+          "sha256": "fd44c1b0ba1e997644ce164ce44e4179a804a42eaf632c2becc8a11a34c82afd"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/prepared_receptor.pdbqt",
+          "size_bytes": 182979,
+          "sha256": "77dbd42747cdac91ce94a4fba8782bff79e3de8e935c3e24bd33d50fa0854507"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "01-ESR_antago-primary-5ufx/5ufx.cif",
+          "size_bytes": 839529,
+          "sha256": "6b8da02081a6f9c4c4b7e9868e0907623da2a9f464a7229a0255bb90638c2344"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/meeko.stdout.log",
+          "size_bytes": 490,
+          "sha256": "c79a998b590e937ed6c7f7a9071e7104f78a86f312dbbd0a9564a02d58966dd7"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/meeko_input_receptor.pqr",
+          "size_bytes": 268601,
+          "sha256": "fd44c1b0ba1e997644ce164ce44e4179a804a42eaf632c2becc8a11a34c82afd"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/pdb2pqr-propka.stderr.log",
+          "size_bytes": 29343,
+          "sha256": "ae0c56c24dd939baa0b402d7e37f998d154cf6b8e4bbd910bdc5de8907c4b925"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/pdb2pqr-propka.stdout.log",
+          "size_bytes": 16055,
+          "sha256": "be53217d6d4b81a07c3c5a9d305e88bb5ba02e08f4b584cb4dcbcfd71d16635b"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/pdbfixer.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/pdbfixer.stdout.log",
+          "size_bytes": 370,
+          "sha256": "57110e4cce95e5529870c5032ce4a38081ef768c007386cb6dcbc90e798ac354"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/prepared_receptor.pdbqt",
+          "size_bytes": 182979,
+          "sha256": "77dbd42747cdac91ce94a4fba8782bff79e3de8e935c3e24bd33d50fa0854507"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/protonated_receptor.log",
+          "size_bytes": 32507,
+          "sha256": "0107f8c70327effb3d9d87d26c17e234293c57621698cd20cdc38fa3dd92216b"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/protonated_receptor.pdb",
+          "size_bytes": 310214,
+          "sha256": "1883cfe518c31b2a50b0d2378a73592ab52cc9492c08257f4f18a37edadaa7ba"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/protonated_receptor.pqr",
+          "size_bytes": 268601,
+          "sha256": "fd44c1b0ba1e997644ce164ce44e4179a804a42eaf632c2becc8a11a34c82afd"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/record.json",
+          "size_bytes": 217849,
+          "sha256": "a628dc93ba9d767127e0e70ed99a6aa992d55fb5f84af0fa76ffdd6c7a5b2bf8"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/relaxed_receptor.pdb",
+          "size_bytes": 151622,
+          "sha256": "96fd7d9233f622d5cbec38d9dc1bfbbbfcee65cd6a38754de67f9655076b9c23"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/repaired_receptor.pdb",
+          "size_bytes": 151622,
+          "sha256": "dc4a71aee27412ab07f95af1b4add80b318d646b307b8e1283041764c6c14df3"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/derived/receptors/9f28b527-8815-4e7f-bfce-eddfcb0e647a/selected_receptor.pdb",
+          "size_bytes": 305127,
+          "sha256": "04f621051ed6c328cbdad44a6412785b1147dd9719985ccb43b1e18fb4815aff"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/original/structures/23ae2249-531f-4b14-bbbc-8f95dbb62116/5ufx.cif",
+          "size_bytes": 839529,
+          "sha256": "6b8da02081a6f9c4c4b7e9868e0907623da2a9f464a7229a0255bb90638c2344"
+        },
+        {
+          "path": "01-ESR_antago-primary-5ufx/ankora-data/projects/benchmark-final/original/structures/23ae2249-531f-4b14-bbbc-8f95dbb62116/record.json",
+          "size_bytes": 112251,
+          "sha256": "badd33bd25fe3ed3259d13791bed47187cb579ab54b07134124de2d48dab99c9"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    },
+    {
+      "sequence": 2,
+      "target_id": "ESR_antago",
+      "role": "alternate",
+      "pdb_id": "2iog",
+      "status": "completed",
+      "official_structure_sha256": "bcd85235213d549532dd1733c17807016c86211ca0dcdb105d65fe07582e8d77",
+      "accepted_decisions_sha256": "3f97b022b5fcf98a874a7b79d49e6d905f2743dc9e5f5621ed61316d4aea0347",
+      "request_sha256": "e650544242df4bd601ed1b260b567025f48c94b4ddd396621de9bd9bd89749cd",
+      "source_artifact_id": "883a2a94-1228-419c-bd4f-4a87b4f2dd5e",
+      "final_receptor_id": "d7cf89ac-0bc1-4231-ab63-8a351013608c",
+      "final_record_path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/record.json",
+      "final_record_sha256": "2a30915aeaa408926062b657976cab6a078b1e19c313f9ed74c86c3fbe94448c",
+      "final_status": "docking_ready",
+      "proposal_count": 74,
+      "explicit_override_count": 0,
+      "accepted_overrides": [],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/selected_receptor.pdb",
+          "size_bytes": 162081,
+          "sha256": "ee084d91111a4a3549f198efc3cab6b8ff48b8ba1d1c9fe3d752fd10b2c3fb6c"
+        },
+        {
+          "stage": "repaired",
+          "filename": "repaired_receptor.pdb",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/repaired_receptor.pdb",
+          "size_bytes": 157616,
+          "sha256": "b79d0ac4aa0c48fdc6be6fbe48f0186468e8a661e7f896f99d03cfb4bed47111"
+        },
+        {
+          "stage": "relaxed",
+          "filename": "relaxed_receptor.pdb",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/relaxed_receptor.pdb",
+          "size_bytes": 157616,
+          "sha256": "08c3a1001d514221498a07232927262f3d7d18492b53e4d5bedfa9de22894a47"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/protonated_receptor.pqr",
+          "size_bytes": 279748,
+          "sha256": "e05ebfe6c31ff7d241c54b96089580c4689e2b7198ead35dc0b19101a0e4d26b"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/protonated_receptor.pdb",
+          "size_bytes": 323088,
+          "sha256": "375a3f2bfce1dfe2baa5f5f8765f281c922d7614876586458f282ce15b0af046"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/meeko_input_receptor.pqr",
+          "size_bytes": 279748,
+          "sha256": "e05ebfe6c31ff7d241c54b96089580c4689e2b7198ead35dc0b19101a0e4d26b"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/prepared_receptor.pdbqt",
+          "size_bytes": 190755,
+          "sha256": "ba91ddaf3ac41be8bd09ea763959c6282c12a63637cedf06a374cdd0fe2cd0e7"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "02-ESR_antago-alternate-2iog/2iog.cif",
+          "size_bytes": 267564,
+          "sha256": "bcd85235213d549532dd1733c17807016c86211ca0dcdb105d65fe07582e8d77"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/meeko.stdout.log",
+          "size_bytes": 492,
+          "sha256": "bf22bb5c4542d72975e7be6de1b27631058e24b82f51459031ff364cdb350b7c"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/meeko_input_receptor.pqr",
+          "size_bytes": 279748,
+          "sha256": "e05ebfe6c31ff7d241c54b96089580c4689e2b7198ead35dc0b19101a0e4d26b"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/pdb2pqr-propka.stderr.log",
+          "size_bytes": 29759,
+          "sha256": "20ae2bc9550a96985ff4be7eeff9e78ef31b65d0525b6087870673087a222791"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/pdb2pqr-propka.stdout.log",
+          "size_bytes": 17559,
+          "sha256": "aca9d156895862cfa9b0e63c5a164aaeef32509b1430ac47ee7e9ac67fcd8ac2"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/pdbfixer.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/pdbfixer.stdout.log",
+          "size_bytes": 368,
+          "sha256": "0c47c48d888b5fa81da12fd8fdcebaf5ae4a7f6e5cff3afa216ed56a9522a67a"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/prepared_receptor.pdbqt",
+          "size_bytes": 190755,
+          "sha256": "ba91ddaf3ac41be8bd09ea763959c6282c12a63637cedf06a374cdd0fe2cd0e7"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/protonated_receptor.log",
+          "size_bytes": 32114,
+          "sha256": "3459241bfeecdb254f578ae10d7f7c420563396368bdf978abaa7d848335d449"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/protonated_receptor.pdb",
+          "size_bytes": 323088,
+          "sha256": "375a3f2bfce1dfe2baa5f5f8765f281c922d7614876586458f282ce15b0af046"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/protonated_receptor.pqr",
+          "size_bytes": 279748,
+          "sha256": "e05ebfe6c31ff7d241c54b96089580c4689e2b7198ead35dc0b19101a0e4d26b"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/record.json",
+          "size_bytes": 155732,
+          "sha256": "2a30915aeaa408926062b657976cab6a078b1e19c313f9ed74c86c3fbe94448c"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/relaxed_receptor.pdb",
+          "size_bytes": 157616,
+          "sha256": "08c3a1001d514221498a07232927262f3d7d18492b53e4d5bedfa9de22894a47"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/repaired_receptor.pdb",
+          "size_bytes": 157616,
+          "sha256": "b79d0ac4aa0c48fdc6be6fbe48f0186468e8a661e7f896f99d03cfb4bed47111"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/derived/receptors/d7cf89ac-0bc1-4231-ab63-8a351013608c/selected_receptor.pdb",
+          "size_bytes": 162081,
+          "sha256": "ee084d91111a4a3549f198efc3cab6b8ff48b8ba1d1c9fe3d752fd10b2c3fb6c"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/original/structures/883a2a94-1228-419c-bd4f-4a87b4f2dd5e/2iog.cif",
+          "size_bytes": 267564,
+          "sha256": "bcd85235213d549532dd1733c17807016c86211ca0dcdb105d65fe07582e8d77"
+        },
+        {
+          "path": "02-ESR_antago-alternate-2iog/ankora-data/projects/benchmark-final/original/structures/883a2a94-1228-419c-bd4f-4a87b4f2dd5e/record.json",
+          "size_bytes": 35354,
+          "sha256": "3383c26b36b02800b31836654bf3b6f6152572ea1b8b0fd9e2debba6ff650909"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    },
+    {
+      "sequence": 3,
+      "target_id": "PPARG",
+      "role": "primary",
+      "pdb_id": "3b1m",
+      "status": "completed",
+      "official_structure_sha256": "10530a434245e955a3ea966424443d6cfb58abaab24240b58a156a03fffdc89e",
+      "accepted_decisions_sha256": "0b8562d6c180f577ea40e9815267a33541cfe49e6d3809b9e9f419ef9740a525",
+      "request_sha256": "6f79f66809f8b829b280145403cf11b0c4004b712bfbd2318ba1c636f06da71a",
+      "source_artifact_id": "1a7c30a6-823b-41f5-a619-1df320d0505d",
+      "final_receptor_id": "5d1fc8f3-1032-4074-8d8d-23708ac1bf35",
+      "final_record_path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/record.json",
+      "final_record_sha256": "18b295416d1453c09bad1a2aed93e7d91add6ecf9d534d67ca6ded4d818a7160",
+      "final_status": "docking_ready",
+      "proposal_count": 82,
+      "explicit_override_count": 0,
+      "accepted_overrides": [],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/selected_receptor.pdb",
+          "size_bytes": 174312,
+          "sha256": "30abfbbeaee6835c3672eaa637b3de42cab65b086320fc182b364a01f6ca133c"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/protonated_receptor.pqr",
+          "size_bytes": 300196,
+          "sha256": "baaf010fa64e2e9d54a420653637207ac4dbe985b98945559d14f35e78484c68"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/protonated_receptor.pdb",
+          "size_bytes": 346704,
+          "sha256": "3db132feea7f30095953fa75750e635183a64b92d5ef4eebee4085f6ba372bb0"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/meeko_input_receptor.pqr",
+          "size_bytes": 300196,
+          "sha256": "baaf010fa64e2e9d54a420653637207ac4dbe985b98945559d14f35e78484c68"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/prepared_receptor.pdbqt",
+          "size_bytes": 204525,
+          "sha256": "f55ce237caa5d5d875fa0ca9e6eebcba8393a932f5eb6a1891289f443a9d4410"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "03-PPARG-primary-3b1m/3b1m.cif",
+          "size_bytes": 296412,
+          "sha256": "10530a434245e955a3ea966424443d6cfb58abaab24240b58a156a03fffdc89e"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/meeko.stdout.log",
+          "size_bytes": 485,
+          "sha256": "1a361445dda3eada5d09359fbe7e71a71c9826e717f97b89b4bb272bf9b2bc22"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/meeko_input_receptor.pqr",
+          "size_bytes": 300196,
+          "sha256": "baaf010fa64e2e9d54a420653637207ac4dbe985b98945559d14f35e78484c68"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/pdb2pqr-propka.stderr.log",
+          "size_bytes": 35158,
+          "sha256": "7160d3276f100b6e91877fbc67b3bc782b98273a879f39874cc5dc38adac1bd7"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/pdb2pqr-propka.stdout.log",
+          "size_bytes": 17850,
+          "sha256": "2cd67ad5900cb7830c28f63c7fec7a60deddf43d1ce4d02ee37bd301e9e7e6e7"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/prepared_receptor.pdbqt",
+          "size_bytes": 204525,
+          "sha256": "f55ce237caa5d5d875fa0ca9e6eebcba8393a932f5eb6a1891289f443a9d4410"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/protonated_receptor.log",
+          "size_bytes": 37986,
+          "sha256": "fe5a9fcaab3c4b57c19ad6ad0b67a963685e32e7a700dd3584992fae97c6ba4d"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/protonated_receptor.pdb",
+          "size_bytes": 346704,
+          "sha256": "3db132feea7f30095953fa75750e635183a64b92d5ef4eebee4085f6ba372bb0"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/protonated_receptor.pqr",
+          "size_bytes": 300196,
+          "sha256": "baaf010fa64e2e9d54a420653637207ac4dbe985b98945559d14f35e78484c68"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/record.json",
+          "size_bytes": 195545,
+          "sha256": "18b295416d1453c09bad1a2aed93e7d91add6ecf9d534d67ca6ded4d818a7160"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/derived/receptors/5d1fc8f3-1032-4074-8d8d-23708ac1bf35/selected_receptor.pdb",
+          "size_bytes": 174312,
+          "sha256": "30abfbbeaee6835c3672eaa637b3de42cab65b086320fc182b364a01f6ca133c"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/original/structures/1a7c30a6-823b-41f5-a619-1df320d0505d/3b1m.cif",
+          "size_bytes": 296412,
+          "sha256": "10530a434245e955a3ea966424443d6cfb58abaab24240b58a156a03fffdc89e"
+        },
+        {
+          "path": "03-PPARG-primary-3b1m/ankora-data/projects/benchmark-final/original/structures/1a7c30a6-823b-41f5-a619-1df320d0505d/record.json",
+          "size_bytes": 51457,
+          "sha256": "ff0c03f67b2c1ee05da21b8d945d3f789ea3e4a8c931759158ba4a04be1ad864"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    },
+    {
+      "sequence": 4,
+      "target_id": "PPARG",
+      "role": "alternate",
+      "pdb_id": "5y2t",
+      "status": "completed",
+      "official_structure_sha256": "be6e8212d21c3d12b71f65d8d0db85dc66ac02c025ebe746995a89d35f73b8f1",
+      "accepted_decisions_sha256": "bc88be1c5fe45b8a3710dc89449a6b93862095eecd398d2ca372a16e0f110c31",
+      "request_sha256": "4faa8f99a23db896bfcfc0ac53865b5c693e86c7a305c78e03d43421d89d89b9",
+      "source_artifact_id": "c80c52bb-dc2c-455d-91d9-7c15a1246b6f",
+      "final_receptor_id": "3154fb67-f046-433e-a48b-be87d8d386fb",
+      "final_record_path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/record.json",
+      "final_record_sha256": "0568589c02aff8ab21600b029cd5f1bbf23b092d116b8eea9d903184addda9cb",
+      "final_status": "docking_ready",
+      "proposal_count": 82,
+      "explicit_override_count": 0,
+      "accepted_overrides": [],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/selected_receptor.pdb",
+          "size_bytes": 176499,
+          "sha256": "8fb8d716d05d4310225efe24b7a0403dd2ad7a0bca2c32e611d7b847600e214b"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/protonated_receptor.pqr",
+          "size_bytes": 301332,
+          "sha256": "12f2f3692ee0480ef0acc58aad67beb7266ebc335a58d5ae38cd2223862b62e8"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/protonated_receptor.pdb",
+          "size_bytes": 348016,
+          "sha256": "92a5dae90309161cafeb74c74792e7c10201d1b2b096329835e61b33bdd60fb9"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/meeko_input_receptor.pqr",
+          "size_bytes": 301332,
+          "sha256": "12f2f3692ee0480ef0acc58aad67beb7266ebc335a58d5ae38cd2223862b62e8"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/prepared_receptor.pdbqt",
+          "size_bytes": 205578,
+          "sha256": "68cf4c016d4658b959289a2cf496089b2a5b7adeef204b9b8729043ae7b829e1"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "04-PPARG-alternate-5y2t/5y2t.cif",
+          "size_bytes": 540967,
+          "sha256": "be6e8212d21c3d12b71f65d8d0db85dc66ac02c025ebe746995a89d35f73b8f1"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/meeko.stdout.log",
+          "size_bytes": 487,
+          "sha256": "1e75fe395ae1b9d1b1f817b459598919bfaf787e24df67c3278a6fda00967ede"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/meeko_input_receptor.pqr",
+          "size_bytes": 301332,
+          "sha256": "12f2f3692ee0480ef0acc58aad67beb7266ebc335a58d5ae38cd2223862b62e8"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/pdb2pqr-propka.stderr.log",
+          "size_bytes": 35656,
+          "sha256": "2624b162feb57ff4ea64601f9774527bb682542da136233e84faff526bb7dbb1"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/pdb2pqr-propka.stdout.log",
+          "size_bytes": 17988,
+          "sha256": "6c48d1b05d6a83206c448869a95c5737b769cb81088496109b4393cb07806997"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/prepared_receptor.pdbqt",
+          "size_bytes": 205578,
+          "sha256": "68cf4c016d4658b959289a2cf496089b2a5b7adeef204b9b8729043ae7b829e1"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/protonated_receptor.log",
+          "size_bytes": 39143,
+          "sha256": "70615fd1487747acf8ded7c2137bbc2eec9ca588760b4ae17493f47826c9f84f"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/protonated_receptor.pdb",
+          "size_bytes": 348016,
+          "sha256": "92a5dae90309161cafeb74c74792e7c10201d1b2b096329835e61b33bdd60fb9"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/protonated_receptor.pqr",
+          "size_bytes": 301332,
+          "sha256": "12f2f3692ee0480ef0acc58aad67beb7266ebc335a58d5ae38cd2223862b62e8"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/record.json",
+          "size_bytes": 236049,
+          "sha256": "0568589c02aff8ab21600b029cd5f1bbf23b092d116b8eea9d903184addda9cb"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/derived/receptors/3154fb67-f046-433e-a48b-be87d8d386fb/selected_receptor.pdb",
+          "size_bytes": 176499,
+          "sha256": "8fb8d716d05d4310225efe24b7a0403dd2ad7a0bca2c32e611d7b847600e214b"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/original/structures/c80c52bb-dc2c-455d-91d9-7c15a1246b6f/5y2t.cif",
+          "size_bytes": 540967,
+          "sha256": "be6e8212d21c3d12b71f65d8d0db85dc66ac02c025ebe746995a89d35f73b8f1"
+        },
+        {
+          "path": "04-PPARG-alternate-5y2t/ankora-data/projects/benchmark-final/original/structures/c80c52bb-dc2c-455d-91d9-7c15a1246b6f/record.json",
+          "size_bytes": 83004,
+          "sha256": "aa28dad307508acff7bc42cc120f0ee1ffa7f2635d244173ad7d8ad85f81a842"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    },
+    {
+      "sequence": 5,
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "status": "completed",
+      "official_structure_sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251",
+      "accepted_decisions_sha256": "f8fea47d789a835e04c67b7b5c065e00877dc6e441c56695ca3aa2ce5201c87a",
+      "request_sha256": "9283ca357435f6b40a427df017800f36fdc57f46307ed925663a43a109da780f",
+      "source_artifact_id": "66a18742-633d-4556-a285-8a0230f4a2ac",
+      "final_receptor_id": "a1c468b4-bdf8-432b-99db-e6cc9ff192f6",
+      "final_record_path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/record.json",
+      "final_record_sha256": "5ad78c310574905c7dda024a48a3489f3dc08e0bbbd050e436492ac629b8292a",
+      "final_status": "docking_ready",
+      "proposal_count": 71,
+      "explicit_override_count": 3,
+      "accepted_overrides": [
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "HIS",
+            "sequence_number": 179,
+            "insertion_code": ""
+          },
+          "state": "HIE"
+        },
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "CYS",
+            "sequence_number": 238,
+            "insertion_code": ""
+          },
+          "state": "CYM"
+        },
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "CYS",
+            "sequence_number": 242,
+            "insertion_code": ""
+          },
+          "state": "CYM"
+        }
+      ],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "S",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/selected_receptor.pdb",
+          "size_bytes": 254907,
+          "sha256": "25575a10ccbe194eea1786538dd2da1b102e2812aed7ac0a15296b0d07ef468b"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/protonated_receptor.pqr",
+          "size_bytes": 214570,
+          "sha256": "5c6f20aff1b0b8b2efbf1c8403755579186ee392fb829c26241e9bdde46aba81"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/protonated_receptor.pdb",
+          "size_bytes": 247894,
+          "sha256": "ae8e55075a93ff46b77409c4276c16adddb8d30f2b0715a92e3317c0fe69baf0"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/meeko_input_receptor.pqr",
+          "size_bytes": 214570,
+          "sha256": "5c6f20aff1b0b8b2efbf1c8403755579186ee392fb829c26241e9bdde46aba81"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/prepared_receptor.pdbqt",
+          "size_bytes": 154062,
+          "sha256": "d5bb582133dc80b21d11658baf098b1993ee2cbe3ea64b8c28a1ce242397efc8"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "05-TP53-primary-3zme/3zme.cif",
+          "size_bytes": 732443,
+          "sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/meeko.stdout.log",
+          "size_bytes": 484,
+          "sha256": "bbcbbd5278d5fb5c214d61733318b7e4c16c6a4ab059f408e8334db12fb38b3d"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/meeko_input_receptor.pqr",
+          "size_bytes": 214570,
+          "sha256": "5c6f20aff1b0b8b2efbf1c8403755579186ee392fb829c26241e9bdde46aba81"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/pdb2pqr-propka.stderr.log",
+          "size_bytes": 36921,
+          "sha256": "a688081fecd47b30084feadf382cfdd990745b49899af4c976c2a38ed1922dc7"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/pdb2pqr-propka.stdout.log",
+          "size_bytes": 16626,
+          "sha256": "dc30749ddc65fc7eceb63627c8230c6e04e2b521e3010c704dc4dfef334fd50a"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/prepared_receptor.pdbqt",
+          "size_bytes": 154062,
+          "sha256": "d5bb582133dc80b21d11658baf098b1993ee2cbe3ea64b8c28a1ce242397efc8"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/protonated_receptor.log",
+          "size_bytes": 39598,
+          "sha256": "024e93fa3bc359a7dd938ade6fbab84a12bf746aef6b32d320c2e97c5c0eefaa"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/protonated_receptor.pdb",
+          "size_bytes": 247894,
+          "sha256": "ae8e55075a93ff46b77409c4276c16adddb8d30f2b0715a92e3317c0fe69baf0"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/protonated_receptor.pqr",
+          "size_bytes": 214570,
+          "sha256": "5c6f20aff1b0b8b2efbf1c8403755579186ee392fb829c26241e9bdde46aba81"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/record.json",
+          "size_bytes": 232394,
+          "sha256": "5ad78c310574905c7dda024a48a3489f3dc08e0bbbd050e436492ac629b8292a"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/derived/receptors/a1c468b4-bdf8-432b-99db-e6cc9ff192f6/selected_receptor.pdb",
+          "size_bytes": 254907,
+          "sha256": "25575a10ccbe194eea1786538dd2da1b102e2812aed7ac0a15296b0d07ef468b"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/original/structures/66a18742-633d-4556-a285-8a0230f4a2ac/3zme.cif",
+          "size_bytes": 732443,
+          "sha256": "3dd0fdb996adc54f5b437af1448c30247716d115a60818fe943e13587ff75251"
+        },
+        {
+          "path": "05-TP53-primary-3zme/ankora-data/projects/benchmark-final/original/structures/66a18742-633d-4556-a285-8a0230f4a2ac/record.json",
+          "size_bytes": 94285,
+          "sha256": "ebd8a36989abcd2b296c250a5ac189457c847c4c1a066764b6efad73e6eb3783"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    },
+    {
+      "sequence": 6,
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "status": "completed",
+      "official_structure_sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd",
+      "accepted_decisions_sha256": "ebe2bbbb77161e9260850688f32a1055bd7dcd56f800b54b9062f67466381271",
+      "request_sha256": "68ae0629c758e77d8528468dfee4c44ded9b974d0473edb2ddaa6328bf16a424",
+      "source_artifact_id": "8fc515c4-14e0-4c49-951b-1cc607c8528f",
+      "final_receptor_id": "ae3a5164-0cad-43f3-9c4a-aefb0de3f056",
+      "final_record_path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/record.json",
+      "final_record_sha256": "f6237851f34996cee8fad906f2652b43f1f2d4a29efe19b529c1cab624241d82",
+      "final_status": "docking_ready",
+      "proposal_count": 72,
+      "explicit_override_count": 3,
+      "accepted_overrides": [
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "HIS",
+            "sequence_number": 179,
+            "insertion_code": ""
+          },
+          "state": "HIE"
+        },
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "CYS",
+            "sequence_number": 238,
+            "insertion_code": ""
+          },
+          "state": "CYM"
+        },
+        {
+          "residue": {
+            "chain_id": "A",
+            "residue_name": "CYS",
+            "sequence_number": 242,
+            "insertion_code": ""
+          },
+          "state": "CYM"
+        }
+      ],
+      "receptor_atom_types": [
+        "A",
+        "C",
+        "HD",
+        "N",
+        "NA",
+        "OA",
+        "S",
+        "SA"
+      ],
+      "outputs": [
+        {
+          "stage": "selected",
+          "filename": "selected_receptor.pdb",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/selected_receptor.pdb",
+          "size_bytes": 251343,
+          "sha256": "e0197ed36b0b0b4046437b6f121a417c94c79fa26803e7b10bb7db81a0d092ac"
+        },
+        {
+          "stage": "repaired",
+          "filename": "repaired_receptor.pdb",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/repaired_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "ef6dd39c82dfe0bfcf588784d579a33ef9b16f9427656e42a419fb8a731ed7af"
+        },
+        {
+          "stage": "relaxed",
+          "filename": "relaxed_receptor.pdb",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/relaxed_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "1132b0b9370d5492e30c1b810eb24355fd6dcd734515e959cb9dbcf4f9aa51f6"
+        },
+        {
+          "stage": "protonated_pqr",
+          "filename": "protonated_receptor.pqr",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/protonated_receptor.pqr",
+          "size_bytes": 216132,
+          "sha256": "7d9ec347611cd3fc075e721efbf81c129d115b138551c4310a979328484ffedd"
+        },
+        {
+          "stage": "protonated_pdb",
+          "filename": "protonated_receptor.pdb",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/protonated_receptor.pdb",
+          "size_bytes": 249698,
+          "sha256": "c45c535559d976d8300212726e80c4ad90c04bd4fffde506e72932d5c60d5142"
+        },
+        {
+          "stage": "meeko_input_pqr",
+          "filename": "meeko_input_receptor.pqr",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/meeko_input_receptor.pqr",
+          "size_bytes": 216132,
+          "sha256": "7d9ec347611cd3fc075e721efbf81c129d115b138551c4310a979328484ffedd"
+        },
+        {
+          "stage": "pdbqt",
+          "filename": "prepared_receptor.pdbqt",
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/prepared_receptor.pdbqt",
+          "size_bytes": 155115,
+          "sha256": "3e0a0dce6cef4cba32021c7f6b30dd802731c7dc8e04fa4668891e266bed4b97"
+        }
+      ],
+      "raw_evidence_files": [
+        {
+          "path": "06-TP53-alternate-5o1i/5o1i.cif",
+          "size_bytes": 714863,
+          "sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/meeko.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/meeko.stdout.log",
+          "size_bytes": 486,
+          "sha256": "44fcccbee3f4a023fc612d66f5c4febf4097b0a255d74f126224c633156065af"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/meeko_input_receptor.pqr",
+          "size_bytes": 216132,
+          "sha256": "7d9ec347611cd3fc075e721efbf81c129d115b138551c4310a979328484ffedd"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/pdb2pqr-propka.stderr.log",
+          "size_bytes": 36649,
+          "sha256": "8c4229c401977c6314dda459a65f885e26fabf02decc92c85bd6d46f987245cb"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/pdb2pqr-propka.stdout.log",
+          "size_bytes": 16822,
+          "sha256": "ce83ba1f7d01ec50d2f0ae2a6e5016d85cb255fd80944b9d958922fc91efcdb7"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/pdbfixer.stderr.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/pdbfixer.stdout.log",
+          "size_bytes": 368,
+          "sha256": "00109d8a3faf79937ccfbd5f528a6828ff5e2fd24f9b608d6373d5a0c5e5984d"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/prepared_receptor.pdbqt",
+          "size_bytes": 155115,
+          "sha256": "3e0a0dce6cef4cba32021c7f6b30dd802731c7dc8e04fa4668891e266bed4b97"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/protonated_receptor.log",
+          "size_bytes": 39085,
+          "sha256": "1df2ed9cc10feee45edf367efa9448c8135f59f1d1e356c7f3d81b52756ffe6b"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/protonated_receptor.pdb",
+          "size_bytes": 249698,
+          "sha256": "c45c535559d976d8300212726e80c4ad90c04bd4fffde506e72932d5c60d5142"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/protonated_receptor.pqr",
+          "size_bytes": 216132,
+          "sha256": "7d9ec347611cd3fc075e721efbf81c129d115b138551c4310a979328484ffedd"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/record.json",
+          "size_bytes": 255176,
+          "sha256": "f6237851f34996cee8fad906f2652b43f1f2d4a29efe19b529c1cab624241d82"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/relaxed_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "1132b0b9370d5492e30c1b810eb24355fd6dcd734515e959cb9dbcf4f9aa51f6"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/repaired_receptor.pdb",
+          "size_bytes": 125000,
+          "sha256": "ef6dd39c82dfe0bfcf588784d579a33ef9b16f9427656e42a419fb8a731ed7af"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/derived/receptors/ae3a5164-0cad-43f3-9c4a-aefb0de3f056/selected_receptor.pdb",
+          "size_bytes": 251343,
+          "sha256": "e0197ed36b0b0b4046437b6f121a417c94c79fa26803e7b10bb7db81a0d092ac"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/original/structures/8fc515c4-14e0-4c49-951b-1cc607c8528f/5o1i.cif",
+          "size_bytes": 714863,
+          "sha256": "2e03c753575225b48d001d33c43fb916d71bef0024916c15c035a414ea3c9abd"
+        },
+        {
+          "path": "06-TP53-alternate-5o1i/ankora-data/projects/benchmark-final/original/structures/8fc515c4-14e0-4c49-951b-1cc607c8528f/record.json",
+          "size_bytes": 79095,
+          "sha256": "056b4ab9ac193c8074391331e07c0325a5af810812046bda7b65fe96477a9f5e"
+        }
+      ],
+      "final_receptor_created": true,
+      "final_pdbqt_created": true,
+      "docking_executed": false
+    }
+  ],
+  "result_status": "six_final_receptors_and_pdbqt_created_no_docking_executed",
+  "manifest_sha256": "b617361c059c9c07b27010c34a3429a86eec355ecd6e27fe69172a7642a1636e"
+}

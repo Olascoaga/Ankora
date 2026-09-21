@@ -2,7 +2,7 @@
 
 <!-- Generated from VALIDATION_STATUS.json; checked by CI. -->
 
-Last synchronized: `2026-09-10`
+Last synchronized: `2026-09-20`
 
 ## Implemented scientific workflow
 
@@ -30,4 +30,4 @@ define the current validation boundary.
 
 ## Next validation boundary
 
-Freeze and execute multi-target virtual-screening benchmarks with actives and decoys or inactives, report EF1%, BEDROC, ROC-AUC, and PR-AUC, and measure sensitivity to chemical state, receptor, box, seed, and sampling without relaxing the frozen protocol after observing results.
+Freeze and execute loss-preserving ligand preparation for the acquired three-target LIT-PCBA actives and inactives against the six completed receptor PDBQT derivatives. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until those ligand inputs and their execution policy are frozen.

@@ -53,8 +53,7 @@ official RCSB mmCIF files and their direct, no-superposition coordinate-frame
 evidence are frozen in `LIT_PCBA_ANKORA_VS_V1.structures.json`: every source
 ligand heavy atom maps exactly to one official co-crystal residue, and more
 than 98% of source receptor heavy atoms match same-element official coordinates
-for every template. Prepared primary and alternate receptor derivatives remain
-the final open execution inputs. Six explicit structural requests are now
+for every template. Six explicit structural requests are
 frozen in `LIT_PCBA_ANKORA_VS_V1.receptor-plans.json`: chain/component,
 missing-residue, missing-atom, source-aligned altloc, terminal-OXT,
 relaxation, pH, and force-field choices are all fixed before execution. Source
@@ -62,10 +61,9 @@ protein MOL2 bytes are used only to identify the exact retained alternate
 coordinates and will not be treated as if Ankora had produced a reviewed,
 docking-ready receptor. Six structured PDB2PQR/PROPKA previews have now
 completed and are frozen in
-`LIT_PCBA_ANKORA_VS_V1.protonation-previews.json`: 449 proposals were retained,
-102 carry focused-review flags, and no final receptor or PDBQT was created.
-Scientist acceptance of defaults or explicit allowed overrides remains pending,
-with the TP53 Cys3-His zinc sites called out for deliberate review. In both
+`LIT_PCBA_ANKORA_VS_V1.protonation-previews.json`: 449 proposals were retained
+and 102 carry focused-review flags. The TP53 Cys3-His zinc sites were called
+out for deliberate review. In both
 TP53 previews the automatic neutral HIS179 tautomer protonated the ND1 atom
 that contacts zinc at approximately 2.01 A. Exact HID/HIE control and
 independent PDB/PQR output-state verification are now implemented. A frozen,
@@ -73,10 +71,14 @@ pre-result request reran both TP53 templates with HIE at HIS179 through the
 full production path; both outputs wrote HE2, omitted HD1, and left ND1
 unprotonated. The request and 2/2 result are frozen in
 `LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.spec.json` and
-`LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.json`. This establishes that
-Ankora writes the requested candidate state; it does not accept that state.
-Scientist acceptance and the CYS238/CYS242 zinc-site decisions remain hard
-prerequisites for final TP53 receptors.
+`LIT_PCBA_ANKORA_VS_V1.tp53-tautomer-verification.json`. The scientist then
+accepted all 443 source defaults plus six explicit TP53 overrides: HIE at
+HIS179 and CYM at CYS238/CYS242 in both templates. The create-only final run
+reproduced all 449 decisions and produced six docking-ready receptors and six
+PDBQT files. Its path-free, hash-bound record is
+`LIT_PCBA_ANKORA_VS_V1.final-receptors.json`; no ligand preparation, docking,
+score, or enrichment metric was executed. Frozen, loss-preserving ligand
+preparation is now the next open input boundary.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

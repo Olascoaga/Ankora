@@ -122,12 +122,16 @@ authorizations to PDB2PQR. Tests cover both the earlier-stage and PDB2PQR-stage
 paths. The failed evidence was retained locally; the public manifest was
 created only by the subsequent clean 6/6 execution.
 
-## Review gate completed; execution remains unstarted
+## Review gate completed; final receptor production now recorded
 
 The scientist confirmed the complete 443-default/six-override plan before any
 docking score existed. The review now reports `final_creation_authorized:
 true`, and directed verification returns exactly HIE at HIS A:179 plus CYM at
-CYS A:238/CYS A:242 for either TP53 template. This authorization is limited to
-create-only final receptor and receptor-PDBQT production from the frozen six
-structural plans. No final receptor, PDBQT, docking score, enrichment result,
-post-result protocol change, or biological claim has yet been generated.
+CYS A:238/CYS A:242 for either TP53 template. This authorization was limited
+to create-only final receptor and receptor-PDBQT production from the frozen six
+structural plans. That exact production has now completed 6/6 without ligand
+preparation, docking, scores, or enrichment metrics. The separate execution
+record is `LIT_PCBA_FINAL_RECEPTORS_2026-09-20.md`, and its path-free
+manifest is
+`reference_cases/LIT_PCBA_ANKORA_VS_V1.final-receptors.json`. No post-result
+protocol change or biological claim has been generated.

@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Produced frozen screening receptors - 2026-09-20
+
+- Executed all six accepted LIT-PCBA receptor plans through the production
+  preparation path with bounded parallelism and no ligand preparation or
+  docking.
+- Created six docking-ready receptor records and six receptor PDBQT files,
+  reproducing all 449 accepted protonation decisions and the six explicit TP53
+  zinc-site overrides.
+- Added a path-free, hash-bound manifest plus independent verification of every
+  retained file and each receptor's AutoDock atom-type preflight.
+
 ## Accepted complete screening protonation review - 2026-09-20
 
 - Added a hash-bound review that covers all 449 frozen receptor-protonation
