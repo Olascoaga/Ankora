@@ -69,3 +69,20 @@ No ligand preparation has run in this phase. The next bounded unit executes
 and independently verifies all 11,412 terminal outcomes. Docking, scores,
 enrichment metrics, and sensitivity results remain prohibited until that
 reconciliation closes.
+
+## Execution contract
+
+The restartable executor is implemented in
+`scripts/run_screening_benchmark_ligand_preparation.py`. It reconstructs each
+target library from the hash-verified archive, applies Ankora's production
+descriptor and structural-alert path with every rule set to descriptive-only,
+and then runs the existing ETKDGv3/MMFF94s and Meeko services. It writes one
+create-only attempt directory per parent, skips only a hash-verified terminal
+attempt on resume, and refuses to publish a completion manifest until all
+11,412 source parents have terminal rows.
+
+Synthetic contracts cover complete census closure, ambiguous-state retention,
+interruption/resume behavior, and evidence tampering. A one-parent local
+integration smoke also reached Meeko 0.7.1 and produced a PDBQT through the
+same executor. Neither synthetic evidence nor that smoke is a benchmark
+result. The 11,412-parent run remains the next pre-docking action.

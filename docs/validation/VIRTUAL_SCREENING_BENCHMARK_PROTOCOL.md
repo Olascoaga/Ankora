@@ -82,6 +82,9 @@ parent may be filtered away; every unresolved state, parameterization failure,
 nonconvergence, or tool failure remains an explicit unscored parent in the
 worst tie group. Manifest SHA-256 is
 `b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
+The create-only, restartable executor and verifier are now implemented; their
+synthetic and one-parent integration checks are not benchmark results. The
+full 11,412-parent execution must close before docking can begin.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is

@@ -84,7 +84,10 @@ loss-preserving preparation plan is now frozen in
 It fixes exact imported states, source-only deterministic ETKDGv3 seeds, the
 20-member conformer pool, MMFF94s convergence policy, Meeko/Gasteiger, and
 explicit retention of every failure. Executing and reconciling that plan is
-the next open input boundary; docking remains prohibited.
+the next open input boundary; docking remains prohibited. A restartable
+create-only executor now exercises the production import, descriptive-filter,
+conformer, and PDBQT services and publishes nothing until every parent has one
+verified terminal outcome.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
