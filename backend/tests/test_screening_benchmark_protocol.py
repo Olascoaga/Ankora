@@ -53,8 +53,7 @@ def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
     assert spec["status"] == (
-        "exact_inputs_and_protonation_previews_frozen_scientist_review_"
-        "pending_before_results"
+        "loss_preserving_ligand_preparation_plan_frozen_before_execution"
     )
     assert spec["protonation_previews_executed_on"] == "2026-09-17"
     assert spec["result_status"] == "not_executed"
@@ -149,6 +148,18 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             "path": PROTONATION_PREVIEW_MANIFEST_PATH.name,
             "manifest_sha256": (
                 "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa"
+            ),
+        },
+        "final_receptors": {
+            "path": "LIT_PCBA_ANKORA_VS_V1.final-receptors.json",
+            "manifest_sha256": (
+                "b617361c059c9c07b27010c34a3429a86eec355ecd6e27fe69172a7642a1636e"
+            ),
+        },
+        "ligand_preparation_plan": {
+            "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json",
+            "manifest_sha256": (
+                "b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1"
             ),
         },
     }

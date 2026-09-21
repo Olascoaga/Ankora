@@ -2,7 +2,7 @@
 
 <!-- Generated from VALIDATION_STATUS.json; checked by CI. -->
 
-Last synchronized: `2026-09-20`
+Last synchronized: `2026-09-21`
 
 ## Implemented scientific workflow
 
@@ -30,4 +30,4 @@ define the current validation boundary.
 
 ## Next validation boundary
 
-Freeze and execute loss-preserving ligand preparation for the acquired three-target LIT-PCBA actives and inactives against the six completed receptor PDBQT derivatives. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until those ligand inputs and their execution policy are frozen.
+Execute and reconcile the frozen 11,412-parent LIT-PCBA ligand-preparation plan without dropping unresolved or failed parents. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until every planned parent has one verified terminal preparation outcome.

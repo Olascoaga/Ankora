@@ -4,9 +4,10 @@ Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
 Status: **evaluation contract, target cohort, exact AVE-unbiased source,
 templates, numerical boxes, chemical-state sentinels, official structure
-bytes, coordinate frames, six explicit receptor plans, and six structured
-protonation previews frozen before docking**. Scientist review is pending and
-no enrichment result exists yet.
+bytes, coordinate frames, six docking-ready receptor PDBQTs, and the complete
+11,412-parent ligand-preparation plan frozen before docking**. Ligand
+preparation has not yet executed and no docking score or enrichment result
+exists.
 
 The first acquisition attempt is recorded in
 [`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
@@ -63,7 +64,24 @@ accepted, and the previews were not promoted to final receptors or PDBQT. The
 retained TP53 outputs expose a blocking tautomer issue: automatic neutral
 HIS179 protonates the ND1 atom that coordinates zinc. Explicit neutral
 histidine-tautomer control and corrected TP53 previews are therefore required
-before scientific review can close.
+before scientific review can close. That review subsequently accepted all 443
+recorded defaults plus six explicit TP53 HIE/CYM overrides. The create-only
+final run reproduced all 449 decisions and produced six docking-ready receptor
+PDBQTs under manifest SHA-256
+`b617361c059c9c07b27010c34a3429a86eec355ecd6e27fe69172a7642a1636e`.
+
+The ligand preparation record,
+[`LIT_PCBA_LIGAND_PREPARATION_PLAN_2026-09-21.md`](LIT_PCBA_LIGAND_PREPARATION_PLAN_2026-09-21.md),
+then binds every one of the 176 active and 11,236 inactive parents to its exact
+source location, molecular-string hashes, and a source-only deterministic
+ETKDGv3 seed. The path-free
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json)
+freezes a 20-conformer ETKDGv3 pool, lowest-energy-converged MMFF94s selection
+at 500 iterations, and Meeko 0.7.1/Gasteiger PDBQT preparation. No source
+parent may be filtered away; every unresolved state, parameterization failure,
+nonconvergence, or tool failure remains an explicit unscored parent in the
+worst tie group. Manifest SHA-256 is
+`b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is

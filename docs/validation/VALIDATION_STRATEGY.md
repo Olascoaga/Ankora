@@ -77,8 +77,14 @@ HIS179 and CYM at CYS238/CYS242 in both templates. The create-only final run
 reproduced all 449 decisions and produced six docking-ready receptors and six
 PDBQT files. Its path-free, hash-bound record is
 `LIT_PCBA_ANKORA_VS_V1.final-receptors.json`; no ligand preparation, docking,
-score, or enrichment metric was executed. Frozen, loss-preserving ligand
-preparation is now the next open input boundary.
+score, or enrichment metric was executed. The complete 11,412-parent
+loss-preserving preparation plan is now frozen in
+`LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json` under SHA-256
+`b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
+It fixes exact imported states, source-only deterministic ETKDGv3 seeds, the
+20-member conformer pool, MMFF94s convergence policy, Meeko/Gasteiger, and
+explicit retention of every failure. Executing and reconciling that plan is
+the next open input boundary; docking remains prohibited.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

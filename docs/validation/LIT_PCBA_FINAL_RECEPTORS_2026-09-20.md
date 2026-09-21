@@ -65,7 +65,9 @@ the manifest above.
 ## Next scientific boundary
 
 This record authorizes no retrospective changes and makes no performance or
-biological claim. The next independent phase is frozen ligand preparation for
-the matching actives and decoys/inactives. Docking, scores, and enrichment
-metrics remain prohibited until those inputs and their execution policy are
-frozen.
+biological claim. The matching 11,412-parent preparation plan was subsequently
+frozen under SHA-256
+`b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
+Its loss-preserving execution and complete reconciliation are now required.
+Docking, scores, and enrichment metrics remain prohibited until that boundary
+closes.

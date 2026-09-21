@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "exact_inputs_and_protonation_previews_frozen_scientist_review_pending_before_results",
+  "status": "loss_preserving_ligand_preparation_plan_frozen_before_execution",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
@@ -9,6 +9,8 @@
   "official_structures_frozen_on": "2026-09-15",
   "receptor_plans_frozen_on": "2026-09-17",
   "protonation_previews_executed_on": "2026-09-17",
+  "final_receptors_completed_on": "2026-09-20",
+  "ligand_preparation_plan_frozen_on": "2026-09-21",
   "amendments": [
     {
       "amendment_id": "001",
@@ -40,6 +42,14 @@
     "protonation_previews": {
       "path": "LIT_PCBA_ANKORA_VS_V1.protonation-previews.json",
       "manifest_sha256": "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa"
+    },
+    "final_receptors": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.final-receptors.json",
+      "manifest_sha256": "b617361c059c9c07b27010c34a3429a86eec355ecd6e27fe69172a7642a1636e"
+    },
+    "ligand_preparation_plan": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json",
+      "manifest_sha256": "b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1"
     }
   },
   "primary_evidence": {

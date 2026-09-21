@@ -265,7 +265,7 @@ def test_final_receptor_verifier_rejects_an_absolute_public_path(
         public_manifest_path=public,
         _task_executor=_executor,
     )
-    manifest["receptors"][0]["final_record_path"] = "C:/private/record.json"
+    manifest["receptors"][0]["final_record_path"] = "//server/share/record.json"
     payload = dict(manifest)
     payload.pop("manifest_sha256")
     manifest["manifest_sha256"] = final_receptors._digest(payload)

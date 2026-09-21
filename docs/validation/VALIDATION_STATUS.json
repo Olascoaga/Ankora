@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "synchronized_on": "2026-09-20",
+  "synchronized_on": "2026-09-21",
   "implemented_workspaces": [
     "M1",
     "M2",
@@ -41,5 +41,5 @@
     "Vina scores and AutoDock4 binding energies are different quantities and are not compared on one numerical scale.",
     "The completed 6OCO/M5V protocol does not determine the dominant physiological ligand microstate or quantify sensitivity to receptor preparation, search box, seed, or sampling."
   ],
-  "next_validation_boundary": "Freeze and execute loss-preserving ligand preparation for the acquired three-target LIT-PCBA actives and inactives against the six completed receptor PDBQT derivatives. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until those ligand inputs and their execution policy are frozen."
+  "next_validation_boundary": "Execute and reconcile the frozen 11,412-parent LIT-PCBA ligand-preparation plan without dropping unresolved or failed parents. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until every planned parent has one verified terminal preparation outcome."
 }
