@@ -77,6 +77,36 @@ The path-free result manifest is
 `2ac5f7abdc65d116cc1b209cb6b6421ace83a480f03cd43b39363dc3c2be7826`).
 No docking score was seen before freezing or executing this verification.
 
+## Complete decision proposal awaiting scientist confirmation
+
+The path-free review
+`reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-decision-review.json`
+now covers every one of the 449 frozen proposals under review SHA-256
+`9bc253b0a385ddcb5de2698cf30dd0723c5589b445f8b47b14fdd988f40abed0`.
+It proposes accepting 443 recorded defaults and exactly six overrides:
+
+- HIE at HIS A:179 in both 3ZME and 5O1I, using the independently verified
+  written-PDB/PQR state that leaves zinc-coordinating ND1 unprotonated.
+- CYM at CYS A:238 and CYS A:242 in both 3ZME and 5O1I.
+- The already predicted CYM default at CYS A:176 is called out explicitly in
+  both templates rather than being hidden inside the bulk default policy.
+
+This is a proposed benchmark model for the deposited zinc-bound structures,
+not a universal claim about all Cys3His centers. The deposited 3ZME/5O1I
+geometries independently show the same tetrahedral Cys176-His179-Cys238-
+Cys242 shell. The original p53 core-domain structure established this
+structural zinc site ([Cho et al., 1994](https://doi.org/10.1126/science.7801121)).
+A combined structural survey and quantum analysis found that most surveyed
+Cys3His PDB geometries were consistent with all-thiolate coordination while
+also warning that experimental resolution cannot exclude every thiol/thiolate
+mixture ([Simonson and Calimet, 2002](https://doi.org/10.1002/prot.10200)).
+
+The executable checker expands the bulk-default rule against the immutable
+source manifest, verifies that all 449 proposals are covered exactly once,
+requires the separate HIE output evidence, and refuses to expose any override
+to final receptor creation while `scientist_confirmation.status` remains
+`pending`.
+
 ## Stage-attribution correction discovered during execution
 
 The first create-only attempt retained five completed previews and one explicit
@@ -92,10 +122,10 @@ created only by the subsequent clean 6/6 execution.
 
 ## Gate that remains closed
 
-The preview derivatives are review material, not benchmark receptors. Before
-creating any final receptor or PDBQT, the scientist must freeze, for every
-proposal, either acceptance of the recorded default or an explicit allowed
-override. The exact HIE mechanism and both corrected TP53 candidate previews
-are verified, but HIE has not yet been scientifically accepted and the
-protonation decisions for CYS A:238 and CYS A:242 remain open. No docking score
-has been generated or inspected.
+The preview derivatives are review material, not benchmark receptors. The
+complete 443-default/six-override proposal is prepared and mechanically
+verified, but the scientist has not yet confirmed it. Consequently HIE at HIS
+A:179 and CYM at CYS A:238/CYS A:242 remain proposed rather than accepted, the
+review explicitly reports `final_creation_authorized: false`, and the adapter
+refuses to release its overrides. No final receptor, PDBQT, docking score, or
+enrichment result has been generated or inspected.

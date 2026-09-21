@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "review_id": "LIT_PCBA_ANKORA_VS_V1_PROTONATION_DECISION_REVIEW_V1",
+  "prepared_on": "2026-09-20",
+  "scores_seen": false,
+  "source_protonation_preview_manifest_sha256": "81d53765255308d761619f781fd37ef49e11fc343d9429a367ec620cd91927aa",
+  "source_tautomer_verification_manifest_sha256": "2ac5f7abdc65d116cc1b209cb6b6421ace83a480f03cd43b39363dc3c2be7826",
+  "default_policy": "accept_source_default_unless_explicit_override",
+  "decision_census": {
+    "templates": 6,
+    "source_proposals": 449,
+    "accepted_by_default_policy": 443,
+    "explicit_overrides": 6
+  },
+  "required_default_confirmations": [
+    {
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "proposal_id": "A|CYS|176||CYS 176 A",
+      "selected_state": "CYM",
+      "selection_basis": "The source default is deprotonated CYM and the deposited sulfur is 2.321 A from the retained structural zinc."
+    },
+    {
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "proposal_id": "A|CYS|176||CYS 176 A",
+      "selected_state": "CYM",
+      "selection_basis": "The source default is deprotonated CYM and the deposited sulfur is 2.321 A from the retained structural zinc."
+    }
+  ],
+  "proposed_overrides": [
+    {
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "proposal_id": "A|HIS|179||HIS 179 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "HIS",
+        "sequence_number": 179,
+        "insertion_code": ""
+      },
+      "source_default_state": "HIS_NEUTRAL_AUTO",
+      "selected_state": "HIE",
+      "selection_basis": "The deposited ND1 atom is 2.009 A from zinc. The create-only production rerun wrote HE2, omitted HD1, and left ND1 unprotonated in both PDB and PQR."
+    },
+    {
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "proposal_id": "A|CYS|238||CYS 238 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "CYS",
+        "sequence_number": 238,
+        "insertion_code": ""
+      },
+      "source_default_state": "CYS",
+      "selected_state": "CYM",
+      "selection_basis": "The deposited sulfur is 2.325 A from zinc in the tetrahedral Cys3-His structural site; CYM represents the proposed zinc-bound thiolate state."
+    },
+    {
+      "target_id": "TP53",
+      "role": "primary",
+      "pdb_id": "3zme",
+      "proposal_id": "A|CYS|242||CYS 242 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "CYS",
+        "sequence_number": 242,
+        "insertion_code": ""
+      },
+      "source_default_state": "CYS",
+      "selected_state": "CYM",
+      "selection_basis": "The deposited sulfur is 2.309 A from zinc in the tetrahedral Cys3-His structural site; CYM represents the proposed zinc-bound thiolate state."
+    },
+    {
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "proposal_id": "A|HIS|179||HIS 179 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "HIS",
+        "sequence_number": 179,
+        "insertion_code": ""
+      },
+      "source_default_state": "HIS_NEUTRAL_AUTO",
+      "selected_state": "HIE",
+      "selection_basis": "The deposited ND1 atom is 2.010 A from zinc. The create-only production rerun wrote HE2, omitted HD1, and left ND1 unprotonated in both PDB and PQR."
+    },
+    {
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "proposal_id": "A|CYS|238||CYS 238 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "CYS",
+        "sequence_number": 238,
+        "insertion_code": ""
+      },
+      "source_default_state": "CYS",
+      "selected_state": "CYM",
+      "selection_basis": "The deposited sulfur is 2.330 A from zinc in the tetrahedral Cys3-His structural site; CYM represents the proposed zinc-bound thiolate state."
+    },
+    {
+      "target_id": "TP53",
+      "role": "alternate",
+      "pdb_id": "5o1i",
+      "proposal_id": "A|CYS|242||CYS 242 A",
+      "residue": {
+        "chain_id": "A",
+        "residue_name": "CYS",
+        "sequence_number": 242,
+        "insertion_code": ""
+      },
+      "source_default_state": "CYS",
+      "selected_state": "CYM",
+      "selection_basis": "The deposited sulfur is 2.314 A from zinc in the tetrahedral Cys3-His structural site; CYM represents the proposed zinc-bound thiolate state."
+    }
+  ],
+  "scientific_basis": {
+    "deposited_geometry": "Both frozen TP53 structures independently retain the same tetrahedral Cys176-His179-Cys238-Cys242 zinc shell at 2.009-2.330 A.",
+    "literature": [
+      {
+        "citation": "Cho et al., Science 1994, DOI 10.1126/science.7801121",
+        "relevance": "Original p53 core-domain structure establishing the structural zinc site."
+      },
+      {
+        "citation": "Simonson and Calimet, Proteins 2002, DOI 10.1002/prot.10200",
+        "relevance": "Most surveyed Cys3His PDB geometries were consistent with all-thiolate coordination while acknowledging that some thiol/thiolate mixtures cannot be excluded experimentally."
+      }
+    ],
+    "interpretation_boundary": "The proposed CYM assignments are an explicit benchmark model for the deposited zinc-bound structures, not a universal claim that every Cys3His center is fully deprotonated under every condition."
+  },
+  "scientist_confirmation": {
+    "status": "pending",
+    "confirmation_statement": "Accept all 443 recorded source defaults plus HIE at HIS A:179 and CYM at CYS A:238 and CYS A:242 in both TP53 templates.",
+    "confirmed_by": null,
+    "confirmed_at": null
+  },
+  "final_creation_authorized": false,
+  "acceptance_boundary": "This review is complete but not approved. No final receptor, receptor PDBQT, ligand preparation, docking score, enrichment metric, or sensitivity result may be created until the scientist confirmation is recorded and the review is re-hashed.",
+  "review_sha256": "9bc253b0a385ddcb5de2698cf30dd0723c5589b445f8b47b14fdd988f40abed0"
+}

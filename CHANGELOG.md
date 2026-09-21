@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Prepared complete screening protonation review - 2026-09-20
+
+- Added a hash-bound review that covers all 449 frozen receptor-protonation
+  proposals: 443 source defaults plus six explicit TP53 zinc-site overrides.
+- Proposed HIE at HIS A:179 and CYM at CYS A:238/CYS A:242 in both TP53
+  templates, while calling out the existing CYM default at CYS A:176.
+- Kept final receptor creation fail-closed: the review cannot release any
+  override until the scientist confirmation is recorded and the artifact is
+  re-hashed. No final receptor, PDBQT, docking result, or enrichment metric was
+  created.
+
 ## Verified explicit histidine tautomers - 2026-09-20
 
 - Added exact HID/HIE controls inside the isolated PDB2PQR worker before
