@@ -77,13 +77,14 @@ The path-free result manifest is
 `2ac5f7abdc65d116cc1b209cb6b6421ace83a480f03cd43b39363dc3c2be7826`).
 No docking score was seen before freezing or executing this verification.
 
-## Complete decision proposal awaiting scientist confirmation
+## Complete protonation decisions accepted
 
 The path-free review
 `reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-decision-review.json`
-now covers every one of the 449 frozen proposals under review SHA-256
-`9bc253b0a385ddcb5de2698cf30dd0723c5589b445f8b47b14fdd988f40abed0`.
-It proposes accepting 443 recorded defaults and exactly six overrides:
+now covers every one of the 449 frozen proposals under confirmed review
+SHA-256
+`4d01857a5ef7df41eeb8a81ffd76a32d1d0292057562323e16dbd42d6c7743f4`.
+The scientist accepted 443 recorded defaults and exactly six overrides:
 
 - HIE at HIS A:179 in both 3ZME and 5O1I, using the independently verified
   written-PDB/PQR state that leaves zinc-coordinating ND1 unprotonated.
@@ -103,9 +104,10 @@ mixture ([Simonson and Calimet, 2002](https://doi.org/10.1002/prot.10200)).
 
 The executable checker expands the bulk-default rule against the immutable
 source manifest, verifies that all 449 proposals are covered exactly once,
-requires the separate HIE output evidence, and refuses to expose any override
-to final receptor creation while `scientist_confirmation.status` remains
-`pending`.
+requires the separate HIE output evidence, and exposes only the three accepted
+overrides belonging to the exact template being prepared. The confirmation is
+recorded independently from the proposal and the complete artifact is
+re-hashed.
 
 ## Stage-attribution correction discovered during execution
 
@@ -120,12 +122,12 @@ authorizations to PDB2PQR. Tests cover both the earlier-stage and PDB2PQR-stage
 paths. The failed evidence was retained locally; the public manifest was
 created only by the subsequent clean 6/6 execution.
 
-## Gate that remains closed
+## Review gate completed; execution remains unstarted
 
-The preview derivatives are review material, not benchmark receptors. The
-complete 443-default/six-override proposal is prepared and mechanically
-verified, but the scientist has not yet confirmed it. Consequently HIE at HIS
-A:179 and CYM at CYS A:238/CYS A:242 remain proposed rather than accepted, the
-review explicitly reports `final_creation_authorized: false`, and the adapter
-refuses to release its overrides. No final receptor, PDBQT, docking score, or
-enrichment result has been generated or inspected.
+The scientist confirmed the complete 443-default/six-override plan before any
+docking score existed. The review now reports `final_creation_authorized:
+true`, and directed verification returns exactly HIE at HIS A:179 plus CYM at
+CYS A:238/CYS A:242 for either TP53 template. This authorization is limited to
+create-only final receptor and receptor-PDBQT production from the frozen six
+structural plans. No final receptor, PDBQT, docking score, enrichment result,
+post-result protocol change, or biological claim has yet been generated.

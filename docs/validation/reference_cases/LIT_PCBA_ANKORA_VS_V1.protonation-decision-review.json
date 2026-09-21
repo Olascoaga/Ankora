@@ -138,12 +138,12 @@
     "interpretation_boundary": "The proposed CYM assignments are an explicit benchmark model for the deposited zinc-bound structures, not a universal claim that every Cys3His center is fully deprotonated under every condition."
   },
   "scientist_confirmation": {
-    "status": "pending",
+    "status": "confirmed",
     "confirmation_statement": "Accept all 443 recorded source defaults plus HIE at HIS A:179 and CYM at CYS A:238 and CYS A:242 in both TP53 templates.",
-    "confirmed_by": null,
-    "confirmed_at": null
+    "confirmed_by": "Samael Olascoaga",
+    "confirmed_at": "2026-09-21T04:03:24.2359130Z"
   },
-  "final_creation_authorized": false,
-  "acceptance_boundary": "This review is complete but not approved. No final receptor, receptor PDBQT, ligand preparation, docking score, enrichment metric, or sensitivity result may be created until the scientist confirmation is recorded and the review is re-hashed.",
-  "review_sha256": "9bc253b0a385ddcb5de2698cf30dd0723c5589b445f8b47b14fdd988f40abed0"
+  "final_creation_authorized": true,
+  "acceptance_boundary": "This confirmation authorizes create-only final receptor and receptor-PDBQT production from the six frozen structural plans using exactly these protonation decisions. It does not itself create or authorize a docking score, enrichment metric, post-result protocol change, or biological claim.",
+  "review_sha256": "4d01857a5ef7df41eeb8a81ffd76a32d1d0292057562323e16dbd42d6c7743f4"
 }

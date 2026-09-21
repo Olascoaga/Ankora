@@ -25,7 +25,7 @@ TAUTOMER_PATH = REFERENCE_ROOT / (
 )
 
 
-def test_recorded_review_covers_every_proposal_but_preserves_scientist_gate() -> None:
+def test_recorded_review_covers_every_proposal_and_releases_exact_overrides() -> None:
     review = verify_protonation_decision_review(
         REVIEW_PATH,
         preview_manifest_path=PREVIEW_PATH,
@@ -39,51 +39,51 @@ def test_recorded_review_covers_every_proposal_but_preserves_scientist_gate() ->
         "accepted_by_default_policy": 443,
         "explicit_overrides": 6,
     }
-    assert review["scientist_confirmation"]["status"] == "pending"
-    assert review["final_creation_authorized"] is False
-
-    with pytest.raises(
-        ScreeningBenchmarkProtonationDecisionError,
-        match="Scientist confirmation is still pending",
-    ):
-        protonation_overrides_for_template(
-            REVIEW_PATH,
-            preview_manifest_path=PREVIEW_PATH,
-            tautomer_manifest_path=TAUTOMER_PATH,
-            target_id="TP53",
-            role="primary",
-            pdb_id="3zme",
-        )
-
-
-def test_confirmed_review_releases_only_the_exact_template_overrides(
-    tmp_path: Path,
-) -> None:
-    value = json.loads(REVIEW_PATH.read_text(encoding="utf-8"))
-    value["scientist_confirmation"] = {
-        **value["scientist_confirmation"],
-        "status": "confirmed",
-        "confirmed_by": "Synthetic scientist confirmation for contract testing",
-        "confirmed_at": "2026-09-20T00:00:00Z",
-    }
-    value["final_creation_authorized"] = True
-    payload = dict(value)
-    payload.pop("review_sha256")
-    value["review_sha256"] = decisions._digest(payload)
-    path = tmp_path / "confirmed-review.json"
-    path.write_text(json.dumps(value), encoding="utf-8")
+    assert review["scientist_confirmation"]["status"] == "confirmed"
+    assert review["scientist_confirmation"]["confirmed_by"] == "Samael Olascoaga"
+    assert review["final_creation_authorized"] is True
 
     overrides = protonation_overrides_for_template(
-        path,
+        REVIEW_PATH,
         preview_manifest_path=PREVIEW_PATH,
         tautomer_manifest_path=TAUTOMER_PATH,
         target_id="TP53",
         role="primary",
         pdb_id="3zme",
     )
-
     assert [item.state for item in overrides] == ["HIE", "CYM", "CYM"]
     assert [item.residue.sequence_number for item in overrides] == [179, 238, 242]
+
+
+def test_pending_review_cannot_release_candidate_overrides(
+    tmp_path: Path,
+) -> None:
+    value = json.loads(REVIEW_PATH.read_text(encoding="utf-8"))
+    value["scientist_confirmation"] = {
+        **value["scientist_confirmation"],
+        "status": "pending",
+        "confirmed_by": None,
+        "confirmed_at": None,
+    }
+    value["final_creation_authorized"] = False
+    payload = dict(value)
+    payload.pop("review_sha256")
+    value["review_sha256"] = decisions._digest(payload)
+    path = tmp_path / "pending-review.json"
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(
+        ScreeningBenchmarkProtonationDecisionError,
+        match="Scientist confirmation is still pending",
+    ):
+        protonation_overrides_for_template(
+            path,
+            preview_manifest_path=PREVIEW_PATH,
+            tautomer_manifest_path=TAUTOMER_PATH,
+            target_id="TP53",
+            role="primary",
+            pdb_id="3zme",
+        )
 
 
 def test_review_rejects_hash_valid_but_incomplete_override_set(tmp_path: Path) -> None:
