@@ -30,4 +30,4 @@ define the current validation boundary.
 
 ## Next validation boundary
 
-Freeze and verify the exact primary LIT-PCBA Vina campaign plan without reading a docking score: bind all 11,412 terminal ligand rows to the frozen primary receptor and box for each target, retain the 110 unscored parents, and fix executable identity, worker allocation, restart semantics, and score parsing before execution.
+Implement and verify a create-only, incremental, safely resumable LIT-PCBA executor that consumes the frozen primary Vina plan without reinterpretation. It must preserve exact commands and raw outputs, bounded 15-way scheduling, all failures, and deterministic resume before the first docking process starts.

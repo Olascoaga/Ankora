@@ -92,10 +92,15 @@ closes all 11,412 rows in
 11,302 prepared PDBQTs, 107 unresolved exact states, and three ETKDGv3 failures.
 All 110 non-prepared parents remain in the future worst tie. The
 [execution record](LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md) documents
-the class/target census and independent evidence re-hash. The next open
-pre-result boundary is the exact primary Vina campaign execution plan; docking
-remains prohibited until that plan binds every terminal row to frozen receptor,
-box, executable, scheduling, restart, and parser identities.
+the class/target census and independent evidence re-hash. The exact primary
+Vina campaign is now frozen in
+`LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json`, under manifest SHA-256
+`31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb`.
+It binds every terminal row to the exact receptor, box, executable, scheduling,
+restart, and parser identities without reading a score. The
+[plan record](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md) closes that pre-result
+boundary. Docking remains prohibited until the create-only, incremental, safely
+resumable executor consuming this plan is implemented and verified.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

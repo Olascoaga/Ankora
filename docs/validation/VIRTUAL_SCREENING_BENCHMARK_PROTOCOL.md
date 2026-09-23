@@ -93,9 +93,19 @@ Of 11,412 parents, 11,302 produced converged conformers and Meeko 0.7.1 PDBQTs,
 107 remain unresolved rather than having stereochemistry invented, and three
 retain explicit ETKDGv3 failures. The complete record is
 [`LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md`](LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md).
-No score was read and no docking or metric was executed. The next pre-result
-boundary is an exact primary Vina campaign plan binding these terminal rows to
-the frozen receptor, box, executable, scheduling, resume, and parser contracts.
+No score was read and no docking or metric was executed. The exact primary Vina
+campaign is now frozen in
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json),
+manifest SHA-256
+`31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb`.
+It binds all 11,412 terminal rows to the frozen primary receptor and box for
+their target, hashes all 11,302 ready ligand PDBQTs, retains all 110 failures,
+and fixes Vina 1.2.7, 15-way scheduling, exact argument templates, restart
+semantics, and the strict PDBQT score parser. The full pre-result record is
+[`LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md`](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md).
+The next boundary is a create-only, incremental, safely resumable executor that
+consumes that plan without reinterpretation. No primary docking may begin until
+that executor is verified.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is
@@ -205,8 +215,10 @@ than a footnote.
   policy. Every failure remains in the ranking denominator.
 - AutoDock Vina `1.2.7` is the first engine. The screening protocol uses seed
   `20260911`, exhaustiveness `8`, maximum poses `9`, minimum RMSD `1.0 A`, and
-  energy range `3 kcal/mol`. The executable hash and observed version must be
-  captured at execution.
+  energy range `3 kcal/mol`. The frozen plan additionally fixes a 360-minute
+  per-ligand timeout and a throughput-first allocation of 15 concurrent Vina
+  processes with one thread each. The exact executable is now fixed at SHA-256
+  `e0c4b2715e0c1a74f6e92d0f3be0328ac97542eafbc111e6b1efad897a73cce5`.
 - Each target uses one exact holo receptor and its co-crystallized ligand from
   the acquired LIT-PCBA source. Primary PDB identifiers are frozen as 5UFX,
   3B1M, and 3ZME; alternates are 2IOG, 5Y2T, and 5O1I. Exact primary box

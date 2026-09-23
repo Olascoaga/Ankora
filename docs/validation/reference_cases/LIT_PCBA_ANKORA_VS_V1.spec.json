@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "ligand_preparation_completed_and_verified_before_docking",
+  "status": "primary_vina_campaign_plan_frozen_before_docking",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
@@ -13,6 +13,7 @@
   "ligand_preparation_plan_frozen_on": "2026-09-21",
   "ligand_preparation_completed_on": "2026-09-21",
   "ligand_preparation_verified_on": "2026-09-23",
+  "vina_campaign_plan_frozen_on": "2026-09-23",
   "amendments": [
     {
       "amendment_id": "001",
@@ -56,6 +57,10 @@
     "ligand_preparation_results": {
       "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json",
       "manifest_sha256": "d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0"
+    },
+    "primary_vina_campaign_plan": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json",
+      "manifest_sha256": "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb"
     }
   },
   "primary_evidence": {
@@ -138,6 +143,9 @@
     "maximum_poses": 9,
     "minimum_rmsd_angstrom": 1.0,
     "energy_range_kcal_mol": 3.0,
+    "total_cpu_threads": 15,
+    "parallel_ligands": 15,
+    "timeout_minutes_per_ligand": 360,
     "library_filters": "descriptive_only_no_exclusion"
   },
   "sensitivity": {

@@ -29,6 +29,9 @@ from ankora_backend.validation.screening_benchmark_protonation_previews import (
 from ankora_backend.validation.screening_benchmark_templates import (
     verify_template_manifest,
 )
+from ankora_backend.validation.screening_benchmark_vina_plan import (
+    verify_vina_campaign_plan,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = (
@@ -56,15 +59,19 @@ LIGAND_PREPARATION_PLAN_PATH = SPEC_PATH.with_name(
 LIGAND_PREPARATION_RESULT_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json"
 )
+VINA_CAMPAIGN_PLAN_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == "ligand_preparation_completed_and_verified_before_docking"
+    assert spec["status"] == "primary_vina_campaign_plan_frozen_before_docking"
     assert spec["protonation_previews_executed_on"] == "2026-09-17"
     assert spec["ligand_preparation_completed_on"] == "2026-09-21"
     assert spec["ligand_preparation_verified_on"] == "2026-09-23"
+    assert spec["vina_campaign_plan_frozen_on"] == "2026-09-23"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -175,6 +182,12 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             "path": LIGAND_PREPARATION_RESULT_PATH.name,
             "manifest_sha256": (
                 "d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0"
+            ),
+        },
+        "primary_vina_campaign_plan": {
+            "path": VINA_CAMPAIGN_PLAN_PATH.name,
+            "manifest_sha256": (
+                "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb"
             ),
         },
     }
@@ -391,3 +404,29 @@ def test_ligand_preparation_closes_every_parent_before_docking() -> None:
     ]
     assert len(active_entries) == 176
     assert all(entry["status"] == "prepared" for entry in active_entries)
+
+
+def test_primary_vina_campaign_is_frozen_before_any_score_is_seen() -> None:
+    manifest = verify_vina_campaign_plan(VINA_CAMPAIGN_PLAN_PATH)
+
+    assert manifest["manifest_sha256"] == (
+        "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb"
+    )
+    assert manifest["scores_seen"] is False
+    assert manifest["parameters"] == {
+        "sampling_protocol": "screening",
+        "total_cpu_threads": 15,
+        "parallel_ligands": 15,
+        "seed": 20260911,
+        "exhaustiveness": 8,
+        "num_modes": 9,
+        "min_rmsd_angstrom": 1.0,
+        "energy_range_kcal_mol": 3.0,
+        "timeout_minutes_per_ligand": 360,
+        "threads_per_ligand": 1,
+    }
+    assert manifest["totals"]["source_parents"] == 11412
+    assert manifest["totals"]["prepared_for_docking"] == 11302
+    assert manifest["totals"]["retained_unscored_worst_tie"] == 110
+    assert manifest["execution_policy"]["docking_executed"] is False
+    assert manifest["execution_policy"]["scores_or_metrics_computed"] is False

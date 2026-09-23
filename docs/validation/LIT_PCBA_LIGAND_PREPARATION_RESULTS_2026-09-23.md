@@ -68,12 +68,13 @@ frozen input population has been prepared or retained as an explicit failure.
 They do not establish enrichment, affinity, activity, pose correctness, or
 cross-target performance.
 
-## Next pre-result boundary
+## Subsequent pre-result boundary
 
-Before the first library docking process starts, freeze an executable primary
-Vina campaign plan that binds each target to its exact primary receptor PDBQT,
-primary co-crystal box, prepared-parent artifact identities, 110 retained
-unscored rows, fixed Vina 1.2.7 settings, executable identity, bounded worker
-allocation, restart/resume semantics, and score-parser contract. That plan must
-be verified without reading a docking score. Sensitivity campaigns and metric
-calculation remain downstream.
+The required executable primary Vina campaign plan is now frozen in
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json),
+with manifest SHA-256
+`31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb`.
+Its human-readable record is
+[`LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md`](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md).
+Docking remains prohibited until a create-only, incremental, safely resumable
+benchmark executor is verified against that exact plan.
