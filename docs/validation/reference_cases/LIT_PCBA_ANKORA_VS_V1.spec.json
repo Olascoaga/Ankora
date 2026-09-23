@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "loss_preserving_ligand_preparation_plan_frozen_before_execution",
+  "status": "ligand_preparation_completed_and_verified_before_docking",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
@@ -11,6 +11,8 @@
   "protonation_previews_executed_on": "2026-09-17",
   "final_receptors_completed_on": "2026-09-20",
   "ligand_preparation_plan_frozen_on": "2026-09-21",
+  "ligand_preparation_completed_on": "2026-09-21",
+  "ligand_preparation_verified_on": "2026-09-23",
   "amendments": [
     {
       "amendment_id": "001",
@@ -50,6 +52,10 @@
     "ligand_preparation_plan": {
       "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json",
       "manifest_sha256": "b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1"
+    },
+    "ligand_preparation_results": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json",
+      "manifest_sha256": "d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0"
     }
   },
   "primary_evidence": {

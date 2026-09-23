@@ -20,6 +20,9 @@ from ankora_backend.services.screening_benchmark import (
 from ankora_backend.validation.screening_benchmark_geometry import (
     SENTINELS_PER_CLASS_PER_TARGET,
 )
+from ankora_backend.validation.screening_benchmark_ligand_preparation import (
+    verify_ligand_preparation_manifest,
+)
 from ankora_backend.validation.screening_benchmark_protonation_previews import (
     verify_protonation_preview_manifest,
 )
@@ -47,15 +50,21 @@ RECEPTOR_PLAN_MANIFEST_PATH = SPEC_PATH.with_name(
 PROTONATION_PREVIEW_MANIFEST_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.protonation-previews.json"
 )
+LIGAND_PREPARATION_PLAN_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json"
+)
+LIGAND_PREPARATION_RESULT_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == (
-        "loss_preserving_ligand_preparation_plan_frozen_before_execution"
-    )
+    assert spec["status"] == "ligand_preparation_completed_and_verified_before_docking"
     assert spec["protonation_previews_executed_on"] == "2026-09-17"
+    assert spec["ligand_preparation_completed_on"] == "2026-09-21"
+    assert spec["ligand_preparation_verified_on"] == "2026-09-23"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -157,9 +166,15 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             ),
         },
         "ligand_preparation_plan": {
-            "path": "LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json",
+            "path": LIGAND_PREPARATION_PLAN_PATH.name,
             "manifest_sha256": (
                 "b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1"
+            ),
+        },
+        "ligand_preparation_results": {
+            "path": LIGAND_PREPARATION_RESULT_PATH.name,
+            "manifest_sha256": (
+                "d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0"
             ),
         },
     }
@@ -346,3 +361,33 @@ def test_frozen_cohort_is_multi_target_and_its_source_census_closes() -> None:
         target["reported_actives"] + target["reported_inactives"] <= 5000
         for target in targets
     )
+
+
+def test_ligand_preparation_closes_every_parent_before_docking() -> None:
+    manifest = verify_ligand_preparation_manifest(
+        LIGAND_PREPARATION_RESULT_PATH,
+        plan_manifest_path=LIGAND_PREPARATION_PLAN_PATH,
+    )
+
+    assert manifest["manifest_sha256"] == (
+        "d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0"
+    )
+    assert manifest["scores_seen"] is False
+    assert manifest["execution_policy"]["docking_executed"] is False
+    assert manifest["execution_policy"]["scores_or_metrics_computed"] is False
+    assert manifest["preparation_census"] == {
+        "requested": 11412,
+        "terminal": 11412,
+        "prepared": 11302,
+        "unscored_worst_tie": 110,
+        "by_status": {
+            "preparation_failed": 3,
+            "prepared": 11302,
+            "unresolved_chemical_state": 107,
+        },
+    }
+    active_entries = [
+        entry for entry in manifest["entries"] if entry["class_label"] == "active"
+    ]
+    assert len(active_entries) == 176
+    assert all(entry["status"] == "prepared" for entry in active_entries)

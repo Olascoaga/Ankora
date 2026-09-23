@@ -2,7 +2,7 @@
 
 <!-- Generated from VALIDATION_STATUS.json; checked by CI. -->
 
-Last synchronized: `2026-09-21`
+Last synchronized: `2026-09-23`
 
 ## Implemented scientific workflow
 
@@ -30,4 +30,4 @@ define the current validation boundary.
 
 ## Next validation boundary
 
-Execute and reconcile the frozen 11,412-parent LIT-PCBA ligand-preparation plan without dropping unresolved or failed parents. Docking, scores, enrichment metrics, and post-result protocol changes remain prohibited until every planned parent has one verified terminal preparation outcome.
+Freeze and verify the exact primary LIT-PCBA Vina campaign plan without reading a docking score: bind all 11,412 terminal ligand rows to the frozen primary receptor and box for each target, retain the 110 unscored parents, and fix executable identity, worker allocation, restart semantics, and score parsing before execution.

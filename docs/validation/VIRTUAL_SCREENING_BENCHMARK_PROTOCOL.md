@@ -5,9 +5,9 @@ Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 Status: **evaluation contract, target cohort, exact AVE-unbiased source,
 templates, numerical boxes, chemical-state sentinels, official structure
 bytes, coordinate frames, six docking-ready receptor PDBQTs, and the complete
-11,412-parent ligand-preparation plan frozen before docking**. Ligand
-preparation has not yet executed and no docking score or enrichment result
-exists.
+11,412-parent ligand population closed before docking**. Ligand preparation
+has 11,412 verified terminal outcomes, including every unresolved or failed
+parent; no docking score or enrichment result exists.
 
 The first acquisition attempt is recorded in
 [`LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md`](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md).
@@ -59,9 +59,10 @@ All six plans completed with PDB2PQR 3.7.1 and PROPKA 3.5.1, producing 449
 structured proposals, of which 102 carry one or more focused-review flags. The
 path-free
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-previews.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.protonation-previews.json)
-retains the exact proposals and evidence hashes. No default or override is yet
-accepted, and the previews were not promoted to final receptors or PDBQT. The
-retained TP53 outputs expose a blocking tautomer issue: automatic neutral
+retains the exact proposals and evidence hashes. At that review-only boundary,
+no default or override had been accepted and the previews had not been promoted
+to final receptors or PDBQT. The retained TP53 outputs exposed a blocking
+tautomer issue: automatic neutral
 HIS179 protonates the ND1 atom that coordinates zinc. Explicit neutral
 histidine-tautomer control and corrected TP53 previews are therefore required
 before scientific review can close. That review subsequently accepted all 443
@@ -84,7 +85,17 @@ worst tie group. Manifest SHA-256 is
 `b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
 The create-only, restartable executor and verifier are now implemented; their
 synthetic and one-parent integration checks are not benchmark results. The
-full 11,412-parent execution must close before docking can begin.
+full execution subsequently closed under
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json),
+manifest SHA-256
+`d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0`.
+Of 11,412 parents, 11,302 produced converged conformers and Meeko 0.7.1 PDBQTs,
+107 remain unresolved rather than having stereochemistry invented, and three
+retain explicit ETKDGv3 failures. The complete record is
+[`LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md`](LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md).
+No score was read and no docking or metric was executed. The next pre-result
+boundary is an exact primary Vina campaign plan binding these terminal rows to
+the frozen receptor, box, executable, scheduling, resume, and parser contracts.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is
@@ -119,8 +130,9 @@ against the AVE-unbiased archive when its supplied training and validation
 rows are combined. The acquired archive and every used member are hashed in
 the input manifest. It records 176 active and 11,236 inactive rows with zero
 unparsed rows, within-class duplicates, or cross-class canonical conflicts.
-Preparation failures, scored compounds, and unscored compounds remain future
-execution accounting and may not disappear from these denominators.
+Preparation accounting now closes at 11,302 prepared and 110 unscored parents.
+Future docking failures, scored compounds, and all 110 existing unscored
+parents may not disappear from these denominators.
 
 Before extraction or docking, the project ran
 `scripts/inspect_screening_benchmark_source.py` against the frozen specification
@@ -204,9 +216,10 @@ than a footnote.
   and every source ligand heavy atom matches its official co-crystal residue
   at the same Cartesian coordinate within 0.001 Å without superposition.
   Exact structural preparation requests are frozen for all six templates.
-  Their pH 7.4 AMBER protonation previews have executed without creating final
-  receptors. Scientist review and a frozen default/override decision set remain
-  mandatory before any final receptor PDBQT or library docking begins.
+  Their pH 7.4 AMBER protonation previews, scientist review, complete
+  default/override decision set, and six final receptor PDBQTs are closed. The
+  full ligand population also has verified terminal preparation outcomes before
+  any library docking begins.
 
 ## Sensitivity boundary
 
@@ -226,11 +239,12 @@ comparison.
 5. **Sampling:** exhaustiveness `8` versus `32` with the primary seed.
 
 Exact template, box, sentinel, official-structure, coordinate-frame, and
-structural receptor-plan and protonation-preview identities are closed. The sentinel panel contains
-16 active and 16 inactive parents per target, ranked solely by a
-protocol/target/class/canonical-state SHA-256 key. Scientist acceptance or
-override of the recorded PROPKA proposals and final prepared-receptor identities remain the final open pre-execution deliverable,
-not a post-result choice. The source `protein.mol2` files are exact benchmark
+structural receptor-plan, protonation-preview, accepted-decision, final-receptor,
+and ligand-preparation identities are closed. The sentinel panel contains 16
+active and 16 inactive parents per target, ranked solely by a
+protocol/target/class/canonical-state SHA-256 key. Scientist review and final
+prepared-receptor identities were fixed before ligand preparation and remain
+pre-result choices, not post-result choices. The source `protein.mol2` files are exact benchmark
 inputs, but they are not silently relabelled as Ankora docking-ready receptor
 derivatives.
 

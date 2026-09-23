@@ -2,9 +2,10 @@
 
 Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
-Status: **the exact loss-preserving plan for all 11,412 primary ranking units is
-frozen before ligand preparation, docking, score inspection, or enrichment
-calculation**.
+Status: **the exact loss-preserving plan for all 11,412 primary ranking units
+was frozen before ligand preparation, docking, score inspection, or enrichment
+calculation**. Its subsequent preparation execution is recorded separately;
+this document remains the pre-result plan.
 
 ## Frozen population and identity
 
@@ -65,10 +66,12 @@ The plan checker recomputes the source archive/member identities, canonical
 parents, hashes, source order, and all deterministic seeds. Its synthetic
 contract also rejects duplicate parents and any altered loss/docking boundary.
 
-No ligand preparation has run in this phase. The next bounded unit executes
-and independently verifies all 11,412 terminal outcomes. Docking, scores,
-enrichment metrics, and sensitivity results remain prohibited until that
-reconciliation closes.
+At the time of this freeze no ligand preparation had run. The later execution
+and independent reconciliation are recorded in
+[`LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md`](LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md):
+all 11,412 parents now have terminal outcomes, with 11,302 prepared and 110
+retained unscored. Docking, scores, enrichment metrics, and sensitivity results
+were not part of that preparation execution.
 
 ## Execution contract
 
@@ -85,4 +88,5 @@ Synthetic contracts cover complete census closure, ambiguous-state retention,
 interruption/resume behavior, and evidence tampering. A one-parent local
 integration smoke also reached Meeko 0.7.1 and produced a PDBQT through the
 same executor. Neither synthetic evidence nor that smoke is a benchmark
-result. The 11,412-parent run remains the next pre-docking action.
+result. The subsequent 11,412-parent run used the frozen executor and is now
+the verified pre-docking input record.

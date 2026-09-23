@@ -29,10 +29,12 @@ Point 26 begins with the pre-result
 [`LIT_PCBA_ANKORA_VS_V1`](VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) contract.
 It freezes a three-target LIT-PCBA cohort, loss-preserving and tie-aware metric
 definitions, AutoDock Vina settings, and one-factor sensitivity boundaries.
-The protocol is not yet executed and is not listed as completed evidence in
-`VALIDATION_STATUS.json`. The exact LIT-PCBA AVE-unbiased source bytes and
-three-target population are acquired, hashed, reconciled, and frozen in a
-path-free input manifest.
+The protocol is not yet a completed screening benchmark and is not listed as
+completed evidence in `VALIDATION_STATUS.json`. Its source, receptor, and ligand
+input boundaries are now executed and verified; no docking or enrichment
+result exists. The exact LIT-PCBA AVE-unbiased source bytes and three-target
+population are acquired, hashed, reconciled, and frozen in a path-free input
+manifest.
 The [2026-09-11 acquisition record](LIT_PCBA_SOURCE_ACQUISITION_2026-09-11.md)
 documents the successful maintainer-source acquisition, the pre-result
 Amendment 001 distinguishing the AVE-unbiased population from the differently
@@ -77,17 +79,23 @@ HIS179 and CYM at CYS238/CYS242 in both templates. The create-only final run
 reproduced all 449 decisions and produced six docking-ready receptors and six
 PDBQT files. Its path-free, hash-bound record is
 `LIT_PCBA_ANKORA_VS_V1.final-receptors.json`; no ligand preparation, docking,
-score, or enrichment metric was executed. The complete 11,412-parent
+score, or enrichment metric was part of that receptor phase. The complete 11,412-parent
 loss-preserving preparation plan is now frozen in
 `LIT_PCBA_ANKORA_VS_V1.ligand-preparation-plan.json` under SHA-256
 `b6370eb32566e84ba569460f35efe5e89bdff12172609d92f203f51edd0d48e1`.
 It fixes exact imported states, source-only deterministic ETKDGv3 seeds, the
 20-member conformer pool, MMFF94s convergence policy, Meeko/Gasteiger, and
-explicit retention of every failure. Executing and reconciling that plan is
-the next open input boundary; docking remains prohibited. A restartable
-create-only executor now exercises the production import, descriptive-filter,
-conformer, and PDBQT services and publishes nothing until every parent has one
-verified terminal outcome.
+explicit retention of every failure. The create-only production execution now
+closes all 11,412 rows in
+`LIT_PCBA_ANKORA_VS_V1.ligand-preparation.json`, under manifest SHA-256
+`d7704f66118820974a6c55a0a5fcc366ac33c5738db3af9672a77eadb74a3ab0`:
+11,302 prepared PDBQTs, 107 unresolved exact states, and three ETKDGv3 failures.
+All 110 non-prepared parents remain in the future worst tie. The
+[execution record](LIT_PCBA_LIGAND_PREPARATION_RESULTS_2026-09-23.md) documents
+the class/target census and independent evidence re-hash. The next open
+pre-result boundary is the exact primary Vina campaign execution plan; docking
+remains prohibited until that plan binds every terminal row to frozen receptor,
+box, executable, scheduling, restart, and parser identities.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
