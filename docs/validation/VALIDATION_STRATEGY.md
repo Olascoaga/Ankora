@@ -101,8 +101,9 @@ restart, and parser identities without reading a score. The
 [plan record](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md) closes that pre-result
 boundary. The create-only, incremental, safely resumable executor consuming
 this plan is now verified under readiness-manifest SHA-256
-`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`.
-The exact primary run may execute or resume; sensitivity runs and all metrics
+`e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696`.
+The exact primary run may execute in a new root and later resume that corrected
+root; the two path-incident roots are never resumable. Sensitivity runs and all metrics
 remain prohibited until its complete terminal evidence has been independently
 verified.
 

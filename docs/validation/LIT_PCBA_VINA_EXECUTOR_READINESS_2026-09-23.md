@@ -2,17 +2,18 @@
 
 Protocol ID: `LIT_PCBA_ANKORA_VS_V1`
 
-Status: **the exact-plan executor is implemented and verified; no real
-benchmark docking process has started, no benchmark score has been read, and no
-enrichment metric has been computed**.
+Status: **the exact-plan executor is implemented and verified after two
+infrastructure-only launches; no completed benchmark pose or score has been
+read, and no enrichment metric has been computed**.
 
 The path-free readiness record is
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
 with internal manifest SHA-256
-`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`.
+`e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696`.
 It supersedes readiness SHA-256
-`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`
-after the pre-result Windows path incident recorded in amendment 002.
+`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`
+after the second pre-result Windows path-transport defect recorded in amendment
+002.
 It binds the implementation, command-line entry point, strict pose parser, and
 six synthetic execution-contract tests by repository path, byte count, and
 SHA-256.
@@ -27,9 +28,10 @@ SHA-256.
   ligand reselection, target substitution, box reconstruction, or parameter
   translation.
 - Each verified receptor and ligand is copied byte-for-byte into a bounded path
-  under the create-only run root. Source and staged byte count and SHA-256 must
-  agree, and an unsafe Windows external-tool path is rejected before the first
-  entry attempt starts.
+under the create-only run root. Source and staged byte count and SHA-256 must
+agree; every file path passed to the adapter is resolved absolutely before its
+working directory changes; and an unsafe Windows external-tool path is rejected
+before the first entry attempt starts.
 - Each parent owns create-only `attempt-NNN` evidence. A started but interrupted
   attempt is retained and resume creates the next attempt; only a hash-verified
   terminal record is skipped.
@@ -64,8 +66,9 @@ were unchanged and retain their previous green gate.
 
 ## Authorized next boundary
 
-The software boundary now permits execution or deterministic resume of the
-three exact primary campaigns. The run must use the ignored local evidence root
-and may publish a result manifest only after all 11,412 rows are terminal.
+The software boundary now permits a new execution, and later deterministic
+resume of that corrected execution, for the three exact primary campaigns. The
+two aborted roots are never resumable. The new run must use the ignored local
+evidence root and may publish a result manifest only after all 11,412 rows are terminal.
 Sensitivity campaigns and metric calculation remain prohibited until the
 primary run closes and its complete evidence independently verifies.

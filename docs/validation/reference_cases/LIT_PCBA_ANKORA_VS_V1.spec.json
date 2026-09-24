@@ -25,7 +25,7 @@
     {
       "amendment_id": "002",
       "path": "LIT_PCBA_ANKORA_VS_V1.amendment-002.json",
-      "sha256": "fb4d02abb2eab6f3570481b4f10acf3fb20fcf6dffa369ab832e3d07e7fd890d"
+      "sha256": "88881a31fa1660e7653a098f1a4ab3308250eeb640d19354566c8b606771d3c5"
     }
   ],
   "acquisition_manifests": {
@@ -71,7 +71,7 @@
     },
     "primary_vina_executor_readiness": {
       "path": "LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json",
-      "manifest_sha256": "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
+      "manifest_sha256": "e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696"
     }
   },
   "primary_evidence": {

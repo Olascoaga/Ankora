@@ -3,38 +3,54 @@
   "amendment_id": "002",
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
   "recorded_on": "2026-09-23",
-  "timing": "recorded after an infrastructure-only failed launch and before any benchmark score, completed pose, sensitivity result, or enrichment metric existed",
-  "trigger": "the Windows Vina executable could not open scientifically valid receptor and ligand files whose absolute evidence paths exceeded its legacy path handling",
+  "timing": "recorded after two infrastructure-only failed launches and before any benchmark score, completed pose, sensitivity result, or enrichment metric existed",
+  "trigger": "two pre-result Windows launches exposed external-tool path transport defects: legacy-length source paths, followed by staged ligand and output paths interpreted relative to Vina's worker directory",
   "observations": {
-    "aborted_local_attempt": {
-      "relative_run_root": ".ankora-data/validation/LIT_PCBA_ANKORA_VS_V1/vina-primary/20260924T045955Z",
-      "started_rows": 10092,
-      "terminal_rows": 10080,
-      "docking_failed_rows": 9982,
-      "preparation_unscored_rows": 98,
-      "nonterminal_started_rows": 12,
-      "completed_scored_rows": 0,
-      "local_completion_manifest_created": false,
-      "public_result_manifest_created": false
-    },
-    "common_failure": {
-      "code": "VINA_EXECUTION_FAILED",
-      "stage": "vina_docking",
-      "cause": "the external executable rejected long absolute input paths before docking",
-      "scientific_output_created": false
-    }
+    "aborted_local_attempts": [
+      {
+        "relative_run_root": ".ankora-data/validation/LIT_PCBA_ANKORA_VS_V1/vina-primary/20260924T045955Z",
+        "started_rows": 10092,
+        "terminal_rows": 10080,
+        "docking_failed_rows": 9982,
+        "preparation_unscored_rows": 98,
+        "nonterminal_started_rows": 12,
+        "completed_scored_rows": 0,
+        "failure_code": "VINA_EXECUTION_FAILED",
+        "failure_stage": "vina_docking",
+        "cause": "the external executable rejected long absolute source paths before docking",
+        "scientific_output_created": false,
+        "local_completion_manifest_created": false,
+        "public_result_manifest_created": false
+      },
+      {
+        "relative_run_root": ".ankora-data/validation/LIT_PCBA_ANKORA_VS_V1/vina-primary/20260924T051557Z",
+        "started_rows": 5738,
+        "terminal_rows": 5727,
+        "docking_failed_rows": 5681,
+        "preparation_unscored_rows": 46,
+        "nonterminal_started_rows": 11,
+        "completed_scored_rows": 0,
+        "failure_code": "VINA_EXECUTION_FAILED",
+        "failure_stage": "vina_docking",
+        "cause": "the staged ligand and output paths were relative and were reinterpreted beneath Vina's worker directory",
+        "scientific_output_created": false,
+        "local_completion_manifest_created": false,
+        "public_result_manifest_created": false
+      }
+    ]
   },
   "changes": {
     "execution_input_transport": "copy each already hash-verified receptor and ligand PDBQT byte-for-byte into a bounded short path beneath the create-only run root before invoking Vina",
     "staging_verification": "require source and staged byte count and SHA-256 to match before execution",
+    "absolute_external_tool_paths": "resolve every staged input, output, stdout, and stderr path absolutely before entering the worker directory or invoking Vina",
     "path_preflight": "reject an overlong external-tool path before the first entry attempt starts",
-    "retry_policy": "the aborted local root is retained as technical evidence and is never resumed or published; the corrected execution uses a new create-only root"
+    "retry_policy": "both aborted local roots are retained as technical evidence and are never resumed or published; the corrected execution uses a new create-only root"
   },
   "invariants": {
     "source_population_and_order": "unchanged",
     "receptor_and_ligand_bytes": "unchanged",
     "receptor_boxes": "unchanged",
-    "vina_executable_and_arguments": "unchanged except for byte-identical staged input paths and a new output root",
+    "vina_executable_and_arguments": "unchanged except for byte-identical staged inputs, absolute bounded transport paths, and a new output root",
     "seed_sampling_and_worker_allocation": "unchanged",
     "parser_ranking_failure_and_metric_policy": "unchanged",
     "scores_seen": false

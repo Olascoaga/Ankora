@@ -487,6 +487,7 @@ def _execute_attempt(
     entry_root = output_root / "entries" / f"{sequence:05d}"
     attempt_root = _next_attempt_directory(entry_root)
     attempt_root.mkdir(parents=True)
+    attempt_root = attempt_root.resolve()
     started = {
         "sequence": sequence,
         "target_id": task["target_id"],

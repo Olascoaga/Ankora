@@ -136,7 +136,13 @@ def test_frozen_source_and_pre_result_amendment_are_exactly_identified() -> None
         "pre_result_source_identity_correction",
         "pre_result_windows_path_transport_correction",
     ]
-    assert amendments[1]["observations"]["aborted_local_attempt"]["completed_scored_rows"] == 0
+    aborted_attempts = amendments[1]["observations"]["aborted_local_attempts"]
+    assert len(aborted_attempts) == 2
+    assert all(attempt["completed_scored_rows"] == 0 for attempt in aborted_attempts)
+    assert all(
+        attempt["public_result_manifest_created"] is False
+        for attempt in aborted_attempts
+    )
 
 
 def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> None:
@@ -208,7 +214,7 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
         "primary_vina_executor_readiness": {
             "path": VINA_EXECUTOR_READINESS_PATH.name,
             "manifest_sha256": (
-                "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
+                "e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696"
             ),
         },
     }
@@ -458,7 +464,7 @@ def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
     manifest = json.loads(manifest_bytes)
 
     expected_manifest_sha256 = (
-        "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
+        "e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696"
     )
     assert manifest["manifest_sha256"] == expected_manifest_sha256
     unsigned = dict(manifest)
@@ -469,13 +475,16 @@ def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
     assert hashlib.sha256(canonical).hexdigest() == expected_manifest_sha256
     assert manifest["scores_seen"] is False
     assert manifest["supersedes_manifest_sha256"] == (
-        "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
+        "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
     )
     assert manifest["windows_path_incident_amendment_sha256"] == (
-        "fb4d02abb2eab6f3570481b4f10acf3fb20fcf6dffa369ab832e3d07e7fd890d"
+        "88881a31fa1660e7653a098f1a4ab3308250eeb640d19354566c8b606771d3c5"
     )
     assert manifest["verified_contract"][
         "scientific_inputs_staged_as_hash_verified_byte_identical_copies"
+    ] is True
+    assert manifest["verified_contract"][
+        "all_external_tool_file_paths_resolved_absolutely_before_invocation"
     ] is True
     assert manifest["verified_contract"][
         "unsafe_windows_external_tool_paths_rejected_before_entry_execution"

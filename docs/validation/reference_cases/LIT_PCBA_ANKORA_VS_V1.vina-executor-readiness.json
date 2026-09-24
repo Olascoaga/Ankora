@@ -4,13 +4,13 @@
   "verified_on": "2026-09-23",
   "scores_seen": false,
   "source_vina_campaign_plan_sha256": "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb",
-  "supersedes_manifest_sha256": "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f",
-  "windows_path_incident_amendment_sha256": "fb4d02abb2eab6f3570481b4f10acf3fb20fcf6dffa369ab832e3d07e7fd890d",
+  "supersedes_manifest_sha256": "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf",
+  "windows_path_incident_amendment_sha256": "88881a31fa1660e7653a098f1a4ab3308250eeb640d19354566c8b606771d3c5",
   "implementation": {
     "executor": {
       "repository_path": "backend/src/ankora_backend/validation/screening_benchmark_vina_execution.py",
-      "size_bytes": 43764,
-      "sha256": "f6b6c25a6cb25d7e15f17f40b2c97f68654ccf83715ab206d9635b5236ba0159"
+      "size_bytes": 43806,
+      "sha256": "52fdb936bf3040e81dffe01c8583f9ca740bb831e7d47eb80bab2c7fcffdc233"
     },
     "command_line": {
       "repository_path": "scripts/run_screening_benchmark_vina_campaign.py",
@@ -24,8 +24,8 @@
     },
     "synthetic_contract_tests": {
       "repository_path": "backend/tests/test_screening_benchmark_vina_execution.py",
-      "size_bytes": 17040,
-      "sha256": "0d036b2d4b5b1ce76612428996ae70a1fe0e0ab03ea7eafaf0eafb2c3f6e0a00",
+      "size_bytes": 17400,
+      "sha256": "21b9f8dd4bff45d3d593dca9eedd8ffe4d1437ca08574786c8ab9354ab39c7ed",
       "test_count": 6
     }
   },
@@ -39,6 +39,7 @@
     "preparation_and_docking_failures_retained_as_unscored_worst_tie": true,
     "actual_commands_and_raw_outputs_retained_locally": true,
     "scientific_inputs_staged_as_hash_verified_byte_identical_copies": true,
+    "all_external_tool_file_paths_resolved_absolutely_before_invocation": true,
     "unsafe_windows_external_tool_paths_rejected_before_entry_execution": true,
     "public_manifest_contains_no_absolute_paths": true,
     "scores_read_only_from_strict_pdbqt_parser": true,
@@ -50,5 +51,5 @@
     "next_action": "execute_or_resume_exact_primary_vina_campaign"
   },
   "result_status": "primary_vina_executor_reverified_after_windows_path_correction_no_benchmark_score_or_metric_executed",
-  "manifest_sha256": "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
+  "manifest_sha256": "e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696"
 }

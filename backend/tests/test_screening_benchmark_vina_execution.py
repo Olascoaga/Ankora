@@ -287,10 +287,12 @@ def test_campaign_is_incremental_loss_preserving_and_resume_is_a_noop(
     fixture = _fixture(tmp_path)
     output = tmp_path / "evidence"
     public = tmp_path / "public.json"
-    calls: list[tuple[Path, Path, bytes]] = []
+    calls: list[tuple[Path, Path, Path, bytes]] = []
 
     def executor(*args: Any) -> CancellableToolExecution:
-        calls.append((Path(args[1]), Path(args[2]), Path(args[2]).read_bytes()))
+        calls.append(
+            (Path(args[1]), Path(args[2]), Path(args[3]), Path(args[2]).read_bytes())
+        )
         return _successful_executor(*args)
 
     manifest = _run(fixture, output, public, executor)
@@ -302,14 +304,19 @@ def test_campaign_is_incremental_loss_preserving_and_resume_is_a_noop(
         "unscored_worst_tie": 1,
         "by_status": {"completed": 2, "preparation_unscored": 1},
     }
-    assert sorted(call[2] for call in calls) == [
+    assert sorted(call[3] for call in calls) == [
         b"SYNTHETIC LIGAND 1\n",
         b"SYNTHETIC LIGAND 2\n",
     ]
     assert all(output.resolve() in call[0].resolve().parents for call in calls)
     assert all(output.resolve() in call[1].resolve().parents for call in calls)
+    assert all(output.resolve() in call[2].resolve().parents for call in calls)
+    assert all(call[0].is_absolute() for call in calls)
+    assert all(call[1].is_absolute() for call in calls)
+    assert all(call[2].is_absolute() for call in calls)
     assert all(call[0].name.endswith(".pdbqt") for call in calls)
     assert all(call[1].name == "ligand.pdbqt" for call in calls)
+    assert all(call[2].name == "vina_poses.pdbqt" for call in calls)
     assert manifest["entries"][0]["best_affinity_kcal_mol"] == -7.5
     assert manifest["entries"][2]["status"] == "preparation_unscored"
     assert str(tmp_path) not in public.read_text(encoding="utf-8")
