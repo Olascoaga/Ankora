@@ -73,11 +73,14 @@ closed when a parameter or scientific input byte changes. Recorded-data tests
 close the 11,412-parent census and require `scores_seen: false`,
 `docking_executed: false`, and `scores_or_metrics_computed: false`.
 
-## Next pre-result boundary
+## Subsequent pre-result boundary
 
-Before launching the first ligand, implement and verify the benchmark campaign
-executor that consumes this manifest without translating or reselecting its
-inputs. It must preserve create-only attempts, incremental terminal records,
-exact commands and raw outputs, bounded 15-way scheduling, safe interruption,
-and deterministic resume. Only then may the three primary campaigns execute;
-sensitivity runs and all metric calculation remain downstream.
+The required benchmark executor is now implemented and hash-bound in
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
+manifest SHA-256
+`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+Its verification record is
+[`LIT_PCBA_VINA_EXECUTOR_READINESS_2026-09-23.md`](LIT_PCBA_VINA_EXECUTOR_READINESS_2026-09-23.md).
+The exact primary campaigns may now execute or resume. Sensitivity runs and all
+metric calculation remain downstream until their complete terminal evidence
+has been independently verified.

@@ -62,16 +62,20 @@ LIGAND_PREPARATION_RESULT_PATH = SPEC_PATH.with_name(
 VINA_CAMPAIGN_PLAN_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json"
 )
+VINA_EXECUTOR_READINESS_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json"
+)
 
 
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == "primary_vina_campaign_plan_frozen_before_docking"
+    assert spec["status"] == "primary_vina_executor_verified_before_docking"
     assert spec["protonation_previews_executed_on"] == "2026-09-17"
     assert spec["ligand_preparation_completed_on"] == "2026-09-21"
     assert spec["ligand_preparation_verified_on"] == "2026-09-23"
     assert spec["vina_campaign_plan_frozen_on"] == "2026-09-23"
+    assert spec["vina_executor_verified_on"] == "2026-09-23"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -188,6 +192,12 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
             "path": VINA_CAMPAIGN_PLAN_PATH.name,
             "manifest_sha256": (
                 "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb"
+            ),
+        },
+        "primary_vina_executor_readiness": {
+            "path": VINA_EXECUTOR_READINESS_PATH.name,
+            "manifest_sha256": (
+                "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
             ),
         },
     }
@@ -430,3 +440,31 @@ def test_primary_vina_campaign_is_frozen_before_any_score_is_seen() -> None:
     assert manifest["totals"]["retained_unscored_worst_tie"] == 110
     assert manifest["execution_policy"]["docking_executed"] is False
     assert manifest["execution_policy"]["scores_or_metrics_computed"] is False
+
+
+def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
+    manifest_bytes = VINA_EXECUTOR_READINESS_PATH.read_bytes()
+    manifest = json.loads(manifest_bytes)
+
+    expected_manifest_sha256 = (
+        "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
+    )
+    assert manifest["manifest_sha256"] == expected_manifest_sha256
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_sha256")
+    canonical = json.dumps(
+        unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).hexdigest() == expected_manifest_sha256
+    assert manifest["scores_seen"] is False
+    assert manifest["execution_boundary"] == {
+        "real_benchmark_docking_executed": False,
+        "scores_or_metrics_computed": False,
+        "next_action": "execute_or_resume_exact_primary_vina_campaign",
+    }
+
+    for implementation in manifest["implementation"].values():
+        path = REPOSITORY_ROOT / implementation["repository_path"]
+        content = path.read_bytes()
+        assert len(content) == implementation["size_bytes"]
+        assert hashlib.sha256(content).hexdigest() == implementation["sha256"]

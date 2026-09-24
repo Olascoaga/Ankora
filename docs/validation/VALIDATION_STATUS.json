@@ -41,5 +41,5 @@
     "Vina scores and AutoDock4 binding energies are different quantities and are not compared on one numerical scale.",
     "The completed 6OCO/M5V protocol does not determine the dominant physiological ligand microstate or quantify sensitivity to receptor preparation, search box, seed, or sampling."
   ],
-  "next_validation_boundary": "Implement and verify a create-only, incremental, safely resumable LIT-PCBA executor that consumes the frozen primary Vina plan without reinterpretation. It must preserve exact commands and raw outputs, bounded 15-way scheduling, all failures, and deterministic resume before the first docking process starts."
+  "next_validation_boundary": "Execute or deterministically resume the exact frozen primary LIT-PCBA Vina campaign. Publish only after all 11,412 parent rows are terminal, then independently verify every retained command, raw output, score, and failure before any sensitivity run or enrichment metric is allowed."
 }

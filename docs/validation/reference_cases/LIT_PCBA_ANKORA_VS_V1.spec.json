@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
-  "status": "primary_vina_campaign_plan_frozen_before_docking",
+  "status": "primary_vina_executor_verified_before_docking",
   "frozen_on": "2026-09-11",
   "source_acquired_on": "2026-09-11",
   "templates_frozen_on": "2026-09-14",
@@ -14,6 +14,7 @@
   "ligand_preparation_completed_on": "2026-09-21",
   "ligand_preparation_verified_on": "2026-09-23",
   "vina_campaign_plan_frozen_on": "2026-09-23",
+  "vina_executor_verified_on": "2026-09-23",
   "amendments": [
     {
       "amendment_id": "001",
@@ -61,6 +62,10 @@
     "primary_vina_campaign_plan": {
       "path": "LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json",
       "manifest_sha256": "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb"
+    },
+    "primary_vina_executor_readiness": {
+      "path": "LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json",
+      "manifest_sha256": "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
     }
   },
   "primary_evidence": {

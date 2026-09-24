@@ -99,8 +99,12 @@ Vina campaign is now frozen in
 It binds every terminal row to the exact receptor, box, executable, scheduling,
 restart, and parser identities without reading a score. The
 [plan record](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md) closes that pre-result
-boundary. Docking remains prohibited until the create-only, incremental, safely
-resumable executor consuming this plan is implemented and verified.
+boundary. The create-only, incremental, safely resumable executor consuming
+this plan is now verified under readiness-manifest SHA-256
+`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+The exact primary run may execute or resume; sensitivity runs and all metrics
+remain prohibited until its complete terminal evidence has been independently
+verified.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

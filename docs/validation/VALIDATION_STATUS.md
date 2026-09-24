@@ -30,4 +30,4 @@ define the current validation boundary.
 
 ## Next validation boundary
 
-Implement and verify a create-only, incremental, safely resumable LIT-PCBA executor that consumes the frozen primary Vina plan without reinterpretation. It must preserve exact commands and raw outputs, bounded 15-way scheduling, all failures, and deterministic resume before the first docking process starts.
+Execute or deterministically resume the exact frozen primary LIT-PCBA Vina campaign. Publish only after all 11,412 parent rows are terminal, then independently verify every retained command, raw output, score, and failure before any sensitivity run or enrichment metric is allowed.

@@ -103,9 +103,14 @@ their target, hashes all 11,302 ready ligand PDBQTs, retains all 110 failures,
 and fixes Vina 1.2.7, 15-way scheduling, exact argument templates, restart
 semantics, and the strict PDBQT score parser. The full pre-result record is
 [`LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md`](LIT_PCBA_VINA_PRIMARY_PLAN_2026-09-23.md).
-The next boundary is a create-only, incremental, safely resumable executor that
-consumes that plan without reinterpretation. No primary docking may begin until
-that executor is verified.
+The create-only, incremental, safely resumable executor is now implemented and
+hash-bound in
+[`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
+manifest SHA-256
+`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+No real benchmark docking score or metric was produced by that verification.
+The next boundary is execution or deterministic resume of the exact frozen
+primary campaigns, followed by independent verification of every terminal row.
 
 This protocol initiated adversarial-audit point 26. The machine-readable
 source of truth is
