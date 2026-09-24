@@ -70,12 +70,15 @@ VINA_EXECUTOR_READINESS_PATH = SPEC_PATH.with_name(
 def test_frozen_protocol_matches_the_metric_implementation() -> None:
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
 
-    assert spec["status"] == "primary_vina_executor_verified_before_docking"
+    assert spec["status"] == (
+        "primary_vina_executor_reverified_after_windows_path_correction_before_scores"
+    )
     assert spec["protonation_previews_executed_on"] == "2026-09-17"
     assert spec["ligand_preparation_completed_on"] == "2026-09-21"
     assert spec["ligand_preparation_verified_on"] == "2026-09-23"
     assert spec["vina_campaign_plan_frozen_on"] == "2026-09-23"
     assert spec["vina_executor_verified_on"] == "2026-09-23"
+    assert spec["vina_executor_reverified_on"] == "2026-09-23"
     assert spec["result_status"] == "not_executed"
     assert spec["ranking"] == {
         "unit": "one canonical parent compound",
@@ -117,15 +120,23 @@ def test_frozen_source_and_pre_result_amendment_are_exactly_identified() -> None
         "inactive_files": ["inactive_T.smi", "inactive_V.smi"],
     }
 
-    [reference] = spec["amendments"]
-    amendment_path = SPEC_PATH.parent / reference["path"]
-    amendment_bytes = amendment_path.read_bytes()
-    amendment = json.loads(amendment_bytes)
-    assert hashlib.sha256(amendment_bytes).hexdigest() == reference["sha256"]
-    assert amendment["amendment_id"] == reference["amendment_id"] == "001"
-    assert amendment["protocol_id"] == spec["protocol_id"]
-    assert amendment["invariants"]["scores_seen"] is False
-    assert amendment["result_status"] == "pre_result_source_identity_correction"
+    references = spec["amendments"]
+    assert [reference["amendment_id"] for reference in references] == ["001", "002"]
+    amendments = []
+    for reference in references:
+        amendment_path = SPEC_PATH.parent / reference["path"]
+        amendment_bytes = amendment_path.read_bytes()
+        amendment = json.loads(amendment_bytes)
+        assert hashlib.sha256(amendment_bytes).hexdigest() == reference["sha256"]
+        assert amendment["amendment_id"] == reference["amendment_id"]
+        assert amendment["protocol_id"] == spec["protocol_id"]
+        assert amendment["invariants"]["scores_seen"] is False
+        amendments.append(amendment)
+    assert [amendment["result_status"] for amendment in amendments] == [
+        "pre_result_source_identity_correction",
+        "pre_result_windows_path_transport_correction",
+    ]
+    assert amendments[1]["observations"]["aborted_local_attempt"]["completed_scored_rows"] == 0
 
 
 def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> None:
@@ -197,7 +208,7 @@ def test_holo_template_selection_reproduces_offline_from_recorded_metadata() -> 
         "primary_vina_executor_readiness": {
             "path": VINA_EXECUTOR_READINESS_PATH.name,
             "manifest_sha256": (
-                "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
+                "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
             ),
         },
     }
@@ -447,7 +458,7 @@ def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
     manifest = json.loads(manifest_bytes)
 
     expected_manifest_sha256 = (
-        "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
+        "da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf"
     )
     assert manifest["manifest_sha256"] == expected_manifest_sha256
     unsigned = dict(manifest)
@@ -457,6 +468,18 @@ def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
     ).encode("utf-8")
     assert hashlib.sha256(canonical).hexdigest() == expected_manifest_sha256
     assert manifest["scores_seen"] is False
+    assert manifest["supersedes_manifest_sha256"] == (
+        "544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f"
+    )
+    assert manifest["windows_path_incident_amendment_sha256"] == (
+        "fb4d02abb2eab6f3570481b4f10acf3fb20fcf6dffa369ab832e3d07e7fd890d"
+    )
+    assert manifest["verified_contract"][
+        "scientific_inputs_staged_as_hash_verified_byte_identical_copies"
+    ] is True
+    assert manifest["verified_contract"][
+        "unsafe_windows_external_tool_paths_rejected_before_entry_execution"
+    ] is True
     assert manifest["execution_boundary"] == {
         "real_benchmark_docking_executed": False,
         "scores_or_metrics_computed": False,

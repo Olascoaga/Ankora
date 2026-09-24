@@ -78,7 +78,7 @@ close the 11,412-parent census and require `scores_seen: false`,
 The required benchmark executor is now implemented and hash-bound in
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
 manifest SHA-256
-`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`.
 Its verification record is
 [`LIT_PCBA_VINA_EXECUTOR_READINESS_2026-09-23.md`](LIT_PCBA_VINA_EXECUTOR_READINESS_2026-09-23.md).
 The exact primary campaigns may now execute or resume. Sensitivity runs and all

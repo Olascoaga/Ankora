@@ -107,7 +107,7 @@ The create-only, incremental, safely resumable executor is now implemented and
 hash-bound in
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
 manifest SHA-256
-`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`.
 No real benchmark docking score or metric was produced by that verification.
 The next boundary is execution or deterministic resume of the exact frozen
 primary campaigns, followed by independent verification of every terminal row.

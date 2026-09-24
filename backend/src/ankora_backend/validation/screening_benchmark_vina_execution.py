@@ -43,6 +43,7 @@ TERMINAL_STATUSES = frozenset(
         "internal_failed",
     }
 )
+WINDOWS_EXTERNAL_TOOL_PATH_LIMIT = 259
 
 
 class ScreeningBenchmarkVinaExecutionError(ValueError):
@@ -114,6 +115,8 @@ def run_screening_benchmark_vina_campaign(
         final_receptor_evidence_root=final_receptor_evidence_root,
         ligand_preparation_evidence_root=ligand_preparation_evidence_root,
     )
+    _stage_receptor_inputs(tasks, output_root)
+    _verify_external_tool_path_budget(tasks, output_root)
     parameters = _execution_parameters(plan)
     plan_parameters = _required_object(plan.get("parameters"), "plan parameters")
     worker_count = _required_positive_int(plan_parameters, "parallel_ligands")
@@ -397,6 +400,51 @@ def _campaign_tasks(
     return tasks
 
 
+def _stage_receptor_inputs(tasks: list[dict[str, Any]], output_root: Path) -> None:
+    staged_by_source: dict[Path, Path] = {}
+    for task in tasks:
+        source = _required_path(task, "receptor_path")
+        staged = staged_by_source.get(source)
+        if staged is None:
+            digest = _file_sha256(source)
+            staged = output_root / "inputs" / "receptors" / f"{digest}.pdbqt"
+            _stage_exact_copy(source, staged)
+            staged_by_source[source] = staged
+        task["execution_receptor_path"] = staged.resolve()
+
+
+def _verify_external_tool_path_budget(
+    tasks: list[dict[str, Any]], output_root: Path
+) -> None:
+    if not tasks:
+        raise ScreeningBenchmarkVinaExecutionError("The Vina task list is empty.")
+    longest_entry = max(int(task["sequence"]) for task in tasks)
+    representative_attempt = (
+        output_root.resolve()
+        / "entries"
+        / f"{longest_entry:05d}"
+        / "attempt-999"
+    )
+    candidates = [
+        *{
+            _required_path(task, "execution_receptor_path")
+            for task in tasks
+        },
+        representative_attempt / "ligand.pdbqt",
+        representative_attempt / "vina_poses.pdbqt",
+        representative_attempt / "stdout.log",
+        representative_attempt / "stderr.log",
+    ]
+    too_long = [
+        path for path in candidates if len(str(path.resolve())) > WINDOWS_EXTERNAL_TOOL_PATH_LIMIT
+    ]
+    if too_long:
+        raise ScreeningBenchmarkVinaExecutionError(
+            "The Vina run root is too deep for the Windows scientific executable. "
+            "Choose a shorter output root before starting the campaign."
+        )
+
+
 def _execution_parameters(plan: dict[str, Any]) -> VinaDockingParameters:
     value = _required_object(plan.get("parameters"), "plan parameters")
     return VinaDockingParameters(
@@ -473,8 +521,10 @@ def _execute_attempt(
         try:
             if cancel_event.is_set():
                 raise KeyboardInterrupt
-            receptor_path = _required_path(task, "receptor_path")
-            ligand_path = _required_path(task, "ligand_path")
+            receptor_path = _required_path(task, "execution_receptor_path")
+            source_ligand_path = _required_path(task, "ligand_path")
+            ligand_path = attempt_root / "ligand.pdbqt"
+            _stage_exact_copy(source_ligand_path, ligand_path)
             box = task.get("box")
             if not isinstance(box, BindingBox):
                 raise ScreeningBenchmarkVinaExecutionError(
@@ -511,6 +561,14 @@ def _execute_attempt(
                 "exit_code": execution.exit_code,
                 "timed_out": execution.timed_out,
                 "canceled": execution.canceled,
+                "input_staging": {
+                    "receptor": _local_staging_evidence(
+                        _required_path(task, "receptor_path"), receptor_path
+                    ),
+                    "ligand": _local_staging_evidence(
+                        source_ligand_path, ligand_path
+                    ),
+                },
             }
             artifacts = [
                 _file_evidence(stdout_path, output_root, stage="vina_stdout"),
@@ -900,6 +958,37 @@ def _file_evidence(path: Path, output_root: Path, *, stage: str) -> dict[str, An
         "path": resolved.relative_to(resolved_root).as_posix(),
         "size_bytes": resolved.stat().st_size,
         "sha256": _file_sha256(resolved),
+    }
+
+
+def _stage_exact_copy(source: Path, destination: Path) -> None:
+    source_size = source.stat().st_size
+    source_sha256 = _file_sha256(source)
+    if destination.exists():
+        if (
+            not destination.is_file()
+            or destination.stat().st_size != source_size
+            or _file_sha256(destination) != source_sha256
+        ):
+            raise ScreeningBenchmarkVinaExecutionError(
+                "A staged Vina input differs from its frozen source bytes."
+            )
+        return
+    _write_create_only(destination, source.read_bytes())
+    if destination.stat().st_size != source_size or _file_sha256(destination) != source_sha256:
+        raise ScreeningBenchmarkVinaExecutionError(
+            "A staged Vina input differs from its frozen source bytes."
+        )
+
+
+def _local_staging_evidence(source: Path, staged: Path) -> dict[str, Any]:
+    return {
+        "source_path": str(source),
+        "source_size_bytes": source.stat().st_size,
+        "source_sha256": _file_sha256(source),
+        "staged_path": str(staged),
+        "staged_size_bytes": staged.stat().st_size,
+        "staged_sha256": _file_sha256(staged),
     }
 
 

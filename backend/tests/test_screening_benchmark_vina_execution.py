@@ -17,6 +17,7 @@ from ankora_backend.adapters.engines.vina import (
 from ankora_backend.execution.cancellable_subprocess import CancellableToolExecution
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import VinaDockingParameters, VinaSamplingProtocol
+from ankora_backend.validation import screening_benchmark_vina_execution
 from ankora_backend.validation.screening_benchmark_vina_execution import (
     ScreeningBenchmarkVinaExecutionError,
     run_screening_benchmark_vina_campaign,
@@ -286,10 +287,10 @@ def test_campaign_is_incremental_loss_preserving_and_resume_is_a_noop(
     fixture = _fixture(tmp_path)
     output = tmp_path / "evidence"
     public = tmp_path / "public.json"
-    calls: list[str] = []
+    calls: list[tuple[Path, Path, bytes]] = []
 
     def executor(*args: Any) -> CancellableToolExecution:
-        calls.append(Path(args[2]).name)
+        calls.append((Path(args[1]), Path(args[2]), Path(args[2]).read_bytes()))
         return _successful_executor(*args)
 
     manifest = _run(fixture, output, public, executor)
@@ -301,7 +302,14 @@ def test_campaign_is_incremental_loss_preserving_and_resume_is_a_noop(
         "unscored_worst_tie": 1,
         "by_status": {"completed": 2, "preparation_unscored": 1},
     }
-    assert sorted(calls) == ["ligand-1.pdbqt", "ligand-2.pdbqt"]
+    assert sorted(call[2] for call in calls) == [
+        b"SYNTHETIC LIGAND 1\n",
+        b"SYNTHETIC LIGAND 2\n",
+    ]
+    assert all(output.resolve() in call[0].resolve().parents for call in calls)
+    assert all(output.resolve() in call[1].resolve().parents for call in calls)
+    assert all(call[0].name.endswith(".pdbqt") for call in calls)
+    assert all(call[1].name == "ligand.pdbqt" for call in calls)
     assert manifest["entries"][0]["best_affinity_kcal_mol"] == -7.5
     assert manifest["entries"][2]["status"] == "preparation_unscored"
     assert str(tmp_path) not in public.read_text(encoding="utf-8")
@@ -312,7 +320,7 @@ def test_campaign_is_incremental_loss_preserving_and_resume_is_a_noop(
     ) == manifest
 
     assert _run(fixture, output, public, executor) == manifest
-    assert sorted(calls) == ["ligand-1.pdbqt", "ligand-2.pdbqt"]
+    assert len(calls) == 2
 
 
 def test_one_ligand_failure_does_not_abort_its_neighbors(tmp_path: Path) -> None:
@@ -329,7 +337,7 @@ def test_one_ligand_failure_does_not_abort_its_neighbors(tmp_path: Path) -> None
         parameters: VinaDockingParameters,
         cancel_event: threading.Event,
     ) -> CancellableToolExecution:
-        if ligand_path.name == "ligand-2.pdbqt":
+        if ligand_path.read_bytes() == b"SYNTHETIC LIGAND 2\n":
             arguments = build_vina_arguments(
                 receptor_path=receptor_path,
                 ligand_path=ligand_path,
@@ -364,6 +372,35 @@ def test_one_ligand_failure_does_not_abort_its_neighbors(tmp_path: Path) -> None
     }
     assert manifest["campaign_census"]["unscored_worst_tie"] == 2
     assert manifest["entries"][1]["error"]["code"] == "VINA_EXECUTION_FAILED"
+
+
+def test_campaign_refuses_an_external_tool_path_over_the_windows_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _fixture(tmp_path)
+    output = tmp_path / "evidence"
+    public = tmp_path / "public.json"
+    calls = 0
+
+    def executor(*args: Any) -> CancellableToolExecution:
+        nonlocal calls
+        calls += 1
+        return _successful_executor(*args)
+
+    monkeypatch.setattr(
+        screening_benchmark_vina_execution,
+        "WINDOWS_EXTERNAL_TOOL_PATH_LIMIT",
+        1,
+    )
+    with pytest.raises(
+        ScreeningBenchmarkVinaExecutionError,
+        match="run root is too deep",
+    ):
+        _run(fixture, output, public, executor)
+
+    assert calls == 0
+    assert not (output / "entries").exists()
+    assert not public.exists()
 
 
 def test_malformed_pose_output_is_retained_unscored(tmp_path: Path) -> None:

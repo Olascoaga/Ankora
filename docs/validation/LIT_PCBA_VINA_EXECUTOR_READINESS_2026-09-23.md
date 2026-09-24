@@ -9,9 +9,12 @@ enrichment metric has been computed**.
 The path-free readiness record is
 [`reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json`](reference_cases/LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json),
 with internal manifest SHA-256
-`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`.
+`da94c97dcac942692198457ef2bd821d7485668577e220297561f7ffaa8a3eaf`.
+It supersedes readiness SHA-256
+`544aa0dcf86b71aa5778e99d1c6ccc2e40af3320d21c18581e9299814e515b0f`
+after the pre-result Windows path incident recorded in amendment 002.
 It binds the implementation, command-line entry point, strict pose parser, and
-five synthetic execution-contract tests by repository path, byte count, and
+six synthetic execution-contract tests by repository path, byte count, and
 SHA-256.
 
 ## Execution guarantees
@@ -23,6 +26,10 @@ SHA-256.
 - It resolves only the relative paths already frozen in that plan. There is no
   ligand reselection, target substitution, box reconstruction, or parameter
   translation.
+- Each verified receptor and ligand is copied byte-for-byte into a bounded path
+  under the create-only run root. Source and staged byte count and SHA-256 must
+  agree, and an unsafe Windows external-tool path is rejected before the first
+  entry attempt starts.
 - Each parent owns create-only `attempt-NNN` evidence. A started but interrupted
   attempt is retained and resume creates the next attempt; only a hash-verified
   terminal record is skipped.
@@ -43,13 +50,14 @@ SHA-256.
 
 ## Verification performed
 
-Five synthetic tests close successful incremental execution and no-op resume,
+Six synthetic tests close successful incremental execution and no-op resume,
 per-ligand process failure isolation, malformed-output rejection, interruption
-with preserved retry lineage, and evidence/path tamper rejection. They invoke a
+with preserved retry lineage, evidence/path tamper rejection, and pre-execution
+Windows path-budget rejection. They invoke a
 synthetic executor and therefore establish software behavior only, not docking
 performance or scientific validity.
 
-The full backend gate passes 606 tests. Ruff and strict mypy over 133 source
+The full backend gate passes 607 tests. Ruff and strict mypy over 133 source
 files pass, the public validation status remains synchronized, and the staged
 public-path check rejects absolute workstation paths. Frontend and native code
 were unchanged and retain their previous green gate.
