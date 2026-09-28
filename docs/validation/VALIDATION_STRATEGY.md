@@ -109,7 +109,13 @@ scores. Independent verification closed all 11,412 terminal rows and accepted
 `8bf2f4586c3c659267a945cc2d7b9bcc718dff1fedd5f54f8892a89d7945bd82`.
 The [execution record](LIT_PCBA_VINA_PRIMARY_RESULTS_2026-09-28.md) preserves
 that boundary. Primary metrics may now be computed only from this exact
-manifest; sensitivity work cannot replace the primary analysis.
+manifest. The preregistered evaluator now reproduces EF1%, BEDROC alpha 20,
+ROC-AUC, and threshold-grouped average precision with 2,000 deterministic
+stratified-parent bootstrap replicates under metric-manifest SHA-256
+`30da8aebc3bc601204146416c51d3a17227229b96c3efd7b41087074d6e0f873`.
+The [primary metric record](LIT_PCBA_VINA_PRIMARY_METRICS_2026-09-28.md)
+reports per-target and equal-target macro estimates with uncertainty.
+Sensitivity work cannot replace the primary analysis.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 

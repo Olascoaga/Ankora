@@ -23,6 +23,9 @@ from ankora_backend.validation.screening_benchmark_geometry import (
 from ankora_backend.validation.screening_benchmark_ligand_preparation import (
     verify_ligand_preparation_manifest,
 )
+from ankora_backend.validation.screening_benchmark_primary_metrics import (
+    verify_primary_metrics_manifest,
+)
 from ankora_backend.validation.screening_benchmark_protonation_previews import (
     verify_protonation_preview_manifest,
 )
@@ -64,6 +67,12 @@ VINA_CAMPAIGN_PLAN_PATH = SPEC_PATH.with_name(
 )
 VINA_EXECUTOR_READINESS_PATH = SPEC_PATH.with_name(
     "LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json"
+)
+VINA_PRIMARY_RESULT_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.vina-primary-results.json"
+)
+VINA_PRIMARY_METRIC_PATH = SPEC_PATH.with_name(
+    "LIT_PCBA_ANKORA_VS_V1.vina-primary-metrics.json"
 )
 
 
@@ -500,3 +509,60 @@ def test_primary_vina_executor_is_hash_bound_before_real_docking() -> None:
         content = path.read_bytes()
         assert len(content) == implementation["size_bytes"]
         assert hashlib.sha256(content).hexdigest() == implementation["sha256"]
+
+
+def test_primary_vina_metrics_reproduce_from_the_closed_campaign() -> None:
+    manifest = verify_primary_metrics_manifest(
+        VINA_PRIMARY_METRIC_PATH,
+        primary_result_path=VINA_PRIMARY_RESULT_PATH,
+        primary_plan_path=VINA_CAMPAIGN_PLAN_PATH,
+    )
+
+    assert manifest["manifest_sha256"] == (
+        "30da8aebc3bc601204146416c51d3a17227229b96c3efd7b41087074d6e0f873"
+    )
+    assert manifest["source_primary_vina_result_manifest_sha256"] == (
+        "8bf2f4586c3c659267a945cc2d7b9bcc718dff1fedd5f54f8892a89d7945bd82"
+    )
+    assert manifest["input_census"] == {
+        "requested": 11412,
+        "scored": 11247,
+        "unscored_worst_tie": 165,
+        "by_target_and_class": [
+            {
+                "target_id": "ESR_antago",
+                "active": 88,
+                "inactive": 3820,
+                "unscored_active": 0,
+                "unscored_inactive": 53,
+            },
+            {
+                "target_id": "PPARG",
+                "active": 24,
+                "inactive": 4071,
+                "unscored_active": 0,
+                "unscored_inactive": 71,
+            },
+            {
+                "target_id": "TP53",
+                "active": 64,
+                "inactive": 3345,
+                "unscored_active": 0,
+                "unscored_inactive": 41,
+            },
+        ],
+        "failure_codes": {
+            "LIGAND_CONFORMER_GENERATION_FAILED": 3,
+            "STEREOCHEMISTRY_REQUIRES_DECISION": 107,
+            "VINA_EXECUTION_FAILED": 30,
+            "VINA_TIMEOUT": 25,
+        },
+    }
+    assert manifest["estimate"]["macro_point"] == {
+        "target_count": 3,
+        "enrichment_factor": 3.8820814855875834,
+        "bedroc": 0.13548674116017187,
+        "roc_auc": 0.6644740097738387,
+        "pr_auc": 0.03275122985533479,
+    }
+    assert manifest["sensitivity_executed"] is False

@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "protocol_id": "LIT_PCBA_ANKORA_VS_V1",
+  "source_primary_vina_result_manifest_sha256": "8bf2f4586c3c659267a945cc2d7b9bcc718dff1fedd5f54f8892a89d7945bd82",
+  "source_vina_campaign_plan_sha256": "31862a168e737d2d6d81ab9ce5eba3b316eb31225318300237b140a99c020feb",
+  "scores_seen": true,
+  "metrics_computed": true,
+  "sensitivity_executed": false,
+  "metric_contract": {
+    "score_direction": "lower_is_better",
+    "top_fraction": 0.01,
+    "top_count_rounding": "ceil",
+    "bedroc_alpha": 20.0,
+    "tie_policy": "fractional membership and expected rank within exact score ties",
+    "failure_policy": "unscored parents retained as one worst-ranked tie group",
+    "pr_auc_definition": "non-interpolated average precision at distinct score thresholds",
+    "aggregate": "equal-target macro average",
+    "bootstrap": {
+      "method": "stratified parent bootstrap with fixed class counts",
+      "replicates": 2000,
+      "seed": 20260911,
+      "confidence_level": 0.95,
+      "percentile_method": "linear interpolation at (n - 1) * p"
+    }
+  },
+  "input_census": {
+    "requested": 11412,
+    "scored": 11247,
+    "unscored_worst_tie": 165,
+    "by_target_and_class": [
+      {
+        "target_id": "ESR_antago",
+        "active": 88,
+        "inactive": 3820,
+        "unscored_active": 0,
+        "unscored_inactive": 53
+      },
+      {
+        "target_id": "PPARG",
+        "active": 24,
+        "inactive": 4071,
+        "unscored_active": 0,
+        "unscored_inactive": 71
+      },
+      {
+        "target_id": "TP53",
+        "active": 64,
+        "inactive": 3345,
+        "unscored_active": 0,
+        "unscored_inactive": 41
+      }
+    ],
+    "failure_codes": {
+      "LIGAND_CONFORMER_GENERATION_FAILED": 3,
+      "STEREOCHEMISTRY_REQUIRES_DECISION": 107,
+      "VINA_EXECUTION_FAILED": 30,
+      "VINA_TIMEOUT": 25
+    }
+  },
+  "estimate": {
+    "targets": [
+      {
+        "point": {
+          "target_id": "ESR_antago",
+          "total_count": 3908,
+          "active_count": 88,
+          "inactive_count": 3820,
+          "scored_count": 3855,
+          "failed_count": 53,
+          "top_fraction": 0.01,
+          "top_count": 40,
+          "expected_active_hits_at_top_fraction": 4.0,
+          "enrichment_factor": 4.440909090909091,
+          "bedroc_alpha": 20.0,
+          "bedroc": 0.1502787046452803,
+          "roc_auc": 0.663518860066635,
+          "pr_auc": 0.04496837739458576,
+          "score_direction": "lower_is_better",
+          "tie_policy": "fractional membership and expected rank within exact score ties",
+          "failure_policy": "unscored parents retained as one worst-ranked tie group",
+          "pr_auc_definition": "non-interpolated average precision at distinct score thresholds"
+        },
+        "intervals": {
+          "enrichment_factor": {
+            "lower": 1.1102272727272728,
+            "upper": 8.881818181818183
+          },
+          "bedroc": {
+            "lower": 0.09552549906105087,
+            "upper": 0.21066492341943546
+          },
+          "roc_auc": {
+            "lower": 0.6042484605544979,
+            "upper": 0.7225820665754402
+          },
+          "pr_auc": {
+            "lower": 0.03492523979283241,
+            "upper": 0.06636175177278167
+          }
+        }
+      },
+      {
+        "point": {
+          "target_id": "PPARG",
+          "total_count": 4095,
+          "active_count": 24,
+          "inactive_count": 4071,
+          "scored_count": 4024,
+          "failed_count": 71,
+          "top_fraction": 0.01,
+          "top_count": 41,
+          "expected_active_hits_at_top_fraction": 1.0,
+          "enrichment_factor": 4.161585365853659,
+          "bedroc_alpha": 20.0,
+          "bedroc": 0.1502587312674721,
+          "roc_auc": 0.7311573732907557,
+          "pr_auc": 0.017223057523112338,
+          "score_direction": "lower_is_better",
+          "tie_policy": "fractional membership and expected rank within exact score ties",
+          "failure_policy": "unscored parents retained as one worst-ranked tie group",
+          "pr_auc_definition": "non-interpolated average precision at distinct score thresholds"
+        },
+        "intervals": {
+          "enrichment_factor": {
+            "lower": 0.0,
+            "upper": 12.484756097560975
+          },
+          "bedroc": {
+            "lower": 0.055959500029785385,
+            "upper": 0.26586774608865205
+          },
+          "roc_auc": {
+            "lower": 0.6387177085892083,
+            "upper": 0.813314833578973
+          },
+          "pr_auc": {
+            "lower": 0.010336186238870957,
+            "upper": 0.050294971169239935
+          }
+        }
+      },
+      {
+        "point": {
+          "target_id": "TP53",
+          "total_count": 3409,
+          "active_count": 64,
+          "inactive_count": 3345,
+          "scored_count": 3368,
+          "failed_count": 41,
+          "top_fraction": 0.01,
+          "top_count": 35,
+          "expected_active_hits_at_top_fraction": 2.0,
+          "enrichment_factor": 3.0437499999999997,
+          "bedroc_alpha": 20.0,
+          "bedroc": 0.10592278756776324,
+          "roc_auc": 0.5987457959641256,
+          "pr_auc": 0.03606225464830626,
+          "score_direction": "lower_is_better",
+          "tie_policy": "fractional membership and expected rank within exact score ties",
+          "failure_policy": "unscored parents retained as one worst-ranked tie group",
+          "pr_auc_definition": "non-interpolated average precision at distinct score thresholds"
+        },
+        "intervals": {
+          "enrichment_factor": {
+            "lower": 0.0,
+            "upper": 7.609374999999999
+          },
+          "bedroc": {
+            "lower": 0.05128773252287168,
+            "upper": 0.16891671585053752
+          },
+          "roc_auc": {
+            "lower": 0.5264289634715994,
+            "upper": 0.6660859842115097
+          },
+          "pr_auc": {
+            "lower": 0.022605433192410127,
+            "upper": 0.07897857820893217
+          }
+        }
+      }
+    ],
+    "macro_point": {
+      "target_count": 3,
+      "enrichment_factor": 3.8820814855875834,
+      "bedroc": 0.13548674116017187,
+      "roc_auc": 0.6644740097738387,
+      "pr_auc": 0.03275122985533479
+    },
+    "macro_intervals": {
+      "enrichment_factor": {
+        "lower": 1.1078361742424285,
+        "upper": 7.397599143107902
+      },
+      "bedroc": {
+        "lower": 0.09259120965803064,
+        "upper": 0.18279385849048257
+      },
+      "roc_auc": {
+        "lower": 0.6210533187819656,
+        "upper": 0.7064742514242796
+      },
+      "pr_auc": {
+        "lower": 0.02709143107917535,
+        "upper": 0.05303302030730657
+      }
+    },
+    "bootstrap_replicates": 2000,
+    "bootstrap_seed": 20260911,
+    "confidence_level": 0.95,
+    "bootstrap_method": "stratified parent bootstrap with fixed class counts",
+    "percentile_method": "linear interpolation at (n - 1) * p"
+  },
+  "result_status": "primary_vina_metrics_complete_sensitivity_not_executed",
+  "manifest_sha256": "30da8aebc3bc601204146416c51d3a17227229b96c3efd7b41087074d6e0f873"
+}
