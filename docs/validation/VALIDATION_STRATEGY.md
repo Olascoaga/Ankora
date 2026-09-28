@@ -102,10 +102,14 @@ restart, and parser identities without reading a score. The
 boundary. The create-only, incremental, safely resumable executor consuming
 this plan is now verified under readiness-manifest SHA-256
 `e0cebb75175daff18bb4326101739535546a3d650858a86f2948914bde786696`.
-The exact primary run may execute in a new root and later resume that corrected
-root; the two path-incident roots are never resumable. Sensitivity runs and all metrics
-remain prohibited until its complete terminal evidence has been independently
-verified.
+The exact primary run completed in corrected root `20260924T053042Z`; the two
+path-incident roots remain non-resumable technical evidence with zero poses or
+scores. Independent verification closed all 11,412 terminal rows and accepted
+11,247 scored plus 165 retained-unscored parents under result-manifest SHA-256
+`8bf2f4586c3c659267a945cc2d7b9bcc718dff1fedd5f54f8892a89d7945bd82`.
+The [execution record](LIT_PCBA_VINA_PRIMARY_RESULTS_2026-09-28.md) preserves
+that boundary. Primary metrics may now be computed only from this exact
+manifest; sensitivity work cannot replace the primary analysis.
 
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
