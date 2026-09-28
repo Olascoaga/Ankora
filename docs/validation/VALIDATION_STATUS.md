@@ -2,7 +2,7 @@
 
 <!-- Generated from VALIDATION_STATUS.json; checked by CI. -->
 
-Last synchronized: `2026-09-23`
+Last synchronized: `2026-09-28`
 
 ## Implemented scientific workflow
 
@@ -24,10 +24,10 @@ define the current validation boundary.
 
 ## Claims not established
 
-- Two single-ligand reference systems do not validate virtual-screening enrichment, cross-target performance, affinity prediction, or biological activity.
+- The primary LIT-PCBA Vina campaign shows modest retrospective ranking signal on three frozen targets, but does not establish prospective screening performance, performance on other targets, affinity prediction, or biological activity.
 - Vina scores and AutoDock4 binding energies are different quantities and are not compared on one numerical scale.
 - The completed 6OCO/M5V protocol does not determine the dominant physiological ligand microstate or quantify sensitivity to receptor preparation, search box, seed, or sampling.
 
 ## Next validation boundary
 
-Execute or deterministically resume the exact frozen primary LIT-PCBA Vina campaign. Publish only after all 11,412 parent rows are terminal, then independently verify every retained command, raw output, score, and failure before any sensitivity run or enrichment metric is allowed.
+Execute the six frozen LIT-PCBA one-factor sensitivity variants in their recorded order, beginning with all bounded states on the 96-parent chemical-state panel. Preserve every state and failure; never select best-state enrichment or replace the independently verified primary table.

@@ -188,8 +188,8 @@ def _render_readme_block(status: dict[str, Any], cases: list[dict[str, Any]]) ->
         f"{status['implemented_workspaces'][-1]} workflow. Frozen completed evidence exists for "
         f"{completed_labels}; other cases and known gaps remain visible in the "
         "[public validation status](docs/validation/VALIDATION_STATUS.md). This evidence does "
-        "not yet establish virtual-screening enrichment, affinity prediction, biological "
-        "activity, or cross-target generality."
+        "not yet establish prospective screening performance, affinity prediction, "
+        "biological activity, or cross-target generality."
     )
     return f"{README_BEGIN}\n## Scientific validation status\n\n{summary}\n{README_END}"
 

@@ -117,6 +117,12 @@ The [primary metric record](LIT_PCBA_VINA_PRIMARY_METRICS_2026-09-28.md)
 reports per-target and equal-target macro estimates with uncertainty.
 Sensitivity work cannot replace the primary analysis.
 
+The exact six-variant sensitivity boundary is now frozen in
+`LIT_PCBA_ANKORA_VS_V1.vina-sensitivity-plan.json`. Receptor, box, seed, and
+sampling comparisons retain all 11,412 parents; chemical-state sensitivity is
+bounded to the 96 predeclared sentinels. The plan permits at most 58,046
+additional Vina executions and produced no sensitivity score or metric.
+
 M0 validation is limited to contract tests and a documented desktop smoke path. M1 adds explicitly synthetic parser/API fixtures plus a recorded, hash-bound RCSB structure-import smoke; neither establishes receptor-preparation or docking validity.
 
 See `M1_STRUCTURE_WORKSPACE.md` for the complete M1 criteria and recorded evidence.
