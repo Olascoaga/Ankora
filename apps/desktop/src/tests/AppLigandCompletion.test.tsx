@@ -87,7 +87,7 @@ it("marks a terminal ligand batch complete and advances to Binding site without 
   });
 
   render(<App />);
-  const input = document.querySelector<HTMLInputElement>(".primary-action input");
+  const input = document.querySelector<HTMLInputElement>("input.visually-hidden[type=file]");
   fireEvent.change(input!, { target: { files: [new File(["SYNTHETIC"], "synthetic.pdb")] } });
 
   const workflow = within(await screen.findByRole("navigation", { name: "Docking workflow" }));
@@ -119,7 +119,7 @@ it("stays on Ligand when an already-finished library is reopened", async () => {
   });
 
   render(<App />);
-  const input = document.querySelector<HTMLInputElement>(".primary-action input");
+  const input = document.querySelector<HTMLInputElement>("input.visually-hidden[type=file]");
   fireEvent.change(input!, { target: { files: [new File(["SYNTHETIC"], "synthetic.pdb")] } });
 
   const workflow = within(await screen.findByRole("navigation", { name: "Docking workflow" }));

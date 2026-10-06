@@ -111,6 +111,32 @@ it("renders the connected backend and tool states", async () => {
   expect(screen.getByTestId("viewer-placeholder")).toBeInTheDocument();
 });
 
+it("offers explicit source actions without fetching a structure on menu entry", async () => {
+  const requests: Array<{ url: string; method: string }> = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    requests.push({ url, method: init?.method ?? "GET" });
+    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
+    const payload = url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources : url.endsWith("/system") ? system : tools;
+    return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getAllByText("Backend connected").length).toBeGreaterThan(0));
+
+  const fileInput = document.querySelector<HTMLInputElement>("input.visually-hidden[type=file]")!;
+  const chooseFile = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+  fireEvent.click(screen.getByRole("button", { name: /^Choose file PDB/ }));
+  expect(chooseFile).toHaveBeenCalledOnce();
+  expect(fileInput.accept).toContain(".mmcif");
+
+  fireEvent.click(screen.getByRole("button", { name: /^Fetch a structure/ }));
+  await waitFor(() => expect(document.querySelector("details.import-menu")).toHaveAttribute("open"));
+  expect(screen.getByLabelText("PDB ID")).toBeVisible();
+  expect(screen.getByLabelText("PDB ID")).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Fetch" })).toBeVisible();
+  expect(requests.filter(({ method }) => method !== "GET")).toEqual([]);
+});
+
 it("renders a disconnected state when the backend cannot be reached", async () => {
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
 
@@ -169,7 +195,7 @@ it("imports a structure and exposes chains, heterogens, warnings, and provenance
     return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
   });
   render(<App />);
-  const input = document.querySelector<HTMLInputElement>(".primary-action input");
+  const input = document.querySelector<HTMLInputElement>("input.visually-hidden[type=file]");
   expect(input).not.toBeNull();
 
   fireEvent.change(input!, { target: { files: [new File(["SYNTHETIC"], "synthetic_m1.pdb")] } });
@@ -304,7 +330,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
     return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
   });
   render(<App />);
-  const input = document.querySelector<HTMLInputElement>(".primary-action input");
+  const input = document.querySelector<HTMLInputElement>("input.visually-hidden[type=file]");
   fireEvent.change(input!, { target: { files: [new File(["SYNTHETIC"], "synthetic_m2.pdb")] } });
   const workflow = within(screen.getByRole("navigation", { name: "Docking workflow" }));
   await waitFor(() => expect(workflow.getByRole("button", { name: /Receptor/ })).not.toBeDisabled());
@@ -437,8 +463,7 @@ it("reopens the latest receptor without rerunning scientific tools", async () =>
   });
 
   render(<App />);
-  await waitFor(() => expect(document.querySelector(".resume-receptor-action")).not.toBeNull());
-  fireEvent.click(document.querySelector<HTMLButtonElement>(".resume-receptor-action")!);
+  fireEvent.click(await screen.findByRole("button", { name: /Reopen last receptor.*saved/ }));
 
   await screen.findByText("Receptor plan");
   expect(screen.getByRole("button", { name: "Prepared" })).toHaveClass("selected");

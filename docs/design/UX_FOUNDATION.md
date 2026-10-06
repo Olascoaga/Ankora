@@ -38,6 +38,17 @@ This document is the implementation contract for the professional scientific int
 - Use variables from `apps/desktop/src/design-system.css`; do not introduce screen-local palettes for shared states.
 - Ankora's default identity is **Midnight Laboratory**: graphite scientific surfaces, mineral-green action, muted cyan precision guides, amber review, and violet ligand-state evidence. It should read as a local scientific instrument rather than a generic cloud dashboard.
 - Fine coordinate grids, clipped geometric marks, hairline spectral accents, and monospaced metadata labels are the recurring brand motifs. Keep them subordinate to data and never place decorative texture over molecular evidence.
+- Confine decorative grids to bounded identity graphics. Working surfaces stay
+  quiet; do not repeat the grid beneath every panel. Use typographic scale and
+  spacing, not additional saturation, to establish hierarchy.
+- The workflow groups Prepare, Define & run, and Review retain the existing
+  eight steps. A step's title and prerequisite/status occupy separate lines.
+- Structure entry exposes separate file and online-source actions, plus saved
+  receptor access when available. These reuse the existing import/fetch/reopen
+  paths; opening the online-source menu focuses its identifier without fetching.
+- In the small layout, a scientific workbench retains usable viewer and table
+  heights and lets the center workspace scroll. Its data table may scroll its
+  rows independently; no second page-level scroller is introduced.
 - Corners are compact and engineered. Large pill shapes are reserved for compact status chips; scientific workspaces, tables, menus, and dialogs use the shared small/medium/large radii instead of screen-local rounding.
 - Mint is the primary interaction and success family. Amber indicates review, red indicates blocking/failure, blue indicates information, and violet distinguishes generated ligand state where appropriate.
 - Surfaces use restrained elevation and borders; glow is reserved for connection/activity emphasis rather than decoration.

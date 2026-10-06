@@ -495,7 +495,10 @@ export function App() {
   function openStructureMenu() {
     setActiveStep("Structure");
     window.setTimeout(() => {
-      if (importMenuRef.current) importMenuRef.current.open = true;
+      if (importMenuRef.current) {
+        importMenuRef.current.open = true;
+        importMenuRef.current.querySelector<HTMLInputElement>("#pdb-id")?.focus();
+      }
     }, 0);
   }
 
@@ -603,6 +606,7 @@ export function App() {
           const stepState = workflowState(step);
           return (
             <li key={step} className={stepState === "current" ? "active" : stepState}>
+              {index === 0 || index === 3 || index === 5 ? <div className="workflow-phase" aria-hidden="true">{index === 0 ? "Prepare" : index === 3 ? "Define & run" : "Review"}</div> : null}
               <button type="button" disabled={!enabled} aria-current={activeStep === step ? "step" : undefined} onClick={() => setActiveStep(step)}>
                 <span className="workflow-index">{stepState === "complete" ? <AppIcon name="success" /> : index + 1}</span><span className="workflow-copy"><strong>{step}</strong><small>{workflowStepSummary(step, structure, receptorRecord, ligandRecord, ligandLibraryStatus, bindingSiteRecord)}</small></span>
               </button>
@@ -677,20 +681,43 @@ export function App() {
         {structure ? (
           <MolecularViewer sources={structureViewerSources} selection={selection} />
         ) : (
-          <div className="viewer-placeholder" data-testid="viewer-placeholder">
-            <div className="orbital orbital-one" /><div className="orbital orbital-two" />
-            <div className="viewer-message">
-              <div className="molecule-glyph" aria-hidden="true">⌬</div>
-              <h3>Open a molecular structure</h3>
-              <p>Import a local PDB/mmCIF file, or fetch a four-character PDB ID from RCSB or a UniProt accession from AlphaFold DB. Ankora will inspect it without changing coordinates.</p>
-              <div className="empty-actions">
-                <label className="primary-action">Choose file<input type="file" accept=".pdb,.cif,.mmcif" onChange={handleFileChange} /></label>
-                {latestReceptor ? <button type="button" className="resume-receptor-action" onClick={() => void reopenLatestReceptor()}>
-                  <strong>Reopen last receptor</strong>
-                  <small>{latestReceptor.status.replaceAll("_", " ")} · saved {formatApplicationDateTime(latestReceptor.created_at)}</small>
-                </button> : null}
-                <span>or use “Open structure” above</span>
+          <div className="structure-welcome" data-testid="viewer-placeholder">
+            <div className="structure-welcome-content">
+              <div className="structure-welcome-intro">
+                <div className="structure-emblem" aria-hidden="true">
+                  <svg viewBox="0 0 160 160" fill="none">
+                    <path className="emblem-orbit" d="M80 12 139 46v68l-59 34-59-34V46Z" />
+                    <path className="emblem-axis" d="M0 80h160M80 0v160M8 8h16M8 8v16m144 128h-16m16 0v-16" />
+                    <path className="emblem-bonds" d="m80 40 35 20v40l-35 20-35-20V60l35-20Zm0 0v40m-35 20 35-20 35 20" />
+                    <circle cx="80" cy="40" r="5" /><circle cx="115" cy="60" r="5" />
+                    <circle cx="115" cy="100" r="5" /><circle cx="80" cy="120" r="5" />
+                    <circle cx="45" cy="100" r="5" /><circle cx="45" cy="60" r="5" /><circle cx="80" cy="80" r="6" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="welcome-kicker">Your next experiment starts here</span>
+                  <h3>Open a molecular structure</h3>
+                  <p>Bring a structure into the workbench. Inspect its chains, ligands, and structural issues before preparing it for docking.</p>
+                </div>
               </div>
+              <div className="structure-source-actions">
+                <button type="button" className="structure-source-action" disabled={state.structureOperation === "loading"} onClick={() => globalFileInputRef.current?.click()}>
+                  <AppIcon name="file" />
+                  <span><strong>Choose file</strong><small>PDB · CIF · mmCIF</small></span>
+                  <span className="source-action-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button type="button" className="structure-source-action" disabled={state.structureOperation === "loading"} onClick={openStructureMenu}>
+                  <AppIcon name="molecule" />
+                  <span><strong>Fetch a structure</strong><small>RCSB PDB · AlphaFold DB</small></span>
+                  <span className="source-action-arrow" aria-hidden="true">↗</span>
+                </button>
+              </div>
+              {latestReceptor ? <button type="button" className="structure-resume" onClick={() => void reopenLatestReceptor()}>
+                <AppIcon name="history" />
+                <span><strong>Reopen last receptor</strong><small>{latestReceptor.status.replaceAll("_", " ")} · saved {formatApplicationDateTime(latestReceptor.created_at)}</small></span>
+                <span aria-hidden="true">→</span>
+              </button> : null}
+              <p className="structure-preservation-note"><AppIcon name="provenance" />Original coordinates are preserved. Every preparation creates a traceable derivative.</p>
             </div>
           </div>
         )}

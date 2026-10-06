@@ -54,3 +54,43 @@ The coordinate grid, spectral line, and brand geometry are chrome, never
 scientific evidence. They are not drawn inside the Mol* molecular canvas and
 must not be used to imply a distance, coordinate, interaction, or measured
 quantity.
+
+## Follow-up: hierarchy and entry surface — 2026-10-06
+
+The second visual unit replaces the repeated shell/workspace grid with quiet
+surfaces and a bounded entry emblem. It introduces three navigation groups,
+two-line step labels, explicit file/fetch entry cards, keyboard focus for the
+existing online-source field, and more legible results/inspector typography.
+Light-theme semantic colors were darkened without changing their meanings.
+
+Acceptance for this unit requires that both source actions reuse the existing
+paths, opening the source menu performs no scientific mutation, saved receptors
+still reopen without tool execution, and navigation/status text does not overlap
+at the supported compact size. The molecular canvas must retain its controls.
+
+Verification on Windows with the real local backend:
+
+- 960 x 680 CSS viewport, small layout: source menu and navigation usable;
+  navigation title/status rectangles do not overlap; every status cell's scroll
+  width equals its client width after the overflow fix.
+- A saved receptor reopened without preparation. At 960 x 680, the center
+  workspace scrolls while the viewer retains a 364 px canvas. Keyboard access
+  to the table moved the workspace to its lower section; the table bottom
+  remained above the status bar. No scientific decision was applied.
+- 1280 x 800 CSS viewport, medium layout: Structure entry inspected in dark and
+  light themes; Results catalog inspected in light. Existing campaigns remain
+  accessible; opening one showed its preserved molecule table and recorded
+  energies.
+- 1920 x 1200 CSS viewport, wide layout: four-column Results catalog inspected
+  with readable engine, score, metadata, and reproducibility warnings. No
+  document-level horizontal overflow in any of the three checked viewports.
+- Full frontend suite: 246 tests passed across 34 files, including a new test
+  for file selection, explicit source-menu entry, keyboard focus, and absence
+  of mutation requests on entry. Existing import, saved-receptor, and ligand
+  completion tests remain in the gate.
+- TypeScript and production Vite build passed. Existing React fixture warnings
+  and Mol* bundle/browser-externalization warnings remain non-failing.
+
+These are browser-rendered checks of the Windows desktop frontend, not a newly
+packaged native installer or a complete accessibility audit. No backend logic,
+scientific executable, chemical-state protocol, or stored artifact was changed.

@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Refined workbench hierarchy and structure entry - 2026-10-06
+
+- Organized navigation into Prepare, Define & run, and Review, with each
+  step's title and prerequisite on separate lines.
+- Rebuilt the initial Structure view with explicit file/fetch actions and
+  saved-receptor access. Fetch opens the existing source menu and focuses its
+  identifier field; it does not start a download.
+- Refined typography, campaign cards, inspector sections, tables, and controls;
+  removed repeated background grids from working surfaces and improved the
+  light theme's semantic-state contrast.
+- Kept status cells within their boundaries and made compact scientific
+  workbenches scroll without compressing the molecular-viewer controls.
+- Preserved scientific decisions, calculations, stored evidence, and scores.
+
 ## Established the Midnight Laboratory visual identity - 2026-10-05
 
 - Reworked the default dark appearance around graphite scientific surfaces,
