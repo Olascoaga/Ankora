@@ -86,6 +86,15 @@ it("gives the complete M9 document one vertical workspace scroll owner", () => {
   );
 });
 
+it("keeps the later theme's generic overflow below document-workspace rules", () => {
+  // main.tsx loads the theme after styles.css. Checking only the M9 rule
+  // misses a generic .workspace shorthand that hides its scrollbar again.
+  const genericWorkspaceRule = designSystemStyles.match(/\n\.workspace\s*\{([^}]*)\}/)?.[1];
+  expect(genericWorkspaceRule).toBeDefined();
+  expect(genericWorkspaceRule).not.toMatch(/overflow(?:-[xy])?\s*:/);
+  expect(designSystemStyles).toMatch(/:where\(\.workspace\)\s*\{[^}]*overflow:\s*hidden;/);
+});
+
 it("changes the M9 composition from usable workspace width rather than monitor width", () => {
   expect(responsiveStyles).toContain("container-name: interaction-workspace");
   expect(responsiveStyles).toContain("@container interaction-workspace (min-width: 980px)");

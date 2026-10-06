@@ -2,6 +2,15 @@
 
 All notable project changes are recorded here.
 
+## Restored pose-interaction scrolling on laptops - 2026-10-06
+
+- Fixed a shared-theme overflow rule that hid the Results scrollbar and made
+  the 2D interaction diagram and figure/PDB saving controls unreachable.
+- Preserved one central document scrollbar and workspace-width-driven stacking;
+  molecular canvases and contact-table scrolling keep their existing behavior.
+- Added a regression for the stylesheet-order collision and verified recorded
+  analyses at small, laptop, and monitor viewport sizes without recomputation.
+
 ## Refined workbench hierarchy and structure entry - 2026-10-06
 
 - Organized navigation into Prepare, Define & run, and Review, with each

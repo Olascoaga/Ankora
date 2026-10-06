@@ -486,9 +486,11 @@ button.project-context:hover { border-color: var(--line); background: var(--pane
 }
 .workspace {
   padding: var(--space-4) var(--space-5);
-  overflow: hidden;
   background: transparent;
 }
+/* This stylesheet loads last. Keep the fixed-canvas default at zero
+   specificity so document workspaces retain their own scroll contract. */
+:where(.workspace) { overflow: hidden; }
 .workspace-heading { min-height: 60px; flex: 0 0 auto; padding-bottom: var(--space-3); margin-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
 .workspace-heading h2,
 .inspector h2 { margin-top: 4px; font-size: var(--text-xl); }

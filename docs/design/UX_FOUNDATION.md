@@ -26,6 +26,9 @@ This document is the implementation contract for the professional scientific int
   center workspace; bounded tables, inspectors, and code/evidence panes may
   scroll their own data, but two page-level vertical scroll regions must not be
   nested in the same lane.
+- Generic theme overflow defaults must have zero specificity (`:where`) so
+  loading the theme last cannot override a document workspace's scroll owner.
+  Validate the resolved styles in the live app, not just a component's CSS rule.
 - Component composition follows usable center-workspace width where side-panel
   resizing matters. Pose-interaction review stacks below 980 px of workspace
   width and uses two columns above it; monitor-width and viewport-height
