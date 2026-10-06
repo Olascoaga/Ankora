@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Established the Midnight Laboratory visual identity - 2026-10-05
+
+- Reworked the default dark appearance around graphite scientific surfaces,
+  mineral-green actions, muted cyan precision guides, amber review states, and
+  violet ligand-state evidence without changing any scientific workflow.
+- Introduced a restrained coordinate-grid motif, clipped geometric brand mark,
+  spectral hairlines, compact engineered corners, and monospaced metadata cues
+  across the shell, workflow, panels, inspector, and status bar.
+- Preserved the existing light, blue, amethyst, and Windows-following themes by
+  extending the shared semantic-token contract rather than adding screen-local
+  styling.
+
 ## Produced frozen screening receptors - 2026-09-20
 
 - Executed all six accepted LIT-PCBA receptor plans through the production

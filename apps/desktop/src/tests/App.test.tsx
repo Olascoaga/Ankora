@@ -97,7 +97,9 @@ it("renders the connected backend and tool states", async () => {
   await waitFor(() => expect(screen.getAllByText("Backend connected").length).toBeGreaterThan(0));
   expect(screen.getByText("of 11 tools detected")).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
+  expect(document.querySelector(".app-shell")).toHaveAttribute("data-visual-system", "midnight-laboratory");
   fireEvent.click(screen.getByText("View"));
+  expect(screen.getByRole("button", { name: "Midnight Laboratory" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Light" }));
   expect(document.documentElement).toHaveAttribute("data-theme", "light");
   fireEvent.click(screen.getByText("Tools"));

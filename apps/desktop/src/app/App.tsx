@@ -537,6 +537,7 @@ export function App() {
     <>
       <main
         data-layout={workbenchLayout}
+        data-visual-system="midnight-laboratory"
         style={{ "--workflow-preferred-width": `${workflowWidth}px`, "--inspector-preferred-width": `${inspectorWidth}px` } as CSSProperties}
         className={`app-shell${workflowCollapsed ? " workflow-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}${activityOpen ? " activity-open" : ""}`}
       >
@@ -570,7 +571,7 @@ export function App() {
             <button type="button" onClick={() => setInspectorCollapsed((value) => !value)}><AppIcon name="panel-right" />{inspectorCollapsed ? "Show" : "Hide"} inspector</button>
             <button type="button" onClick={() => setActivityOpen((value) => !value)}><AppIcon name="activity" />{activityOpen ? "Close" : "Open"} activity center</button>
             <div className="menu-section-label">Theme</div>
-            {(["dark", "light", "blue", "amethyst", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "dark" ? "Dark (Green)" : option === "light" ? "Light" : option === "blue" ? "Dark (Blue)" : option === "amethyst" ? "Dark (Amethyst)" : "Follow Windows"}</button>)}
+            {(["dark", "light", "blue", "amethyst", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "dark" ? "Midnight Laboratory" : option === "light" ? "Light" : option === "blue" ? "Dark (Blue)" : option === "amethyst" ? "Dark (Amethyst)" : "Follow Windows"}</button>)}
             <div className="menu-section-label">Density</div>
             {(["comfortable", "compact"] as const).map((option) => <button type="button" className={density === option ? "selected" : ""} key={option} onClick={() => setDensity(option)}>{option === "comfortable" ? "Comfortable" : "Compact"}</button>)}
           </AppMenu>

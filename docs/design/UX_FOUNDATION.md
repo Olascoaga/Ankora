@@ -36,6 +36,9 @@ This document is the implementation contract for the professional scientific int
 ## Visual language
 
 - Use variables from `apps/desktop/src/design-system.css`; do not introduce screen-local palettes for shared states.
+- Ankora's default identity is **Midnight Laboratory**: graphite scientific surfaces, mineral-green action, muted cyan precision guides, amber review, and violet ligand-state evidence. It should read as a local scientific instrument rather than a generic cloud dashboard.
+- Fine coordinate grids, clipped geometric marks, hairline spectral accents, and monospaced metadata labels are the recurring brand motifs. Keep them subordinate to data and never place decorative texture over molecular evidence.
+- Corners are compact and engineered. Large pill shapes are reserved for compact status chips; scientific workspaces, tables, menus, and dialogs use the shared small/medium/large radii instead of screen-local rounding.
 - Mint is the primary interaction and success family. Amber indicates review, red indicates blocking/failure, blue indicates information, and violet distinguishes generated ligand state where appropriate.
 - Surfaces use restrained elevation and borders; glow is reserved for connection/activity emphasis rather than decoration.
 - Scientific values use tabular numerals. Units belong in headers or labels, for example `MW (g/mol)` and `Final MMFF E (kcal/mol)`.
