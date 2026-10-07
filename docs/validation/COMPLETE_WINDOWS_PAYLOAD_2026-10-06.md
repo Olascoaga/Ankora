@@ -58,10 +58,44 @@ filename reader cannot open an accented Windows path. This is an acceptance
 finding to fix, not permission to drop Unicode from testing. This local test
 does not constitute a clean Windows installation or a complete installer.
 
+## 4. Redistributable GPU candidate and bounded calculation
+
+The authorized 1.6 rebuild uses MSVC 14.44.35207 and the redistributable
+14.44.35112 `vcomp140.dll`, with static C/C++ runtime linkage. Its only direct
+imports are `KERNEL32.dll`, `OpenCL.dll` (the device driver interface), and
+`VCOMP140.DLL`. The LLVM runtime is absent. Scientific search/scoring code is
+unchanged: three atomic timing-counter updates use equivalent OpenMP 2.0
+syntax, the project selects ordinary MSVC OpenMP, and debug-path information is
+disabled. The builder retains the patched corresponding source and raw build
+logs, and refuses unexpected source patterns or overwritten evidence.
+
+- New executable SHA-256:
+  `e1f7704efca05c8b1c05fb47fbb13ecdc472a79b3cbe7f8d8d08f69d42269a69`.
+- OpenMP DLL SHA-256:
+  `55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164`.
+- Patched corresponding-source archive SHA-256:
+  `76f64f65988546d2c418e7769a27a6f452eaf55eedd2256031261ad0c3480a5e`.
+
+`scripts/smoke_rebuilt_autodock_gpu.py` ran the upstream 1STP example with two
+runs, 200,000 evaluations, explicit three-part seed, ADADELTA, heuristics off
+and autostop off. On the NVIDIA GeForce RTX 5050 Laptop GPU, both requested
+poses passed Ankora's existing DLG parser. Actual recorded scores were -7.95 and
+-6.87 kcal/mol; these are runtime smoke observations, not benchmark acceptance
+or expected numbers for another run/build/device. No old result is relabeled.
+DLG SHA-256: `1973e134952f6b4a3cf8468e9de8bd110ca78dd3e84fa6c8f2e309ea2c4a0e14`.
+The raw input copies, stdout, stderr, commands, DLG and acceptance manifest are
+retained privately under the ignored build tree.
+
+Create-only staging now assembles six private tool entries and 485 hash-bound
+files, including private Java and the complete P2Rank runtime/model directories
+without upstream example datasets. The build-only extractor is independently
+hash-checked. Nineteen acquisition/extraction tests and four builder guard
+tests use explicitly synthetic archives/metadata, not invented chemistry.
+
 ## Remaining acceptance
 
-Private tool staging, all transitive notices/corresponding sources, complete
-offline NSIS integration, the rebuilt GPU calculation, and installed end-to-end
+All transitive notices/corresponding sources, complete
+offline NSIS integration, and installed end-to-end
 CPU/GPU smokes must pass before calling this a complete installer. A local
 isolated-PATH check is not evidence of a clean Windows VM. Signing, a release
 tag and community publication remain separate gates.

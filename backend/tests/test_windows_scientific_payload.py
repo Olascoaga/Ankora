@@ -98,3 +98,16 @@ def test_tar_rejects_links_before_writing(tmp_path) -> None:
     with pytest.raises(ValueError, match="Non-regular"):
         payload.extract_archive(archive, tmp_path / "output")
     assert not (tmp_path / "output").exists()
+
+
+def test_runtime_selection_does_not_include_upstream_test_data(tmp_path) -> None:
+    archive = tmp_path / "synthetic.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("release/bin/app.jar", b"synthetic jar")
+        z.writestr("release/models/model.dat", b"synthetic model")
+        z.writestr("release/test_data/example.pdb", b"excluded example")
+    dest = tmp_path / "runtime"
+    payload.extract_archive(archive, dest, prefix="release", include=("bin", "models"))
+    assert (dest / "bin/app.jar").is_file()
+    assert (dest / "models/model.dat").is_file()
+    assert not (dest / "test_data").exists()

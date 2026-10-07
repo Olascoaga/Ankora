@@ -119,7 +119,9 @@ def acquire(entry: dict[str, Any], cache: Path, *, offline: bool = False) -> Pat
     return destination
 
 
-def extract_archive(archive: Path, destination: Path, *, prefix: str = "") -> None:
+def extract_archive(
+    archive: Path, destination: Path, *, prefix: str = "", include: tuple[str, ...] | None = None
+) -> None:
     """Create-only extraction after validating every member, including unused ones."""
     if destination.exists():
         raise FileExistsError(f"Extraction is create-only: {destination}")
@@ -137,6 +139,10 @@ def extract_archive(archive: Path, destination: Path, *, prefix: str = "") -> No
                 return None
             relative = relative.relative_to(selected_prefix)
         if not relative.parts:
+            return None
+        if include is not None and not any(
+            relative.is_relative_to(safe_relative(item)) for item in include
+        ):
             return None
         return destination.joinpath(*relative.parts)
 

@@ -13,6 +13,9 @@ All notable project changes are recorded here.
   acceptance claim.
 - Isolated installed discovery from developer tools, added direct private-Java
   P2Rank execution and a frozen native smoke worker with real exit status.
+- Rebuilt GPU 1.6 with redistributable MSVC OpenMP, retained its distinct
+  executable/source identity, and completed a bounded two-run 1STP calculation.
+  Added create-only private tool staging; redistribution acceptance is pending.
 
 ## Reviewed user guide and complete-installer requirement - 2026-10-06
 
