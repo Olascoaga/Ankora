@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "platform": "windows-x86_64",
+  "artifacts": [
+    {
+      "id": "vina", "version": "1.2.7", "filename": "vina.exe",
+      "url": "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.7/vina_1.2.7_win.exe",
+      "sha256": "e0c4b2715e0c1a74f6e92d0f3be0328ac97542eafbc111e6b1efad897a73cce5", "size_bytes": 1233920,
+      "role": "runtime", "license": "Apache-2.0", "source_id": "vina-source"
+    },
+    {
+      "id": "vina-source", "version": "1.2.7", "filename": "vina-source.zip",
+      "url": "https://github.com/ccsb-scripps/AutoDock-Vina/archive/refs/tags/v1.2.7.zip",
+      "sha256": "08143c35ee5a5a538c5100874df801c4432011f09799cdc5f328da4a887fbede", "size_bytes": 46657326,
+      "role": "source", "license": "Apache-2.0"
+    },
+    {
+      "id": "autodocksuite", "version": "4.2.6", "filename": "autodocksuite.exe",
+      "url": "https://autodock.scripps.edu/wp-content/uploads/sites/56/2021/10/autodocksuite-4.2.6.i86Windows.exe",
+      "sha256": "306dc72a06e80a2da6f3c410ac6aba7ebdaeef6b702eca42de44c7c6c9d48755", "size_bytes": 577275,
+      "role": "runtime", "license": "GPL-2.0-or-later", "source_id": "autodocksuite-source"
+    },
+    {
+      "id": "autodocksuite-source", "version": "4.2.6", "filename": "autodocksuite-source.tar.gz",
+      "url": "https://autodock.scripps.edu/wp-content/uploads/sites/56/2021/10/autodocksuite-4.2.6-src.tar.gz",
+      "sha256": "4b24ce4baf216a5e1a6a79bb664eeed684aed17cede64ff0061aa1bcc17874c4", "size_bytes": 35438010,
+      "role": "source", "license": "GPL-2.0-or-later"
+    },
+    {
+      "id": "autodock-gpu-reference", "version": "1.6", "filename": "autodock-gpu.exe",
+      "url": "https://github.com/ccsb-scripps/AutoDock-GPU/releases/download/v1.6/AutoDock-GPU.exe",
+      "sha256": "be21dd5dea36a391e3d77286cd8a5bf18b080306d32c7178c56f0a9e4f373bbf", "size_bytes": 879616,
+      "role": "reference-only", "license": "GPL-2.0-or-later",
+      "restriction": "Do not package this binary: it imports non-redistributable MSVC libomp140.x86_64.dll. Rebuild the same 1.6 source with a redistributable runtime and validate independently."
+    },
+    {
+      "id": "autodock-gpu-source", "version": "1.6", "filename": "autodock-gpu-source.zip",
+      "url": "https://github.com/ccsb-scripps/AutoDock-GPU/archive/refs/tags/v1.6.zip",
+      "sha256": "840959163266bd570a27ff274b9d4208252b293dc77b90e114f631215c963e38", "size_bytes": 18642284,
+      "role": "source", "license": "GPL-2.0-or-later AND LGPL-2.1-or-later"
+    },
+    {
+      "id": "p2rank", "version": "2.5.1", "filename": "p2rank.tar.gz",
+      "url": "https://github.com/rdk/p2rank/releases/download/2.5.1/p2rank_2.5.1.tar.gz",
+      "sha256": "d243f2d9036ac053fefb9407b5fe1c85f4fe077c519fd975ac585e995feab274", "size_bytes": 275625956,
+      "role": "runtime", "license": "MIT", "source_id": "p2rank-source",
+      "dependency_review": "The MIT label describes P2Rank itself, not all of its bundled JAR dependencies. Those require their own inventory and source/notice fulfillment."
+    },
+    {
+      "id": "p2rank-source", "version": "2.5.1", "filename": "p2rank-source.zip",
+      "url": "https://github.com/rdk/p2rank/archive/refs/tags/2.5.1.zip",
+      "sha256": "cad17d3051f4d0ad29b6126f6a59ca36569cdb6c4e09cc4bb296e6c667ba72ce", "size_bytes": 256433483,
+      "role": "source", "license": "MIT"
+    },
+    {
+      "id": "java", "version": "21.0.12.1+1", "filename": "java.zip",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+      "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636", "size_bytes": 48999141,
+      "role": "runtime", "license": "GPL-2.0-with-classpath-exception", "source_id": "java-source"
+    },
+    {
+      "id": "java-source", "version": "21.0.12.1+1", "filename": "java-source.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz",
+      "sha256": "573057d03584ae793fb7ec9a14c76d826d9187a53efeefd99da47403a5308234", "size_bytes": 115126841,
+      "role": "source", "license": "GPL-2.0-with-classpath-exception"
+    },
+    {
+      "id": "extractor", "version": "26.04", "filename": "7z2604-x64.msi",
+      "url": "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-x64.msi",
+      "sha256": "0b01334a418654293513449f61d6bfc99e5196ca371e3c3dc961eda57cd535c6",
+      "role": "build-only", "license": "LGPL-2.1-or-later AND BSD-3-Clause AND unRAR"
+    }
+  ]
+}

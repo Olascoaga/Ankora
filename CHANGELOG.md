@@ -2,6 +2,16 @@
 
 All notable project changes are recorded here.
 
+## Complete-installer payload foundation - 2026-10-06
+
+- Pinned the supported Windows scientific distributions and corresponding
+  sources with SHA-256 and safe create-only acquisition/extraction tests.
+- Identified the official AutoDock-GPU binary's non-redistributable OpenMP
+  dependency; excluded that binary from runtime payloads. The same-version
+  rebuild is explicitly authorized and must retain a new executable identity.
+- This is installer implementation progress, not a release or clean-machine
+  acceptance claim.
+
 ## Reviewed user guide and complete-installer requirement - 2026-10-06
 
 - Added the illustrated Markdown/PDF guide as an explicit review draft, with
