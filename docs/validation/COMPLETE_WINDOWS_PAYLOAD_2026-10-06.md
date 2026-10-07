@@ -122,6 +122,26 @@ bytes; the CLI check reproduces the original manifest SHA-256
 `63c74c7e7d29a4a763208d815acee9f87537ff9a579dff781cb531868fa2da6d`.
 Historical verification does not authorize a new calculation using changed code.
 
+## 6. Offline WebView2 input — 2026-10-07
+
+The official x64 standalone installer is acquired without installing it on the
+build machine. The lock records its exact 212,358,352 bytes, SHA-256
+`ac22ecdc19c5b88b87f3fa752c00da9541653a8f5c0c5fc4a3b2b6ebe6591f69`,
+Microsoft signer and immutable download URL. Windows Authenticode verification
+reports Valid with Microsoft Corporation as publisher. The helper rejects a
+changed Evergreen URL, unsigned/other-publisher inputs, changed bytes and an
+NSIS selection that would download a bootstrapper instead of embedding the
+verified full installer. Six synthetic tests pass without downloading or
+installing a browser. The real signed input was verified in a private build cache.
+
+This helper is deliberately not wired into the existing backend-only installer:
+its current notices exclude WebView2 and the external scientific engines. Full
+notice/source closure and the replacement packaging gate must land together.
+The installer file version is not the embedded browser version; Evergreen
+updates remain Microsoft-serviced after installation. Microsoft's official
+[offline distribution workflow](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
+describes embedding this standalone installer and invoking it only when needed.
+
 ## Remaining acceptance
 
 All transitive notices/corresponding sources, complete

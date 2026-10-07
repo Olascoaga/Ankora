@@ -13,6 +13,13 @@ All notable project changes are recorded here.
 - Retained exact historical source evidence for the frozen sensitivity plan,
   so runtime fixes do not rewrite its source identity or scientific results.
 
+## Offline installer input - 2026-10-07
+
+- Pinned and authenticated Microsoft's full offline WebView2 installer, with
+  pre/post-bundle drift checks. No browser was installed on the build machine.
+- Complete-installer integration remains gated by the expanded legal inventory;
+  this input helper does not change the existing installer or declare a release.
+
 ## Complete-installer payload foundation - 2026-10-06
 
 - Pinned the supported Windows scientific distributions and corresponding
