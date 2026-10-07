@@ -121,6 +121,9 @@ sensitivity-plan tests pass, including refusal of changed historical source
 bytes; the CLI check reproduces the original manifest SHA-256
 `63c74c7e7d29a4a763208d815acee9f87537ff9a579dff781cb531868fa2da6d`.
 Historical verification does not authorize a new calculation using changed code.
+The subsequent full backend rerun passes **674 tests** (one dependency deprecation
+warning), including the historical checks. The dependency-inventory tests added
+after that collection pass separately as documented below.
 
 ## 6. Offline WebView2 input — 2026-10-07
 
@@ -141,6 +144,42 @@ The installer file version is not the embedded browser version; Evergreen
 updates remain Microsoft-serviced after installation. Microsoft's official
 [offline distribution workflow](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
 describes embedding this standalone installer and invoking it only when needed.
+
+## 7. P2Rank transitive evidence — 2026-10-07
+
+The new inventory verifies the complete staged file set and hashes before
+inspecting JARs. It executes none of them, copies embedded metadata/notices
+verbatim into content-addressed documents, rejects ambiguous/oversized metadata,
+and never treats a POM license label as redistribution approval. Ten synthetic
+guard tests and nineteen acquisition/extraction tests pass. A real run records
+113 JARs (P2Rank plus 112 dependencies), 306 unique evidence documents and 81 JARs
+without embedded license text. This last number means missing embedded evidence,
+not a determination that those libraries cannot be redistributed.
+Inventory SHA-256:
+`98d789c344ab3024e3330cc61c50d50dee758dea55be63a14668faced46af0ef`.
+
+Three additional upstream source archives are pinned by commit, size and SHA-256
+in the input lock, bringing its verified offline inputs to fourteen:
+
+- [BioJava fork](https://github.com/rdk/biojava/tree/49c633adae29f9fea58395b4c896e478b677e899):
+  its `biojava-structure/pom.xml` exactly matches the bytes embedded in the
+  shipped `7.2.2-rdk.1` JAR. Source/build correspondence review is still required;
+  a matching POM alone is not a reproducible-build claim.
+- [FasterForest 2.5.2](https://github.com/rdk/FasterForest/tree/246546ac8c184c16dc2f432e8d1d5256776e0b7d):
+  pinned tag source with its build files and GPL notices.
+- [FasterMolecularSurface 1.0](https://github.com/rdk/FasterMolecularSurface/tree/207cc34debc41f50bab1d879d08da88da9309763):
+  pinned tag source with its build files and LGPL notices.
+
+The original distribution includes both `vecmath-1.3.1.jar` and
+`vecmath-1.5.2.jar`, with 44 duplicated class names; another 22 duplicates occur
+between Java CUP and its runtime JAR. No dependency has been removed or reordered.
+The old vecmath archive has no license text and its
+[upstream Maven metadata](https://central.sonatype.com/artifact/java3d/vecmath/1.3.1)
+declares none; this review has not established its redistribution terms.
+The 1.5.2 embedded POM instead declares GPLv2 with the classpath exception.
+Evaluating a variant that removes the older duplicate requires an explicit
+scientific packaging decision and prediction comparisons, not a silent deletion.
+This inventory and the source acquisitions do not yet close the full legal gate.
 
 ## Remaining acceptance
 

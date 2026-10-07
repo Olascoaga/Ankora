@@ -20,6 +20,15 @@ All notable project changes are recorded here.
 - Complete-installer integration remains gated by the expanded legal inventory;
   this input helper does not change the existing installer or declare a release.
 
+## Complete-installer dependency evidence - 2026-10-07
+
+- Added a hash-verified inventory of P2Rank's exact JARs, embedded native code,
+  models, metadata and notices. Missing license evidence remains explicit.
+- Pinned source archives for the upstream BioJava fork, FasterForest and
+  FasterMolecularSurface. No scientific dependency or model was replaced.
+- Full backend rerun passes 674 tests; ten later dependency-inventory tests pass
+  separately. Complete packaging and clean-Windows acceptance remain pending.
+
 ## Complete-installer payload foundation - 2026-10-06
 
 - Pinned the supported Windows scientific distributions and corresponding

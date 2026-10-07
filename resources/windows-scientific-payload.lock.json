@@ -53,6 +53,27 @@
       "role": "source", "license": "MIT"
     },
     {
+      "id": "p2rank-biojava-source", "version": "7.2.2-rdk.1", "filename": "p2rank-biojava-49c633ad-source.zip",
+      "url": "https://github.com/rdk/biojava/archive/49c633adae29f9fea58395b4c896e478b677e899.zip",
+      "sha256": "b7a632f0294be51354691fd9f06c19470050c9a3248dd171f8c3f756de7bd63b", "size_bytes": 19354981,
+      "role": "source", "license": "LGPL-2.1; see per-file notices",
+      "review_evidence": "The biojava-structure/pom.xml bytes match the staged 7.2.2-rdk.1 JAR's embedded POM (SHA-256 57e876f8e0974631f13c8a524c26249f1b0a69965381c9385df92f918d540e6d). Full source/build correspondence review remains pending."
+    },
+    {
+      "id": "p2rank-fasterforest-source", "version": "2.5.2", "filename": "p2rank-fasterforest-246546ac-source.zip",
+      "url": "https://github.com/rdk/FasterForest/archive/246546ac8c184c16dc2f432e8d1d5256776e0b7d.zip",
+      "sha256": "37d85101334a0db47157bc6e7a91c8cc99467bca3390272d25854e9135afcd13", "size_bytes": 820425,
+      "role": "source", "license": "GPL-2.0-or-later",
+      "review_evidence": "Pinned upstream 2.5.2 tag commit. Source and build files retained for review; this entry does not approve the whole dependency tree."
+    },
+    {
+      "id": "p2rank-molecularsurface-source", "version": "1.0", "filename": "p2rank-molecularsurface-207cc34d-source.zip",
+      "url": "https://github.com/rdk/FasterMolecularSurface/archive/207cc34debc41f50bab1d879d08da88da9309763.zip",
+      "sha256": "16fb905859431e1634bd95f9805407cbbc89086d33b52501f23fa8ee9f9dcc53", "size_bytes": 83378,
+      "role": "source", "license": "LGPL-2.1; see per-file notices",
+      "review_evidence": "Pinned upstream 1.0 tag commit. Source and build files retained for review; binary reproduction and transitive source fulfillment remain pending."
+    },
+    {
       "id": "java", "version": "21.0.12.1+1", "filename": "java.zip",
       "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
       "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636", "size_bytes": 48999141,
