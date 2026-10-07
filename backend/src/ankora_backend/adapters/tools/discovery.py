@@ -10,6 +10,8 @@ from hashlib import sha256
 from importlib import metadata, util
 from pathlib import Path, PureWindowsPath
 
+from ankora_backend.adapters.tools.bundled import bundled_tool
+
 
 @dataclass(frozen=True, slots=True)
 class DiscoveredTool:
@@ -76,6 +78,10 @@ def discover_tool(
     `extension` covers launchers that are not `.exe` (e.g. P2Rank ships as
     `prank.bat`, which Windows cannot launch directly without `cmd /c`).
     """
+    if getattr(sys, "frozen", False) and tool_name in _PACKAGED_PYTHON_TOOLS:
+        distribution, module = _PACKAGED_PYTHON_TOOLS[tool_name]
+        available = discover_python_package(distribution, module).available
+        return DiscoveredTool(available=available, path=sys.executable if available else None)
     candidate: Path | None = None
     if configured_path:
         candidate = _configured_candidate(configured_path, tool_name, extension)
@@ -111,20 +117,17 @@ def discover_tool(
     return DiscoveredTool(available=True, path=str(candidate.resolve()))
 
 
-def packaged_console_arguments(
-    *, executable: str, worker: str, arguments: list[str]
-) -> list[str]:
+def packaged_console_arguments(*, executable: str, worker: str, arguments: list[str]) -> list[str]:
     """Route a bundled console tool through Ankora's frozen executable."""
-    if getattr(sys, "frozen", False) and Path(executable).resolve() == Path(
-        sys.executable
-    ).resolve():
+    if (
+        getattr(sys, "frozen", False)
+        and Path(executable).resolve() == Path(sys.executable).resolve()
+    ):
         return ["--worker", worker, *arguments]
     return arguments
 
 
-def python_worker_arguments(
-    *, worker: str, module: str, arguments: list[str]
-) -> list[str]:
+def python_worker_arguments(*, worker: str, module: str, arguments: list[str]) -> list[str]:
     """Build a worker command for source and frozen Python runtimes."""
     if getattr(sys, "frozen", False):
         return ["--worker", worker, *arguments]
@@ -144,6 +147,8 @@ def discover_p2rank(
     distributions directly below the user's conventional ``tools`` folder.
     An explicit configured path remains authoritative when supplied.
     """
+    if getattr(sys, "frozen", False):
+        return _bundled_discovery("p2rank")
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (
@@ -180,6 +185,8 @@ def discover_vina(
     configuration remains authoritative; portable discovery is deliberately
     constrained to Vina-named directories and executable names.
     """
+    if getattr(sys, "frozen", False):
+        return _bundled_discovery("vina")
     if configured_path:
         configured = Path(configured_path).expanduser()
         if configured.is_dir():
@@ -213,6 +220,8 @@ def discover_autodock4(
     candidate_directories: Iterable[Path] | None = None,
 ) -> DiscoveredTool:
     """Discover the legacy AutoDock4 CPU executable without launching it."""
+    if getattr(sys, "frozen", False):
+        return _bundled_discovery("autodock4")
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (
@@ -235,6 +244,8 @@ def discover_autogrid4(
     candidate_directories: Iterable[Path] | None = None,
 ) -> DiscoveredTool:
     """Discover the AutoGrid4 executable shared by CPU and GPU docking."""
+    if getattr(sys, "frozen", False):
+        return _bundled_discovery("autogrid4")
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (
@@ -257,6 +268,8 @@ def discover_autodock_gpu(
     candidate_directories: Iterable[Path] | None = None,
 ) -> DiscoveredTool:
     """Discover official-style AutoDock-GPU Windows executables side-effect-free."""
+    if getattr(sys, "frozen", False):
+        return _bundled_discovery("autodock_gpu")
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (
@@ -284,6 +297,12 @@ def discover_java_home(
     candidate_homes: Iterable[Path] | None = None,
 ) -> Path | None:
     """Resolve a Java home suitable for P2Rank without launching Java."""
+    if getattr(sys, "frozen", False):
+        java = bundled_tool("java")
+        if java is None:
+            return None
+        home = java[0].parent.parent
+        return home if _is_p2rank_compatible_java_home(home) else None
     if configured_home:
         home = Path(configured_home).expanduser()
         if _is_p2rank_compatible_java_home(home):
@@ -299,6 +318,20 @@ def discover_java_home(
         if _is_p2rank_compatible_java_home(home):
             return home.resolve()
     return None
+
+
+def _bundled_discovery(name: str) -> DiscoveredTool:
+    found = bundled_tool(name)
+    if found is None:
+        return DiscoveredTool(available=False, path=None)
+    path, version = found
+    return DiscoveredTool(
+        available=True,
+        path=str(path),
+        version=version,
+        architecture=_read_pe_architecture(path),
+        sha256=_file_sha256(path),
+    )
 
 
 def _portable_p2rank_candidate_directories(home: Path) -> tuple[Path, ...]:

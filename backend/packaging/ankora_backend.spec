@@ -10,6 +10,9 @@ backend_source = repository_root / "backend" / "src"
 entry_point = repository_root / "backend" / "packaging" / "ankora_backend_entry.py"
 
 datas = []
+for name in ("synthetic_m1.pdb", "synthetic_ethanol.smi"):
+    datas.append((str(repository_root / "backend/tests/fixtures" / name),
+                  "smoke-fixtures/backend/tests/fixtures"))
 binaries = []
 hiddenimports = [
     "uvicorn.lifespan.on",

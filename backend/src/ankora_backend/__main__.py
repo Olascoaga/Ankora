@@ -19,12 +19,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--parent-pid", type=int)
     parser.add_argument(
         "--worker",
-        choices=("meeko-ligand", "meeko-receptor", "pdb2pqr", "pdbfixer", "propka"),
+        choices=("meeko-ligand", "meeko-receptor", "pdb2pqr", "pdbfixer", "propka", "native-smoke"),
     )
     return parser
 
 
 def _worker(name: str) -> Worker:
+    if name == "native-smoke":
+        from ankora_backend.validation.native_tool_smoke import main as smoke_main
+
+        return cast(Worker, smoke_main)
     if name == "meeko-ligand":
         from meeko.cli.mk_prepare_ligand import main
 
@@ -57,7 +61,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     parsed, worker_arguments = _parser().parse_known_args(arguments)
     if parsed.worker is not None:
         sys.argv = [sys.argv[0], *worker_arguments]
-        _worker(parsed.worker)()
+        result = _worker(parsed.worker)()
+        if isinstance(result, int):
+            raise SystemExit(result)
         return
     if worker_arguments:
         _parser().error(f"unrecognized arguments: {' '.join(worker_arguments)}")

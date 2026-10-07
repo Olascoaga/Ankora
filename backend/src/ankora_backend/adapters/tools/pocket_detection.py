@@ -7,6 +7,7 @@ direct-executable pattern used by every other tool adapter in this project.
 """
 
 import os
+import sys
 from pathlib import Path
 
 from ankora_backend.adapters.tools.discovery import discover_java_home, discover_p2rank
@@ -37,19 +38,35 @@ def execute_p2rank(*, receptor_pdb_path: Path, output_dir: Path) -> tuple[ToolEx
         )
     environment = os.environ.copy()
     environment["JAVA_HOME"] = str(java_home)
+    arguments = [
+        "predict",
+        "-f",
+        str(receptor_pdb_path),
+        "-o",
+        str(output_dir),
+        "-visualizations",
+        "0",
+    ]
+    if getattr(sys, "frozen", False):
+        # Same heap/classpath/main class as upstream prank.bat, without cmd's
+        # special-character expansion (installation paths can contain spaces/&).
+        install = Path(discovered.path).parent
+        executable = str(java_home / "bin" / "java.exe")
+        arguments = [
+            "-Xmx2048m",
+            "-cp",
+            f"{install / 'bin/p2rank.jar'};{install / 'bin/lib/*'}",
+            "cz.siret.prank.program.Main",
+            *arguments,
+        ]
+        for key in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "CLASSPATH"):
+            environment.pop(key, None)
+    else:
+        executable = "cmd"
+        arguments = ["/c", discovered.path, *arguments]
     execution = run_tool(
-        executable="cmd",
-        arguments=[
-            "/c",
-            discovered.path,
-            "predict",
-            "-f",
-            str(receptor_pdb_path),
-            "-o",
-            str(output_dir),
-            "-visualizations",
-            "0",
-        ],
+        executable=executable,
+        arguments=arguments,
         cwd=output_dir,
         stage="pocket_detection",
         timeout_seconds=P2RANK_TIMEOUT_SECONDS,

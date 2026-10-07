@@ -41,6 +41,23 @@ results keep their original executable hashes and are not relabeled.
 The supported MSVC OpenMP runtime is documented separately in Microsoft's
 [OpenMP library reference](https://learn.microsoft.com/en-us/cpp/parallel/openmp/reference/openmp-library-reference?view=msvc-170).
 
+## 3. Private installed discovery
+
+Frozen backends resolve all six external runtime entries only from a relative,
+SHA-256-verified inventory beside the executable. Developer PATH, Conda, Java
+and explicit tool overrides cannot mask a missing packaged component. Python
+tools dispatch to frozen workers. P2Rank launches private Java directly with an
+argument array (no command shell), and ignores Java injection environment
+variables. Sources, models and user scientific artifacts are not modified.
+
+The frozen native smoke now propagates its actual exit status and includes its
+synthetic fixtures. A local isolated-PATH run under a directory containing
+spaces and an accented character passed nine of ten adapters, including private
+Java/P2Rank and all engine probes. Ligand preparation failed because RDKit's
+filename reader cannot open an accented Windows path. This is an acceptance
+finding to fix, not permission to drop Unicode from testing. This local test
+does not constitute a clean Windows installation or a complete installer.
+
 ## Remaining acceptance
 
 Private tool staging, all transitive notices/corresponding sources, complete

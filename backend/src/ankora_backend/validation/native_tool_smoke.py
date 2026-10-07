@@ -26,7 +26,7 @@ from ankora_backend.adapters.engines.autodock4_runner import probe_autodock4
 from ankora_backend.adapters.engines.autodock_gpu import probe_autodock_gpu
 from ankora_backend.adapters.engines.autogrid import probe_autogrid4
 from ankora_backend.adapters.engines.vina import probe_vina
-from ankora_backend.adapters.tools.discovery import discover_java_home
+from ankora_backend.adapters.tools.discovery import discover_java_home, python_worker_arguments
 from ankora_backend.adapters.tools.ligand_preparation import execute_meeko_ligand
 from ankora_backend.adapters.tools.pocket_detection import execute_p2rank
 from ankora_backend.adapters.tools.receptor_preparation import (
@@ -336,7 +336,9 @@ def run_native_tool_smoke(
     def run_runtime() -> None:
         execution = run_tool(
             executable=sys.executable,
-            arguments=["-m", __name__, "--package-probe"],
+            arguments=python_worker_arguments(
+                worker="native-smoke", module=__name__, arguments=["--package-probe"]
+            ),
             cwd=repository_root,
             stage="native_tool_smoke",
             timeout_seconds=120,
