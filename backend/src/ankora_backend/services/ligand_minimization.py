@@ -7,6 +7,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+from ankora_backend.adapters.chemistry.molecule_files import sdf_supplier
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
@@ -434,7 +435,7 @@ def _minimize_and_store(
 
 
 def _read_molecule(path: Path) -> Any:
-    supplier = Chem.SDMolSupplier(str(path), removeHs=False)
+    supplier = sdf_supplier(path)
     molecule = supplier[0] if len(supplier) else None
     if molecule is None:
         raise AnkoraDomainError(

@@ -66,17 +66,12 @@ def main() -> int:
     )
 
     args = _arguments()
-    schema_source = (
-        PROJECT_ROOT / "backend" / "src" / "ankora_backend" / "schemas" / "ligands.py"
-    )
-    service_source = (
-        PROJECT_ROOT
-        / "backend"
-        / "src"
-        / "ankora_backend"
-        / "services"
-        / "ligand_microstates.py"
-    )
+    # Historical verification binds the pre-primary Git blobs recorded by this
+    # plan, not whatever runtime implementation happens to be checked out now.
+    # These files are evidence only, never imported/executed by this script.
+    source_root = REFERENCE_ROOT / f"{PROTOCOL_PREFIX}.sources"
+    schema_source = source_root / "ligands.py.txt"
+    service_source = source_root / "ligand_microstates.py.txt"
     dependencies = {
         "spec_path": args.spec,
         "geometry_manifest_path": args.geometry,

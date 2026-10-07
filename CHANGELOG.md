@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Unicode scientific paths - 2026-10-07
+
+- Fixed RDKit molecular-file loading under accented/non-Latin Windows paths
+  while preserving molecular contents and parsing settings; Meeko gets an exact
+  ASCII-relative input without rewriting the original artifact.
+- Rebuilt private scientific runtime passes all ten native adapter smokes in an
+  accented, spaced data directory with developer runtime paths removed.
+  This is not yet an installed clean-machine acceptance or public release.
+- Retained exact historical source evidence for the frozen sensitivity plan,
+  so runtime fixes do not rewrite its source identity or scientific results.
+
 ## Complete-installer payload foundation - 2026-10-06
 
 - Pinned the supported Windows scientific distributions and corresponding

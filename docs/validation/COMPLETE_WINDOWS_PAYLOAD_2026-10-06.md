@@ -92,6 +92,36 @@ without upstream example datasets. The build-only extractor is independently
 hash-checked. Nineteen acquisition/extraction tests and four builder guard
 tests use explicitly synthetic archives/metadata, not invented chemistry.
 
+## 5. Unicode acceptance follow-up — 2026-10-07
+
+The failure from section 3 is fixed without changing molecular bytes or RDKit
+sanitization/hydrogen settings: Python opens Unicode paths and feeds the same
+contents into RDKit. Meeko receives an ASCII relative input; if a filename or
+cross-drive path requires it, a create-only exact input copy is retained in the
+job folder. Synthetic regressions cover Unicode paths, preserved stereochemistry,
+charge/hydrogens, conformer generation/minimization and Meeko input identity.
+
+A rebuilt frozen backend now passes **10/10 native adapters**, with only Windows
+system directories on PATH and empty developer Python/Conda/Java environment
+variables. The data directory contains spaces and an accented character. This
+includes receptor repair, protonation, receptor/ligand PDBQT generation and
+private-Java P2Rank prediction; docking engines pass their version/device probes.
+Manifest SHA-256: `c6d99b9fb81acf0a87cca2239c5c25d862c41f02d6f29f24843b3d638296d764`.
+The previous failed manifest is retained. GPU calculation acceptance is the
+separate bounded run documented above, not inferred from a version probe.
+
+Eighty-nine focused ligand, interaction, redocking and packaging tests pass.
+Strict mypy passes 137 source files. The general backend rerun initially passed
+665 tests and failed one historical source-identity check: the frozen sensitivity
+plan correctly binds the old microstate source, not its newly repaired working
+copy. Exact Git blobs matching the plan's already-recorded hashes are now retained
+as non-executable historical evidence under the reference case's `.sources/`
+directory. The plan, scientific results and expectations are unchanged. All five
+sensitivity-plan tests pass, including refusal of changed historical source
+bytes; the CLI check reproduces the original manifest SHA-256
+`63c74c7e7d29a4a763208d815acee9f87537ff9a579dff781cb531868fa2da6d`.
+Historical verification does not authorize a new calculation using changed code.
+
 ## Remaining acceptance
 
 All transitive notices/corresponding sources, complete

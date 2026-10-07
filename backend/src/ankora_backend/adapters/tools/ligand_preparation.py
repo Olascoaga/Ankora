@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from uuid import uuid4
 
 from ankora_backend.adapters.tools.discovery import (
     discover_tool,
@@ -30,12 +31,24 @@ def execute_meeko_ligand(
             status_code=422,
             details={"tool": "Meeko", "executable": "mk_prepare_ligand"},
         )
+    working_directory = output_pdbqt_path.resolve().parent
+    # Meeko's SDF reader uses RDKit's narrow Windows filename API. A relative
+    # ASCII input avoids losing Unicode parent directories; unusual filenames
+    # or different drives get an exact, create-only byte copy in the job folder.
+    try:
+        input_argument = os.path.relpath(input_sdf_path.resolve(), working_directory)
+    except ValueError:
+        input_argument = ""
+    if not input_argument or not input_argument.isascii():
+        input_argument = f"meeko-input-{uuid4().hex}.sdf"
+        with (working_directory / input_argument).open("xb") as staged:
+            staged.write(input_sdf_path.read_bytes())
     arguments = packaged_console_arguments(
         executable=discovered.path,
         worker="meeko-ligand",
         arguments=[
             "-i",
-            str(input_sdf_path),
+            input_argument,
             "-o",
             str(output_pdbqt_path),
             "--charge_model",
@@ -45,7 +58,7 @@ def execute_meeko_ligand(
     execution = run_tool(
         executable=discovered.path,
         arguments=arguments,
-        cwd=output_pdbqt_path.parent,
+        cwd=working_directory,
         stage="ligand_pdbqt",
     )
     return execution, package_version("meeko")

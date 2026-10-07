@@ -25,10 +25,8 @@ PATHS = {
     "primary_plan_path": REFERENCE_ROOT / f"{PREFIX}.vina-primary-plan.json",
     "primary_result_path": REFERENCE_ROOT / f"{PREFIX}.vina-primary-results.json",
     "primary_metrics_path": REFERENCE_ROOT / f"{PREFIX}.vina-primary-metrics.json",
-    "microstate_schema_path": (PROJECT_ROOT / "backend/src/ankora_backend/schemas/ligands.py"),
-    "microstate_service_path": (
-        PROJECT_ROOT / "backend/src/ankora_backend/services/ligand_microstates.py"
-    ),
+    "microstate_schema_path": REFERENCE_ROOT / f"{PREFIX}.sources/ligands.py.txt",
+    "microstate_service_path": REFERENCE_ROOT / f"{PREFIX}.sources/ligand_microstates.py.txt",
 }
 RECORDED_PLAN = REFERENCE_ROOT / f"{PREFIX}.vina-sensitivity-plan.json"
 
@@ -95,3 +93,13 @@ def test_recorded_sensitivity_plan_reproduces_exactly() -> None:
         "seed",
         "sampling",
     ]
+
+
+@pytest.mark.parametrize("source_key", ["microstate_schema_path", "microstate_service_path"])
+def test_historical_verification_rejects_changed_source_bytes(
+    tmp_path: Path, source_key: str
+) -> None:
+    changed = tmp_path / "changed.py.txt"
+    changed.write_bytes(PATHS[source_key].read_bytes() + b"\n# changed implementation\n")
+    with pytest.raises(ScreeningBenchmarkSensitivityPlanError, match="does not reproduce"):
+        verify_sensitivity_plan(RECORDED_PLAN, **{**PATHS, source_key: changed})

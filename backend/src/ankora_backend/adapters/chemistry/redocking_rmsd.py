@@ -110,7 +110,7 @@ def pdbqt_to_pdb_block(document: str, *, keep_hydrogens: bool = False) -> str:
 
 def load_reference(path: Path) -> Any:
     """The crystallographic pose, read from the immutable original."""
-    molecule = Chem.MolFromMolFile(str(path), removeHs=True)
+    molecule = Chem.MolFromMolBlock(path.read_bytes(), removeHs=True)
     if molecule is None:
         raise _rejected(
             "REDOCKING_REFERENCE_UNREADABLE",

@@ -5,6 +5,7 @@ from hashlib import sha256
 from importlib import import_module
 from typing import Any
 
+from ankora_backend.adapters.chemistry.molecule_files import sdf_supplier
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligands import (
@@ -159,9 +160,7 @@ def resolve_ligand_state(
 
 
 def _read_state(ligand_id: str, state_id: str, store: LigandArtifactStore) -> Any:
-    supplier = Chem.SDMolSupplier(
-        str(store.state_content_path(ligand_id, state_id)), removeHs=False
-    )
+    supplier = sdf_supplier(store.state_content_path(ligand_id, state_id))
     molecule = supplier[0] if len(supplier) else None
     if molecule is None:
         raise _state_error(

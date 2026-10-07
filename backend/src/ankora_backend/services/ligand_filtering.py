@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import Lock, local
 from typing import Any
 
+from ankora_backend.adapters.chemistry.molecule_files import sdf_supplier
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligands import (
@@ -435,11 +436,7 @@ def _validate_microstate_selection(
 
 
 def _load_state_molecule(store: LigandArtifactStore, ligand_id: str, state_id: str) -> Any:
-    supplier = Chem.SDMolSupplier(
-        str(store.state_content_path(ligand_id, state_id)),
-        removeHs=False,
-        sanitize=True,
-    )
+    supplier = sdf_supplier(store.state_content_path(ligand_id, state_id))
     molecule = next((item for item in supplier if item is not None), None)
     if molecule is None:
         raise _filter_error(

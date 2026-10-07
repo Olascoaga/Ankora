@@ -6,6 +6,7 @@ from numbers import Real
 from pathlib import Path
 from typing import Any
 
+from ankora_backend.adapters.chemistry.molecule_files import sdf_supplier
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.schemas.pose_interactions import (
     InteractionContact,
@@ -83,7 +84,7 @@ class ProlifInteractionAdapter:
                 "The selected PDBQT pose did not contain a reconstructable ligand.",
             )
 
-        supplier = Chem.SDMolSupplier(str(conformer_path), removeHs=False, sanitize=True)
+        supplier = sdf_supplier(conformer_path)
         template = next((item for item in supplier if item is not None), None)
         if template is None:
             raise _failure(
@@ -102,8 +103,8 @@ class ProlifInteractionAdapter:
             )
 
         try:
-            protein = Chem.MolFromPDBFile(
-                str(receptor_path), removeHs=False, sanitize=True, proximityBonding=True
+            protein = Chem.MolFromPDBBlock(
+                receptor_path.read_bytes(), removeHs=False, sanitize=True, proximityBonding=True
             )
         except Exception as error:
             raise _failure(

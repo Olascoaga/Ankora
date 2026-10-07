@@ -100,7 +100,7 @@ def test_meeko_adapter_uses_explicit_input_output_and_charge_model(
     assert execution.command == [
         executable,
         "-i",
-        str(tmp_path / "converged.sdf"),
+        "converged.sdf",
         "-o",
         str(tmp_path / "prepared.pdbqt"),
         "--charge_model",
