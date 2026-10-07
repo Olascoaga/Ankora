@@ -22,6 +22,21 @@ while retaining every original record and alternative branch for inspection.
 Ankora implements the M1-M9 workflow. Frozen completed evidence exists for PIK3CD 6OCO / M5V; other cases and known gaps remain visible in the [public validation status](docs/validation/VALIDATION_STATUS.md). This evidence does not yet establish prospective screening performance, affinity prediction, biological activity, or cross-target generality.
 <!-- END GENERATED VALIDATION STATUS -->
 
+## User guide and complete-installer target
+
+The [illustrated user guide](docs/USER_GUIDE.md) and its
+[PDF edition](docs/Ankora-User-Guide.pdf) are review drafts. They distinguish
+historical scientific evidence from a fresh walkthrough; installer acceptance
+and six walkthrough figures remain pending.
+
+The required community experience is **install Ankora and run the supported
+workflow**, with all scientific tools included and no manual dependency or
+path setup. The current backend-only installer does not yet meet that target.
+[ADR-024](docs/architecture/ADR/ADR-024-complete-scientific-installer.md)
+defines the complete payload and clean-machine release gates. The external
+tool instructions below describe the current development/candidate build,
+not the intended end-user installation procedure.
+
 ## Prerequisites
 
 The Windows installer includes Ankora's Python backend and its Python scientific

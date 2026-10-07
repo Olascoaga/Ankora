@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Reviewed user guide and complete-installer requirement - 2026-10-06
+
+- Added the illustrated Markdown/PDF guide as an explicit review draft, with
+  historical ligand-state and redocking evidence separated from a fresh run.
+- Corrected preparation, Methods access, grid-interval and figure-format
+  instructions; excluded a screenshot containing personal machine paths.
+- Made PDF generation preserve its previous output on failure and added
+  heading-link, browser-discovery and publication-safety regressions.
+- Accepted ADR-024: the community installer must include every supported
+  scientific tool and runtime, without manual engine or path setup. The
+  backend-only candidate does not yet satisfy that acceptance gate.
+
 ## Restored pose-interaction scrolling on laptops - 2026-10-06
 
 - Fixed a shared-theme overflow rule that hid the Results scrollbar and made
