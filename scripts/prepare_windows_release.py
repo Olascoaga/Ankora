@@ -132,17 +132,19 @@ $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPa
     """
     environment = os.environ.copy()
     environment["ANKORA_SIGNATURE_TARGET"] = str(installer.resolve())
-    windows_root_value = environment.get("WINDIR") or environment.get("SystemRoot")
+    # os.environ is case-insensitive on Windows, but its copied dict is not.
+    environment = {key.upper(): value for key, value in environment.items()}
+    windows_root_value = environment.get("WINDIR") or environment.get("SYSTEMROOT")
     if not windows_root_value:
         raise RuntimeError("Windows did not provide WINDIR or SystemRoot.")
-    program_files_value = environment.get("ProgramFiles")
+    program_files_value = environment.get("PROGRAMFILES")
     if not program_files_value:
         raise RuntimeError("Windows did not provide ProgramFiles.")
     windows_root = Path(windows_root_value)
     system_modules = windows_root / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
     program_files = Path(program_files_value)
     shared_modules = program_files / "WindowsPowerShell" / "Modules"
-    environment["PSModulePath"] = os.pathsep.join((str(shared_modules), str(system_modules)))
+    environment["PSMODULEPATH"] = os.pathsep.join((str(shared_modules), str(system_modules)))
     powershell = windows_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     result = subprocess.run(
         [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],

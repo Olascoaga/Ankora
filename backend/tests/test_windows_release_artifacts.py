@@ -6,7 +6,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -152,3 +152,34 @@ def test_release_workflow_is_manual_pinned_and_fails_closed() -> None:
     assert "subject-checksums: build/windows-runtime/release-assets/SHA256SUMS" in workflow
     assert action_references
     assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference) for reference in action_references)
+
+
+def test_signature_probe_accepts_uppercase_windows_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_release_module()
+    monkeypatch.setattr(
+        module,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            path=module.os.path,
+            pathsep=module.os.pathsep,
+            environ={
+                "SYSTEMROOT": str(tmp_path / "Windows"),
+                "PROGRAMFILES": str(tmp_path / "Programs"),
+                "PSMODULEPATH": "synthetic incompatible inherited path",
+            },
+        ),
+    )
+    observed = {}
+
+    def run(*_args, **kwargs):
+        observed.update(kwargs["env"])
+        return SimpleNamespace(stdout=json.dumps({"status": "NotSigned"}))
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    evidence = module.signature_evidence(tmp_path / "synthetic.exe")
+    assert evidence.status == "NotSigned"
+    assert "WindowsPowerShell" in observed["PSMODULEPATH"]
+    assert "incompatible" not in observed["PSMODULEPATH"]

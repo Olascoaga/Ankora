@@ -64,7 +64,29 @@ unit test pass). File: `Ankora_0.1.0_x64-setup.exe`, **1,139,221,308 bytes**,
 SHA-256 `e5b794fda5d92bca80692bb50fd3e20b726ca5bed0ba2c70573462487aa921ce`.
 Authenticode status: **NotSigned**, not a signed public release. Generated NSIS
 selection independently matches the locked Microsoft-signed offline WebView2
-installer. Installed-machine acceptance is recorded separately below when done.
+installer. Installed-machine acceptance is recorded separately below.
+
+### Installed candidate acceptance (developer Windows machine)
+
+The exact candidate above installed silently into a new test directory. The
+installed scientific payload and all legal/source files passed exact-set and
+SHA-256 verification. The desktop started its own bundled backend; all ten
+supported tools were available with only Windows directories on PATH.
+
+The **installed** backend then passed **10/10 native scientific smoke checks**,
+using a separate create-only output directory containing spaces and an accent.
+Installed-run evidence manifest:
+`bd1b9557c5df8f27a9149d50506f6e6c9a9cb90c34594e57abcbcea179dbbb46`.
+Desktop shutdown released its backend port. Silent uninstall succeeded and
+removed the desktop executable without deleting the application data directory.
+No existing registered Ankora installation was replaced. This verifies this
+machine, not an offline clean VM, upgrade matrix or all GPU models.
+
+Release-index assembly exposed a Windows environment-key casing bug: copying
+`os.environ` produces an ordinary dict, whose `ProgramFiles` lookup missed
+`PROGRAMFILES`. The helper now normalizes keys, including the PowerShell module
+path; a synthetic regression test covers that condition. This metadata-only
+fix does not change the already-tested installer bytes.
 
 The builder requires staged `-ScientificTools`, `-SourceCompanion` and
 `-GpuSource` inputs (or their documented default paths) in addition to the
