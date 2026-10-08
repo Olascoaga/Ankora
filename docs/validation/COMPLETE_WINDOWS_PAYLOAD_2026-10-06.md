@@ -181,6 +181,32 @@ Evaluating a variant that removes the older duplicate requires an explicit
 scientific packaging decision and prediction comparisons, not a silent deletion.
 This inventory and the source acquisitions do not yet close the full legal gate.
 
+## 8. Authorized P2Rank variant — 2026-10-07
+
+The scientist explicitly authorized the separate `ankora-vecmath-1.5.2-only-v1`
+candidate. It omits only the hash-identified vecmath 1.3.1 JAR; every remaining
+payload file (including all models and configuration) is byte-identical to the
+reference. Original installations, archives and scientific results are untouched.
+The candidate payload manifest SHA-256 is
+`e83f404b38e20345806c19e3e811d764d0e1c476324ddfdd544f7e36a52c6c7c`.
+
+Before invoking Java, the create-only runner wrote a plan with the seven
+upstream example inputs, two threads, visualizations disabled, both payload
+hashes, and a strict byte-equality rule for prediction AND residue CSVs.
+Plan SHA-256:
+`94177f5c99a8203f90bac5aacf5d54a72ebb1f6292614d070e7c31a19238ad76`.
+All fourteen executions succeeded. Both CSVs match exactly in all seven cases:
+`1fbl`, `2W83`, `1t7qa`, `1aaxa`, `1nlu`, `1a82a`, and `2ck3b`.
+Raw inputs, commands, stdout/stderr and outputs remain in the private build
+evidence. This establishes bounded compatibility, not equivalence for every
+possible protein or a new benchmark result.
+
+New packaged pocket reports record the complete runtime-manifest SHA-256 and
+variant in provenance, rather than identifying changed dependencies only by
+the unchanged launch script. Unknown extra payload files also fail readiness.
+The 26 directed variant/discovery/pocket tests and strict mypy (137 files) pass.
+The redistribution/source gate remains separate from numerical acceptance.
+
 ## Remaining acceptance
 
 All transitive notices/corresponding sources, complete

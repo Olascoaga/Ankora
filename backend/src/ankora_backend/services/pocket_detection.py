@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 
 import gemmi
 
+from ankora_backend.adapters.tools.bundled import bundled_execution_identity
 from ankora_backend.adapters.tools.pocket_detection import execute_p2rank
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.gemmi_utils import clean_insertion_code
@@ -117,7 +118,7 @@ def detect_pockets(
         input_artifacts=[receptor_id],
         output_artifacts=[report_id],
         tool=tool,
-        parameters={},
+        parameters=bundled_execution_identity("p2rank"),
         command=execution.command,
     )
     report = PocketDetectionReport(

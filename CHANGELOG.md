@@ -2,6 +2,13 @@
 
 All notable project changes are recorded here.
 
+## P2Rank package compatibility - 2026-10-07
+
+- Validated the authorized vecmath 1.5.2-only P2Rank package against seven
+  upstream examples; every prediction and residue CSV is byte-identical.
+- Preserve original models/results and record the new package identity in
+  pocket-detection provenance. Unlisted bundled dependencies fail readiness.
+
 ## Unicode scientific paths - 2026-10-07
 
 - Fixed RDKit molecular-file loading under accented/non-Latin Windows paths

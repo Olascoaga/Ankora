@@ -42,6 +42,9 @@ def _inventory(root: Path, modified_ns: int, size: int) -> dict[str, tuple[Path,
     if payload["schema_version"] != 1:
         raise ValueError("Unsupported bundled scientific inventory")
     files: dict[str, str] = payload["files"]
+    actual_files = {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()}
+    if actual_files != set(files) | {"payload.json"}:
+        raise ValueError("Bundled scientific inventory has missing or unlisted files")
     for relative, expected in files.items():
         path = _relative(root, relative)
         with path.open("rb") as stream:
@@ -74,3 +77,20 @@ def bundled_tool(name: str) -> tuple[Path, str] | None:
         # Readiness is false, never a request to discover another installation.
         return None
     return None
+
+
+def bundled_execution_identity(name: str) -> dict[str, object]:
+    """Bind recorded work to the entire private payload, including Java/models.
+
+    Historical/external installations are not assigned an invented identity.
+    A changed dependency remains distinguishable even when prank.bat is unchanged.
+    """
+    root = bundle_root()
+    if root is None or bundled_tool(name) is None:
+        return {}
+    raw = (root / "payload.json").read_bytes()
+    payload = json.loads(raw)
+    return {
+        "bundled_payload_sha256": hashlib.sha256(raw).hexdigest(),
+        "bundled_tool_variant": payload["tools"][name].get("variant", "upstream"),
+    }

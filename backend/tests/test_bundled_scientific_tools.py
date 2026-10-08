@@ -71,6 +71,23 @@ def test_private_java_ignores_external_home(installation):
     )
 
 
+def test_identity_records_manifest_and_variant(installation):
+    manifest = installation / "payload.json"
+    data = json.loads(manifest.read_text())
+    data["tools"]["p2rank"]["variant"] = "synthetic-variant"
+    manifest.write_text(json.dumps(data))
+    assert bundled.bundled_execution_identity("p2rank") == {
+        "bundled_payload_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "bundled_tool_variant": "synthetic-variant",
+    }
+
+
+def test_unlisted_dependency_fails_closed(installation):
+    (installation / "injected.jar").write_bytes(b"synthetic unknown dependency")
+    assert bundled.bundled_tool("p2rank") is None
+    assert bundled.bundled_execution_identity("p2rank") == {}
+
+
 @pytest.mark.parametrize("corruption", ["missing", "modified", "escaping", "incomplete"])
 def test_corrupt_package_never_falls_through_to_user_tools(installation, corruption):
     manifest = installation / "payload.json"
