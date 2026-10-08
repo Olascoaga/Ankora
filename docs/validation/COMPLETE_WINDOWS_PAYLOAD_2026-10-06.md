@@ -209,6 +209,18 @@ The redistribution/source gate remains separate from numerical acceptance.
 
 ## Remaining acceptance
 
+### Maven source evidence — 2026-10-07
+
+The source collector compares the official Maven Central binary SHA-256 with
+the actual shipped JAR before accepting coordinates or inherited POM evidence.
+The authorized candidate has 112 JARs: 105 binary matches and 103 corresponding
+Maven source archives were obtained. Seven non-Central components need their
+pinned upstream sources; two Central artifacts have no source JAR. These are
+explicit review gaps, not automatically granted redistribution approvals.
+Nine synthetic tests cover create-only concurrent publication, unsafe or
+unresolved coordinates, and rejection of a mismatched binary before source
+attribution. No molecular expectations or online dependency are used by tests.
+
 All transitive notices/corresponding sources, complete
 offline NSIS integration, and installed end-to-end
 CPU/GPU smokes must pass before calling this a complete installer. A local
