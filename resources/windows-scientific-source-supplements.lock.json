@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "id": "openchart-source", "filename": "openchart2-1.4.2.source.zip",
+      "url": "https://download.approximatrix.com/openchart2/openchart2-1.4.2.source.zip",
+      "sha256": "735c7ce8d635e3017b915693bba473730bb68d5eb5b9897ee1d7f7725f216070"
+    },
+    {
+      "id": "multiverse-source", "filename": "multiverse-0.7.0-source.zip",
+      "url": "https://github.com/pveentjer/Multiverse/archive/4b41a46a627dd7b4a3dcf8fbf4db5d0a4df84bb4.zip",
+      "sha256": "84597b4e79ad1c869670163add5c9641a6361a0991eabfe80303a246777e66e4"
+    },
+    {
+      "id": "jniloader-source", "filename": "jniloader-1.1-source.zip",
+      "url": "https://github.com/fommil/jniloader/archive/d9c4eb7c554138d1f20392b07bd471a7b0c19c77.zip",
+      "sha256": "9d7099f061b5e80407e95737e1ed8a394d3a0332fb7775dee4ddbee698f84c4e"
+    },
+    {
+      "id": "netlib-source", "filename": "netlib-1.1.0-source.zip",
+      "url": "https://github.com/fommil/netlib-java/archive/6245f7717a6a1ff24e6f0f3bf862264825138714.zip",
+      "sha256": "924f97ee63aa9d0dc223dd7238433da87f427bf3ad157f3b164bf89db6f3dff9"
+    },
+    {
+      "id": "jarpack-source", "filename": "jarpack-0.1-verified.zip",
+      "url": "https://downloads.sourceforge.net/project/f2j/f2j/jarpack-0.1/jarpack-0.1.zip",
+      "sha256": "cdeef59abc1ea5de197604f4bd88259f211a5bbf931a0ca42f145c92bb98a941"
+    }
+  ]
+}

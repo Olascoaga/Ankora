@@ -28,13 +28,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "licenseFile": "resources/complete-legal/INSTALLATION_TERMS.txt",
     "resources": {
       "resources/backend/": "backend/",
-      "resources/legal/": "legal/"
+      "resources/complete-legal/": "legal/"
     },
     "windows": {
       "webviewInstallMode": {
-        "type": "downloadBootstrapper",
+        "type": "offlineInstaller",
         "silent": true
       },
       "nsis": {

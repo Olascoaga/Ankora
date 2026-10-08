@@ -17,6 +17,7 @@ __pycache__/
 # Rust / Tauri
 target/
 apps/desktop/src-tauri/resources/backend/
+apps/desktop/src-tauri/resources/complete-legal/
 build/windows-runtime/
 
 # Editors and operating system

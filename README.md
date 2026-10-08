@@ -31,18 +31,20 @@ and six walkthrough figures remain pending.
 
 The required community experience is **install Ankora and run the supported
 workflow**, with all scientific tools included and no manual dependency or
-path setup. The current backend-only installer does not yet meet that target.
+path setup. The complete Windows candidate now packages that payload; the
+September backend-only installer remains a historical, incomplete artifact.
 [ADR-024](docs/architecture/ADR/ADR-024-complete-scientific-installer.md)
-defines the complete payload and clean-machine release gates. The external
-tool instructions below describe the current development/candidate build,
+defines the complete payload and clean-machine release gates. See the
+[candidate validation record](docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md).
+The external tool instructions below describe source development,
 not the intended end-user installation procedure.
 
 ## Prerequisites
 
-The Windows installer includes Ankora's Python backend and its Python scientific
-runtime. End users do not need Python, Conda, or Anaconda. The following list is
-for source development and for scientific executables that Ankora deliberately
-discovers outside the application:
+The complete Windows installer includes the Python scientific runtime, supported
+docking/pocket tools, private Java and offline WebView2. End users do not need
+Python, Conda, Anaconda, Java or manual tool paths. The following list is
+for source development, where external executable discovery remains supported:
 
 - Windows 11 x64
 - Node.js 22+ and npm
@@ -162,12 +164,16 @@ of the Tauri application. Windows CI runs the same coverage.
 
 ## Windows installer
 
-Build the current-user NSIS installer from the verified `ankora-locked`
-environment:
+For maintainers: stage the hash-reviewed tools and source companion described
+in the [candidate record](docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md),
+then build from the verified `ankora-locked` environment:
 
 ```powershell
 conda activate ankora-locked
-npm run tauri:installer
+.\scripts\build_windows_installer.ps1 `
+  -ScientificTools build/windows-runtime/scientific-tools `
+  -SourceCompanion build/windows-runtime/source-companion `
+  -GpuSource build/windows-runtime/autodock-gpu-1.6-ankora-source.zip
 ```
 
 The packaging command re-verifies the immutable Windows locks, freezes the
@@ -179,21 +185,24 @@ Exercise the installed application, bundled-backend ownership, and silent
 uninstall path with:
 
 ```powershell
-.\scripts\smoke_windows_installer.ps1
+.\scripts\smoke_windows_installer.ps1 -PythonPath (Get-Command python).Source -ScientificMatrix
 ```
 
-The installer intentionally uses the Evergreen WebView2 bootstrapper only when
-the runtime is missing. Vina, AutoGrid4, AutoDock4, AutoDock-GPU, and P2Rank are
-not redistributed by this packaging unit; Ankora continues to discover those
-separately configured executables. Every installation includes Ankora's MIT
-license, a machine-readable component inventory, consolidated third-party
-notices, and version-specific source-availability locations. The reviewed
-redistribution boundary is recorded in
-`docs/validation/THIRD_PARTY_REDISTRIBUTION_2026-09-08.md`. Release signing,
+The installer embeds the complete signed offline Evergreen WebView2 installer,
+not a network bootstrapper. Vina, AutoGrid4, AutoDock4, AutoDock-GPU and P2Rank
+are private, hash-verified resources. Every installation includes Ankora's MIT
+license, a machine-readable component inventory, third-party notices and
+corresponding scientific-tool sources. GPU execution still needs compatible
+hardware and its vendor driver; no driver is silently installed.
+The complete candidate's boundary is recorded in
+`docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md`. Release signing,
 checksums, and publication are controlled by the manual **Windows release**
 workflow. It checks out an existing version tag, rebuilds from the immutable
 Windows locks, creates `SHA256SUMS` plus a source/signature manifest, attests
 every indexed file, and uploads the verified set as a workflow artifact.
+The manual workflow still requires staging the reviewed scientific/source
+inputs on its runner; missing inputs fail closed instead of producing the old
+Python-only installer. Clean-machine acceptance and signing remain release gates.
 
 A public GitHub Release is fail-closed: the `windows-release` environment must
 provide `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`, and

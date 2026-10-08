@@ -70,10 +70,12 @@ separate tool installation, terminal commands or path configuration should be
 required. See the
 [complete-installer contract](https://github.com/Olascoaga/Ankora/blob/main/docs/architecture/ADR/ADR-024-complete-scientific-installer.md).
 
-**Not delivered yet:** the existing candidate bundles the Python backend and
-Python scientific tools, but not the independent docking engines or P2Rank.
-It is not the complete community installer. The screenshots below come from
-a configured development machine and do not prove fresh-machine readiness.
+**October candidate:** complete packaging includes the independent docking
+engines, P2Rank, private Java and offline WebView2 as well as the Python tools.
+See the [dated acceptance record](validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md).
+Clean-machine acceptance and signing remain distinct release gates. The older
+PDF edition and screenshots describe a configured development machine, not proof
+of fresh-machine readiness.
 
 ### Installing
 
@@ -90,8 +92,8 @@ On a configured review build, open **Tools → Scientific tool readiness** to
 inspect available tools. Finding the AutoDock-GPU executable does not establish
 GPU compatibility: execution also requires a supported device and driver.
 CPU docking remains the path for machines without suitable GPU hardware;
-choosing a different engine must remain explicit. The future complete installer
-must perform tool setup and readiness checks automatically.
+choosing a different engine must remain explicit. The complete candidate
+resolves its bundled tools automatically without manual path configuration.
 
 ![Figure 1. Scientific tools on the configured development machine.](images/fig02-tools.png)
 

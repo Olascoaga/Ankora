@@ -84,10 +84,12 @@ package unchanged tools; the clean-machine end-to-end smoke is still required.
 
 ## Current status and upstream starting points
 
-The existing installer only satisfies the Python-backend subset. Its September
-acceptance records remain accurate for that narrower artifact; it is not the
-complete installer defined here. The user guide must identify this gap until
-the new acceptance test passes.
+The September installer only satisfies the Python-backend subset. Its
+acceptance records remain accurate for that narrower artifact. The October
+complete candidate includes the full payload and has a separate
+[validation record](../../validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md).
+Clean-machine acceptance and signing must not be inferred from a successful
+developer-machine build or isolated-PATH test.
 
 Start the per-version review from the official sources, not a generic
 open-source assumption: [Vina](https://vina.scripps.edu/license/),

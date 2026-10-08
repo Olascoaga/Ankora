@@ -17,12 +17,16 @@ from typing import Any
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-LEGAL_ROOT = ROOT / "apps" / "desktop" / "src-tauri" / "resources" / "legal"
+LEGAL_ROOT = ROOT / "apps" / "desktop" / "src-tauri" / "resources" / "complete-legal"
 LEGAL_FILES = (
     "ANKORA_LICENSE.txt",
     "SOURCE_AVAILABILITY.txt",
     "THIRD_PARTY_INVENTORY.json",
     "THIRD_PARTY_NOTICES.txt",
+    "SCIENTIFIC_NOTICES.txt",
+    "SCIENTIFIC_SOURCE_COMPANION.json",
+    "COMPLETE_LEGAL_MANIFEST.json",
+    "INSTALLATION_TERMS.txt",
 )
 LOCK_INPUTS = (
     ROOT / "package-lock.json",
@@ -30,7 +34,11 @@ LOCK_INPUTS = (
     ROOT / "environment" / "windows-64.conda.lock",
     ROOT / "requirements" / "windows-py312.lock",
     ROOT / "requirements" / "windows-packaging.lock",
+    ROOT / "resources" / "windows-scientific-payload.lock.json",
+    ROOT / "resources" / "windows-scientific-source-supplements.lock.json",
+    ROOT / "resources" / "windows-webview2.lock.json",
     LEGAL_ROOT / "THIRD_PARTY_INVENTORY.json",
+    LEGAL_ROOT / "COMPLETE_LEGAL_MANIFEST.json",
 )
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$")

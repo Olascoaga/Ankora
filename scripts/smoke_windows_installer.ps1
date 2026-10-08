@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$InstallerPath
+    [string]$InstallerPath,
+    [Parameter(Mandatory = $true)][string]$PythonPath,
+    [switch]$ScientificMatrix
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +35,11 @@ if (-not (Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
 if (Test-Path -LiteralPath $installDir) {
     throw "Installer smoke target already exists: $installDir"
 }
+foreach ($hive in @("HKCU:", "HKLM:")) {
+    if (Test-Path -LiteralPath "$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall\Ankora") {
+        throw "An existing Ankora installation is registered. Refusing to replace it during smoke testing."
+    }
+}
 if ($null -ne (Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue)) {
     throw "Port 8765 is already occupied before the installer smoke test."
 }
@@ -40,6 +47,8 @@ if ($null -ne (Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction S
 $desktopProcess = $null
 $uninstaller = $null
 $oldPath = $env:Path
+$evidence = Join-Path $buildRoot ("installed-smoke-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $evidence | Out-Null
 try {
     $installation = Start-Process `
         -FilePath $InstallerPath `
@@ -79,18 +88,24 @@ try {
         throw "Installed third-party inventory is empty."
     }
     $bundledNames = @($inventory.components | ForEach-Object { $_.name })
-    foreach ($externalTool in @(
+    foreach ($bundledTool in @(
         "AutoDock Vina",
         "AutoGrid4",
         "AutoDock4",
         "AutoDock-GPU",
-        "GNINA",
-        "P2Rank"
+        "P2Rank",
+        "Eclipse Temurin JRE"
     )) {
-        if ($bundledNames -contains $externalTool) {
-            throw "External tool was incorrectly represented as bundled: $externalTool"
+        if ($bundledNames -notcontains $bundledTool) {
+            throw "Required scientific runtime missing from inventory: $bundledTool"
         }
     }
+    Push-Location $projectRoot
+    try {
+        & $PythonPath -m scripts.complete_windows_legal --verify --tools (Join-Path $installDir "backend/tools") --output $legalDir
+        if ($LASTEXITCODE -ne 0) { throw "Installed legal/scientific payload verification failed" }
+    }
+    finally { Pop-Location }
     $sourceAvailability = Get-Content `
         (Join-Path $legalDir "SOURCE_AVAILABILITY.txt") `
         -Raw
@@ -136,6 +151,16 @@ try {
     ) {
         throw "Installed Ankora reported an unexpected backend identity."
     }
+    $tools = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/v1/tools" -TimeoutSec 30
+    foreach ($name in @("pdbfixer", "pdb2pqr", "propka", "meeko", "meeko_ligand", "vina", "autogrid4", "autodock4", "autodock_gpu", "p2rank")) {
+        if (-not $tools.$name.available) { throw "Installed tool unavailable: $name" }
+    }
+    $system | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "system.json") -Encoding utf8
+    $tools | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "tools.json") -Encoding utf8
+    if ($ScientificMatrix) {
+        & (Join-Path $installDir "backend/ankora-backend.exe") --worker native-smoke --root $projectRoot --output (Join-Path $evidence "scientific matrix á")
+        if ($LASTEXITCODE -ne 0) { throw "Installed native scientific matrix failed" }
+    }
 
     Stop-Process -Id $desktopProcess.Id
     $desktopProcess.WaitForExit()
@@ -153,7 +178,7 @@ try {
     if (-not $backendStopped) {
         throw "Bundled backend outlived the installed desktop process."
     }
-    Write-Host "Installed Ankora includes verified legal notices and runs without Python on PATH."
+    Write-Host "Installed Ankora includes complete verified tools/notices and runs without developer tools on PATH. Evidence: $evidence"
 }
 finally {
     if ($null -ne $desktopProcess -and -not $desktopProcess.HasExited) {
@@ -168,7 +193,10 @@ finally {
             -PassThru `
             -WindowStyle Hidden
         if ($uninstallation.ExitCode -ne 0) {
-            Write-Warning "NSIS uninstaller returned $($uninstallation.ExitCode)."
+            throw "NSIS uninstaller returned $($uninstallation.ExitCode)."
         }
+        for ($attempt = 0; $attempt -lt 40 -and (Test-Path -LiteralPath $desktopExecutable.FullName); $attempt++) { Start-Sleep -Milliseconds 250 }
+        if (Test-Path -LiteralPath $desktopExecutable.FullName) { throw "Uninstaller left the desktop executable behind" }
+        Write-Host "NSIS uninstall verified; project data was not deleted."
     }
 }

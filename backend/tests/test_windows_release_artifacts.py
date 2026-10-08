@@ -24,6 +24,24 @@ def _load_release_module() -> ModuleType:
     return module
 
 
+@pytest.fixture(autouse=True)
+def synthetic_legal_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Artifact-index tests use synthetic notices, not local generated build state."""
+    original = _load_release_module
+
+    def load():
+        module = original()
+        payload = tmp_path / "synthetic-legal"
+        payload.mkdir(exist_ok=True)
+        for name in module.LEGAL_FILES:
+            (payload / name).write_text("synthetic legal fixture: " + name, encoding="utf-8")
+        module.LEGAL_ROOT = payload
+        module.LOCK_INPUTS = (REPOSITORY_ROOT / "package-lock.json",)
+        return module
+
+    monkeypatch.setattr(sys.modules[__name__], "_load_release_module", load)
+
+
 def _unsigned_evidence(module: ModuleType) -> object:
     return module.SignatureEvidence(
         status="NotSigned",

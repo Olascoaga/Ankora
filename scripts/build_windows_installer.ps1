@@ -3,6 +3,9 @@ param(
     [string]$PythonPath,
     [string]$CertificateThumbprint,
     [string]$TimestampUrl,
+    [string]$ScientificTools = "build/windows-runtime/scientific-tools",
+    [string]$SourceCompanion = "build/windows-runtime/source-companion",
+    [string]$GpuSource = "build/windows-runtime/autodock-gpu-1.6-ankora-source.zip",
     [switch]$BackendOnly
 )
 
@@ -14,7 +17,7 @@ $workRoot = Join-Path $buildRoot "pyinstaller"
 $resourceRoot = Join-Path $projectRoot "apps\desktop\src-tauri\resources\backend"
 $specPath = Join-Path $projectRoot "backend\packaging\ankora_backend.spec"
 $packagingLock = Join-Path $projectRoot "requirements\windows-packaging.lock"
-$legalGenerator = Join-Path $projectRoot "scripts\generate_third_party_notices.py"
+$legalRoot = Join-Path $projectRoot "apps\desktop\src-tauri\resources\complete-legal"
 $tauriCommand = Join-Path $projectRoot "node_modules\.bin\tauri.cmd"
 $signingConfig = Join-Path $buildRoot "tauri-signing-config.json"
 
@@ -93,6 +96,16 @@ if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
 
 Push-Location $projectRoot
 try {
+    foreach ($inputPath in @($ScientificTools, $SourceCompanion, $GpuSource)) {
+        if (-not (Test-Path -LiteralPath $inputPath)) {
+            throw "Complete installer input missing: $inputPath. Stage the reviewed scientific payload and corresponding sources first; a Python-only installer is no longer permitted."
+        }
+    }
+    $ScientificTools = (Resolve-Path -LiteralPath $ScientificTools).Path
+    $SourceCompanion = (Resolve-Path -LiteralPath $SourceCompanion).Path
+    $GpuSource = (Resolve-Path -LiteralPath $GpuSource).Path
+    & $PythonPath -c "from pathlib import Path; from scripts.complete_windows_legal import verify_companion; import sys; verify_companion(*map(Path, sys.argv[1:]))" $ScientificTools $SourceCompanion $GpuSource
+    Assert-LastCommandSucceeded "Reviewed scientific payload and source verification"
     & $PythonPath scripts\verify_windows_environment_lock.py --runtime
     Assert-LastCommandSucceeded "Locked runtime verification"
     & $PythonPath -m pip install --no-deps -r $packagingLock
@@ -113,10 +126,14 @@ try {
         throw "PyInstaller did not create $builtExecutable"
     }
 
-    & $PythonPath $legalGenerator `
+    Copy-Item -LiteralPath $ScientificTools -Destination (Join-Path $builtBackend "tools") -Recurse
+    $legalBuild = Join-Path $buildRoot ("complete-legal-" + [guid]::NewGuid().ToString("N"))
+    & $PythonPath -m scripts.complete_windows_legal `
         --analysis (Join-Path $workRoot "ankora_backend\Analysis-00.toc") `
-        --check
-    Assert-LastCommandSucceeded "Third-party redistribution notice verification"
+        --tools $ScientificTools --companion $SourceCompanion --gpu-source $GpuSource --output $legalBuild
+    Assert-LastCommandSucceeded "Complete third-party notices and corresponding sources"
+    & $PythonPath -m scripts.complete_windows_legal --verify --tools $ScientificTools --output $legalBuild
+    Assert-LastCommandSucceeded "Complete legal integrity verification"
 
     $resourceParent = Split-Path -Parent $resourceRoot
     if (-not (Test-Path -LiteralPath $resourceParent)) {
@@ -124,6 +141,8 @@ try {
     }
     Reset-BuildDirectory $resourceRoot $resourceParent
     Copy-Item -Path (Join-Path $builtBackend "*") -Destination $resourceRoot -Recurse
+    Reset-BuildDirectory $legalRoot $resourceParent
+    Copy-Item -Path (Join-Path $legalBuild "*") -Destination $legalRoot -Recurse
 
     $oldDataDir = $env:ANKORA_DATA_DIR
     $oldAppMode = $env:ANKORA_APP_MODE
@@ -182,7 +201,7 @@ try {
             throw "Bundled backend reported an unexpected runtime identity."
         }
         $tools = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/v1/tools" -TimeoutSec 10
-        foreach ($toolName in @("pdbfixer", "pdb2pqr", "propka", "meeko", "meeko_ligand")) {
+        foreach ($toolName in @("pdbfixer", "pdb2pqr", "propka", "meeko", "meeko_ligand", "vina", "autogrid4", "autodock4", "autodock_gpu", "p2rank")) {
             if (-not $tools.$toolName.available) {
                 throw "Bundled backend did not expose required tool '$toolName'."
             }
@@ -207,6 +226,8 @@ try {
     if (-not (Test-Path -LiteralPath $tauriCommand -PathType Leaf)) {
         throw "Tauri CLI not found. Run npm install first."
     }
+    & $PythonPath -m scripts.prepare_windows_webview2
+    Assert-LastCommandSucceeded "Signed offline WebView2 input verification"
     Push-Location (Join-Path $projectRoot "apps\desktop")
     try {
         $tauriArguments = @("build", "--bundles", "nsis", "--ci")
@@ -247,6 +268,8 @@ try {
     if ($null -eq $installer) {
         throw "Tauri did not create an NSIS installer."
     }
+    & $PythonPath -m scripts.prepare_windows_webview2 --verify-nsis (Join-Path $projectRoot "apps\desktop\src-tauri\target\release\nsis\x64\installer.nsi")
+    Assert-LastCommandSucceeded "Embedded offline WebView2 identity verification"
     Write-Host "Windows installer ready: $($installer.FullName)"
 }
 finally {
