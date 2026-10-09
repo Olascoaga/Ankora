@@ -19,12 +19,24 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--parent-pid", type=int)
     parser.add_argument(
         "--worker",
-        choices=("meeko-ligand", "meeko-receptor", "pdb2pqr", "pdbfixer", "propka", "native-smoke"),
+        choices=(
+            "meeko-ligand",
+            "meeko-receptor",
+            "pdb2pqr",
+            "pdbfixer",
+            "propka",
+            "native-smoke",
+            "installer-resources",
+        ),
     )
     return parser
 
 
 def _worker(name: str) -> Worker:
+    if name == "installer-resources":
+        from ankora_backend.installer_resources import main as installer_main
+
+        return installer_main
     if name == "native-smoke":
         from ankora_backend.validation.native_tool_smoke import main as smoke_main
 

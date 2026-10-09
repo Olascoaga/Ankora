@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Lossless compact offline packaging - 2026-10-09
+
+- Build a separate candidate without replacing previously delivered installers.
+  Increase the solid LZMA dictionary and store duplicate P2Rank models once in
+  their already-bundled original source archive.
+- Restore and verify all seven identical model files automatically during
+  installation, with no network acquisition or scientific changes. Stop on
+  integrity failures; retain full corresponding sources and offline WebView2.
+- Record implementation and candidate acceptance separately in
+  `docs/validation/COMPACT_WINDOWS_INSTALLER_2026-10-09.md`.
+
 ## Packaged molecular viewer CSP - 2026-10-08
 
 - Keep the desktop's restrictive Content Security Policy. Replace Mol*'s
