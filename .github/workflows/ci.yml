@@ -78,6 +78,9 @@ jobs:
       - name: Verify lossless pose interaction presentation
         run: node scripts/smoke_interaction_presentation.mjs
 
+      - name: Verify development molecular viewer with a cold optimizer cache
+        run: node scripts/smoke_interaction_presentation.mjs --development
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
 

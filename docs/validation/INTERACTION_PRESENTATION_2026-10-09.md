@@ -7,6 +7,12 @@ in the development application is pending; **no installer was regenerated**.
 The previously delivered private-beta installers remain unchanged. This is not
 a new scientific validation, clean-Windows installer test, or public release.
 
+The subsequent development-only import failure and its correction are recorded
+in [Development viewer interoperability](DEVELOPMENT_VIEWER_INTEROP_2026-10-09.md).
+The production checks below did not originally cover Vite's development loader;
+both modes now have separate browser gates. Native scientist acceptance remains
+pending before generating another installer.
+
 The report concerned dense Vina contacts visible in 3D but not individually in
 2D. Inspection found two distinct issues: a summary node obscured the meaning of
 atomic multiplicity, and grouping by colour family collapsed different detector

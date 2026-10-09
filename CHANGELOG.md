@@ -2,6 +2,16 @@
 
 All notable project changes are recorded here.
 
+## Development molecular viewer loading - 2026-10-09
+
+- Fix Mol*'s CommonJS dependency loading in development while preserving the
+  reviewed CSP transform and existing production security policy.
+- Recognize Vite's cache-query module IDs so the same safe text interpolation
+  and optional MP4 exclusion apply in development as in packaged builds.
+- Add a cold-cache and cached-reload browser gate to Windows CI. Replay the
+  reported M5V analysis read-only; no scientific records or installers change.
+  Evidence: `docs/validation/DEVELOPMENT_VIEWER_INTEROP_2026-10-09.md`.
+
 ## Lossless pose interaction presentation - 2026-10-09
 
 - Preserve every recorded atomic contact while distinguishing atomic counts,

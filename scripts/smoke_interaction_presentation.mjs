@@ -1,9 +1,10 @@
-/** Read-only production UI regression; no backend or scientific tool is started.
+/** Read-only production/development UI regression; no scientific tool is started.
  * Default: SYNTHETIC presentation fixture with 30 hydrophobic contacts plus
  * donor/acceptor on one residue. Not a detector/affinity benchmark.
  * Optional: --analysis FILE --receptor FILE --pose FILE replays a saved analysis
  * and its hash-verified inputs without modifying them or recomputing contacts.
- * Run after npm run build; uses the pinned Playwright browser (or channel env).
+ * Run after npm run build, or use --development for the actual Vite configuration
+ * with a new isolated optimizer cache. Uses the pinned Playwright browser.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -15,6 +16,7 @@ import { chromium } from "playwright";
 import ts from "typescript";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const development = process.argv.includes("--development");
 // Compile the same typed, labelled fixture the component regression uses.
 const fixtureSource = await readFile(resolve(root, "apps/desktop/src/tests/fixtures/interactionPresentation.ts"), "utf8");
 const compiled = ts.transpileModule(fixtureSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
@@ -55,11 +57,31 @@ const oldGroups = new Set(record.contacts.map((item) => JSON.stringify([item.res
   item.detector_type.startsWith("HB") ? "hydrogen" : item.detector_type]))).size;
 const dist = resolve(root, "apps/desktop/dist");
 const tauri = JSON.parse(await readFile(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
-const csp = `${tauri.app.security.csp}; script-src 'self'`;
+// Vite's React development preamble is inline: nonce it in the test server,
+// rather than allowing inline scripts or eval. Packaged policy stays unchanged.
+const nonce = createHash("sha256").update(String(Date.now())).digest("base64");
+const csp = `${tauri.app.security.csp}; script-src 'self'${development ? ` 'nonce-${nonce}'` : ""}`;
 const output = resolve(root, "build/windows-runtime", `interaction-ui-smoke-${Date.now()}`);
 await mkdir(output, { recursive: true });
+let developmentPort;
+if (development) {
+  // Vite treats port 0 as its default; reserve an OS-assigned candidate instead.
+  // strictPort then fails on a race, never reusing another development server.
+  const probe = createServer();
+  await new Promise((done) => probe.listen(0, "127.0.0.1", done));
+  developmentPort = probe.address().port;
+  await new Promise((done) => probe.close(done));
+}
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
-const server = createServer(async (req, res) => {
+const server = development ? await (await import("vite")).createServer({
+  root: resolve(root, "apps/desktop"),
+  configFile: resolve(root, "apps/desktop/vite.config.ts"),
+  configLoader: "runner",
+  cacheDir: resolve(output, "vite-cache"),
+  html: { cspNonce: nonce },
+  server: { host: "127.0.0.1", port: developmentPort, strictPort: true, hmr: false,
+    headers: { "Content-Security-Policy": csp } },
+}) : createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);
     const path = resolve(dist, `.${pathname === "/" ? "/index.html" : pathname}`);
@@ -69,8 +91,11 @@ const server = createServer(async (req, res) => {
     res.end(bytes);
   } catch { res.writeHead(404).end(); }
 });
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
-const evidence = { passed: false, synthetic: !real, analysis_id: record.analysis_id,
+if (development) await server.listen();
+else await new Promise((done) => server.listen(0, "127.0.0.1", done));
+const port = (server.httpServer ?? server).address().port;
+const evidence = { passed: false, serving_mode: development ? "development" : "production",
+  isolated_cold_cache: development, synthetic: !real, analysis_id: record.analysis_id,
   source_hashes: recordedBytes?.map(hash) ?? null, contacts: record.contacts.length,
   old_hydrogen_family_groups: oldGroups, exact_subtype_groups: groups, viewports: [], errors: [], csp_violations: [] };
 let browser;
@@ -105,16 +130,35 @@ try {
     evidence.errors.push(`Unexpected UI request: ${path}`);
     return json({ message: "Unexpected read-only replay request" }, 404);
   });
-  const navigation = await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  const navigation = await page.goto(`http://127.0.0.1:${port}/`);
   assert(navigation.headers()["content-security-policy"].includes("script-src 'self'"));
-  await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
-  await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Results/ }).click();
-  await page.getByRole("list", { name: "Recorded results" }).getByRole("listitem").click();
-  await page.getByRole("region", { name: "Molecules in this result" }).getByText(molecule.name, { exact: true }).click();
-  await page.getByRole("region", { name: "Interaction display" }).waitFor();
-  await page.locator(".molstar-host canvas").waitFor();
-  await page.waitForTimeout(1000); // Mol* representation tasks finish asynchronously.
-  assert.deepEqual(await page.locator(".viewer-error").allTextContents(), []);
+  const openAnalysis = async () => {
+    await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
+    await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Results/ }).click();
+    await page.getByRole("list", { name: "Recorded results" }).getByRole("listitem").click();
+    await page.getByRole("region", { name: "Molecules in this result" }).getByText(molecule.name, { exact: true }).click();
+    await page.getByRole("region", { name: "Interaction display" }).waitFor();
+    await page.locator(".molstar-host canvas, .viewer-error").first().waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1000); // Mol* representation tasks finish asynchronously.
+    const viewerErrors = await page.locator(".viewer-error").allTextContents();
+    evidence.errors.push(...viewerErrors);
+    if (development && viewerErrors.length) {
+      evidence.import_error_stack = await page.evaluate(async () => {
+        try { await import("/src/viewer/molstarAdapter.ts"); return null; }
+        catch (error) { return error.stack ?? String(error); }
+      });
+    }
+    await page.locator(".pose-interaction-viewer").screenshot({ path: resolve(output, `viewer-${development ? "development" : "production"}.png`) });
+    assert.deepEqual(viewerErrors, [], "Mol* must import and draw without dependency/CSP failures");
+    assert(await page.locator(".molstar-host canvas").count() > 0);
+  };
+  await openAnalysis();
+  if (development) {
+    // A successful cold import must also survive reuse of the optimizer cache.
+    await page.reload();
+    await openAnalysis();
+    evidence.cached_reload_passed = true;
+  }
   assert.equal(await page.locator(".interaction-edge ellipse").count(), groups);
   assert.equal(await page.locator(".interaction-contact line").count(), groups);
   assert.equal(await page.locator(".interaction-table-scroll tbody tr").count(), record.contacts.length);
@@ -158,5 +202,6 @@ try {
   await writeFile(resolve(output, "evidence.json"), JSON.stringify(evidence, null, 2));
   console.log(`Evidence: ${output}`);
   await browser?.close();
-  await new Promise((done) => server.close(done));
+  if (development) await server.close();
+  else await new Promise((done) => server.close(done));
 }

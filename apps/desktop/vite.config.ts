@@ -4,8 +4,17 @@ import { molstarCsp } from "./build/molstarCsp";
 
 export default defineConfig({
   plugins: [molstarCsp(), react()],
-  // Keep the same reviewed transform in development and packaged builds.
-  optimizeDeps: { exclude: ["molstar"] },
+  optimizeDeps: {
+    // Keep Mol* source available to the reviewed CSP transform in both modes.
+    exclude: ["molstar"],
+    // Mol* imports this deep CommonJS entry, not mutative's ESM package root.
+    // An excluded ESM dependency still needs its nested CJS dependency bundled.
+    include: [
+      "molstar > mutative/dist/index.js",
+      // Mol* UI markdown also contains a CommonJS style-parser dependency.
+      "molstar > react-markdown",
+    ],
+  },
   clearScreen: false,
   server: {
     host: "127.0.0.1",

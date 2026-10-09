@@ -28,7 +28,9 @@ export function molstarCsp(): Plugin {
     name: "ankora-molstar-csp",
     enforce: "pre",
     transform(source, id) {
-      const path = id.replaceAll("\\", "/");
+      // Vite appends cache queries to excluded dependencies in development.
+      // Match the physical file in both modes, not only query-free build IDs.
+      const path = id.split("?", 1)[0].replaceAll("\\", "/");
       // Runtime disabledExtensions is too late: the codec executes new Function
       // during import. Omit this optional video feature at build time. Ankora's
       // scientific/PDB and SVG/PNG/TIFF/PDF exports do not use the MP4 extension.

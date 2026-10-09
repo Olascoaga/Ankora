@@ -3,8 +3,18 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { interpolateText, molstarCsp, upstreamInterpolation } from "../../build/molstarCsp";
+import viteConfig from "../../vite.config";
 
 describe("Mol* CSP-compatible UI text", () => {
+  it("prebundles Mol*'s deep CommonJS dependency without bypassing its CSP transform", () => {
+    const require = createRequire(import.meta.url);
+    const source = readFileSync(require.resolve("molstar/lib/mol-util/produce.js"), "utf8");
+    expect(source).toContain("import { create } from 'mutative/dist/index.js'");
+    expect(viteConfig.optimizeDeps?.exclude).toContain("molstar");
+    expect(viteConfig.optimizeDeps?.include).toContain("molstar > mutative/dist/index.js");
+    expect(viteConfig.optimizeDeps?.include).toContain("molstar > react-markdown");
+  });
+
   it("substitutes repeated named parameters without evaluating JavaScript", () => {
     expect(interpolateText("Click ${triggers}; again ${triggers}", { triggers: "<i>left button</i>" }))
       .toBe("Click <i>left button</i>; again <i>left button</i>");
@@ -14,10 +24,11 @@ describe("Mol* CSP-compatible UI text", () => {
     expect(() => interpolateText("${toString}", {})).toThrow("Unsupported");
   });
 
-  it("recognizes the installed dependency exactly and fails closed on an upgrade", () => {
+  it.each(["", "?v=development-cache"])("recognizes the dependency and fails closed on an upgrade (%s)", (query) => {
     const require = createRequire(import.meta.url);
-    const id = require.resolve("molstar/lib/mol-util/string.js");
-    const source = readFileSync(id, "utf8");
+    const file = require.resolve("molstar/lib/mol-util/string.js");
+    const id = file + query;
+    const source = readFileSync(file, "utf8");
     expect(source.replaceAll("\r\n", "\n")).toContain(upstreamInterpolation);
     const transform = molstarCsp().transform as (source: string, id: string) => { code: string } | null;
     const result = transform(source, id)!;
@@ -33,10 +44,11 @@ describe("Mol* CSP-compatible UI text", () => {
     expect(config.app.security.csp).toContain("default-src 'self'");
   });
 
-  it("excludes only the optional MP4 extension before its codec is evaluated", () => {
+  it.each(["", "?v=development-cache"])("excludes only the optional MP4 extension before evaluation (%s)", (query) => {
     const require = createRequire(import.meta.url);
-    const id = require.resolve("molstar/lib/apps/viewer/extensions.js");
-    const source = readFileSync(id, "utf8");
+    const file = require.resolve("molstar/lib/apps/viewer/extensions.js");
+    const id = file + query;
+    const source = readFileSync(file, "utf8");
     const transform = molstarCsp().transform as (source: string, id: string) => { code: string };
     const result = transform(source, id);
     expect(result.code).not.toContain("Mp4Export");
