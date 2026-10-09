@@ -156,6 +156,12 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_installer.ps1 `
             -PythonPath "${{ steps.runtime.outputs.python_path }}"
 
+      - name: Install production UI test browser
+        run: npx playwright install chromium
+
+      - name: Verify packaged frontend startup and molecular viewer CSP
+        run: node scripts/smoke_packaged_frontend.mjs
+
       - name: Assemble checksum-indexed release artifacts
         shell: pwsh
         run: |

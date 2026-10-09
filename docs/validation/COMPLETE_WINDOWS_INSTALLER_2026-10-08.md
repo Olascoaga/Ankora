@@ -2,6 +2,12 @@
 
 ## Scope and identity
 
+Follow-up: the scientist's clean-Windows installation succeeded, but exposed
+cold-start and molecular-viewer CSP defects in this exact candidate. See
+[the packaged UI repair record](PACKAGED_UI_REPAIR_2026-10-08.md). The installer
+bytes and earlier tool evidence below remain unchanged; they do not establish
+GUI acceptance. A corrected new installer still requires installed validation.
+
 ADR-024 supersedes the Python-only packaging subset for this new candidate.
 GNINA remains deferred. No scientific model, historical result, engine default,
 system driver or Windows security policy is changed by packaging.

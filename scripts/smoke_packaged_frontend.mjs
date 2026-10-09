@@ -1,0 +1,168 @@
+/** Production-bundle regression gate. All API replies are SYNTHETIC UI fixtures.
+ * No scientific executable, user backend, or project data is touched.
+ * npm run build; node scripts/smoke_packaged_frontend.mjs
+ * Install the pinned Playwright Chromium first, or set ANKORA_SMOKE_BROWSER_CHANNEL.
+ */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const dist = resolve(root, "apps/desktop/dist");
+const output = resolve(root, "build/windows-runtime", `frontend-smoke-${Date.now()}`);
+await mkdir(output, { recursive: true });
+const tauri = JSON.parse(await readFile(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
+const csp = `${tauri.app.security.csp}; script-src 'self'`;
+assert(!csp.includes("unsafe-eval"));
+let fixture = await readFile(resolve(root, "backend/tests/fixtures/synthetic_m1.pdb"));
+const id = "00000000-0000-0000-0000-000000000001";
+const provenance = {
+  event_id: "synthetic-ui-smoke", event_type: "structure_imported", timestamp: "2026-10-08T00:00:00Z",
+  input_artifacts: [], output_artifacts: [id], tool: { name: "synthetic-ui-fixture", version: "1" },
+  parameters: { synthetic: true }, warnings: [], command: null,
+};
+let record = {
+  artifact: { artifact_id: id, original_filename: "synthetic_m1.pdb", format: "pdb",
+    sha256: createHash("sha256").update(fixture).digest("hex"), size_bytes: fixture.length,
+    source: "local", source_uri: null, imported_at: provenance.timestamp },
+  metadata: { entry_id: "TST1", title: "Synthetic M1 fixture; not experimental data",
+    experimental_method: "SYNTHETIC TEST DATA", resolution_angstrom: null, model_count: 1,
+    atom_count: 9, residue_count: 4,
+    chains: [{ chain_id: "A", residue_count: 4, polymer_residue_count: 1, atom_count: 9 }],
+    heterogens: [{ name: "LIG", chain_id: "A", sequence_number: 101, insertion_code: "", atom_count: 2, kind: "ligand" }],
+    alternate_location_atom_count: 2, missing_residue_count: 1, missing_atom_count: 1, nonstandard_polymer_residues: [] },
+  warnings: [], provenance, content_url: `/structures/${id}/content`,
+};
+const inspection = {
+  source_artifact_id: id, generated_at: provenance.timestamp, candidate_chains: ["A"],
+  components: [], water_count: 1, issues: [], reference_component_id: null,
+  near_reference_cutoff_angstrom: 8, warnings: [], provenance,
+};
+const tools = Object.fromEntries(["vina", "gnina", "autogrid4", "autodock4", "autodock_gpu",
+  "pdbfixer", "pdb2pqr", "propka", "meeko", "meeko_ligand", "p2rank"].map(
+  (name) => [name, { available: false, path: null, version: null }],
+));
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
+const server = createServer(async (req, res) => {
+  try {
+    const pathname = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);
+    const path = resolve(dist, `.${pathname === "/" ? "/index.html" : pathname}`);
+    if (!path.startsWith(`${dist}${sep}`)) { res.writeHead(403).end(); return; }
+    const bytes = await readFile(path);
+    res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream", "Content-Security-Policy": csp });
+    res.end(bytes);
+  } catch { res.writeHead(404).end(); }
+});
+await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
+let browser;
+const evidence = { passed: false, synthetic: true, csp, fixture_sha256: record.artifact.sha256,
+  health_attempts: 0, content_requests: 0, errors: [], csp_violations: [], stages: [] };
+try {
+  browser = await chromium.launch({
+    channel: process.env.ANKORA_SMOKE_BROWSER_CHANNEL || undefined,
+    headless: true, args: ["--enable-unsafe-swiftshader"],
+  });
+  evidence.browser = browser.version();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  page.setDefaultTimeout(20_000);
+  if (process.argv.includes("--trace-eval")) {
+    const debuggerSession = await page.context().newCDPSession(page);
+    await debuggerSession.send("Debugger.enable");
+    await debuggerSession.send("Debugger.setPauseOnExceptions", { state: "all" });
+    debuggerSession.on("Debugger.paused", async (event) => {
+      if (event.data?.description?.includes("unsafe-eval")) {
+        console.log(JSON.stringify({ exception: event.data.description, frames: event.callFrames.map(
+          ({ functionName, location }) => ({ functionName, location }),
+        ) }));
+      }
+      await debuggerSession.send("Debugger.resume");
+    });
+  }
+  page.on("pageerror", (error) => evidence.errors.push(error.stack));
+  await page.exposeFunction("recordCspViolation", (value) => evidence.csp_violations.push(value));
+  await page.addInitScript(() => document.addEventListener("securitypolicyviolation", (event) => {
+    window.recordCspViolation({ directive: event.violatedDirective, blocked: event.blockedURI });
+  }));
+  await page.route("http://127.0.0.1:8765/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace("/api/v1", "");
+    const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
+    if (path === "/health") {
+      evidence.health_attempts++;
+      if (!process.argv.includes("--ready-immediately") && evidence.health_attempts < 3) return route.abort("connectionrefused");
+      return json({ status: "ok", backend_version: "0.1.0" });
+    }
+    if (path === "/system") return json({ platform: "windows", architecture: "x86_64", python_version: "synthetic", python_environment: "UI test", app_mode: "packaged" });
+    if (path === "/tools") return json(tools);
+    if (path === "/system/resources") return json({ cpu_percent: 0, logical_cores: 1, memory_used_bytes: 0, memory_total_bytes: 1, memory_percent: 0, gpu: null });
+    if (path === "/projects") return json({ active_project_id: "default", projects: [{ project_id: "default", name: "Synthetic UI test", registered_at: "", migrated_legacy: true }] });
+    if (path === "/work/recovery") return json({ items: [], reconciled_at: provenance.timestamp });
+    if (path === "/receptors/latest") return json({ message: "Synthetic fixture: no saved receptor" }, 404);
+    if (path === "/structures/import") return json(record, 201);
+    if (path.endsWith("/content")) {
+      evidence.content_requests++;
+      return route.fulfill({ status: 200, contentType: "text/plain", body: fixture });
+    }
+    if (path.endsWith("/receptor-inspection")) return json(inspection);
+    evidence.errors.push(`Unmocked UI request: ${path}`);
+    return json({ message: "Unexpected synthetic request" }, 404);
+  });
+  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.getByTestId("splash-screen").waitFor();
+  evidence.splash_images = await page.locator(".splash-card img").evaluateAll(async (images) => {
+    await Promise.all(images.map((image) => image.decode().catch(() => {})));
+    return images.map((image) => ({ loaded: image.naturalWidth > 0, source: new URL(image.src).pathname }));
+  });
+  await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
+  for (const extension of ["pdb", "cif"]) {
+    const filename = `synthetic_m1.${extension}`;
+    fixture = await readFile(resolve(root, "backend/tests/fixtures", filename));
+    record = { ...record, artifact: { ...record.artifact, original_filename: filename,
+      format: extension === "cif" ? "mmcif" : "pdb", size_bytes: fixture.length,
+      sha256: createHash("sha256").update(fixture).digest("hex"),
+    } };
+    if (extension === "cif") {
+      // This separate fixture has four atom rows and two residues, no altlocs.
+      record.metadata = { ...record.metadata, entry_id: "SYN1", atom_count: 4,
+        residue_count: 2, alternate_location_atom_count: 0, missing_residue_count: 0, missing_atom_count: 0,
+        chains: [{ chain_id: "A", residue_count: 2, polymer_residue_count: 1, atom_count: 4 }],
+        heterogens: [{ ...record.metadata.heterogens[0], atom_count: 1 }],
+      };
+      inspection.water_count = 0;
+    }
+    await page.locator("input.visually-hidden[type=file]").setInputFiles(resolve(root, "backend/tests/fixtures", filename));
+    for (const stage of ["structure", "receptor"]) {
+      if (stage === "receptor") await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Receptor/ }).click();
+      try {
+        await page.locator(".molstar-host canvas").first().waitFor({ timeout: 15_000 });
+        await page.waitForFunction(() => document.querySelector(".molstar-host canvas")?.width > 0);
+        // Allow the asynchronous structure representation/render to finish.
+        await page.waitForTimeout(1500);
+        const error = await page.locator(".viewer-error").allTextContents();
+        assert.deepEqual(error, []);
+        await page.screenshot({ path: resolve(output, `${extension}-${stage}.png`) });
+        evidence.stages.push(`${extension}-${stage}`);
+      } catch (error) {
+        evidence.errors.push(`${stage}: ${error.message}; ${await page.locator(".viewer-error").allTextContents()}`);
+        await page.screenshot({ path: resolve(output, `${extension}-${stage}-failed.png`) });
+        break;
+      }
+    }
+  }
+  assert.deepEqual(evidence.errors, []);
+  assert.deepEqual(evidence.csp_violations, []);
+  assert(evidence.splash_images.every((image) => image.loaded));
+  assert(evidence.content_requests >= 4);
+  assert.deepEqual(evidence.stages, ["pdb-structure", "pdb-receptor", "cif-structure", "cif-receptor"]);
+  if (!process.argv.includes("--ready-immediately")) assert.equal(evidence.health_attempts, 3);
+  evidence.passed = true;
+  console.log("Packaged frontend: cold start, assets, Structure and Receptor passed under strict CSP.");
+} finally {
+  await writeFile(resolve(output, "evidence.json"), JSON.stringify(evidence, null, 2));
+  console.log(`Evidence: ${output}`);
+  await browser?.close();
+  await new Promise((done) => server.close(done));
+}

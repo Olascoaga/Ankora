@@ -69,6 +69,12 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Install production UI test browser
+        run: npx playwright install chromium
+
+      - name: Verify packaged frontend startup and molecular viewer CSP
+        run: node scripts/smoke_packaged_frontend.mjs
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
 

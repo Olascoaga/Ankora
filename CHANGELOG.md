@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Packaged molecular viewer CSP - 2026-10-08
+
+- Keep the desktop's restrictive Content Security Policy. Replace Mol*'s
+  executable help-text interpolation with named text substitution.
+- Exclude Mol*'s optional MP4 video-export extension at build time: its codec
+  evaluates generated JavaScript during import. Molecular visualization,
+  PDB export and Ankora's SVG/PNG/TIFF/PDF figure exports remain available.
+- Add a production-browser regression gate to CI and release verification,
+  exercising delayed startup, bundled images and PDB/mmCIF display in both
+  Structure and Receptor. This does not substitute for installed clean-Windows
+  acceptance of the next installer.
+
 ## Packaged cold-start recovery - 2026-10-08
 
 - Wait automatically for the local backend on cold starts, with bounded,
