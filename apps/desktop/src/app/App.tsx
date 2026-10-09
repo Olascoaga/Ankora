@@ -22,6 +22,7 @@ import { MolecularViewer } from "../viewer/MolecularViewer";
 import type { ViewerSelection } from "../viewer/adapter";
 import { formatApplicationDateTime, formatCount, formatScientificNumber } from "../utils/format";
 import { createInitialApplicationState, type ApplicationState } from "./state";
+import { loadBackend } from "./backendStartup";
 import type { WorkspaceActivity } from "./activity";
 import { canNavigateTo, workflowSteps, type WorkflowStep } from "./workflow";
 import { describeUsage, useResourceUsage } from "./useResourceUsage";
@@ -45,6 +46,7 @@ export function App() {
   const workbenchLayout = useWorkbenchLayout();
   const [state, setState] = useState<ApplicationState>(createInitialApplicationState);
   const [splashDismissed, setSplashDismissed] = useState(false);
+  const dismissSplash = useCallback(() => setSplashDismissed(true), []);
   const [pdbId, setPdbId] = useState("");
   const [fetchSource, setFetchSource] = useState<"rcsb" | "alphafold">("rcsb");
   const [selection, setSelection] = useState<ViewerSelection | null>(null);
@@ -90,13 +92,19 @@ export function App() {
     if (record) setLatestReceptor(record);
   }, []);
 
+  const startupRef = useRef<AbortController | null>(null);
   const initializeBackend = useCallback(() => {
+    startupRef.current?.abort();
+    const startup = new AbortController();
+    startupRef.current = startup;
     setState((current) => ({ ...current, connection: "checking", error: null }));
-    return Promise.all([ankoraApi.health(), ankoraApi.system(), ankoraApi.tools()])
-      .then(([health, system, tools]) => {
+    return loadBackend(startup.signal)
+      .then(({ health, system, tools }) => {
+        if (startup.signal.aborted) return;
         setState((current) => ({ ...current, connection: "connected", health, system, tools, error: null }));
       })
       .catch((error: unknown) => {
+        if (startup.signal.aborted) return;
         const message = error instanceof Error ? error.message : "Backend connection failed";
         setState((current) => ({ ...current, connection: "disconnected", health: null, system: null, tools: null, error: message }));
       });
@@ -104,9 +112,11 @@ export function App() {
 
   useEffect(() => {
     void initializeBackend();
+    return () => startupRef.current?.abort();
   }, [initializeBackend]);
 
   useEffect(() => {
+    if (state.connection !== "connected") return;
     let active = true;
     void ankoraApi.projects()
       .then((catalog) => {
@@ -117,9 +127,10 @@ export function App() {
         // workbench remains usable against an older local backend.
       });
     return () => { active = false; };
-  }, []);
+  }, [state.connection]);
 
   useEffect(() => {
+    if (state.connection !== "connected") return;
     let active = true;
     void ankoraApi.workRecovery()
       .then((summary) => {
@@ -142,7 +153,7 @@ export function App() {
         }
       });
     return () => { active = false; };
-  }, []);
+  }, [state.connection]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -168,6 +179,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (state.connection !== "connected") return;
     let active = true;
     void ankoraApi.latestReceptor()
       .then((record) => { if (active) setLatestReceptor(record); })
@@ -177,7 +189,7 @@ export function App() {
         }
       });
     return () => { active = false; };
-  }, []);
+  }, [state.connection]);
 
   useEffect(() => {
     const libraryId = ligandRecord?.artifact.library_id;
@@ -792,7 +804,7 @@ export function App() {
         tools={state.tools}
         error={state.error}
         onRetry={initializeBackend}
-        onDismiss={() => setSplashDismissed(true)}
+        onDismiss={dismissSplash}
       />
     ) : null}
     </>

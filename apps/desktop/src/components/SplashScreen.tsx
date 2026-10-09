@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { AppIcon } from "./AppIcon";
+import splashMesh from "../assets/splash-bg-mesh-only.jpg";
+import splashLogo from "../assets/splash-logo.jpg";
 import type { HealthResponse, SystemResponse, ToolsResponse } from "../types/api";
 
 export interface SplashScreenProps {
@@ -81,14 +82,12 @@ export function SplashScreen({
       <div className="splash-backdrop" />
       <div className="splash-card">
         <div className="splash-graphic-mesh" aria-hidden="true">
-          {/* Using the extracted right-half of the AI mockup for 100% fidelity */}
-          <img src="/src/assets/splash-bg-mesh-only.jpg" alt="" aria-hidden="true" />
+          <img src={splashMesh} alt="" aria-hidden="true" />
         </div>
 
         <div className="splash-content">
           <div className="splash-logo" style={{ background: 'transparent' }}>
-             {/* Using the extracted logo with screen blending to seamlessly integrate the neon glow */}
-             <img src="/src/assets/splash-logo.jpg" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
+             <img src={splashLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
           </div>
 
           <div className="splash-header">

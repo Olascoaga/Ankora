@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { App } from "../app/App";
 
@@ -138,12 +138,18 @@ it("offers explicit source actions without fetching a structure on menu entry", 
 });
 
 it("renders a disconnected state when the backend cannot be reached", async () => {
-  vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
-
-  render(<App />);
-
-  await waitFor(() => expect(screen.getAllByText("Backend disconnected").length).toBeGreaterThan(0));
-  expect(screen.getAllByText(/Failed to fetch/).length).toBeGreaterThan(0);
+  vi.useFakeTimers();
+  try {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<App />);
+    expect(screen.queryByRole("button", { name: /Retry Connection/ })).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(screen.getAllByText("Backend disconnected").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/120 seconds/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Retry Connection/ })).toBeEnabled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("imports a structure and exposes chains, heterogens, warnings, and provenance", async () => {

@@ -2,6 +2,14 @@
 
 All notable project changes are recorded here.
 
+## Packaged cold-start recovery - 2026-10-08
+
+- Wait automatically for the local backend on cold starts, with bounded,
+  cancellable health probes and a two-minute deadline. Scientific work is
+  never retried automatically. Load project/recovery/history only after ready.
+- Bundle splash images correctly and keep its dismiss timer stable during
+  resource-usage updates. Existing installer artifacts are preserved unchanged.
+
 ## P2Rank package compatibility - 2026-10-07
 
 - Validated the authorized vecmath 1.5.2-only P2Rank package against seven

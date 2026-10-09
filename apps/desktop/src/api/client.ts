@@ -132,8 +132,8 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function getJson<T>(path: string): Promise<T> {
-  return requestJson<T>(path, { method: "GET" });
+function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(path, { method: "GET", ...(signal ? { signal } : {}) });
 }
 
 /** `engine:record` is one identifier, and the route spends it as two segments. */
@@ -152,7 +152,7 @@ function campaignHistoryQuery(receptorId: string, bindingSiteId: string): string
 }
 
 export const ankoraApi = {
-  health: (): Promise<HealthResponse> => getJson<HealthResponse>("/health"),
+  health: (signal?: AbortSignal): Promise<HealthResponse> => getJson<HealthResponse>("/health", signal),
   projects: (): Promise<ProjectCatalog> => getJson<ProjectCatalog>("/projects"),
   createProject: (name: string): Promise<ProjectRecord> =>
     requestJson<ProjectRecord>("/projects", {
@@ -173,8 +173,8 @@ export const ankoraApi = {
       `/projects/active/dependencies/${encodeURIComponent(nodeId)}/stale`,
       { method: "POST", body: JSON.stringify({ reason }) },
     ),
-  system: (): Promise<SystemResponse> => getJson<SystemResponse>("/system"),
-  tools: (): Promise<ToolsResponse> => getJson<ToolsResponse>("/tools"),
+  system: (signal?: AbortSignal): Promise<SystemResponse> => getJson<SystemResponse>("/system", signal),
+  tools: (signal?: AbortSignal): Promise<ToolsResponse> => getJson<ToolsResponse>("/tools", signal),
   importLigand: (file: File): Promise<LigandRecord> => {
     const form = new FormData();
     form.append("file", file);
