@@ -2,7 +2,8 @@
 param(
     [string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
-    [switch]$ScientificMatrix
+    [switch]$ScientificMatrix,
+    [switch]$FrontendSmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +48,9 @@ if ($null -ne (Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction S
 $desktopProcess = $null
 $uninstaller = $null
 $oldPath = $env:Path
+$oldWebViewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+$nodePath = if ($FrontendSmoke) { (Get-Command node.exe -ErrorAction Stop).Source } else { $null }
+$debugPort = $null
 $evidence = Join-Path $buildRoot ("installed-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $evidence | Out-Null
 try {
@@ -116,6 +120,14 @@ try {
     }
 
     $env:Path = "$env:WINDIR\System32;$env:WINDIR"
+    if ($FrontendSmoke) {
+        # Developer acceptance only; this environment is never shipped or set globally.
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        $listener.Start()
+        $debugPort = $listener.LocalEndpoint.Port
+        $listener.Stop()
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort --remote-debugging-address=127.0.0.1"
+    }
     $desktopProcess = Start-Process `
         -FilePath $desktopExecutable.FullName `
         -PassThru `
@@ -157,6 +169,10 @@ try {
     }
     $system | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "system.json") -Encoding utf8
     $tools | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "tools.json") -Encoding utf8
+    if ($FrontendSmoke) {
+        & $nodePath (Join-Path $projectRoot "scripts/smoke_packaged_frontend.mjs") --cdp "http://127.0.0.1:$debugPort"
+        if ($LASTEXITCODE -ne 0) { throw "Installed WebView2 frontend smoke failed" }
+    }
     if ($ScientificMatrix) {
         & (Join-Path $installDir "backend/ankora-backend.exe") --worker native-smoke --root $projectRoot --output (Join-Path $evidence "scientific matrix á")
         if ($LASTEXITCODE -ne 0) { throw "Installed native scientific matrix failed" }
@@ -185,6 +201,7 @@ finally {
         Stop-Process -Id $desktopProcess.Id
     }
     $env:Path = $oldPath
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $oldWebViewArguments
     if ($null -ne $uninstaller -and (Test-Path -LiteralPath $uninstaller.FullName)) {
         $uninstallation = Start-Process `
             -FilePath $uninstaller.FullName `

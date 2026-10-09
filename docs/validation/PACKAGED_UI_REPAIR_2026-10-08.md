@@ -68,3 +68,9 @@ The existing 1.14 GB installer remains intentionally untouched. Include the
 fixes in the separately requested optimized installer and repeat installed
 clean-Windows UI acceptance. Browser CSP testing does not replace WebView2/
 installer validation or the existing scientific native-tool matrix.
+
+Follow-up 2026-10-09: the separate [compact candidate](COMPACT_WINDOWS_INSTALLER_2026-10-09.md)
+now includes these fixes and passed the actual installed WebView2 rendering and
+startup gate plus the 10/10 installed scientific adapter matrix. The original
+1.14 GB installer remains unchanged. Clean-VM acceptance of this new candidate
+and signing are still separate gates.

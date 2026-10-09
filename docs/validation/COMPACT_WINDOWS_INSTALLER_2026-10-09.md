@@ -49,10 +49,50 @@ calls Tauri's default bundler, which would overwrite the old setup executable.
 - Generated complete legal inventory: 664 components / 124 indexed files.
 - Generated compact NSIS embeds the same signed, pinned offline WebView2 input.
 
-The compact candidate's final size, checksum, installed scientific matrix and
-installed WebView2 acceptance are still pending at this implementation boundary.
-Developer-machine checks do not imply clean-VM, upgrade, signing or public-release
-acceptance.
+## Delivered candidate and installed acceptance
+
+The separate compact candidate is **939,900,409 bytes** (939.9 MB / 896.36 MiB),
+199,320,899 bytes smaller than the original: **17.50% reduction**. Installed
+capabilities and source/model content are unchanged; this reduces download size,
+not the required installed scientific payload.
+
+SHA-256:
+`4eac355618ebc8bde71adb17cec50b0bb6ee6761a009dd1ff81d952060a7174a`.
+
+The actual NSIS package was installed in a create-only test directory with
+Python/Conda/scientific developer tools removed from `PATH`:
+
+- Complete installed legal inventory and exact scientific tool/model hashes
+  passed verification. All seven deduplicated models were restored automatically.
+- The installed desktop launched its own frozen backend and reached the
+  workbench without pressing Retry.
+- Actual installed **WebView2 155.0.4283.45** passed the production UI regression:
+  a separate reload with two simulated connection refusals recovered on the third
+  health request; both splash images decoded; the real Mol* renderer displayed
+  synthetic PDB/mmCIF fixtures in Structure and Receptor. All four stages passed,
+  with no viewer/page errors and zero CSP violations. The actual served desktop
+  CSP was captured and contains no `unsafe-eval`. A receptor screenshot was
+  visually inspected. Mock API replies test rendering, not RCSB connectivity or
+  chemistry; the initial installed launch used the real bundled backend.
+- The installed frozen runtime passed **10/10 native scientific adapter smokes**
+  with a spaced, non-ASCII output path. Evidence manifest SHA-256:
+  `bb73458beb8d1a69ce6c311ef6df915385c90da0ff94355a3e31f060835776d6`.
+- Closing the desktop released port 8765. The test installation was uninstalled
+  successfully; project data was not deleted. Both original installer copies
+  retain their original SHA-256.
+
+Native UI acceptance is now exercised by
+`scripts/smoke_windows_installer.ps1 -FrontendSmoke -ScientificMatrix` with explicit
+installer and developer-test Python paths. The script temporarily exposes a
+loopback-only WebView debugging endpoint in its child environment, never in
+shipping configuration. The UI gate uses synthetic routes only after checking
+the actual first launch and does not create user scientific artifacts.
+
+This is a locally verified **unsigned candidate**, not a public release.
+Clean-VM/no-existing-WebView offline installation, upgrade, display/hardware
+matrix and signing remain separate release gates. Existing Evergreen WebView2
+was reused in this developer-machine test; embedding its offline installer was
+independently hash/signature-verified, not mistaken for installing it on a clean VM.
 
 ## Reproduction
 

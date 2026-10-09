@@ -12,6 +12,13 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const cdpIndex = process.argv.indexOf("--cdp");
+const cdpEndpoint = cdpIndex >= 0 ? process.argv[cdpIndex + 1] : null;
+if (cdpEndpoint) {
+  const endpoint = new URL(cdpEndpoint);
+  assert(endpoint.protocol === "http:" && endpoint.hostname === "127.0.0.1",
+    "Installed UI smoke only attaches to an explicitly launched localhost WebView");
+}
 const dist = resolve(root, "apps/desktop/dist");
 const output = resolve(root, "build/windows-runtime", `frontend-smoke-${Date.now()}`);
 await mkdir(output, { recursive: true });
@@ -62,13 +69,27 @@ let browser;
 const evidence = { passed: false, synthetic: true, csp, fixture_sha256: record.artifact.sha256,
   health_attempts: 0, content_requests: 0, errors: [], csp_violations: [], stages: [] };
 try {
-  browser = await chromium.launch({
+  browser = cdpEndpoint ? await chromium.connectOverCDP(cdpEndpoint) : await chromium.launch({
     channel: process.env.ANKORA_SMOKE_BROWSER_CHANNEL || undefined,
     headless: true, args: ["--enable-unsafe-swiftshader"],
   });
   evidence.browser = browser.version();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const page = cdpEndpoint
+    ? browser.contexts().flatMap((context) => context.pages()).find(
+      (candidate) => candidate.url().includes("tauri.localhost"),
+    )
+    : await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  assert(page, "Installed WebView application page was not found");
+  evidence.surface = cdpEndpoint ? "installed WebView2" : "production Chromium";
   page.setDefaultTimeout(20_000);
+  if (cdpEndpoint) {
+    // Observe the real first launch before any synthetic route interception.
+    await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 120_000 });
+    await page.getByRole("navigation", { name: "Docking workflow" }).waitFor();
+    assert.equal(await page.getByText("Retry Connection", { exact: false }).count(), 0);
+    evidence.actual_first_launch_ready_without_retry = true;
+    await page.screenshot({ path: resolve(output, "installed-first-launch.png") });
+  }
   if (process.argv.includes("--trace-eval")) {
     const debuggerSession = await page.context().newCDPSession(page);
     await debuggerSession.send("Debugger.enable");
@@ -110,7 +131,12 @@ try {
     evidence.errors.push(`Unmocked UI request: ${path}`);
     return json({ message: "Unexpected synthetic request" }, 404);
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  const navigation = cdpEndpoint
+    ? await page.reload()
+    : await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  evidence.served_csp = navigation?.headers()["content-security-policy"];
+  assert(evidence.served_csp && !evidence.served_csp.includes("unsafe-eval"),
+    "The tested surface must actually serve a restrictive CSP");
   await page.getByTestId("splash-screen").waitFor();
   evidence.splash_images = await page.locator(".splash-card img").evaluateAll(async (images) => {
     await Promise.all(images.map((image) => image.decode().catch(() => {})));

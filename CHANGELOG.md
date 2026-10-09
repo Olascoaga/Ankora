@@ -12,6 +12,9 @@ All notable project changes are recorded here.
   integrity failures; retain full corresponding sources and offline WebView2.
 - Record implementation and candidate acceptance separately in
   `docs/validation/COMPACT_WINDOWS_INSTALLER_2026-10-09.md`.
+- The separate 939.9 MB candidate is 17.5% smaller and passes installed WebView2
+  startup/PDB/mmCIF rendering plus all ten native scientific adapter checks.
+  The original installer stays untouched; signing/clean-VM release gates remain.
 
 ## Packaged molecular viewer CSP - 2026-10-08
 
