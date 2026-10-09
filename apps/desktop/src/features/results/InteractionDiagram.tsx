@@ -7,6 +7,8 @@ import {
   shortInteractionType,
 } from "./interactionFamilies";
 export { interactionFamily } from "./interactionFamilies";
+import { displayedContacts, groupContacts, representativeContact, residueKey } from "./interactionPresentation";
+import type { InteractionDetail } from "./interactionPresentation";
 
 import type {
   InteractionAnalysisRecord,
@@ -21,6 +23,8 @@ interface InteractionDiagramProps {
   onSelect: (contact: InteractionContact) => void;
   /** Handed out so a figure export serializes this exact drawing. */
   svgRef?: RefObject<SVGSVGElement | null>;
+  contacts?: InteractionContact[];
+  detail?: InteractionDetail;
 }
 
 interface Point { x: number; y: number }
@@ -33,8 +37,8 @@ interface Point { x: number; y: number }
  */
 const WIDTH = 760;
 const HEIGHT = 524;
-const CAPTION_BASELINE = 26;
-const PLOT_TOP = 38;
+const CAPTION_BASELINE = 20;
+const PLOT_TOP = 54;
 const PLOT_BOTTOM = 470;
 const LEGEND_BASELINE = 502;
 const CENTRE = { x: WIDTH / 2, y: (PLOT_TOP + PLOT_BOTTOM) / 2 };
@@ -57,49 +61,76 @@ export function InteractionDiagram({
   selectedContactId,
   onSelect,
   svgRef,
+  contacts = analysis.contacts,
+  detail = "summary",
 }: InteractionDiagramProps) {
   const heavyAtoms = analysis.ligand_diagram.atoms.filter((atom) => atom.element !== "H");
   const atomPoints = fitLigand(heavyAtoms);
-  const groups = groupContacts(analysis.contacts);
+  const groups = groupContacts(contacts);
+  const residueCount = new Set(contacts.map(residueKey)).size;
   const residuePoints = placeResidues(groups, atomPoints, analysis);
 
   return (
     <figure className="interaction-diagram">
-      <figcaption>Select a contact to focus it in the 3D view.</figcaption>
+      <figcaption>
+        {detail === "summary" ? "Summary nodes retain every contact in ×N counts." : "Each line represents one recorded atom contact."}
+        {" "}Select a node or line to focus it in 3D.
+      </figcaption>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label="2D pose interaction diagram"
       >
-        <text className="interaction-figure-caption" x={16} y={CAPTION_BASELINE}>
-          {analysis.contacts.length} geometric contacts in {groups.length} residue/type
-          {" "}groups · skeletal ligand, carbons and hydrogens implicit
-        </text>
+        <g className="interaction-figure-caption">
+          <text x={16} y={CAPTION_BASELINE}>
+            {contacts.length} geometric contacts / {analysis.contacts.length} recorded · {residueCount} residues · {groups.length} residue/subtype groups
+          </text>
+          <text x={16} y={38}>
+            {detail === "summary" ? "Residue summary · one representative contact/group" : "All atom contacts · one line/contact"}
+            {" · skeletal ligand, carbons and hydrogens implicit"}
+          </text>
+        </g>
 
         {groups.map((group) => {
           const residuePoint = residuePoints.get(group.key)!;
-          const anchor = contactAnchor(group.contacts, atomPoints, analysis);
+          const representative = representativeContact(group.contacts, selectedContactId);
           const selected = group.contacts.some((item) => item.contact_id === selectedContactId);
           return (
             <g
               key={group.key}
               className={`interaction-edge${selected ? " selected" : ""}`}
               style={{ stroke: FAMILY_COLOR[interactionFamily(group.contacts[0].detector_type)] }}
-              role="button"
-              tabIndex={0}
-              aria-label={`${group.contacts[0].display_type} with ${residueLabel(group.contacts[0])}`}
-              onClick={() => onSelect(group.contacts[0])}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") onSelect(group.contacts[0]);
-              }}
             >
-              <line x1={anchor.x} y1={anchor.y} x2={residuePoint.x} y2={residuePoint.y} />
-              <ellipse cx={residuePoint.x} cy={residuePoint.y} rx={NODE_RX} ry={NODE_RY} />
-              <text x={residuePoint.x} y={residuePoint.y - 4}>{residueLabel(group.contacts[0])}</text>
-              <text className="interaction-node-type" x={residuePoint.x} y={residuePoint.y + 14}>
-                {shortInteractionType(group.contacts[0].detector_type)}{group.contacts.length > 1 ? ` ×${group.contacts.length}` : ""}
-              </text>
+              {displayedContacts(group.contacts, detail, selectedContactId).map((contact) => {
+                const anchor = contactAnchor([contact], atomPoints, analysis);
+                return <g
+                  key={contact.contact_id}
+                  className={`interaction-contact${contact.contact_id === selectedContactId ? " selected" : ""}`}
+                  role="button" tabIndex={0}
+                  aria-label={`${contact.contact_id}: ${contact.display_type} · ${residueLabel(contact)} · ${contact.ligand_atom_labels.join(", ")} to ${contact.protein_atom_labels.join(", ")}`}
+                  onClick={() => onSelect(contact)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(contact); }
+                  }}
+                >
+                  <title>{contact.display_type} · {contact.ligand_atom_labels.join(", ")} → {contact.protein_atom_labels.join(", ")}</title>
+                  <line x1={anchor.x} y1={anchor.y} x2={residuePoint.x} y2={residuePoint.y} />
+                </g>;
+              })}
+              <g role="button" tabIndex={0}
+                aria-label={`${representative.display_type} with ${residueLabel(representative)} · ${group.contacts.length} atom contacts`}
+                onClick={() => onSelect(representative)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(representative); }
+                }}
+              >
+                <ellipse cx={residuePoint.x} cy={residuePoint.y} rx={NODE_RX} ry={NODE_RY} />
+                <text x={residuePoint.x} y={residuePoint.y - 4}>{residueLabel(representative)}</text>
+                <text className="interaction-node-type" x={residuePoint.x} y={residuePoint.y + 14}>
+                  {shortInteractionType(representative.detector_type)}{group.contacts.length > 1 ? ` ×${group.contacts.length}` : ""}
+                </text>
+              </g>
             </g>
           );
         })}
@@ -297,17 +328,6 @@ function shouldLabelAtom(atom: LigandDiagramAtom, analysis: InteractionAnalysisR
     return false;
   });
   return !hasHeavyNeighbour;
-}
-
-function groupContacts(contacts: InteractionContact[]) {
-  const grouped = new Map<string, InteractionContact[]>();
-  for (const contact of contacts) {
-    const family = interactionFamily(contact.detector_type);
-    const residue = contact.residue;
-    const key = `${residue.chain_id}:${residue.sequence_number}:${residue.insertion_code}:${family}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), contact]);
-  }
-  return [...grouped.entries()].map(([key, groupedContacts]) => ({ key, contacts: groupedContacts }));
 }
 
 function residueLabel(contact: InteractionContact): string {

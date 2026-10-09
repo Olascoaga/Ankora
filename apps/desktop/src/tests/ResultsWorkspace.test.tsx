@@ -576,7 +576,7 @@ it("opens an exact pose and records its structured ProLIF contacts", async () =>
   expect(within(panel).getByRole("combobox", { name: "Recorded analysis" })).toHaveValue("analysis-1");
   expect(within(panel).getByText("DHA angle 151.2°")).toBeInTheDocument();
   expect(within(panel).getByText("b".repeat(64))).toBeInTheDocument();
-  expect(within(panel).getByText("1 recorded contact · receptor shown as context")).toBeInTheDocument();
+  expect(within(panel).getByText("1 displayed / 1 positioned contacts · receptor shown as context")).toBeInTheDocument();
   expect(within(panel).getByRole("button", { name: "Center on interaction site" })).toBeEnabled();
 
   const evidence = within(panel).getByRole("region", { name: "Pose interaction evidence" });

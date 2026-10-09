@@ -21,6 +21,8 @@ import {
   interactionFamily,
 } from "./InteractionDiagram";
 import { inlineSvg } from "./figureRendering";
+import { displayedContacts, groupContacts, residueKey } from "./interactionPresentation";
+import type { InteractionDetail } from "./interactionPresentation";
 
 interface PoseInteractionPanelProps {
   entry: CatalogEntry;
@@ -34,6 +36,8 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [analyses, setAnalyses] = useState<InteractionAnalysisRecord[]>([]);
   const [analysis, setAnalysis] = useState<InteractionAnalysisRecord | null>(null);
   const [selectedContact, setSelectedContact] = useState<InteractionContact | null>(null);
+  const [contactType, setContactType] = useState("");
+  const [detail, setDetail] = useState<InteractionDetail>("summary");
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +90,33 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     return () => { disposed = true; };
   }, [entry.catalog_id, molecule.ligand_id, selectedPoseId]);
 
+  // Display settings are scoped to one immutable analysis, not carried into
+  // another pose where the same subtype or contact may not exist.
+  useEffect(() => {
+    setContactType("");
+    setDetail("summary");
+  }, [analysis?.analysis_id]);
+
+  const visibleContacts = useMemo(
+    () => (analysis?.contacts ?? []).filter((contact) => !contactType || contact.detector_type === contactType),
+    [analysis, contactType],
+  );
+  const visibleSelectedContact = selectedContact && visibleContacts.some(
+    (contact) => contact.contact_id === selectedContact.contact_id,
+  ) ? selectedContact : null;
+  const positionedContacts = useMemo(
+    () => visibleContacts.filter((contact) => contact.ligand_point && contact.protein_point),
+    [visibleContacts],
+  );
+  const contactTypes = useMemo(() => {
+    const types = new Map<string, { label: string; count: number }>();
+    for (const contact of analysis?.contacts ?? []) {
+      const previous = types.get(contact.detector_type);
+      types.set(contact.detector_type, { label: contact.display_type, count: (previous?.count ?? 0) + 1 });
+    }
+    return [...types].sort(([left], [right]) => left.localeCompare(right));
+  }, [analysis]);
+
   const pose = inventory?.poses.find((item) => item.artifact_id === selectedPoseId) ?? null;
   const viewerSources = useMemo(
     () => sourcesFor(inventory, pose),
@@ -98,7 +129,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
    * endpoint is guessed for it: the panel says so instead.
    */
   const viewerContacts: ViewerContact[] = useMemo(
-    () => (analysis?.contacts ?? []).flatMap((contact) => {
+    () => displayedContacts(positionedContacts, detail, visibleSelectedContact?.contact_id ?? null).flatMap((contact) => {
       if (!contact.ligand_point || !contact.protein_point) return [];
       return [{
         contactId: contact.contact_id,
@@ -115,19 +146,17 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
         ] as [number, number, number],
       }];
     }),
-    [analysis],
+    [positionedContacts, detail, visibleSelectedContact?.contact_id],
   );
-  const contactsWithoutGeometry = analysis
-    ? analysis.contacts.length - viewerContacts.length
-    : 0;
+  const contactsWithoutGeometry = visibleContacts.length - positionedContacts.length;
 
-  const viewerSelection: ViewerSelection | null = selectedContact ? {
+  const viewerSelection: ViewerSelection | null = visibleSelectedContact ? {
     kind: "residue",
     residue: {
-      chainId: selectedContact.residue.chain_id,
-      residueName: selectedContact.residue.residue_name,
-      sequenceNumber: selectedContact.residue.sequence_number,
-      insertionCode: selectedContact.residue.insertion_code,
+      chainId: visibleSelectedContact.residue.chain_id,
+      residueName: visibleSelectedContact.residue.residue_name,
+      sequenceNumber: visibleSelectedContact.residue.sequence_number,
+      insertionCode: visibleSelectedContact.residue.insertion_code,
     },
   } : null;
 
@@ -243,6 +272,35 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
         </div>
       ) : null}
 
+      {analysis ? (
+        <div className="interaction-presentation-controls" role="region" aria-label="Interaction display">
+          <div className="interaction-display-counts" role="status">
+            <strong>{visibleContacts.length} / {analysis.contacts.length} atom contacts</strong>
+            <span>{new Set(visibleContacts.map(residueKey)).size} residues · {groupContacts(visibleContacts).length} residue/subtype groups</span>
+          </div>
+          <label>
+            Interaction type
+            <select value={contactType} onChange={(event) => {
+              setContactType(event.target.value);
+              setSelectedContact(null);
+            }}>
+              <option value="">All types ({analysis.contacts.length})</option>
+              {contactTypes.map(([type, item]) => <option key={type} value={type}>{item.label} ({item.count})</option>)}
+            </select>
+          </label>
+          <div className="interaction-detail-switch" role="group" aria-label="Contact detail">
+            <button type="button" aria-pressed={detail === "summary"} onClick={() => setDetail("summary")}>Residue summary</button>
+            <button type="button" aria-pressed={detail === "all"} onClick={() => setDetail("all")}>All atom contacts</button>
+          </div>
+          <p>
+            {detail === "summary"
+              ? "2D and 3D show one recorded contact per residue/subtype: the shortest distance, or the selected contact. ×N counts retain every atom contact."
+              : "2D and 3D draw every recorded atom contact; coincident lines can overlap."}
+            {" "}The table lists every contact matching the type filter. These are geometric contacts, not independent bonds or an affinity score.
+          </p>
+        </div>
+      ) : null}
+
       {pose && viewerSources.length ? (
         <div className="pose-interaction-review-grid">
           <div className="pose-interaction-viewer-column">
@@ -251,7 +309,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
                 <strong>3D interaction site</strong>
                 <small>
                   {viewerContacts.length
-                    ? `${viewerContacts.length} recorded contact${viewerContacts.length === 1 ? "" : "s"} · receptor shown as context`
+                    ? `${viewerContacts.length} displayed / ${positionedContacts.length} positioned contacts · receptor shown as context`
                     : "Exact pose with the prepared receptor"}
                 </small>
               </div>
@@ -273,7 +331,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
                 sources={viewerSources}
                 selection={viewerSelection}
                 interactionContacts={viewerContacts}
-                selectedContactId={selectedContact?.contact_id ?? null}
+                selectedContactId={visibleSelectedContact?.contact_id ?? null}
                 handleRef={viewerHandleRef}
               />
             </div>
@@ -281,7 +339,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
               <div className="filter-heading"><span>Save this view</span></div>
               {analysis && contactsWithoutGeometry > 0 ? (
                 <p className="field-note">
-                  {contactsWithoutGeometry} of {analysis.contacts.length} contacts were
+                  {contactsWithoutGeometry} of {visibleContacts.length} filtered contacts were
                   recorded before Ankora kept their 3D positions, so they are listed but
                   not drawn. Running the analysis again records them.
                 </p>
@@ -310,13 +368,16 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
               <>
                 <InteractionDiagram
                   analysis={analysis}
-                  selectedContactId={selectedContact?.contact_id ?? null}
+                  contacts={visibleContacts}
+                  detail={detail}
+                  selectedContactId={visibleSelectedContact?.contact_id ?? null}
                   onSelect={setSelectedContact}
                   svgRef={diagramSvgRef}
                 />
                 <InteractionTable
-                  contacts={analysis.contacts}
-                  selectedContactId={selectedContact?.contact_id ?? null}
+                  contacts={visibleContacts}
+                  filtered={!!contactType}
+                  selectedContactId={visibleSelectedContact?.contact_id ?? null}
                   onSelect={setSelectedContact}
                 />
                 <footer className="pose-interaction-provenance">
@@ -377,8 +438,9 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   );
 }
 
-function InteractionTable({ contacts, selectedContactId, onSelect }: {
+function InteractionTable({ contacts, filtered, selectedContactId, onSelect }: {
   contacts: InteractionContact[];
+  filtered: boolean;
   selectedContactId: string | null;
   onSelect: (contact: InteractionContact) => void;
 }) {
@@ -386,8 +448,8 @@ function InteractionTable({ contacts, selectedContactId, onSelect }: {
   if (contacts.length === 0) {
     return (
       <div className="state-resolved-note">
-        <strong>No supported contacts met this recorded profile.</strong>
-        <small>This does not mean the ligand has no interactions.</small>
+        <strong>{filtered ? "No contacts match this view filter." : "No supported contacts met this recorded profile."}</strong>
+        <small>{filtered ? "Choose All types to see the full record." : "This does not mean the ligand has no interactions."}</small>
       </div>
     );
   }

@@ -706,12 +706,21 @@ button { font: inherit; }
 .pose-interaction-controls .primary-button:disabled { opacity: 0.5; cursor: wait; }
 .pose-interaction-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; min-width: 0; color: var(--text); font-size: 13px; }
 .pose-interaction-identity code { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.interaction-presentation-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-raised); }
+.interaction-display-counts { display: grid; flex: 1 1 220px; gap: 4px; color: var(--text); font-size: 13px; }
+.interaction-display-counts span { color: var(--muted); font-size: 12px; }
+.interaction-presentation-controls label { display: grid; flex: 1 1 220px; min-width: 0; gap: 5px; color: var(--muted); font-size: 12px; }
+.interaction-presentation-controls select { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); background: var(--panel); font-size: 13px; }
+.interaction-detail-switch { display: flex; flex-wrap: wrap; gap: 6px; }
+.interaction-detail-switch button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); font-size: 13px; cursor: pointer; }
+.interaction-detail-switch button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.interaction-presentation-controls p { flex: 1 1 100%; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .pose-interaction-review-grid { display: grid; flex: 0 0 auto; grid-template-columns: 1fr; align-items: start; gap: 12px; min-height: 0; }
 .pose-interaction-viewer-column { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: auto; overflow: visible; }
 .pose-interaction-viewer-heading { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-raised); }
 .pose-interaction-viewer-heading > div { display: grid; gap: 2px; min-width: 0; }
 .pose-interaction-viewer-heading strong { color: var(--text); font-size: 13px; }
-.pose-interaction-viewer-heading small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.pose-interaction-viewer-heading small { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .pose-interaction-viewer-heading .quiet-button { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--accent); background: transparent; font-size: 12px; cursor: pointer; }
 .pose-interaction-viewer-heading .quiet-button:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; }
 .pose-interaction-viewer { flex: 0 0 auto; height: clamp(340px, 50vh, 540px); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #090f14; }
@@ -724,7 +733,7 @@ button { font: inherit; }
 .interaction-diagram svg { display: block; width: 100%; max-height: 524px; }
 /* Caption and legend live inside the SVG so the exported figure explains
    itself to a reader who never saw this screen. */
-.interaction-figure-caption { fill: var(--muted); font-size: 15px; }
+.interaction-figure-caption { fill: var(--muted); font-size: 12px; }
 .interaction-figure-legend text { fill: var(--muted); font-size: 15px; dominant-baseline: middle; }
 .ligand-diagram-bonds line { stroke: var(--text); stroke-width: 2.25; stroke-linecap: round; opacity: 0.9; }
 .ligand-diagram-bonds .aromatic-inner { stroke-width: 1.6; stroke-dasharray: 4 4; opacity: 0.72; }
@@ -742,8 +751,8 @@ button { font: inherit; }
 .interaction-edge ellipse { fill: var(--panel-raised); stroke-width: 2; }
 .interaction-edge text { fill: var(--text); stroke: none; font-size: 15px; font-weight: 750; text-anchor: middle; pointer-events: none; }
 .interaction-edge .interaction-node-type { fill: var(--muted); font-size: 11px; font-weight: 600; }
-.interaction-edge:hover ellipse, .interaction-edge:focus-visible ellipse, .interaction-edge.selected ellipse { fill: var(--accent-soft); stroke-width: 4; }
-.interaction-edge.selected line { stroke-width: 4; opacity: 1; }
+.interaction-edge:hover ellipse, .interaction-edge:has(:focus-visible) ellipse, .interaction-edge.selected ellipse { fill: var(--accent-soft); stroke-width: 4; }
+.interaction-contact.selected line, .interaction-contact:focus-visible line { stroke-width: 4; opacity: 1; }
 .pose-interaction-evidence > .interaction-table-scroll { flex: 0 0 auto; max-height: 360px; }
 .interaction-table-scroll { min-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 9px; }
 .interaction-table-scroll table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12px; }

@@ -2,6 +2,21 @@
 
 All notable project changes are recorded here.
 
+## Lossless pose interaction presentation - 2026-10-09
+
+- Preserve every recorded atomic contact while distinguishing atomic counts,
+  residues and exact detector-subtype groups. Donor and acceptor contacts on
+  one residue no longer collapse into a single 2D label.
+- Add a default residue summary and an all-atomic-contact view, plus an exact
+  subtype filter shared by 2D, 3D and the table. Summary multiplicities remain
+  visible as `×N`; the table retains every matching contact in either mode.
+- Keep selection linked, retain historical contacts without 3D endpoints, and
+  carry detail mode/counts into saved SVGs. Scientific detection and saved
+  analyses are unchanged; existing installers are not rebuilt or overwritten.
+- Add component regressions and a production-browser gate under strict CSP,
+  including laptop/monitor layout and optional hash-verified read-only replay.
+  Evidence: `docs/validation/INTERACTION_PRESENTATION_2026-10-09.md`.
+
 ## Lossless compact offline packaging - 2026-10-09
 
 - Build a separate candidate without replacing previously delivered installers.

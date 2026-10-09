@@ -96,6 +96,34 @@ explicit hydrogen to its bonded heavy atom, but it may not change the recorded
 atom indices, merge distinct residues, invent missing contacts, or hide
 duplicate contact evidence from the table.
 
+### Atomic counts and view detail (2026-10-09)
+
+The default ProLIF adapter retains `count=True`: counts describe recorded atom
+combinations meeting the geometric profile, not independent bonds or an affinity
+score. A large hydrophobic contact count is not silently reduced in the record.
+
+The default **Residue summary** groups by complete residue identity and exact
+detector subtype. Colour families do not define groups: donor/acceptor,
+face/edge, cation-pi/pi-cation, and complementary ionic/halogen/metal subtypes
+remain distinct even when they share a colour. Each node carries its full `×N`
+atomic multiplicity. Summary lines use an actual recorded contact: the shortest
+recorded distance, or the selected contact in that group; no mean geometry is
+invented. This representative is a display choice, not an energy ranking.
+
+**All atom contacts** draws every recorded contact in 2D and every contact with
+recorded endpoints in 3D. Coincident lines may overlap. The exact-subtype filter
+applies to both drawings and the table; the table retains every matching atomic
+contact in either detail mode. Selection can display any table contact, including
+a non-default representative. A new analysis resets view filters; filtering a
+selection out clears it rather than focusing a hidden contact.
+
+Visible atomic-contact, residue and residue/subtype-group counts distinguish
+multiplicity from the summary. Exported SVGs retain filtered/full counts, detail
+mode and the skeletal-ligand explanation inside their frame. Historical records
+without 3D endpoints remain available in 2D/table with an explicit notice;
+positioned siblings are still drawn. No display action creates an analysis,
+changes the detector profile, or rewrites recorded evidence.
+
 ## Acceptance criteria
 
 1. Vina poses and AutoDock4 CPU/GPU runs resolve through one typed result API.

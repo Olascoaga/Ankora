@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { InteractionDiagram } from "../features/results/InteractionDiagram";
 import { FAMILY_COLOR, FAMILY_LEGEND } from "../features/results/interactionFamilies";
@@ -76,6 +76,48 @@ function draw() {
   );
   return screen.getByRole("img", { name: "2D pose interaction diagram" }) as unknown as SVGSVGElement;
 }
+
+it("keeps donor and acceptor contacts on the same residue as distinct nodes", () => {
+  // SYNTHETIC presentation fixture, not a predicted scientific result.
+  const contacts = ["HBDonor", "HBAcceptor"].map((type, index) => ({
+    ...analysis.contacts[0], contact_id: `hydrogen-${index}`, detector_type: type,
+    display_type: type === "HBDonor" ? "H-bond · ligand donor" : "H-bond · ligand acceptor",
+  }));
+  render(<InteractionDiagram analysis={{ ...analysis, contacts }} selectedContactId={null} onSelect={() => {}} />);
+  expect(screen.getByRole("button", { name: /H-bond · ligand donor with TRP A:139/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /H-bond · ligand acceptor with TRP A:139/ })).toBeInTheDocument();
+  expect(screen.getByText("H-donor")).toBeInTheDocument();
+  expect(screen.getByText("H-acceptor")).toBeInTheDocument();
+});
+
+it("retains ×30 in summary and offers each atomic contact in the detailed diagram", () => {
+  // SYNTHETIC multiplicity regression, not a detector or affinity benchmark.
+  const contacts = Array.from({ length: 30 }, (_, index) => ({
+    ...analysis.contacts[0], contact_id: `atomic-${index}`,
+    ligand_atom_indices: [index % 12], ligand_atom_labels: [`A${index % 12}`],
+  }));
+  const onSelect = vi.fn();
+  const { rerender } = render(<InteractionDiagram analysis={{ ...analysis, contacts }} selectedContactId={null} onSelect={onSelect} />);
+  expect(screen.getByText("Hydrophobic ×30")).toBeInTheDocument();
+  expect(document.querySelectorAll(".interaction-contact line")).toHaveLength(1);
+  rerender(<InteractionDiagram analysis={{ ...analysis, contacts }} detail="all" selectedContactId={null} onSelect={onSelect} />);
+  expect(document.querySelectorAll(".interaction-contact line")).toHaveLength(30);
+  const last = screen.getByRole("button", { name: /^atomic-29:/ });
+  fireEvent.click(last);
+  expect(onSelect).toHaveBeenLastCalledWith(contacts[29]);
+  fireEvent.keyDown(last, { key: "Enter" });
+  expect(onSelect).toHaveBeenCalledTimes(2);
+});
+
+it("carries filtered counts and the detail mode into the saved SVG", () => {
+  const contacts = [...analysis.contacts, { ...analysis.contacts[0], contact_id: "second" }];
+  render(<InteractionDiagram analysis={{ ...analysis, contacts }} contacts={[contacts[0]]} detail="all" selectedContactId={null} onSelect={() => {}} />);
+  const svg = screen.getByRole("img", { name: "2D pose interaction diagram" }) as unknown as SVGSVGElement;
+  const output = inlineSvg(svg, { background: "#ffffff" });
+  expect(output).toContain("1 geometric contacts / 2 recorded");
+  expect(output).toContain("All atom contacts · one line/contact");
+  expect(output).toContain("carbons and hydrogens implicit");
+});
 
 function bondSpan(svg: SVGSVGElement): { width: number; height: number } {
   const lines = [...svg.querySelectorAll(".ligand-diagram-bonds line")];

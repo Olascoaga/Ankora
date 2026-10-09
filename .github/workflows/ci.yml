@@ -75,6 +75,9 @@ jobs:
       - name: Verify packaged frontend startup and molecular viewer CSP
         run: node scripts/smoke_packaged_frontend.mjs
 
+      - name: Verify lossless pose interaction presentation
+        run: node scripts/smoke_interaction_presentation.mjs
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
 
