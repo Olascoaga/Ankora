@@ -4,7 +4,9 @@
  * Optional: --analysis FILE --receptor FILE --pose FILE replays a saved analysis
  * and its hash-verified inputs without modifying them or recomputing contacts.
  * Run after npm run build, or use --development for the actual Vite configuration
- * with a new isolated optimizer cache. Uses the pinned Playwright browser.
+ * with a new isolated optimizer cache. --cdp attaches only to an explicitly
+ * launched localhost installed WebView; it never enables debugging in shipping
+ * configuration. Otherwise uses the pinned Playwright browser.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -17,6 +19,15 @@ import ts from "typescript";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const development = process.argv.includes("--development");
+const cdpIndex = process.argv.indexOf("--cdp");
+const cdpEndpoint = cdpIndex >= 0 ? process.argv[cdpIndex + 1] : null;
+if (cdpIndex >= 0) {
+  assert(cdpEndpoint, "--cdp requires an explicit localhost endpoint");
+  const endpoint = new URL(cdpEndpoint);
+  assert(endpoint.protocol === "http:" && endpoint.hostname === "127.0.0.1",
+    "Installed interaction smoke only attaches to a localhost WebView");
+  assert(!development, "Installed WebView and development modes are separate gates");
+}
 // Compile the same typed, labelled fixture the component regression uses.
 const fixtureSource = await readFile(resolve(root, "apps/desktop/src/tests/fixtures/interactionPresentation.ts"), "utf8");
 const compiled = ts.transpileModule(fixtureSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
@@ -94,20 +105,25 @@ const server = development ? await (await import("vite")).createServer({
 if (development) await server.listen();
 else await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const port = (server.httpServer ?? server).address().port;
-const evidence = { passed: false, serving_mode: development ? "development" : "production",
+const evidence = { passed: false, serving_mode: cdpEndpoint ? "installed WebView2" : development ? "development" : "production",
   isolated_cold_cache: development, synthetic: !real, analysis_id: record.analysis_id,
   source_hashes: recordedBytes?.map(hash) ?? null, contacts: record.contacts.length,
   old_hydrogen_family_groups: oldGroups, exact_subtype_groups: groups, viewports: [], errors: [], csp_violations: [] };
 let browser;
 try {
-  browser = await chromium.launch({ channel: process.env.ANKORA_SMOKE_BROWSER_CHANNEL || undefined,
+  browser = cdpEndpoint ? await chromium.connectOverCDP(cdpEndpoint) : await chromium.launch({ channel: process.env.ANKORA_SMOKE_BROWSER_CHANNEL || undefined,
     headless: true, args: ["--enable-unsafe-swiftshader"] });
   evidence.browser = browser.version();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const page = cdpEndpoint
+    ? browser.contexts().flatMap((context) => context.pages()).find(
+      (candidate) => candidate.url().includes("tauri.localhost"),
+    )
+    : await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  assert(page, "Installed WebView application page was not found");
   page.on("pageerror", (error) => evidence.errors.push(error.stack));
-  await page.exposeFunction("recordCspViolation", (value) => evidence.csp_violations.push(value));
+  await page.exposeFunction("recordInteractionCspViolation", (value) => evidence.csp_violations.push(value));
   await page.addInitScript(() => document.addEventListener("securitypolicyviolation", (event) => {
-    window.recordCspViolation({ directive: event.violatedDirective, blocked: event.blockedURI });
+    window.recordInteractionCspViolation({ directive: event.violatedDirective, blocked: event.blockedURI });
   }));
   await page.route("http://127.0.0.1:8765/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace("/api/v1", "");
@@ -130,8 +146,10 @@ try {
     evidence.errors.push(`Unexpected UI request: ${path}`);
     return json({ message: "Unexpected read-only replay request" }, 404);
   });
-  const navigation = await page.goto(`http://127.0.0.1:${port}/`);
+  const navigation = cdpEndpoint ? await page.reload() : await page.goto(`http://127.0.0.1:${port}/`);
   assert(navigation.headers()["content-security-policy"].includes("script-src 'self'"));
+  evidence.served_csp = navigation.headers()["content-security-policy"];
+  assert(!evidence.served_csp.includes("unsafe-eval"));
   const openAnalysis = async () => {
     await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
     await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Results/ }).click();

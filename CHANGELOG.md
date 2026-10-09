@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Updated private-beta installer - 2026-10-09
+
+- Rebuild the complete compact candidate with the accepted lossless interaction
+  presentation and viewer repairs, preserving all previously delivered EXEs.
+  Scientific runtime, engines, models and protocols remain unchanged.
+- Add opt-in installed-WebView interaction acceptance to the guarded installer
+  smoke: shared 2D/3D counts, summary/all-contact modes, subtype filtering and
+  reachable saving controls. Debugging remains local to the test child process.
+- Build and acceptance evidence:
+  `docs/validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md`.
+- The new 939.89 MB candidate passes actual NSIS installation, cold startup,
+  installed WebView2 PDB/mmCIF and interaction rendering, all ten native
+  adapter smokes, and isolated uninstall. It remains an unsigned private beta.
+
 ## Development molecular viewer loading - 2026-10-09
 
 - Fix Mol*'s CommonJS dependency loading in development while preserving the

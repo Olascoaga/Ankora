@@ -3,7 +3,8 @@ param(
     [string]$InstallerPath,
     [Parameter(Mandatory = $true)][string]$PythonPath,
     [switch]$ScientificMatrix,
-    [switch]$FrontendSmoke
+    [switch]$FrontendSmoke,
+    [switch]$InteractionSmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +50,7 @@ $desktopProcess = $null
 $uninstaller = $null
 $oldPath = $env:Path
 $oldWebViewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-$nodePath = if ($FrontendSmoke) { (Get-Command node.exe -ErrorAction Stop).Source } else { $null }
+$nodePath = if ($FrontendSmoke -or $InteractionSmoke) { (Get-Command node.exe -ErrorAction Stop).Source } else { $null }
 $debugPort = $null
 $evidence = Join-Path $buildRoot ("installed-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $evidence | Out-Null
@@ -72,6 +73,13 @@ try {
     if ($null -eq $desktopExecutable -or $null -eq $uninstaller) {
         throw "Installed application or uninstaller was not found in $installDir."
     }
+
+    # Retain the actual installed byte identities, not only the build inputs.
+    [ordered]@{
+        installer_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $InstallerPath).Hash.ToLowerInvariant()
+        desktop_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktopExecutable.FullName).Hash.ToLowerInvariant()
+        backend_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $installDir "backend/ankora-backend.exe")).Hash.ToLowerInvariant()
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence "installation.json") -Encoding utf8
 
     $legalDir = Join-Path $installDir "legal"
     foreach ($legalFile in @(
@@ -120,7 +128,7 @@ try {
     }
 
     $env:Path = "$env:WINDIR\System32;$env:WINDIR"
-    if ($FrontendSmoke) {
+    if ($FrontendSmoke -or $InteractionSmoke) {
         # Developer acceptance only; this environment is never shipped or set globally.
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
         $listener.Start()
@@ -172,6 +180,10 @@ try {
     if ($FrontendSmoke) {
         & $nodePath (Join-Path $projectRoot "scripts/smoke_packaged_frontend.mjs") --cdp "http://127.0.0.1:$debugPort"
         if ($LASTEXITCODE -ne 0) { throw "Installed WebView2 frontend smoke failed" }
+    }
+    if ($InteractionSmoke) {
+        & $nodePath (Join-Path $projectRoot "scripts/smoke_interaction_presentation.mjs") --cdp "http://127.0.0.1:$debugPort"
+        if ($LASTEXITCODE -ne 0) { throw "Installed WebView2 interaction smoke failed" }
     }
     if ($ScientificMatrix) {
         & (Join-Path $installDir "backend/ankora-backend.exe") --worker native-smoke --root $projectRoot --output (Join-Path $evidence "scientific matrix á")
