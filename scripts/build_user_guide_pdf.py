@@ -43,7 +43,10 @@ def find_browser() -> pathlib.Path | None:
     return None
 
 CSS = """
-@page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+@page { size: A4; margin: 18mm 16mm 18mm 16mm;
+  @bottom-center { content: "Ankora · 7AQF / RV2 · " counter(page);
+    font: 8pt "Segoe UI", sans-serif; color:#5a6b78; } }
+@page:first { @bottom-center { content: none; } }
 :root { --ink:#15202b; --muted:#5a6b78; --line:#d7dee4; --accent:#0d7a5f; --soft:#f4f7f8; }
 * { box-sizing: border-box; }
 body { margin:0; color:var(--ink); background:#fff;
@@ -68,7 +71,8 @@ th, td { border-bottom: 1px solid var(--line); padding: 4pt 6pt; text-align: lef
 th { background: var(--soft); font-weight: 600; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 16pt 0; }
 figure { margin: 10pt 0 13pt; page-break-inside: avoid; }
-figure img { width: 100%; border: 1px solid var(--line); border-radius: 5px; display:block; }
+figure img { width: auto; max-width: 100%; max-height: 170mm;
+  border: 1px solid var(--line); border-radius: 5px; display:block; margin:0 auto; }
 figure em { display:block; margin-top: 4pt; font-size: 8.8pt; color: var(--muted);
   font-style: normal; }
 .cover { page-break-after: always; padding-top: 55mm; }
@@ -193,10 +197,11 @@ def convert(markdown: str) -> str:
 def build_pdf(source: pathlib.Path, target: pathlib.Path, browser: pathlib.Path) -> None:
     cover = (
         '<div class="cover"><h1>Ankora</h1>'
-        '<div class="sub">User guide &mdash; version 0.1.0 &middot; Windows</div>'
-        '<p>Review draft &middot; 6 October 2026</p>'
+        '<div class="sub">User guide - version 0.1.0 &middot; Windows</div>'
+        '<p>Private beta &middot; illustrated edition &middot; 9 October 2026</p>'
         '<div class="meta">A guided docking campaign, from a PDB accession to a '
-        'citable record.<br>MIT licence &middot; github.com/Olascoaga/Ankora</div></div>'
+        'citable record.<br>SERPINE1 / PAI-1 &middot; PDB 7AQF &middot; RV2'
+        '<br>MIT licence &middot; github.com/Olascoaga/Ankora</div></div>'
     )
     body = convert(source.read_text(encoding="utf-8"))
 

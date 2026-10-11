@@ -25,9 +25,11 @@ Ankora implements the M1-M9 workflow. Frozen completed evidence exists for PIK3C
 ## User guide and complete-installer target
 
 The [illustrated user guide](docs/USER_GUIDE.md) and its
-[PDF edition](docs/Ankora-User-Guide.pdf) are review drafts. They distinguish
-historical scientific evidence from a fresh walkthrough; installer acceptance
-and six walkthrough figures remain pending.
+[PDF edition](docs/Ankora-User-Guide.pdf) document the private beta with a fully
+illustrated 7AQF/RV2 walkthrough. Fresh ligand preparation, Vina docking,
+interaction analysis and exports are distinguished from historical receptor
+and redocking evidence; no matched-input engine comparison is implied.
+See the [manual verification record](docs/validation/USER_GUIDE_7AQF_2026-10-09.md).
 
 The required community experience is **install Ankora and run the supported
 workflow**, with all scientific tools included and no manual dependency or

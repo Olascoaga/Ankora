@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Illustrated 7AQF user guide - 2026-10-09
+
+- Complete the private-beta manual with real, captioned 7AQF/RV2 figures,
+  current ligand controls, explicit receptor decisions, all binding-site modes,
+  library filtering, results, interaction detail modes and file exports.
+- Document a new isolated anionic-RV2/Vina/ProLIF walkthrough separately from
+  the preserved historical receptor and CPU/GPU redocking evidence. Explain
+  atomic contacts versus summary groups, parent versus prepared ligand state,
+  and the current read-only redocking-validation UI limitation.
+- Regenerate and visually inspect the printable PDF; add checks for real image
+  assets, sequential captions, private-path exclusion and portrait print sizing.
+  Evidence: `docs/validation/USER_GUIDE_7AQF_2026-10-09.md`.
+- No scientific implementation, original projects or installer payload changes.
+
 ## Updated private-beta installer - 2026-10-09
 
 - Rebuild the complete compact candidate with the accepted lossless interaction

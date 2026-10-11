@@ -35,6 +35,39 @@ def test_real_guide_contents_links_have_heading_targets(builder: ModuleType) -> 
     assert len(anchors) == len(set(anchors))
 
 
+def test_real_illustrated_guide_has_complete_sequential_figures(builder: ModuleType) -> None:
+    source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
+    images = re.findall(r"!\[Figure (\d+)\.[^\]]+\]\((images/[^)]+)\)", source)
+    captions = re.findall(r"^\*Figure (\d+)\.", source, re.MULTILINE)
+    assert [int(number) for number, _ in images] == list(range(1, 20))
+    assert captions == [number for number, _ in images]
+    assert "[Figure pending]" not in source
+    assert "Review draft" not in source
+    assert re.search(r"[A-Z]:[\\/]", source) is None
+    for _, relative in images:
+        image = ROOT / "docs" / relative
+        assert image.is_file()
+        assert image.suffix == ".jpg"
+        assert image.read_bytes().startswith(b"\xff\xd8\xff")
+    assert builder.convert(source).count("<figure>") == 19
+
+
+def test_guide_distinguishes_tutorial_and_validation_limitations() -> None:
+    source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
+    assert "Current beta UI limitation" in source
+    assert "not a controlled comparison of engines" in source
+    assert "17 atomic contacts, 5 contacting" in source
+    assert "8 residue/subtype groups" in source
+    assert "13 / 17 contacts" in source
+    assert "383.767" in source and "384.775" in source
+
+
+def test_print_layout_bounds_portrait_images(builder: ModuleType) -> None:
+    assert "max-width: 100%" in builder.CSS
+    assert "max-height: 170mm" in builder.CSS
+    assert "page-break-inside: avoid" in builder.CSS
+
+
 def test_duplicate_headings_and_html_are_escaped(builder: ModuleType) -> None:
     rendered = builder.convert('## Same\n\n## Same\n\n<script>"test"</script>')
     assert 'id="same"' in rendered and 'id="same-1"' in rendered
