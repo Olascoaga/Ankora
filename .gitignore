@@ -36,3 +36,6 @@ logs/
 
 # Local agent continuity state
 memory/
+.claude/
+/CLAUDE.md
+/docs/validation/AUDIT_ADVERSARIAL.md

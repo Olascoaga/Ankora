@@ -2,6 +2,13 @@
 
 All notable project changes are recorded here.
 
+## Private repository state - 2026-10-11
+
+- Stop tracking local Claude configuration and the internal adversarial audit;
+  preserve their local copies and exclude them from future commits.
+- Keep private continuity memory excluded, while retaining public contracts,
+  ADRs, scientific validation records and implementation. No history rewrite.
+
 ## Illustrated 7AQF user guide - 2026-10-09
 
 - Complete the private-beta manual with real, captioned 7AQF/RV2 figures,
