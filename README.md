@@ -1,20 +1,130 @@
+<p align="center">
+  <img src="docs/images/readme-banner.svg" alt="Ankora — Molecular docking, with the scientist in control" width="100%">
+</p>
+
 # Ankora
 
-Ankora is a native Windows visual workbench for performing molecular docking step by step. It is designed to keep scientists in control of every inspection, preparation, execution, and review decision.
+[![Windows CI](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml)
+[![Status: private beta](https://img.shields.io/badge/status-private%20beta-60d6a6?style=flat-square&labelColor=132127)](#installation)
+[![Platform: Windows 11 x64](https://img.shields.io/badge/platform-Windows%2011%20x64-5dc7dc?style=flat-square&labelColor=132127)](#installation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-60d6a6?style=flat-square&labelColor=132127)](LICENSE)
 
-This repository contains the implemented and accepted M1-M9 functional workspaces. Ankora preserves crystallographic compounds and local SDF/SD-style MOL/SMILES libraries, previews Lipinski/Veber/Ghose/Muegge/QED properties plus PAINS/Brenk and duplicate findings, requires an immutable filtered-selection manifest before batch 3D preparation, and displays one traceable row per molecule with SMILES, properties, rules, alerts, MMFF energy, and status. It resolves disconnected components and undefined tetrahedral stereochemistry only through visible choices, offers explicit physiological-pH protonation-state enumeration, supports bounded scientist-selected protonation/tautomer microstates for screening, creates explicitly confirmed MMFF-minimized independent ETKDGv3 conformers, prepares converged conformers as Meeko ligand PDBQT, and defines an editable immutable docking box.
+**Molecular docking, with the scientist in control.**
 
-M5 runs one prepared ligand or an applied screening library through native AutoDock Vina 1.2.7 or the AutoDock4 scoring family. AutoGrid4 4.2.6 creates immutable reusable map sets; AutoDock4 4.2.6 provides the reproducible CPU reference path; AutoDock-GPU 1.6 provides optional accelerated execution with its distinct search protocol and an explicit non-bitwise-reproducibility warning. Screening campaigns restore after refresh, report exact molecule-level progress, retain failures, expose every pose or AutoDock cluster/run, and support side-by-side Vina/AutoDock4 ranking comparison without inventing a combined score. M6 adds durable project-level Results, M7 records redocking validation, M8 exports reproducible campaign bundles with explicit campaign, input, and export-event identity, and M9 analyzes an exact preserved pose with structured ProLIF contacts, an Ankora-rendered 2D diagram, and Mol* residue focus.
+Ankora is an open-source desktop workbench for molecular docking and virtual
+screening. Go from a structure and a compound library to inspectable poses,
+interaction diagrams and exportable evidence—without stitching together
+separate command-line tools.
 
-Independent library operations use bounded multicore execution by default: Ankora uses the available logical processors minus one, capped by the number of molecules, while preserving source order, per-molecule artifacts, isolated errors, and recorded worker counts. For virtual-screening docking, one explicit total CPU budget is divided between concurrent Vina processes so outer scheduling never silently multiplies Vina's inner `--cpu` allocation. A single application-wide resource arbiter admits ligand preparation, Vina, AutoGrid, AutoDock4 CPU, and AutoDock-GPU work only when their complete CPU, GPU, memory, and disk reservation fits; queued and active allocations are visible through the system resource status.
+Chemical decisions stay visible. Imported files stay unchanged. Every derivative
+and calculation carries its inputs, parameters, tool identity and raw outputs.
 
-The desktop interface is a fixed scientific workbench rather than a scrolling form: explicit wide, medium, and small shell states respond to usable CSS pixels (including Windows display scaling), workflow and inspector panels are resizable/collapsible, receptor issues and screening compounds use viewer-linked data tables, single-ligand and virtual-screening modes are explicit, and background work, warnings, provenance, commands, and tool readiness live in a shared activity center. Long scientific documents such as pose-interaction review have one obvious workspace scrollbar; dense tables retain only their bounded data-region scrolling. If the backend or machine stops during engine work, the next startup preserves and exposes the interrupted attempt; an explicitly confirmed retry starts under a new immutable identity rather than appending to partial evidence. Dark, light, and Windows-following themes plus comfortable/compact density are available from the View menu. The implementation rules are recorded in [docs/design/UX_FOUNDATION.md](docs/design/UX_FOUNDATION.md).
+**[User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Installation](#installation) · [Scientific evidence](#scientific-validation-status) · [For developers](docs/DEVELOPMENT.md)**
 
-The Project Workspace creates and switches independent scientific workspaces
-without rewriting the migrated `default` project. It also exposes the
-record-derived dependency graph: scientists may mark an input stale with an
-explicit reason, after which Ankora marks only its downstream dependents stale
-while retaining every original record and alternative branch for inspection.
+[![Real 7AQF/RV2 pose review: linked 3D view, skeletal 2D interaction diagram and recorded contact table](docs/images/guide11-interactions.jpg)](docs/images/guide11-interactions.jpg)
+
+*Actual private-beta interface: a preserved RV2 pose in 7AQF, reviewed in 3D
+and 2D. This analysis contains 17 atomic contacts in eight residue/subtype
+groups. Contacts describe geometry—not measured affinity.*
+
+## From structure to evidence
+
+| Workspace | What you can do |
+| --- | --- |
+| **Structure** | Import PDB/mmCIF, fetch from RCSB or AlphaFold DB, and inspect chains, components and structural issues. |
+| **Receptor** | Explicitly choose chains, waters, components and residue actions; repair, protonate and prepare receptor PDBQT with recorded decisions. |
+| **Ligands** | Inspect one compound or import multi-molecule SDF/SD-style MOL/SMILES libraries. Review molecular properties, chemical states and filtering before independent 3D preparation and minimization. |
+| **Binding site** | Define an editable search box from the full protein, a reference ligand, selected residues, manual coordinates or a P2Rank pocket. Move and resize it directly in the viewer. |
+| **Docking** | Run a single ligand or a prepared library, with explicit engine settings, bounded resource allocation, live molecule-level progress and preserved failures. |
+| **Results** | Browse campaigns, sort compounds, inspect poses or clusters, compare rankings without combining incompatible scores, and move selected campaigns to recoverable Trash. |
+| **Validation** | Review recorded redocking evidence, RMSD, ranking and repeatability. Current redocking review is read-only; see the guide for that boundary. |
+| **Export** | Save figures, exact ligand–receptor PDB complexes, record-derived Methods and portable screening campaign bundles. |
+
+### Prepare libraries deliberately
+
+- Preview **Lipinski, Veber, Ghose, Muegge and QED**, with **PAINS/Brenk**
+  alerts and duplicate findings. Rules and alerts inform an explicit selection;
+  they do not establish biological activity.
+- Inspect molecular weight, SMILES, charge, stereochemistry and components.
+  Resolve ambiguous chemistry through visible choices, including optional
+  bounded protonation/tautomer microstate enumeration.
+- Generate independent **ETKDGv3 conformers**, minimize with **MMFF**, and
+  prepare converged structures with **Meeko**. Keep the imported reference intact.
+- Process independent molecules with bounded multicore workers. Docking shares
+  an explicit CPU/GPU/memory budget instead of silently oversubscribing the machine.
+
+### Choose the engine, keep its meaning
+
+| Engine | Execution | Important distinction |
+| --- | --- | --- |
+| **AutoDock Vina 1.2.7** | CPU · single ligand or library | Vina poses and scores retain their own scoring scale. |
+| **AutoDock4 4.2.6** | CPU · single ligand or library | AutoGrid4 maps are preserved and reusable; review native DLG clusters and runs. |
+| **AutoDock-GPU 1.6** | Optional OpenCL GPU · single ligand or library | Uses the AutoDock4 scoring family with a different search protocol. GPU runs are not assumed bitwise reproducible. |
+
+GNINA is deferred, not a supported engine in this beta. Scores from different
+scoring functions are not interchangeable, and a lower docking score is not
+proof of stronger experimental affinity.
+
+## A workbench you can inspect
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/images/guide03-receptor.jpg"><img src="docs/images/guide03-receptor.jpg" alt="7AQF receptor preparation with explicit chain and residue decisions" width="100%"></a></td>
+    <td width="50%"><a href="docs/images/guide06-binding-site.jpg"><img src="docs/images/guide06-binding-site.jpg" alt="7AQF binding-site workspace with an editable search box around the reference ligand" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td><strong>Inspect before transforming.</strong><br>Viewer-linked issues and explicit receptor decisions.</td>
+    <td><strong>Define the search space.</strong><br>A visible, editable box before any docking calculation.</td>
+  </tr>
+</table>
+
+*Real 7AQF screenshots from the [illustrated walkthrough](docs/USER_GUIDE.md),
+not interface mockups. Open an image to see it at full resolution.*
+
+The interface supports dark, light and Windows-following themes,
+comfortable/compact density, and resizable or collapsible side panels.
+Activity, tool readiness, warnings and provenance stay accessible in one place.
+Independent project workspaces keep separate evidence, while the dependency
+graph makes stale inputs and their affected derivatives visible.
+
+## Installation
+
+**Current distribution: private beta for Windows 11 x64.** The source is public;
+there is not yet a public installer release. Invited testers receive the complete
+installer and its checksum through the beta distribution channel.
+
+1. Obtain the reviewed beta installer and verify its SHA-256 checksum.
+2. Run the installer and follow the setup steps.
+3. Open Ankora, check **Scientific tools**, and start with the
+   [7AQF/RV2 walkthrough](docs/USER_GUIDE.md).
+
+**No separate Python, Conda, Java or scientific-tool installation is required.**
+The complete installer includes the scientific Python runtime, receptor/ligand
+preparation tools, supported docking engines, P2Rank, a private Java runtime and
+offline WebView2. RCSB/AlphaFold downloads require internet access; preparation
+and docking execute locally.
+
+GPU docking additionally needs compatible OpenCL hardware and its vendor
+driver. Ankora does not install GPU drivers or silently replace CPU execution.
+Linux and macOS are not accepted release platforms yet.
+
+The beta installer is **unsigned**. Follow your institution's software policy;
+do not disable system security to install it. Signing, broader clean-machine
+acceptance and hardware coverage remain public-release gates. See the
+[latest installer acceptance record](docs/validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md).
+
+## Traceability is part of the workflow
+
+- **Immutable sources:** preparation creates derivatives rather than overwriting
+  imported coordinates or compounds.
+- **Recorded execution:** commands, parameters, versions, executable hashes,
+  raw outputs and molecule-level errors travel with the result.
+- **Honest recovery:** interrupted attempts remain visible; a confirmed retry
+  receives a new identity. Stale dependencies are not presented as current.
+- **Connected review:** 2D, 3D and tables refer to the same preserved pose and
+  contact set. Summary counts retain the underlying atomic contacts.
+- **Local computation:** no telemetry or cloud upload. The backend binds only
+  to localhost; public structure retrieval is an explicit network action.
 
 <!-- BEGIN GENERATED VALIDATION STATUS -->
 ## Scientific validation status
@@ -22,203 +132,60 @@ while retaining every original record and alternative branch for inspection.
 Ankora implements the M1-M9 workflow. Frozen completed evidence exists for PIK3CD 6OCO / M5V; other cases and known gaps remain visible in the [public validation status](docs/validation/VALIDATION_STATUS.md). This evidence does not yet establish prospective screening performance, affinity prediction, biological activity, or cross-target generality.
 <!-- END GENERATED VALIDATION STATUS -->
 
-## User guide and complete-installer target
+Completed evidence is not synonymous with a successful recovery: failures,
+near misses and ranking limitations remain in the records. The retrospective
+[LIT-PCBA primary screening report](docs/validation/LIT_PCBA_VINA_PRIMARY_RESULTS_2026-09-28.md)
+and [metrics record](docs/validation/LIT_PCBA_VINA_PRIMARY_METRICS_2026-09-28.md)
+provide additional bounded evidence, not a claim of universal screening performance.
 
-The [illustrated user guide](docs/USER_GUIDE.md) and its
-[PDF edition](docs/Ankora-User-Guide.pdf) document the private beta with a fully
-illustrated 7AQF/RV2 walkthrough. Fresh ligand preparation, Vina docking,
-interaction analysis and exports are distinguished from historical receptor
-and redocking evidence; no matched-input engine comparison is implied.
-See the [manual verification record](docs/validation/USER_GUIDE_7AQF_2026-10-09.md).
+The illustrated 7AQF manual separates fresh ligand preparation, Vina docking
+and interaction analysis from historical receptor/redocking records. It does
+not imply a matched-input comparison between engines.
 
-The required community experience is **install Ankora and run the supported
-workflow**, with all scientific tools included and no manual dependency or
-path setup. The complete Windows candidate now packages that payload; the
-September backend-only installer remains a historical, incomplete artifact.
-[ADR-024](docs/architecture/ADR/ADR-024-complete-scientific-installer.md)
-defines the complete payload and clean-machine release gates. See the
-[candidate validation record](docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md).
-The external tool instructions below describe source development,
-not the intended end-user installation procedure.
+## Documentation
 
-## Prerequisites
+| Start here | Purpose |
+| --- | --- |
+| [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full 7AQF/RV2 walkthrough, with 19 real figures and scientific cautions. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) | Frozen cases, completed evidence and known gaps. |
+| [Development and packaging](docs/DEVELOPMENT.md) | Source setup, scientific environment locks, tests and installer maintenance. |
+| [Architecture decisions](docs/architecture/ADR) | Scientific and engineering contracts. |
+| [Changelog](CHANGELOG.md) | Implemented changes and their verification boundaries. |
 
-The complete Windows installer includes the Python scientific runtime, supported
-docking/pocket tools, private Java and offline WebView2. End users do not need
-Python, Conda, Anaconda, Java or manual tool paths. The following list is
-for source development, where external executable discovery remains supported:
+## Build from source
 
-- Windows 11 x64
-- Node.js 22+ and npm
-- Python 3.12+
-- RDKit 2025.9+ (installed by the backend package)
-- AutoDock Vina 1.2.7 for native docking (official Windows executable)
-- AutoGrid4 + AutoDock4 4.2.6 for immutable maps and the reproducible CPU backend
-- AutoDock-GPU 1.6 as optional accelerated execution on a compatible OpenCL device
-- Rust stable and the Tauri v2 Windows prerequisites
-
-## Setup
+For contributors—not required for installing the beta. On a Windows development
+machine with the [native prerequisites](docs/DEVELOPMENT.md#prerequisites):
 
 ```powershell
-.\scripts\bootstrap.ps1
-```
-
-### Anaconda / Conda development environment
-
-Conda is supported as an optional development environment. Keep Ankora out of the Conda `base` environment:
-
-```powershell
+git clone https://github.com/Olascoaga/Ankora.git
+cd Ankora
 conda env create -f environment.yml
 conda activate ankora-dev
-.\scripts\bootstrap.ps1 -PythonEnvironment Conda
-```
-
-For M2 repair, protonation, and receptor PDBQT generation, create/update the Conda environment from `environment.yml`, activate it, and install the optional receptor tools:
-
-```powershell
-conda env update -f environment.yml --prune
-conda activate ankora-dev
 .\scripts\bootstrap.ps1 -PythonEnvironment Conda -ReceptorTools
+npm.cmd run tauri:dev
 ```
 
-The basic M2 inspection and explicit structural-selection derivative work without these optional receptor tools. PDBFixer is supplied through conda-forge; PDB2PQR/PROPKA are installed from the backend's versioned `receptor` extra. Meeko and ProLIF are core backend dependencies because ligand/receptor PDBQT handling and exact-pose interaction analysis depend on them.
+Source development also requires configuring the external docking and pocket
+tools; the complete installer bundles them for end users. See the
+[developer guide](docs/DEVELOPMENT.md) for discovery and the locked release environment.
+Run the verification suite with `.\scripts\test.ps1`.
 
-`scripts/dev.ps1` automatically prefers an active Conda environment and then a locally installed environment named `ankora-dev`; it also adds that environment's executable directories for M2 tool discovery. Set `ANKORA_PYTHON_PATH` only when an explicit interpreter override is needed. `scripts/test.ps1` uses an active Conda environment or the normal `.venv` verification fallback. The packaged Windows application does not require Anaconda.
+Built with **Tauri 2 / Rust**, **React / TypeScript**, **Mol\*** and a
+**Python / FastAPI** scientific backend. The frontend never launches scientific
+executables directly.
 
-Ankora reports the Python environment used by its active backend in **Scientific tools**. Use **Rescan tools** after installing a console tool into that same environment. The development launcher now stops with a clear error if an older Ankora backend already owns port 8765; close that older development session instead of silently reusing the wrong Python environment.
+## Feedback, citation and license
 
-If `conda` is unavailable in PowerShell after installation, open Anaconda Prompt or run `conda init powershell` from Anaconda Prompt and restart PowerShell.
+Found a problem? [Open an issue](https://github.com/Olascoaga/Ankora/issues)
+with the Ankora version, Windows version, engine and steps to reproduce.
+Remove personal paths and confidential compounds from shared evidence.
 
-### Locked Windows scientific environment
+Created by **Samael Olascoaga**. If you use Ankora in published work, cite the
+exact version or commit and the scientific tools used; repository citation
+metadata is in [CITATION.cff](CITATION.cff). Exported Methods state what the
+campaign records support and flag missing information for review.
 
-`environment.yml` is the readable development specification. Validation and
-release work use two stricter locks: `environment/windows-64.conda.lock` binds
-every native Conda package to its exact win-64 build and SHA-256, while
-`requirements/windows-py312.lock` binds every Python wheel selected for CPython
-3.12 on Windows x86-64. Neither lock contains a machine-local path.
-
-Create a fresh locked environment without altering `ankora-dev`:
-
-```powershell
-.\scripts\bootstrap-locked-windows.ps1
-conda activate ankora-locked
-```
-
-The command refuses to modify an environment that already exists. To audit the
-files alone, run `python scripts/verify_windows_environment_lock.py`; inside the
-created environment, add `--runtime` to verify Python, architecture, Conda
-ownership, and every installed distribution against the lock.
-
-After configuring the external Windows tools, exercise every supported
-process-launching scientific adapter with:
-
-```powershell
-python scripts/run_native_tool_smoke.py
-```
-
-This bounded compatibility matrix repairs and protonates fixed fixtures,
-prepares receptor and ligand PDBQT, runs P2Rank on a fixed receptor, and probes
-the exact Vina/AutoGrid4/AutoDock4/AutoDock-GPU builds without starting a
-docking calculation. Commands, versions, fixture/output hashes, and raw
-stdout/stderr are retained in a create-only run below
-`.ankora-data/validation/native-tool-smoke/`; that machine-local evidence is
-intentionally excluded from Git. Use `--check` to validate only the public
-matrix contract without requiring the external executables.
-
-### AutoDock Vina
-
-Ankora supports the official AutoDock Vina 1.2.7 Windows executable. Set `ANKORA_VINA_PATH` to the executable or its containing directory, add `vina.exe` to `PATH`, or place the official versioned executable below a narrowly named portable directory such as `%USERPROFILE%\tools\autodock-vina-1.2.7\vina_1.2.7_win.exe`. Ankora verifies the executable's reported version before every docking job; discovery alone does not authorize or launch a calculation.
-
-### AutoDock4 family
-
-ADR-015 accepts AutoDock4 as Ankora's second native scoring family and AutoDock-GPU as an optional execution backend for that same scoring family. The backend discovers `autogrid4.exe`, `autodock4.exe`, and `AutoDock-GPU.exe` independently through `ANKORA_AUTOGRID4_PATH`, `ANKORA_AUTODOCK4_PATH`, and `ANKORA_AUTODOCK_GPU_PATH`, `PATH`, the active Python runtime, or narrowly named portable folders below `%USERPROFILE%\tools`. Discovery records architecture and SHA-256 without launching a calculation; every execution performs its own version/device probe.
-
-Official AutoGrid4/AutoDock4 4.2.6 CPU and AutoDock-GPU 1.6 Windows binaries are verified on the development machine. Production integration includes immutable map persistence and reuse, cancellable single-ligand and library CPU jobs, cluster-native DLG review, one-process GPU `--filelist` campaigns, exact progress and preserved raw evidence. See `docs/validation/AUTODOCK4_PHASE0_WINDOWS.md`, `docs/validation/AUTODOCK4_PHASE1_MAPS.md`, and `docs/validation/AUTODOCK_CPU_VS_GPU_BENCHMARK.md`. These engines remain user-supplied external tools and are not redistributed by Ankora.
-
-## Development
-
-Start the desktop application and local backend together:
-
-```powershell
-conda activate ankora-dev  # only when using Conda
-npm run tauri:dev
-```
-
-For browser-only interface development, run the backend and web workspace in separate terminals:
-
-```powershell
-.\.venv\Scripts\python.exe -m ankora_backend
-npm run dev
-```
-
-If PowerShell blocks `npm.ps1`, use `npm.cmd` for direct commands (for example, `npm.cmd run tauri:dev`). Ankora's PowerShell scripts already select `npm.cmd` explicitly and do not require changing the machine execution policy.
-
-## Verification
-
-```powershell
-.\scripts\test.ps1
-```
-
-The verification script checks the public-path and Windows-environment locks,
-the generated third-party redistribution inventory, then the Python and
-frontend checks plus Rust formatting, Clippy, native tests, and a release build
-of the Tauri application. Windows CI runs the same coverage.
-
-## Windows installer
-
-For maintainers: stage the hash-reviewed tools and source companion described
-in the [candidate record](docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md),
-then build from the verified `ankora-locked` environment:
-
-```powershell
-conda activate ankora-locked
-.\scripts\build_windows_installer.ps1 `
-  -ScientificTools build/windows-runtime/scientific-tools `
-  -SourceCompanion build/windows-runtime/source-companion `
-  -GpuSource build/windows-runtime/autodock-gpu-1.6-ankora-source.zip
-```
-
-The packaging command re-verifies the immutable Windows locks, freezes the
-backend and Python scientific dependencies, checks that the resulting
-third-party inventory still matches the reviewed legal payload, exercises the
-bundled backend with Python and Conda absent from `PATH`, and then creates the
-desktop installer.
-Exercise the installed application, bundled-backend ownership, and silent
-uninstall path with:
-
-```powershell
-.\scripts\smoke_windows_installer.ps1 -PythonPath (Get-Command python).Source -ScientificMatrix
-```
-
-The installer embeds the complete signed offline Evergreen WebView2 installer,
-not a network bootstrapper. Vina, AutoGrid4, AutoDock4, AutoDock-GPU and P2Rank
-are private, hash-verified resources. Every installation includes Ankora's MIT
-license, a machine-readable component inventory, third-party notices and
-corresponding scientific-tool sources. GPU execution still needs compatible
-hardware and its vendor driver; no driver is silently installed.
-The complete candidate's boundary is recorded in
-`docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md`. Release signing,
-checksums, and publication are controlled by the manual **Windows release**
-workflow. It checks out an existing version tag, rebuilds from the immutable
-Windows locks, creates `SHA256SUMS` plus a source/signature manifest, attests
-every indexed file, and uploads the verified set as a workflow artifact.
-The manual workflow still requires staging the reviewed scientific/source
-inputs on its runner; missing inputs fail closed instead of producing the old
-Python-only installer. Clean-machine acceptance and signing remain release gates.
-
-A public GitHub Release is fail-closed: the `windows-release` environment must
-provide `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`, and
-`WINDOWS_TIMESTAMP_URL`; the certificate must import with a private key, and
-the resulting installer must have a valid timestamped Authenticode signature.
-Without those three user-controlled secrets, the workflow can create only an
-unsigned candidate and will refuse publication. Create the exact tag (for
-example `v0.1.0`) at the reviewed commit before dispatching the workflow, and
-enable GitHub's immutable-releases setting for the repository before the first
-public release. See
-`docs/validation/WINDOWS_RELEASE_ARTIFACTS_2026-09-10.md` for the boundary and
-verification contract. Ankora indexes the exact released bytes; independent
-bit-for-bit rebuild reproducibility is not yet claimed.
-
-The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
-
-See [CODEX_BOOTSTRAP.md](CODEX_BOOTSTRAP.md) for the project contract and [AGENTS.md](AGENTS.md) for the implementation policy. Agent continuity memory is intentionally local and is not published.
+Ankora's code is licensed under [MIT](LICENSE). Bundled third-party components
+retain their own licenses, notices and corresponding-source obligations;
+Ankora's license does not replace theirs.

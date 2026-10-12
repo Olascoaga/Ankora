@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Private-beta repository presentation - 2026-10-11
+
+- Refresh the README with Ankora's current visual identity, verified 7AQF
+  screenshots, live Windows CI and honest platform/beta/license badges.
+- Separate end-user installation from the preserved developer/packaging guide;
+  correct the obsolete claim that bundled docking engines are not redistributed.
+- Retain the generated scientific-validation summary and make unsigned-beta,
+  GPU-driver, platform and scoring limits explicit. No scientific code, runtime,
+  installer, original evidence or dependency changes.
+- Documentation/visual evidence: `docs/validation/README_PRESENTATION_2026-10-11.md`.
+
 ## Private repository state - 2026-10-11
 
 - Stop tracking local Claude configuration and the internal adversarial audit;

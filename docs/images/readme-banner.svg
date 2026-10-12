@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" role="img" aria-labelledby="title description">
+  <title id="title">Ankora</title>
+  <desc id="description">Molecular docking, with the scientist in control. A graphite, mineral-green and cyan banner using Ankora's molecular mark.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="0.7">
+      <stop stop-color="#0b1116"/>
+      <stop offset="1" stop-color="#182a31"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" fill="none" stroke="#5dc7dc" stroke-opacity="0.06"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="280" rx="12" fill="url(#background)"/>
+  <rect width="1200" height="280" rx="12" fill="url(#grid)"/>
+  <path d="M0 279H1200" stroke="#60d6a6" stroke-opacity="0.55"/>
+  <g transform="translate(52 53)">
+    <path d="M0 12 12 0H80V68L68 80H0Z" fill="#60d6a6"/>
+    <g transform="translate(14 13) scale(2.2)" fill="none" stroke="#f0fff8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m8 5 4-2 4 2v5l4 2v5l-4 2-4-2-4 2-4-2v-5l4-2V5Z"/>
+      <path d="m8 10 4 2 4-2M12 12v5"/>
+    </g>
+  </g>
+  <text x="155" y="111" fill="#eef5f4" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="700" letter-spacing="-1">Ankora</text>
+  <text x="54" y="183" fill="#eef5f4" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="500">Molecular docking, with the scientist in control.</text>
+  <text x="55" y="225" fill="#9fb5b8" font-family="Segoe UI, Arial, sans-serif" font-size="14" letter-spacing="1.4">INSPECT  /  PREPARE  /  DOCK  /  REVIEW</text>
+  <g fill="none" stroke-width="1.5" stroke-linejoin="round">
+    <path d="m915 58 70-40 70 40v80l-70 40-70-40Zm70 120v65m-70-105-57 33m197-33 57 33" stroke="#60d6a6" stroke-opacity="0.24"/>
+    <path d="m985 98 70 40m-70-40-70 40m70-40V18" stroke="#5dc7dc" stroke-opacity="0.18"/>
+    <path d="m845 170 42-24 42 24v48l-42 24-42-24Zm225 0 42-24 42 24v48l-42 24-42-24Z" stroke="#5dc7dc" stroke-opacity="0.12"/>
+  </g>
+  <g fill="#60d6a6">
+    <circle cx="985" cy="98" r="4" opacity="0.65"/>
+    <circle cx="915" cy="138" r="3" opacity="0.45"/>
+    <circle cx="1055" cy="138" r="3" opacity="0.45"/>
+  </g>
+</svg>

@@ -1,0 +1,191 @@
+# Development and packaging
+
+[Back to the README](../README.md)
+
+These instructions are for contributors and maintainers. End users should use
+the complete private-beta installer, not this development setup. Do not overwrite
+an accepted installer or run installation smoke tests against an active user's
+application. Run individual backend checks from `backend/` so its
+`pyproject.toml` configuration is used.
+
+## Prerequisites
+
+The complete Windows installer includes the Python scientific runtime, supported
+docking/pocket tools, private Java and offline WebView2. End users do not need
+Python, Conda, Anaconda, Java or manual tool paths. The following list is
+for source development, where external executable discovery remains supported:
+
+- Windows 11 x64
+- Node.js 22+ and npm
+- Python 3.12+
+- RDKit 2025.9+ (installed by the backend package)
+- AutoDock Vina 1.2.7 for native docking (official Windows executable)
+- AutoGrid4 + AutoDock4 4.2.6 for immutable maps and the reproducible CPU backend
+- AutoDock-GPU 1.6 as optional accelerated execution on a compatible OpenCL device
+- Rust stable and the Tauri v2 Windows prerequisites
+
+## Setup
+
+```powershell
+.\scripts\bootstrap.ps1
+```
+
+### Anaconda / Conda development environment
+
+Conda is supported as an optional development environment. Keep Ankora out of the Conda `base` environment:
+
+```powershell
+conda env create -f environment.yml
+conda activate ankora-dev
+.\scripts\bootstrap.ps1 -PythonEnvironment Conda
+```
+
+For M2 repair, protonation, and receptor PDBQT generation, create/update the Conda environment from `environment.yml`, activate it, and install the optional receptor tools:
+
+```powershell
+conda env update -f environment.yml --prune
+conda activate ankora-dev
+.\scripts\bootstrap.ps1 -PythonEnvironment Conda -ReceptorTools
+```
+
+The basic M2 inspection and explicit structural-selection derivative work without these optional receptor tools. PDBFixer is supplied through conda-forge; PDB2PQR/PROPKA are installed from the backend's versioned `receptor` extra. Meeko and ProLIF are core backend dependencies because ligand/receptor PDBQT handling and exact-pose interaction analysis depend on them.
+
+`scripts/dev.ps1` automatically prefers an active Conda environment and then a locally installed environment named `ankora-dev`; it also adds that environment's executable directories for M2 tool discovery. Set `ANKORA_PYTHON_PATH` only when an explicit interpreter override is needed. `scripts/test.ps1` uses an active Conda environment or the normal `.venv` verification fallback. The packaged Windows application does not require Anaconda.
+
+Ankora reports the Python environment used by its active backend in **Scientific tools**. Use **Rescan tools** after installing a console tool into that same environment. The development launcher now stops with a clear error if an older Ankora backend already owns port 8765; close that older development session instead of silently reusing the wrong Python environment.
+
+If `conda` is unavailable in PowerShell after installation, open Anaconda Prompt or run `conda init powershell` from Anaconda Prompt and restart PowerShell.
+
+### Locked Windows scientific environment
+
+`environment.yml` is the readable development specification. Validation and
+release work use two stricter locks: `environment/windows-64.conda.lock` binds
+every native Conda package to its exact win-64 build and SHA-256, while
+`requirements/windows-py312.lock` binds every Python wheel selected for CPython
+3.12 on Windows x86-64. Neither lock contains a machine-local path.
+
+Create a fresh locked environment without altering `ankora-dev`:
+
+```powershell
+.\scripts\bootstrap-locked-windows.ps1
+conda activate ankora-locked
+```
+
+The command refuses to modify an environment that already exists. To audit the
+files alone, run `python scripts/verify_windows_environment_lock.py`; inside the
+created environment, add `--runtime` to verify Python, architecture, Conda
+ownership, and every installed distribution against the lock.
+
+After configuring the external Windows tools, exercise every supported
+process-launching scientific adapter with:
+
+```powershell
+python scripts/run_native_tool_smoke.py
+```
+
+This bounded compatibility matrix repairs and protonates fixed fixtures,
+prepares receptor and ligand PDBQT, runs P2Rank on a fixed receptor, and probes
+the exact Vina/AutoGrid4/AutoDock4/AutoDock-GPU builds without starting a
+docking calculation. Commands, versions, fixture/output hashes, and raw
+stdout/stderr are retained in a create-only run below
+`.ankora-data/validation/native-tool-smoke/`; that machine-local evidence is
+intentionally excluded from Git. Use `--check` to validate only the public
+matrix contract without requiring the external executables.
+
+### AutoDock Vina
+
+Ankora supports the official AutoDock Vina 1.2.7 Windows executable. Set `ANKORA_VINA_PATH` to the executable or its containing directory, add `vina.exe` to `PATH`, or place the official versioned executable below a narrowly named portable directory such as `%USERPROFILE%\tools\autodock-vina-1.2.7\vina_1.2.7_win.exe`. Ankora verifies the executable's reported version before every docking job; discovery alone does not authorize or launch a calculation.
+
+### AutoDock4 family
+
+ADR-015 accepts AutoDock4 as Ankora's second native scoring family and AutoDock-GPU as an optional execution backend for that same scoring family. The backend discovers `autogrid4.exe`, `autodock4.exe`, and `AutoDock-GPU.exe` independently through `ANKORA_AUTOGRID4_PATH`, `ANKORA_AUTODOCK4_PATH`, and `ANKORA_AUTODOCK_GPU_PATH`, `PATH`, the active Python runtime, or narrowly named portable folders below `%USERPROFILE%\tools`. Discovery records architecture and SHA-256 without launching a calculation; every execution performs its own version/device probe.
+
+Official AutoGrid4/AutoDock4 4.2.6 CPU and AutoDock-GPU 1.6 Windows binaries are verified on the development machine. Production integration includes immutable map persistence and reuse, cancellable single-ligand and library CPU jobs, cluster-native DLG review, one-process GPU `--filelist` campaigns, exact progress and preserved raw evidence. See `docs/validation/AUTODOCK4_PHASE0_WINDOWS.md`, `docs/validation/AUTODOCK4_PHASE1_MAPS.md`, and `docs/validation/AUTODOCK_CPU_VS_GPU_BENCHMARK.md`. Source development uses configured external tools; the complete private-beta installer bundles the reviewed engines, licenses and corresponding sources.
+
+## Development
+
+Start the desktop application and local backend together:
+
+```powershell
+conda activate ankora-dev  # only when using Conda
+npm.cmd run tauri:dev
+```
+
+For browser-only interface development, run the backend and web workspace in separate terminals:
+
+```powershell
+.\.venv\Scripts\python.exe -m ankora_backend
+npm.cmd run dev
+```
+
+If PowerShell blocks `npm.ps1`, use `npm.cmd` for direct commands (for example, `npm.cmd run tauri:dev`). Ankora's PowerShell scripts already select `npm.cmd` explicitly and do not require changing the machine execution policy.
+
+## Verification
+
+```powershell
+.\scripts\test.ps1
+```
+
+The verification script checks the public-path and Windows-environment locks,
+the generated third-party redistribution inventory, then the Python and
+frontend checks plus Rust formatting, Clippy, native tests, and a release build
+of the Tauri application. Windows CI runs the same coverage.
+
+## Windows installer
+
+For maintainers: stage the hash-reviewed tools and source companion described
+in the [candidate record](validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md),
+then build from the verified `ankora-locked` environment:
+
+```powershell
+conda activate ankora-locked
+.\scripts\build_windows_installer.ps1 `
+  -ScientificTools build/windows-runtime/scientific-tools `
+  -SourceCompanion build/windows-runtime/source-companion `
+  -GpuSource build/windows-runtime/autodock-gpu-1.6-ankora-source.zip
+```
+
+The packaging command re-verifies the immutable Windows locks, freezes the
+backend and Python scientific dependencies, checks that the resulting
+third-party inventory still matches the reviewed legal payload, exercises the
+bundled backend with Python and Conda absent from `PATH`, and then creates the
+desktop installer.
+Exercise the installed application, bundled-backend ownership, and silent
+uninstall path with:
+
+```powershell
+.\scripts\smoke_windows_installer.ps1 -InstallerPath <reviewed-installer.exe> -PythonPath (Get-Command python).Source -ScientificMatrix -FrontendSmoke -InteractionSmoke
+```
+
+The installer embeds the complete signed offline Evergreen WebView2 installer,
+not a network bootstrapper. Vina, AutoGrid4, AutoDock4, AutoDock-GPU and P2Rank
+are private, hash-verified resources. Every installation includes Ankora's MIT
+license, a machine-readable component inventory, third-party notices and
+corresponding scientific-tool sources. GPU execution still needs compatible
+hardware and its vendor driver; no driver is silently installed.
+The complete candidate's boundary is recorded in
+`docs/validation/COMPLETE_WINDOWS_INSTALLER_2026-10-08.md`. Release signing,
+checksums, and publication are controlled by the manual **Windows release**
+workflow. It checks out an existing version tag, rebuilds from the immutable
+Windows locks, creates `SHA256SUMS` plus a source/signature manifest, attests
+every indexed file, and uploads the verified set as a workflow artifact.
+The manual workflow still requires staging the reviewed scientific/source
+inputs on its runner; missing inputs fail closed instead of producing the old
+Python-only installer. Clean-machine acceptance and signing remain release gates.
+
+A public GitHub Release is fail-closed: the `windows-release` environment must
+provide `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`, and
+`WINDOWS_TIMESTAMP_URL`; the certificate must import with a private key, and
+the resulting installer must have a valid timestamped Authenticode signature.
+Without those three user-controlled secrets, the workflow can create only an
+unsigned candidate and will refuse publication. Create the exact tag (for
+example `v0.1.0`) at the reviewed commit before dispatching the workflow, and
+enable GitHub's immutable-releases setting for the repository before the first
+public release. See
+`docs/validation/WINDOWS_RELEASE_ARTIFACTS_2026-09-10.md` for the boundary and
+verification contract. Ankora indexes the exact released bytes; independent
+bit-for-bit rebuild reproducibility is not yet claimed.
+
+The backend binds to `127.0.0.1:8765`. Imported originals, receptor/ligand derivatives, binding sites, and docking results are preserved under `.ankora-data` during development. Ankora performs no telemetry or cloud upload. Receptor/ligand transformations and docking execution occur only after every applicable decision is explicit.
+
+See [CODEX_BOOTSTRAP.md](../CODEX_BOOTSTRAP.md) for the project contract and [AGENTS.md](../AGENTS.md) for the implementation policy. Agent continuity memory is intentionally local and is not published.
