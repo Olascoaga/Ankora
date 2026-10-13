@@ -77,6 +77,7 @@ export function ReceptorWorkspace({
   const [record, setRecord] = useState<ReceptorPreparationRecord | null>(restoredRecord);
   const [operation, setOperation] = useState<"inspecting" | "idle" | "analyzing" | "applying">("inspecting");
   const [error, setError] = useState<Error | null>(null);
+  const [errorPlanSignature, setErrorPlanSignature] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(restoredRecord ? "prepared" : "original");
   const [issueFilter, setIssueFilter] = useState<IssueFilter>("all");
 
@@ -99,6 +100,8 @@ export function ReceptorWorkspace({
     setProtonationPreview(restoredProtonationPreview(restored));
     setProtonationOverrides(protonationOverrideMap(restored));
     setRecord(restored);
+    setError(null);
+    setErrorPlanSignature(null);
     setViewMode(restored ? "prepared" : "original");
     onRecordChange(restored);
   }, [initialRecord, structure.artifact.artifact_id, onRecordChange]);
@@ -106,7 +109,9 @@ export function ReceptorWorkspace({
   useEffect(() => {
     let active = true;
     setOperation("inspecting");
-    setError(null);
+    // A changed distance reference must not discard evidence from the last
+    // attempted preparation. Its decision snapshot will label it as previous.
+    if (errorPlanSignature === null) setError(null);
     void ankoraApi.inspectReceptor(structure.artifact.artifact_id, referenceComponentId)
       .then((nextReport) => {
         if (active) {
@@ -117,6 +122,7 @@ export function ReceptorWorkspace({
       .catch((reason: unknown) => {
         if (active) {
           setError(reason instanceof Error ? reason : new Error("Receptor inspection failed"));
+          setErrorPlanSignature(null);
           setOperation("idle");
         }
       });
@@ -147,7 +153,8 @@ export function ReceptorWorkspace({
 
   const selectedComponents = report?.components.filter((item) => selectedChains.includes(item.chain_id)) ?? [];
   const selectedIssues = report?.issues.filter((item) => selectedChains.includes(item.residue.chain_id)) ?? [];
-  const plannedRepairCount = selectedIssues.filter((issue) => issueDecisions[issue.issue_id]?.action === "repair").length;
+  const plannedRepairCount = selectedIssues.filter((issue) => issue.kind === "missing_atoms"
+    && issueDecisions[issue.issue_id]?.action === "repair").length;
   const protonationBlockingIssues = protonate ? selectedIssues.filter((issue) => {
     const action = issueDecisions[issue.issue_id]?.action;
     return action === "leave" && ["missing_atoms", "alternate_location", "nonstandard_residue"].includes(issue.kind);
@@ -225,6 +232,17 @@ export function ReceptorWorkspace({
     ? protonationPreview.analysis
     : null;
   const planComplete = structuralPlanComplete && (!protonate || activeProtonationAnalysis !== null);
+  // Capture attempted decisions even when later edits make the plan incomplete.
+  const decisionSignature = JSON.stringify({
+    source: structure.artifact.artifact_id, referenceComponentId,
+    selectedChains: [...selectedChains].sort(), waterAction,
+    componentActions: Object.entries(componentActions).sort(),
+    issueDecisions: Object.entries(issueDecisions).sort(),
+    relax, restraintForceConstant, relaxationMaxIterations, protonate, ph,
+    authorizedTerminalAdditions, generatePdbqt,
+    protonationOverrides: Object.entries(protonationOverrides).sort(),
+  });
+  const errorFromPreviousPlan = errorPlanSignature !== null && errorPlanSignature !== decisionSignature;
 
   const displayOutput = record?.outputs.find((item) => item.artifact_id === record.display_output_artifact_id);
   const removedIssueCount = record?.decisions.issue_decisions.filter((item) => item.action === "remove").length ?? 0;
@@ -302,6 +320,7 @@ export function ReceptorWorkspace({
     if (!request) return;
     setOperation("applying");
     setError(null);
+    setErrorPlanSignature(null);
     try {
       const nextRecord = await ankoraApi.prepareReceptor(structure.artifact.artifact_id, request);
       setRecord(nextRecord);
@@ -315,6 +334,7 @@ export function ReceptorWorkspace({
       }
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason : new Error("Receptor preparation failed"));
+      setErrorPlanSignature(decisionSignature);
     } finally {
       setOperation("idle");
     }
@@ -326,6 +346,7 @@ export function ReceptorWorkspace({
     if (!request || !protonationSignature) return;
     setOperation("analyzing");
     setError(null);
+    setErrorPlanSignature(null);
     try {
       const analysis = await ankoraApi.previewReceptorProtonation(
         structure.artifact.artifact_id,
@@ -335,6 +356,7 @@ export function ReceptorWorkspace({
       setProtonationPreview({ signature: protonationSignature, analysis });
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason : new Error("Protonation analysis failed"));
+      setErrorPlanSignature(decisionSignature);
     } finally {
       setOperation("idle");
     }
@@ -369,6 +391,13 @@ export function ReceptorWorkspace({
           proposedTerminalAdditions={proposedTerminalAdditions}
           authorizedTerminalAdditions={authorizedTerminalAdditions}
           onAuthorizeTerminalAdditions={authorizeProposedTerminalAdditions}
+          fromPreviousPlan={errorFromPreviousPlan}
+          relaxationEnabled={relax}
+          onDisableRelaxation={() => setRelax(false)}
+          onInspectResidue={(residue) => { setViewMode("original"); onSelect({ kind: "residue", residue: {
+            chainId: residue.chain_id, residueName: residue.residue_name,
+            sequenceNumber: residue.sequence_number, insertionCode: residue.insertion_code,
+          } }); }}
         /> : null}
         <div className="scientific-workbench receptor-workbench">
           <div className="viewer-pane">
@@ -440,13 +469,13 @@ export function ReceptorWorkspace({
           </ReceptorSection>
 
           <ReceptorSection title="5 · Relax reconstructed atoms">
-            <p className="field-note">PDBFixer places missing side-chain atoms from ideal geometry, without checking for steric overlap with neighbors. This optional step relaxes only the newly-added atoms against a repulsive potential; every previously observed atom stays restrained within 0.5 Å of its original position.</p>
-            <label className="check-row"><input type="checkbox" checked={relax} disabled={!plannedRepairCount} onChange={(event) => setRelax(event.target.checked)} /><span><strong>Relax repaired residues with OpenMM</strong><small>{toolLabel(tools?.pdbfixer)}</small></span></label>
+            <p className="field-note">Optional clash relief after explicit missing-atom repairs. Newly added atoms interact with their neighbors while observed atoms have elastic positional restraints, not frozen coordinates. Ankora rejects the result if any observed heavy atom moves more than 0.5 Å; this is not a full protein energy minimization.</p>
+            <label className="check-row"><input type="checkbox" checked={relax} disabled={!plannedRepairCount && !relax} onChange={(event) => setRelax(event.target.checked)} /><span><strong>Relax repaired residues with OpenMM</strong><small>PDBFixer worker · {toolLabel(tools?.pdbfixer)}</small></span></label>
             {!plannedRepairCount ? <p className="field-note">No residue is marked Repair yet — nothing to relax until one is.</p> : null}
-            {relax ? <>
+            {relax ? <details className="relaxation-advanced"><summary>Advanced relaxation parameters</summary>
               <label className="numeric-field">Restraint force constant (kcal/mol/Å²)<input type="number" min="1" step="1" value={restraintForceConstant} onChange={(event) => setRestraintForceConstant(Number(event.target.value))} /></label>
               <label className="numeric-field">Maximum iterations<input type="number" min="1" max="5000" step="10" value={relaxationMaxIterations} onChange={(event) => setRelaxationMaxIterations(Number(event.target.value))} /></label>
-            </> : null}
+            </details> : null}
           </ReceptorSection>
 
           <ReceptorSection title="6 · Hydrogens & docking format">
@@ -554,6 +583,10 @@ function ReceptorErrorNotice({
   proposedTerminalAdditions,
   authorizedTerminalAdditions,
   onAuthorizeTerminalAdditions,
+  fromPreviousPlan,
+  relaxationEnabled,
+  onDisableRelaxation,
+  onInspectResidue,
 }: {
   error: Error;
   affectedIssues: ReceptorIssue[];
@@ -562,8 +595,13 @@ function ReceptorErrorNotice({
   proposedTerminalAdditions: TerminalHeavyAtomAddition[];
   authorizedTerminalAdditions: TerminalHeavyAtomAddition[];
   onAuthorizeTerminalAdditions: () => void;
+  fromPreviousPlan: boolean;
+  relaxationEnabled: boolean;
+  onDisableRelaxation: () => void;
+  onInspectResidue: (residue: ResidueLocator) => void;
 }) {
   const apiError = error instanceof ApiError ? error : null;
+  const displacedAtoms = relaxationDisplacedAtoms(error);
   const proposedAuthorized = proposedTerminalAdditions.length > 0
     && proposedTerminalAdditions.every((item) => authorizedTerminalAdditions.some(
       (authorized) => terminalAdditionIdentity(authorized) === terminalAdditionIdentity(item),
@@ -571,6 +609,17 @@ function ReceptorErrorNotice({
   return <div className="structure-error receptor-error" role="alert">
     <strong>{error.message}</strong>
     {apiError?.code ? <span>{apiError.code} · {apiError.stage ?? "unknown stage"}</span> : null}
+    {fromPreviousPlan ? <p role="status">This failure belongs to a previous plan. Current decisions have changed; no new calculation has run. The original technical evidence is retained below.</p> : null}
+    {apiError?.code === "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED" ? <section className="meeko-recovery relaxation-recovery">
+      <p>The attempted relaxed receptor was not accepted. Inspect the original residue in 3D before changing its preparation decision.</p>
+      {displacedAtoms.length ? <ul>{displacedAtoms.slice(0, 12).map((atom) => <li key={[atom.residue.chain_id, atom.residue.residue_name, atom.residue.sequence_number, atom.residue.insertion_code, atom.atom_name].join("|")}>
+        <button type="button" onClick={() => onInspectResidue(atom.residue)}>Inspect {atom.residue.residue_name} {atom.residue.chain_id}:{atom.residue.sequence_number}{atom.residue.insertion_code} · {atom.atom_name} in 3D</button>
+        <span>{formatScientificNumber(atom.displacement_angstrom, 3)} Å displacement</span>
+      </li>)}</ul> : <p>This older error does not identify individual atoms. Its measured displacement remains in Technical evidence; no residue is inferred.</p>}
+      {displacedAtoms.length > 12 ? <small>Showing 12 of {displacedAtoms.length} displaced atoms. All identities and coordinates are retained in Technical evidence.</small> : null}
+      <button type="button" disabled={!relaxationEnabled} onClick={onDisableRelaxation}>Disable relaxation in the plan</button>
+      <small>This only changes the draft. Skipping relaxation does not prove reconstructed geometry is acceptable; review it before a new explicit calculation. No residue is removed automatically.</small>
+    </section> : null}
     {apiError?.code === "MEEKO_CONNECTIVITY_FAILURE" && affectedIssues.length ? <section className="meeko-recovery">
       <p>Invalid connectivity remained in these repaired residues:</p>
       <ul>{affectedIssues.map((issue) => <li key={issue.issue_id}><strong>{issue.residue.residue_name} {issue.residue.chain_id}:{issue.residue.sequence_number}{issue.residue.insertion_code}</strong><span>{formatDistance(issue.distance_to_reference_angstrom)}</span></li>)}</ul>
@@ -592,6 +641,26 @@ function meekoAffectedResidues(error: Error | null): ResidueLocator[] {
   const value = error.details.affected_residues;
   if (!Array.isArray(value)) return [];
   return value.filter(isResidueLocator);
+}
+
+interface RelaxationDisplacedAtom {
+  residue: ResidueLocator;
+  atom_name: string;
+  displacement_angstrom: number;
+}
+
+function relaxationDisplacedAtoms(error: Error | null): RelaxationDisplacedAtom[] {
+  if (!(error instanceof ApiError) || error.code !== "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED") return [];
+  const value = error.details.displaced_atoms;
+  if (!Array.isArray(value)) return [];
+  return value.filter((raw): raw is RelaxationDisplacedAtom => {
+    if (typeof raw !== "object" || raw === null) return false;
+    const atom = raw as Record<string, unknown>;
+    return isResidueLocator(atom.residue) && Number.isInteger(atom.residue.sequence_number)
+      && typeof atom.atom_name === "string" && atom.atom_name.length > 0
+      && typeof atom.displacement_angstrom === "number"
+      && Number.isFinite(atom.displacement_angstrom) && atom.displacement_angstrom > 0;
+  });
 }
 
 function terminalHeavyAtomAdditions(error: Error | null): TerminalHeavyAtomAddition[] {

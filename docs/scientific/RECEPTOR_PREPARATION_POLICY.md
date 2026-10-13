@@ -30,3 +30,32 @@ A scientist may explicitly authorize an `OXT` completion only for the exact fina
 Every receptor run receives a unique create-only directory. Outputs include stage, filename, format, size, SHA-256, timestamp, and source relationship. Provenance includes tool/package versions, parameters, exact argument-array command, and raw logs. External-tool failures retain their stdout, stderr, command, stage, and structured failure record. Original imported bytes are never modified.
 
 If Meeko rejects PQR connectivity, Ankora reuses Meeko's residue parser and structured inter-residue bond finder to identify invalid residue blocks or residue pairs, then maps actionable residues back to the original inspection report. Normal peptide C–N connections and CYS SG–SG disulfides are not classified as recovery targets; multiple bonds or other atom pairs are. The UI may offer an explicit control to change the affected issue decisions to `Remove`; this only edits the visible plan. It never removes residues or starts another transformation until the scientist reviews the menus and presses Apply again.
+
+## Optional repair relaxation and recovery
+
+The opt-in OpenMM declash stage acts after explicit missing-atom repairs.
+Selecting an alternate conformation is not a PDBFixer atom repair. The existing
+repulsive potential and bond tethers are not a full biomolecular force field;
+observed atoms have elastic positional restraints, not frozen coordinates.
+Ankora rejects an attempt if an originally observed heavy atom moves more than
+0.5 Å. This is an internal acceptance safeguard, not a universal chemical
+criterion or proof of an irreparable steric clash.
+
+New tolerance failures retain the maximum displacement and threshold plus every
+exceeded atom's exact residue locator, name, measured displacement and coordinates
+before/after. The list is ordered by descending displacement, with deterministic
+identity tie-breaking, and residue identities are deduplicated. All raw worker
+logs and failed-stage PDB files remain in the original failed attempt.
+
+The interface offers inspection of the original residue in 3D and an explicit
+draft-only option to disable relaxation. It never infers a residue to remove or
+automatically retries. Skipping relaxation does not establish acceptable repaired
+geometry. A checked relaxation option remains possible to turn off when no
+missing-atom repairs remain; unresolved manual-review decisions still block Apply.
+Advanced force/iteration settings remain available but folded by default.
+
+Failures are bound to the attempted decision snapshot. Subsequent plan edits
+label the error as belonging to a previous plan, while preserving its technical
+evidence. Older failures without atom identities remain readable without inferred
+locators. The 0.5 Å threshold, worker potential, defaults and coordinate acceptance
+rules are unchanged by this diagnostic/recovery correction.

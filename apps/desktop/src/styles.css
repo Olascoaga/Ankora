@@ -338,6 +338,10 @@ button { font: inherit; }
 .state-resolved-note strong { color: var(--accent); font-size: 12px; }
 .state-resolved-note small { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .ligand-pdbqt-result details, .receptor-error details { margin-top: 8px; }
+.relaxation-advanced summary { color: var(--muted); cursor: pointer; margin: 8px 0; }
+.relaxation-recovery ul { max-height: 220px; overflow-y: auto; }
+.relaxation-recovery li { flex-wrap: wrap; align-items: center; gap: 6px; }
+.relaxation-recovery li button { min-width: 0; white-space: normal; text-align: left; }
 .ligand-pdbqt-result summary, .receptor-error summary { color: var(--muted); cursor: pointer; font-size: 11px; }
 .ligand-pdbqt-result pre, .receptor-error pre { max-height: 180px; overflow: auto; padding: 8px; border-radius: 6px; background: #080d11; color: #a9c9bd; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workspace:has(.ligand-library-panel) .viewer-live { min-height: 300px; }

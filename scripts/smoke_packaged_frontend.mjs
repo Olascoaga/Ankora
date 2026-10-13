@@ -27,6 +27,9 @@ const csp = `${tauri.app.security.csp}; script-src 'self'`;
 assert(!csp.includes("unsafe-eval"));
 let fixture = await readFile(resolve(root, "backend/tests/fixtures/synthetic_m1.pdb"));
 const id = "00000000-0000-0000-0000-000000000001";
+const receptorRecovery = process.argv.includes("--receptor-recovery");
+const syntheticResidue = { chain_id: "A", residue_name: "ALA", sequence_number: 1, insertion_code: "" };
+let preparationRequests = 0;
 const provenance = {
   event_id: "synthetic-ui-smoke", event_type: "structure_imported", timestamp: "2026-10-08T00:00:00Z",
   input_artifacts: [], output_artifacts: [id], tool: { name: "synthetic-ui-fixture", version: "1" },
@@ -128,6 +131,16 @@ try {
       return route.fulfill({ status: 200, contentType: "text/plain", body: fixture });
     }
     if (path.endsWith("/receptor-inspection")) return json(inspection);
+    if (receptorRecovery && path === `/structures/${id}/receptors`) {
+      preparationRequests++;
+      return json({ code: "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED", stage: "receptor_relaxation",
+        message: "Synthetic UI fixture: an observed atom exceeded the 0.5 Å safety limit.", recoverable: true,
+        details: { max_displacement_angstrom: 0.9, tolerance_angstrom: 0.5, displaced_atom_count: 1,
+          displaced_atoms: [{ residue: syntheticResidue, atom_name: "O", displacement_angstrom: 0.9,
+            original_position_angstrom: [14.5, 12.7, 9], relaxed_position_angstrom: [15.4, 12.7, 9] }],
+          affected_residues: [syntheticResidue] },
+      }, 422);
+    }
     evidence.errors.push(`Unmocked UI request: ${path}`);
     return json({ message: "Unexpected synthetic request" }, 404);
   });
@@ -145,6 +158,12 @@ try {
   await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
   for (const extension of ["pdb", "cif"]) {
     const filename = `synthetic_m1.${extension}`;
+    inspection.issues = receptorRecovery && extension === "pdb" ? [{
+      issue_id: "synthetic-missing-atom", kind: "missing_atoms", residue: syntheticResidue,
+      missing_atoms: ["CB"], alternate_locations: [], distance_to_reference_angstrom: null,
+      severity: "unassessed", allowed_actions: ["repair", "leave", "remove", "manual_review"],
+      message: "Synthetic UI missing-atom issue; not scientific preparation evidence.",
+    }] : [];
     fixture = await readFile(resolve(root, "backend/tests/fixtures", filename));
     record = { ...record, artifact: { ...record.artifact, original_filename: filename,
       format: extension === "cif" ? "mmcif" : "pdb", size_bytes: fixture.length,
@@ -169,6 +188,34 @@ try {
         await page.waitForTimeout(1500);
         const error = await page.locator(".viewer-error").allTextContents();
         assert.deepEqual(error, []);
+        if (receptorRecovery && extension === "pdb" && stage === "receptor") {
+          await page.getByRole("button", { name: "Chain A", exact: true }).click();
+          await page.getByRole("button", { name: "Remove", exact: true }).click();
+          const decision = page.getByLabel("Decision for ALA 1", { exact: true });
+          await decision.selectOption("repair");
+          const relaxation = page.getByRole("checkbox", { name: /Relax repaired residues with OpenMM/ });
+          await relaxation.check();
+          assert.equal(await page.locator("details.relaxation-advanced").getAttribute("open"), null);
+          await page.getByRole("button", { name: "Apply explicit preparation plan", exact: true }).click();
+          await page.getByText("0.900 Å displacement", { exact: true }).waitFor();
+          await page.getByRole("button", { name: "Inspect ALA A:1 · O in 3D", exact: true }).click();
+          assert.deepEqual(await page.locator(".viewer-error").allTextContents(), []);
+          for (const [width, height] of [[1280, 800], [960, 680]]) {
+            await page.setViewportSize({ width, height });
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+            await page.locator(".receptor-error").screenshot({ path: resolve(output, `recovery-${width}.png`) });
+          }
+          await decision.selectOption("manual_review");
+          await page.getByText(/This failure belongs to a previous plan/).waitFor();
+          assert(await relaxation.isEnabled(), "A checked relaxation must remain possible to disable");
+          await relaxation.uncheck();
+          assert(await relaxation.isDisabled());
+          assert(await page.getByRole("button", { name: "Apply explicit preparation plan", exact: true }).isDisabled());
+          assert.equal(preparationRequests, 1, "Recovery controls must not trigger another preparation");
+          evidence.receptor_recovery = { synthetic: true, viewports: [[1280, 800], [960, 680]], preparation_requests: preparationRequests,
+            focus_without_viewer_error: true, checkbox_recovered: true, previous_plan_labeled: true };
+          await page.setViewportSize({ width: 1280, height: 800 });
+        }
         await page.screenshot({ path: resolve(output, `${extension}-${stage}.png`) });
         evidence.stages.push(`${extension}-${stage}`);
       } catch (error) {

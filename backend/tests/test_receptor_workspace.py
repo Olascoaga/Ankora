@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import gemmi
@@ -645,6 +646,54 @@ def test_relaxation_beyond_tolerance_is_rejected(tmp_path: Path) -> None:
 
     assert captured.value.code == "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED"
     assert captured.value.details["max_displacement_angstrom"] == pytest.approx(0.9, abs=0.001)
+    assert captured.value.details["affected_residues"] == [
+        {"chain_id": "A", "residue_name": "ALA", "sequence_number": 1, "insertion_code": ""}
+    ]
+    atoms = captured.value.details["displaced_atoms"]
+    assert isinstance(atoms, list) and len(atoms) == 1
+    assert atoms[0]["atom_name"] == "O"
+    assert atoms[0]["displacement_angstrom"] == pytest.approx(0.9, abs=0.001)
+    assert atoms[0]["original_position_angstrom"] == [14.5, 12.7, 9.0]
+    assert atoms[0]["relaxed_position_angstrom"] == [15.4, 12.7, 9.0]
+    assert "too severe" not in captured.value.message
+
+
+def test_relaxation_diagnosis_orders_all_exceeded_atoms_without_editing_inputs(
+    tmp_path: Path,
+) -> None:
+    """Explicitly synthetic displacements test diagnosis, not physical relaxation."""
+    original_path, relaxed_path = tmp_path / "original.pdb", tmp_path / "relaxed.pdb"
+    original_path.write_bytes((FIXTURES / "synthetic_m1.pdb").read_bytes())
+    structure = gemmi.read_structure(str(original_path))
+    for residue in structure[0][0]:
+        if residue.name != "ALA":
+            continue
+        for atom in residue:
+            if atom.name == "N":
+                atom.pos.x += 1.2
+            elif atom.name == "O":
+                atom.pos.x += 0.9
+    relaxed_path.write_text(structure.make_pdb_string())
+    before = original_path.read_bytes(), relaxed_path.read_bytes()
+    with pytest.raises(AnkoraDomainError) as captured:
+        _assert_restrained_atoms_stable(original_path=original_path, relaxed_path=relaxed_path)
+    atoms = captured.value.details["displaced_atoms"]
+    assert isinstance(atoms, list)
+    assert [atom["atom_name"] for atom in atoms] == ["N", "O"]
+    assert captured.value.details["displaced_atom_count"] == 2
+    assert len(captured.value.details["affected_residues"]) == 1  # type: ignore[arg-type]
+    assert before == (original_path.read_bytes(), relaxed_path.read_bytes())
+
+
+def test_relaxation_exact_tolerance_is_still_accepted(tmp_path: Path) -> None:
+    """Synthetic 0.5 A boundary; the scientific acceptance threshold is unchanged."""
+    original_path, relaxed_path = tmp_path / "original.pdb", tmp_path / "relaxed.pdb"
+    content = (FIXTURES / "synthetic_m1.pdb").read_text()
+    original_path.write_text(content)
+    relaxed_path.write_text(content.replace("14.500  12.700   9.000", "15.000  12.700   9.000"))
+    assert _assert_restrained_atoms_stable(
+        original_path=original_path, relaxed_path=relaxed_path
+    ) == pytest.approx(0.5)
 
 
 def test_relaxation_check_ignores_atoms_pdbfixer_just_added(tmp_path: Path) -> None:
@@ -731,6 +780,66 @@ def test_prepare_receptor_relaxation_adds_relaxed_stage_with_provenance(
     assert relax_event.parameters["max_restrained_atom_displacement_angstrom"] == 0.0
     assert relax_event.parameters["restraint_force_constant_kcal_mol_a2"] == 200.0
     assert relax_event.parameters["tolerance_angstrom"] == 0.5
+
+
+def test_rejected_relaxation_preserves_failed_attempt_and_raw_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic worker outputs exercise storage; no OpenMM calculation is invented."""
+    structure_store, receptor_store = (
+        StructureArtifactStore(tmp_path),
+        ReceptorArtifactStore(tmp_path),
+    )
+    artifact_id = _import_synthetic(structure_store)
+    original_bytes = structure_store.content_path(artifact_id).read_bytes()
+    report = inspect_receptor(artifact_id=artifact_id, store=structure_store)
+    request = _selection_request(
+        report, missing_atom_action=ReceptorDecisionAction.REPAIR
+    ).model_copy(update={"relaxation": RelaxationSettings(enabled=True)})
+
+    def fake_run_pdbfixer(**kwargs: object) -> tuple[ToolExecution, str]:
+        input_path, output_path = kwargs["input_path"], kwargs["output_path"]
+        relaxed_path = kwargs["relaxed_output_path"]
+        assert isinstance(input_path, Path) and isinstance(output_path, Path)
+        assert isinstance(relaxed_path, Path)
+        output_path.write_bytes(input_path.read_bytes())
+        structure = gemmi.read_structure(str(input_path))
+        structure[0][0][0][0].pos.x += 0.9
+        relaxed_path.write_text(structure.make_pdb_string())
+        return ToolExecution(
+            command=["synthetic-pdbfixer"],
+            exit_code=0,
+            stdout="synthetic worker stdout",
+            stderr="synthetic worker stderr",
+        ), "synthetic-version"
+
+    monkeypatch.setattr(
+        "ankora_backend.services.receptor_preparation.run_pdbfixer", fake_run_pdbfixer
+    )
+    with pytest.raises(AnkoraDomainError) as captured:
+        prepare_receptor(
+            source_artifact_id=artifact_id,
+            request=request,
+            structure_store=structure_store,
+            receptor_store=receptor_store,
+        )
+    receptor_id = captured.value.details["receptor_id"]
+    assert isinstance(receptor_id, str)
+    failure = json.loads(receptor_store.output_path(receptor_id, "failure.json").read_text())
+    assert failure["details"]["displaced_atoms"][0]["atom_name"] == "N"
+    assert (
+        receptor_store.output_path(receptor_id, "pdbfixer.stdout.log").read_text()
+        == "synthetic worker stdout"
+    )
+    assert (
+        receptor_store.output_path(receptor_id, "pdbfixer.stderr.log").read_text()
+        == "synthetic worker stderr"
+    )
+    for filename in ("selected_receptor.pdb", "repaired_receptor.pdb", "relaxed_receptor.pdb"):
+        assert receptor_store.output_path(receptor_id, filename).is_file()
+    assert not receptor_store.output_path(receptor_id, "record.json").exists()
+    assert structure_store.content_path(artifact_id).read_bytes() == original_bytes
 
 
 def test_failed_scientific_tool_preserves_raw_output(

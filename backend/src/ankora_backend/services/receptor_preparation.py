@@ -34,6 +34,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationRequest,
     ReceptorPreparationStatus,
     ReceptorProtonationAnalysis,
+    ResidueLocator,
     TerminalHeavyAtomAddition,
 )
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
@@ -937,9 +938,8 @@ def _heavy_atom_keys(path: Path) -> set[str]:
 
 
 # How far a previously observed heavy atom may move while OpenMM relaxes the
-# atoms PDBFixer just placed. Exceeding it means the restraint failed to hold
-# against a clash too severe to resolve safely - the derivative is rejected
-# rather than silently accepted with a displaced original atom.
+# atoms PDBFixer just placed. Exceeding it rejects this attempt; displacement
+# alone does not identify the cause or establish that removing a residue is safe.
 _RESTRAINED_ATOM_TOLERANCE_ANGSTROM = 0.5
 
 
@@ -973,6 +973,7 @@ def _assert_restrained_atoms_stable(*, original_path: Path, relaxed_path: Path) 
     original = _heavy_atom_positions(original_path)
     relaxed = _heavy_atom_positions(relaxed_path)
     max_displacement = 0.0
+    exceeded: list[tuple[float, str]] = []
     for key, original_position in original.items():
         relaxed_position = relaxed.get(key)
         if relaxed_position is None:
@@ -981,20 +982,43 @@ def _assert_restrained_atoms_stable(*, original_path: Path, relaxed_path: Path) 
             (a - b) ** 2 for a, b in zip(original_position, relaxed_position, strict=True)
         ) ** 0.5
         max_displacement = max(max_displacement, displacement)
+        if displacement > _RESTRAINED_ATOM_TOLERANCE_ANGSTROM:
+            exceeded.append((displacement, key))
     if max_displacement > _RESTRAINED_ATOM_TOLERANCE_ANGSTROM:
+        displaced_atoms: list[dict[str, object]] = []
+        affected_residues: dict[str, dict[str, object]] = {}
+        for displacement, key in sorted(exceeded, key=lambda item: (-item[0], item[1])):
+            chain_id, residue_name, sequence_number, insertion_code, atom_name = key.split("|")
+            residue = ResidueLocator(
+                chain_id=chain_id,
+                residue_name=residue_name,
+                sequence_number=int(sequence_number),
+                insertion_code=insertion_code,
+            ).model_dump()
+            affected_residues.setdefault(key.rsplit("|", 1)[0], residue)
+            displaced_atoms.append({
+                "residue": residue,
+                "atom_name": atom_name,
+                "displacement_angstrom": displacement,
+                "original_position_angstrom": list(original[key]),
+                "relaxed_position_angstrom": list(relaxed[key]),
+            })
         raise AnkoraDomainError(
             code="RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED",
             stage="receptor_relaxation",
             message=(
                 "Relaxation moved a previously observed atom beyond the allowed "
-                f"{_RESTRAINED_ATOM_TOLERANCE_ANGSTROM} Å tolerance; the clash "
-                "was too severe to resolve safely. Review or remove the affected "
-                "residue instead."
+                f"{_RESTRAINED_ATOM_TOLERANCE_ANGSTROM} Å safety limit. This attempt "
+                "was rejected. Inspect the displaced atoms and review the repair "
+                "and relaxation plan; displacement alone does not establish its cause."
             ),
             status_code=422,
             details={
                 "max_displacement_angstrom": max_displacement,
                 "tolerance_angstrom": _RESTRAINED_ATOM_TOLERANCE_ANGSTROM,
+                "displaced_atom_count": len(displaced_atoms),
+                "displaced_atoms": displaced_atoms,
+                "affected_residues": list(affected_residues.values()),
             },
         )
     return max_displacement

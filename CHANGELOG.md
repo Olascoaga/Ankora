@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Receptor relaxation recovery - 2026-10-13
+
+- Keep checked relaxation possible to disable after the last missing-atom repair
+  is changed or its chain is deselected; alternate-conformation selection does
+  not count as a PDBFixer atom repair. Unresolved decisions still block Apply.
+- Add exact displaced-atom/residue/coordinate evidence to tolerance failures
+  and original-residue 3D inspection without automatic removal or retry.
+- Associate errors with attempted decisions, retain evidence after draft edits,
+  support older scalar-only failures and fold advanced relaxation settings.
+- Describe elastic restraints accurately and remove the unsupported conclusion
+  that displacement alone proves an irreparable clash. The 0.5 Å safeguard,
+  worker potential, defaults, original records and delivered installers are unchanged.
+- Acceptance: `docs/validation/RECEPTOR_RELAXATION_RECOVERY_2026-10-13.md`.
+
 ## Private-beta repository presentation - 2026-10-11
 
 - Refresh the README with Ankora's current visual identity, verified 7AQF
