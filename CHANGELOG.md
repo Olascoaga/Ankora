@@ -2,6 +2,15 @@
 
 All notable project changes are recorded here.
 
+## Private-beta receptor recovery installer - 2026-10-13
+
+- Rebuild both desktop and frozen backend with the accepted receptor-recovery
+  correction, retaining the complete offline scientific payload and existing
+  compact packaging. Previously delivered installers remain unchanged.
+- Add opt-in installed-WebView recovery acceptance alongside the startup,
+  PDB/mmCIF, M9 presentation and ten native scientific adapter checks.
+- Acceptance: `docs/validation/PRIVATE_BETA_RECEPTOR_RECOVERY_INSTALLER_2026-10-13.md`.
+
 ## Receptor relaxation recovery - 2026-10-13
 
 - Keep checked relaxation possible to disable after the last missing-atom repair

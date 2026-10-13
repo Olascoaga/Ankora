@@ -93,3 +93,15 @@ def test_installer_declares_offline_browser_and_complete_legal_payload() -> None
     assert config["bundle"]["windows"]["webviewInstallMode"]["type"] == "offlineInstaller"
     assert config["bundle"]["resources"]["resources/complete-legal/"] == "legal/"
     assert config["bundle"]["licenseFile"].endswith("INSTALLATION_TERMS.txt")
+
+
+def test_installed_receptor_recovery_gate_is_opt_in_and_loopback_only() -> None:
+    """Script wiring contract; live synthetic UI acceptance is recorded separately."""
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "scripts/smoke_windows_installer.ps1").read_text(encoding="utf-8")
+    assert "[switch]$ReceptorRecoverySmoke" in source
+    assert "if ($FrontendSmoke -or $ReceptorRecoverySmoke)" in source
+    assert 'if ($ReceptorRecoverySmoke) { $frontendArguments += "--receptor-recovery" }' in source
+    assert "& $nodePath @frontendArguments" in source
+    assert "--remote-debugging-address=127.0.0.1" in source
+    assert '$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $oldWebViewArguments' in source

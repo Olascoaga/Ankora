@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory = $true)][string]$PythonPath,
     [switch]$ScientificMatrix,
     [switch]$FrontendSmoke,
-    [switch]$InteractionSmoke
+    [switch]$InteractionSmoke,
+    [switch]$ReceptorRecoverySmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,7 +51,7 @@ $desktopProcess = $null
 $uninstaller = $null
 $oldPath = $env:Path
 $oldWebViewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-$nodePath = if ($FrontendSmoke -or $InteractionSmoke) { (Get-Command node.exe -ErrorAction Stop).Source } else { $null }
+$nodePath = if ($FrontendSmoke -or $InteractionSmoke -or $ReceptorRecoverySmoke) { (Get-Command node.exe -ErrorAction Stop).Source } else { $null }
 $debugPort = $null
 $evidence = Join-Path $buildRoot ("installed-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $evidence | Out-Null
@@ -128,7 +129,7 @@ try {
     }
 
     $env:Path = "$env:WINDIR\System32;$env:WINDIR"
-    if ($FrontendSmoke -or $InteractionSmoke) {
+    if ($FrontendSmoke -or $InteractionSmoke -or $ReceptorRecoverySmoke) {
         # Developer acceptance only; this environment is never shipped or set globally.
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
         $listener.Start()
@@ -177,8 +178,10 @@ try {
     }
     $system | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "system.json") -Encoding utf8
     $tools | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence "tools.json") -Encoding utf8
-    if ($FrontendSmoke) {
-        & $nodePath (Join-Path $projectRoot "scripts/smoke_packaged_frontend.mjs") --cdp "http://127.0.0.1:$debugPort"
+    if ($FrontendSmoke -or $ReceptorRecoverySmoke) {
+        $frontendArguments = @((Join-Path $projectRoot "scripts/smoke_packaged_frontend.mjs"), "--cdp", "http://127.0.0.1:$debugPort")
+        if ($ReceptorRecoverySmoke) { $frontendArguments += "--receptor-recovery" }
+        & $nodePath @frontendArguments
         if ($LASTEXITCODE -ne 0) { throw "Installed WebView2 frontend smoke failed" }
     }
     if ($InteractionSmoke) {
