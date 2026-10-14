@@ -73,7 +73,7 @@ jobs:
         run: npx playwright install chromium
 
       - name: Verify packaged frontend startup and molecular viewer CSP
-        run: node scripts/smoke_packaged_frontend.mjs --receptor-recovery --receptor-guidance
+        run: node scripts/smoke_packaged_frontend.mjs --receptor-recovery --receptor-guidance --receptor-wizard
 
       - name: Verify lossless pose interaction presentation
         run: node scripts/smoke_interaction_presentation.mjs

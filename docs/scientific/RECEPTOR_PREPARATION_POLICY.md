@@ -44,6 +44,15 @@ restoring one never silently upgrades it. See
 [ADR-025](../architecture/ADR/ADR-025-topology-guarded-receptor-repair.md) for the
 exact protocol, rejected candidates, validation boundary and limitations.
 
+The completed guard also rejects reconstructed template-known bonds whose
+length differs by more than 0.2 Å and explains incompatible fixed-anchor spans.
+This internal safeguard does not prove optimal geometry. In original 7AQF,
+ARG A:300's observed CD/CZ anchors cannot accommodate normal bonds through
+missing NE; the current guard rejects that plan before protonation despite a
+preliminary Meeko-accepted output. Moving/rebuilding observed side-chain atoms
+requires a new explicit protocol and scientific authorization, not an automatic
+fallback to a looser check or successive residue deletion.
+
 The opt-in OpenMM declash stage acts after explicit missing-atom repairs.
 Selecting an alternate conformation is not a PDBFixer atom repair. The existing
 repulsive potential and bond tethers are not a full biomolecular force field;
@@ -72,6 +81,13 @@ locators. The 0.5 Å threshold, worker potential, defaults and coordinate accept
 rules are unchanged by this diagnostic/recovery correction.
 
 ## Guided preparation and review recovery
+
+The default guided inspector has three steps: Choose system, Review repairs,
+Prepare. Only one is shown at a time, with prerequisite gates and draft-only
+grouped repairs/gaps. Advanced controls retain the complete specialist plan,
+including legacy methods and optional relaxation. Guided final preparation
+requires hydrogens/PDBQT, exact-plan pKa review and a separate confirmation;
+switching modes must not reset decisions or implicitly upgrade old records.
 
 The current draft exposes its prerequisites and next action above the viewer.
 Any structural-plan change invalidates the pKa review; the next action is a new

@@ -2,6 +2,20 @@
 
 All notable project changes are recorded here.
 
+## Three-step guided receptor preparation - 2026-10-14
+
+- Default to Choose system → Review repairs → Prepare, retaining Advanced
+  controls and all existing specialist settings without resetting choices.
+- Group explicit side-chain repairs and unmodelled-gap decisions; keep separate
+  elastic relaxation advanced and off by default. New plans visibly select the
+  versioned geometry guard; reopened historical plans keep their original method.
+- Guided preparation requires hydrogens/docking output, current pKa review and
+  an exact-plan confirmation. Changing the plan invalidates the corresponding
+  review/confirmation; no automatic computation, removal or retry is added.
+- Keep the three steps reachable at 960×680 and 1280×800, with real production
+  Mol* rendering and strict-CSP browser regressions. Update the source guide
+  without relabelling historical screenshots or rebuilding the beta installer.
+
 ## Versioned receptor reconstruction - 2026-10-14
 
 - Add explicit `topology_guard_v3` repair: seeded PDBFixer 1.12 reconstruction
@@ -10,8 +24,11 @@ All notable project changes are recorded here.
 - Preserve historical legacy decision serialization and artifacts. Record method,
   seed, versions, force parameters and QC in provenance and Methods; do not
   delete residues, change partial charges or automatically retry on failure.
-- Validate the original failing 7AQF plan with all 17 repairs and no observed
+- Exercise the original failing 7AQF plan with all 17 repairs and no observed
   residue removal, including paired outputs and complete preview/final runs.
+  Final bond-length QC correctly rejects ARG A:300's incompatible observed
+  anchors: preliminary Meeko acceptance is not chemical acceptance. No observed
+  side chain is silently rebuilt or removed to obtain a successful receptor.
   Scope and limitations: `docs/validation/RECEPTOR_TOPOLOGY_GUARD_2026-10-14.md`.
 
 ## Receptor preparation guidance - 2026-10-14

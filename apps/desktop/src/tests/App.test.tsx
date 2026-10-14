@@ -342,6 +342,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   await waitFor(() => expect(workflow.getByRole("button", { name: /Receptor/ })).not.toBeDisabled());
   fireEvent.click(workflow.getByRole("button", { name: /Receptor/ }));
   await screen.findByText("Receptor plan");
+  fireEvent.click(await screen.findByRole("button", { name: "Advanced controls" }));
   fireEvent.click(await screen.findByRole("button", { name: "Chain A" }));
   const decisionRows = document.querySelectorAll<HTMLElement>(".decision-row");
   expect(decisionRows).toHaveLength(2);

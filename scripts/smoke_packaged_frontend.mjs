@@ -29,6 +29,7 @@ let fixture = await readFile(resolve(root, "backend/tests/fixtures/synthetic_m1.
 const id = "00000000-0000-0000-0000-000000000001";
 const receptorRecovery = process.argv.includes("--receptor-recovery");
 const receptorGuidance = process.argv.includes("--receptor-guidance");
+const receptorWizard = process.argv.includes("--receptor-wizard");
 assert(!receptorGuidance || receptorRecovery, "Receptor guidance extends the explicit recovery smoke");
 const syntheticResidue = { chain_id: "A", residue_name: "ALA", sequence_number: 1, insertion_code: "" };
 let preparationRequests = 0;
@@ -200,7 +201,42 @@ try {
     }
     await page.locator("input.visually-hidden[type=file]").setInputFiles(resolve(root, "backend/tests/fixtures", filename));
     for (const stage of ["structure", "receptor"]) {
-      if (stage === "receptor") await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Receptor/ }).click();
+      if (stage === "receptor") {
+        await page.getByRole("navigation", { name: "Docking workflow" }).getByRole("button", { name: /Receptor/ }).click();
+        if (receptorWizard && extension === "pdb") {
+          assert.equal(await page.getByRole("button", { name: "Guided preparation", exact: true }).getAttribute("aria-pressed"), "true");
+          assert(await page.getByRole("button", { name: "2 · Review repairs", exact: true }).isDisabled());
+          assert.equal(await page.getByRole("checkbox", { name: /Run PDB2PQR/ }).count(), 0);
+          await page.getByRole("button", { name: "Chain A", exact: true }).click();
+          await page.getByRole("button", { name: "Remove", exact: true }).click();
+          for (const [width, height] of [[1280, 800], [960, 680]]) {
+            await page.setViewportSize({ width, height });
+            for (const step of [0, 1, 2]) {
+              if (step === 2 && await page.getByRole("button", { name: "Repair 1 incomplete side-chain(s)", exact: true }).count()) {
+                await page.getByRole("button", { name: "Repair 1 incomplete side-chain(s)", exact: true }).click();
+              }
+              await page.getByRole("navigation", { name: "Receptor preparation steps" }).getByRole("button").nth(step).click();
+              const visibleAction = step === 0 ? page.getByRole("button", { name: "Next · review repairs" })
+                : step === 1 ? page.getByRole("button", { name: "Next · hydrogens and preparation" })
+                : page.getByRole("checkbox", { name: /Prepare for docking/ });
+              await visibleAction.scrollIntoViewIfNeeded();
+              assert(await visibleAction.isVisible());
+              const bounds = await visibleAction.boundingBox();
+              assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height, "Guided controls must remain reachable");
+              assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+              await page.screenshot({ path: resolve(output, `wizard-${width}-step-${step + 1}.png`) });
+            }
+          }
+          assert.equal(preparationRequests, 0);
+          assert.equal(protonationReviews, 0);
+          evidence.receptor_wizard = { synthetic: true, default_guided: true, three_steps: true,
+            viewports: [[1280, 800], [960, 680]], controls_reachable: true, no_automatic_calculation: true };
+          // Restore only the synthetic UI draft for the existing recovery scenario.
+          await page.getByRole("navigation", { name: "Receptor preparation steps" }).getByRole("button").first().click();
+          await page.getByRole("button", { name: "Chain A", exact: true }).click();
+        }
+        await page.getByRole("button", { name: "Advanced controls", exact: true }).click();
+      }
       try {
         await page.locator(".molstar-host canvas").first().waitFor({ timeout: 15_000 });
         await page.waitForFunction(() => document.querySelector(".molstar-host canvas")?.width > 0);

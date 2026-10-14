@@ -311,6 +311,8 @@ export interface ReceptorPreparationRequest {
   relaxation: RelaxationSettings;
   protonation: ProtonationSettings;
   generate_pdbqt: boolean;
+  repair_method?: "legacy" | "topology_guard_v3";
+  repair_seed?: number;
 }
 
 export interface ReceptorOutputArtifact {

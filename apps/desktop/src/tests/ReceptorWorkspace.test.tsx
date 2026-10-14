@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import { ankoraApi, ApiError } from "../api/client";
 import { ReceptorWorkspace } from "../features/receptor/ReceptorWorkspace";
-import type { ReceptorInspectionReport, ReceptorProtonationAnalysis, StructureRecord } from "../types/api";
+import type { ReceptorInspectionReport, ReceptorPreparationRecord, ReceptorProtonationAnalysis, StructureRecord } from "../types/api";
 
 vi.mock("../viewer/MolecularViewer", () => ({ MolecularViewer: () => <div>Mock 3D viewer</div> }));
 
@@ -44,15 +44,128 @@ function connectivityFailure() {
   });
 }
 
-async function openWorkspace(inspection: ReceptorInspectionReport = report) {
+async function openWorkspace(inspection: ReceptorInspectionReport = report, mode: "guided" | "advanced" = "advanced") {
   vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(inspection);
   const onSelect = vi.fn();
   render(<ReceptorWorkspace structure={structure} initialRecord={null} tools={null} selection={null} onSelect={onSelect} onRecordChange={vi.fn()} />);
+  if (mode === "advanced") fireEvent.click(await screen.findByRole("button", { name: "Advanced controls" }));
   fireEvent.click(await screen.findByRole("button", { name: "Chain A" }));
   fireEvent.click(screen.getByRole("button", { name: "Remove" }));
   fireEvent.change(screen.getByLabelText("Decision for ALA 1"), { target: { value: "repair" } });
-  return { onSelect, relaxation: screen.getByRole("checkbox", { name: /Relax repaired residues with OpenMM/ }) };
+  return { onSelect, relaxation: screen.getByRole("checkbox", { name: /Relax repaired residues with OpenMM/, hidden: mode === "guided" }) };
 }
+
+async function guidedToPreparation() {
+  vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(report);
+  render(<ReceptorWorkspace structure={structure} initialRecord={null} tools={null} selection={null} onSelect={vi.fn()} onRecordChange={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Chain A" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+  fireEvent.click(screen.getByRole("button", { name: "Next · review repairs" }));
+  fireEvent.click(screen.getByRole("button", { name: "Repair 1 incomplete side-chain(s)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Next · hydrogens and preparation" }));
+}
+
+it("starts with three guided steps and no scientific defaults applied", async () => {
+  vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(report);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor");
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation");
+  render(<ReceptorWorkspace structure={structure} initialRecord={null} tools={null} selection={null} onSelect={vi.fn()} onRecordChange={vi.fn()} />);
+  expect(await screen.findByRole("button", { name: "Guided preparation" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "2 · Review repairs" })).toBeDisabled();
+  expect(screen.queryByRole("checkbox", { name: /Run PDB2PQR/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Apply explicit preparation plan" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Chain A" }));
+  expect(screen.getByLabelText("Decision for ALA 1")).toHaveValue("");
+  expect(prepare).not.toHaveBeenCalled();
+  expect(preview).not.toHaveBeenCalled();
+});
+
+it("requires an exact protonation review and explicit confirmation before guided preparation", async () => {
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  await guidedToPreparation();
+  const apply = screen.getByRole("button", { name: "Apply explicit preparation plan" });
+  expect(apply).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Prepare for docking/ }));
+  expect(apply).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await screen.findByText("2 pKa proposals");
+  expect(screen.queryByLabelText("Protonation decision for Synthetic LYS A:6")).not.toBeInTheDocument();
+  expect(apply).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: /I reviewed the system/ }));
+  expect(apply).toBeEnabled();
+  expect(prepare).not.toHaveBeenCalled();
+  fireEvent.click(apply);
+  await waitFor(() => expect(prepare).toHaveBeenCalledWith("source-1", expect.objectContaining({
+    repair_method: "topology_guard_v3", repair_seed: 20261014,
+    relaxation: expect.objectContaining({ enabled: false }), generate_pdbqt: true,
+    issue_decisions: [expect.objectContaining({ action: "repair" })],
+  })));
+  expect(preview).toHaveBeenCalledTimes(1);
+});
+
+it("preserves decisions across modes and invalidates a confirmed plan after a pH edit", async () => {
+  vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor");
+  await guidedToPreparation();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Prepare for docking/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await screen.findByText("2 pKa proposals");
+  fireEvent.click(screen.getByRole("checkbox", { name: /I reviewed the system/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Advanced controls" }));
+  expect(screen.getByLabelText("Decision for ALA 1")).toHaveValue("repair");
+  expect(screen.getByLabelText("Repair method")).toHaveValue("topology_guard_v3");
+  fireEvent.click(screen.getByRole("button", { name: "Guided preparation" }));
+  fireEvent.change(screen.getByLabelText("Target pH"), { target: { value: "6.5" } });
+  expect(screen.getByRole("checkbox", { name: /I reviewed the system/ })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Apply explicit preparation plan" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Analyze pKa proposals" })).toBeEnabled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("blocks an invalid numerical draft before starting scientific tools", async () => {
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation");
+  await guidedToPreparation();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Prepare for docking/ }));
+  fireEvent.change(screen.getByLabelText("Target pH"), { target: { value: "15" } });
+  expect(screen.getByText("Enter valid pH and advanced numerical parameters.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Analyze pKa proposals" })).not.toBeInTheDocument();
+  expect(preview).not.toHaveBeenCalled();
+});
+
+it("does not silently upgrade a restored historical repair method", async () => {
+  vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(report);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  const historical: ReceptorPreparationRecord = {
+    receptor_id: "synthetic-historical", source_artifact_id: "source-1", created_at: provenance.timestamp,
+    status: "selected", outputs: [], warnings: [], provenance: [], display_output_artifact_id: "synthetic-no-display",
+    decisions: { selected_chains: ["A"], water_action: "remove", component_decisions: [],
+      issue_decisions: [{ issue_id: "missing-1", action: "repair", selected_altloc: null }],
+      reference_component_id: null, relaxation: { enabled: false, restraint_force_constant_kcal_mol_a2: 50, max_iterations: 200 },
+      protonation: { enabled: false, ph: 7.4, force_field: "AMBER", overrides: [], authorized_terminal_heavy_atom_additions: [] }, generate_pdbqt: false },
+  };
+  render(<ReceptorWorkspace structure={structure} initialRecord={historical} tools={null} selection={null} onSelect={vi.fn()} onRecordChange={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Advanced controls" }));
+  expect(screen.getByLabelText("Repair method")).toHaveValue("legacy");
+  fireEvent.click(screen.getByRole("button", { name: "Prepare this receptor" }));
+  await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+  expect(prepare.mock.calls[0][1]).not.toHaveProperty("repair_method");
+});
+
+it("explains incompatible observed anchors without offering clash relief as a bond repair", async () => {
+  vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(new ApiError("Synthetic stretched bond rejection", 422, {
+    code: "RECEPTOR_REPAIRED_GEOMETRY_INVALID", stage: "receptor_repair", recoverable: true,
+    message: "Synthetic stretched bond rejection", details: { affected_residues: [{ ...residue,
+      fixed_anchor_conflicts: [{ reconstructed_atom: "CB", observed_atoms: ["CA", "C"],
+        observed_distance_angstrom: 3.6, template_bond_sum_angstrom: 2.8 }] }] },
+  }));
+  await openWorkspace();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare this receptor" }));
+  expect(await screen.findByText(/are 3.600 Å apart/)).toHaveTextContent(/total 2.800 Å/);
+  expect(screen.getByLabelText("Decision for ALA 1")).toHaveValue("repair");
+  expect(screen.queryByRole("button", { name: /Enable clash relief/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Inspect ALA A:1 in 3D" })).toBeInTheDocument();
+});
 
 it("lets the scientist turn relaxation off after the last repair is changed to manual review", async () => {
   const { relaxation } = await openWorkspace();

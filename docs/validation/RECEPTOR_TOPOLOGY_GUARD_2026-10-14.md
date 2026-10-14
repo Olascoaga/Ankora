@@ -109,12 +109,11 @@ a broad receptor-preparation benchmark, metal parameterization validation,
 cross-machine reproducibility claim or proof of a physically optimal rotamer.
 Final Meeko acceptance does not establish those properties.
 
-Windows automated gate: full backend suite passed 757 tests before the final
-required-parser exception regression; the final focused receptor/Methods suite
-passes 80 tests, including that additional case. Ruff is clean and strict mypy
-passes 139 source files. The full final-tree gate is recorded in the guided
-workflow acceptance record after integration. Existing Starlette/httpx warning
-is not a scientific-tool failure. No remote CI run is claimed here.
+Final Windows automated gate: **760 backend tests pass**, including the
+stretched-bond regression; the focused receptor/Methods suite passes **81**.
+Ruff is clean and strict mypy passes **139 source files**. Existing
+Starlette/httpx warning is not a scientific-tool failure. No remote CI run,
+installed-binary acceptance or completed 17-repair receptor is claimed here.
 
 The existing installed beta and installers remain unchanged. Scientist testing
 of the new source workflow precedes any separately authorized installer build.

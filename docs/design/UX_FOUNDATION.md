@@ -34,6 +34,15 @@ This document is the implementation contract for the professional scientific int
   width and uses two columns above it; monitor-width and viewport-height
   exceptions must not be added for that screen.
 - Receptor review keeps residue issues in a filterable table below Mol*. Selecting a residue focuses it in the viewer.
+- Receptor preparation defaults to three guided steps: Choose system, Review
+  repairs, Prepare. Each step exposes only its decisions and a clear next action.
+  Later steps require the preceding system/structural prerequisites. Guided
+  final preparation requires docking output, an exact current pKa review and
+  explicit plan confirmation; it is not a sequence of automatic scientific
+  defaults. Advanced controls preserve all specialist choices and structure-only
+  derivatives, without resetting the draft or silently upgrading old records.
+  Grouped repair/gap choices belong in the guided inspector, not duplicate
+  action bars. Attention filters retain the full selected-state request.
 - Virtual screening keeps source order visible through a fixed source-index column and exposes search, status filtering, sorting, and optional descriptor columns.
 
 ## Visual language

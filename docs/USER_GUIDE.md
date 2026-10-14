@@ -159,6 +159,54 @@ points back at it by identity and hash.
 
 ### 3.2 Make the receptor
 
+**Current development workflow — three guided steps.** The source interface now
+opens in **Guided preparation**. This change is not yet in the previously
+distributed private-beta installer. The accepted historical receptor and Figure
+3 below remain unchanged; they are not a new-method validation result.
+
+The original 7AQF all-17-repair plan now stops at ARG A:300's incompatible
+observed coordinates (explained below). These steps describe how to review that
+case, not a guaranteed one-click successful re-preparation.
+
+1. **Choose system.** For this example, select chain **A**, remove resolved
+   waters and remove **RV2 A:401**. A distance reference such as RV2 is optional:
+   it highlights proximity, not a docking box. No chain, water or component is
+   removed without your choice. Press **Next · review repairs**.
+2. **Review repairs.** The grouped actions can mark the **17 incomplete side
+   chains** for repair and keep the **9 absent-residue gaps unmodelled**. They
+   populate the draft only. Review individual rows in the table, especially
+   alternate conformations, unusual residues and anything near the site. No
+   loop coordinates or residue deletions are inferred. Press **Next · hydrogens
+   and preparation** when every issue has a resolved decision.
+3. **Prepare.** Select **Prepare for docking**, choose the target pH (**7.4** in
+   this example), and press **Analyze pKa proposals** above the viewer. Review
+   **Needs attention** and use **All proposals** for the complete list; filtering
+   never drops selected states. Confirm **I reviewed the system, repairs and
+   selected protonation states**, then **Apply explicit preparation plan**.
+   Editing the system, repair settings, pH or selected states requires a fresh
+   confirmation; structural/pH edits also invalidate the previous pKa analysis.
+
+New requests explicitly record **Topology-guarded repair**, with fixed observed
+atoms during reconstruction and connectivity/stereochemistry checks before
+protonation. The separate optional elastic relaxation is off by default and
+remains in **Advanced controls**, alongside the repair seed and legacy method.
+Switching modes preserves your decisions. Reopening an older record preserves
+its historical method; changing it creates another derivative, not an upgrade
+of the old evidence. The bounded new-method 7AQF acceptance is documented in
+[the repair validation record](validation/RECEPTOR_TOPOLOGY_GUARD_2026-10-14.md).
+That record also explains a remaining source-coordinate conflict in **ARG
+A:300**: its observed anchors are too far apart for the missing NE to connect
+normally. The completed guard rejects the current all-17-repair plan before
+protonation. Do not treat a preliminary Meeko-generated file as a validated
+repair, delete the residue without justification, or silently move observed
+atoms. This case needs a scientific decision about rebuilding the observed
+side-chain segment under a separately explicit protocol.
+
+**Historical tutorial plan.** The following settings and image describe the
+previously accepted receptor used in the recorded docking examples. In
+particular, its separate elastic relaxation was enabled; that is not a blanket
+recommendation to enable relaxation for every new receptor.
+
 Step **2 · Receptor**. Complete the explicit preparation plan before applying
 it. The following describes this example, not a universal preparation recipe.
 
