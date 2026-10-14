@@ -59,3 +59,21 @@ label the error as belonging to a previous plan, while preserving its technical
 evidence. Older failures without atom identities remain readable without inferred
 locators. The 0.5 Å threshold, worker potential, defaults and coordinate acceptance
 rules are unchanged by this diagnostic/recovery correction.
+
+## Guided preparation and review recovery
+
+The current draft exposes its prerequisites and next action above the viewer.
+Any structural-plan change invalidates the pKa review; the next action is a new
+analysis, not an automatic retry or a disabled final Apply. Grouped missing-atom
+and missing-residue actions fill only explicitly requested draft decisions,
+preserve existing Repair/Remove choices and do not select alternate conformers,
+cofactors, metals or protonation states. A missing residue left unmodelled does
+not gain invented coordinates.
+
+Protonation proposals can be filtered by recorded warnings, proximity, coupling
+or tool/prediction disagreement; the complete selected-state list still enters
+the final request. Unassessed distances must not be labelled remote. Previous
+Meeko evidence may be folded after explicit removal choices, but remains
+available and is never reclassified as a successful preparation. Optional
+clash relief remains an explicit choice with the same 0.5 Å safety safeguard;
+its availability is not a guarantee of correct reconstruction.

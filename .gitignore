@@ -19,6 +19,7 @@ target/
 apps/desktop/src-tauri/resources/backend/
 apps/desktop/src-tauri/resources/complete-legal/
 build/windows-runtime/
+build/receptor-diagnostic-*/
 build/user-guide-*/
 
 # Editors and operating system

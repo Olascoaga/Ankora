@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { ankoraApi, ApiError } from "../api/client";
 import { ReceptorWorkspace } from "../features/receptor/ReceptorWorkspace";
-import type { ReceptorInspectionReport, StructureRecord } from "../types/api";
+import type { ReceptorInspectionReport, ReceptorProtonationAnalysis, StructureRecord } from "../types/api";
 
 vi.mock("../viewer/MolecularViewer", () => ({ MolecularViewer: () => <div>Mock 3D viewer</div> }));
 
@@ -19,6 +19,30 @@ const report = {
   issues: [{ issue_id: "missing-1", kind: "missing_atoms", residue, missing_atoms: ["CB"], alternate_locations: [], distance_to_reference_angstrom: null, severity: "unassessed", allowed_actions: ["repair", "leave", "remove", "manual_review"], message: "Synthetic missing atom" }],
   reference_component_id: null, near_reference_cutoff_angstrom: 8, warnings: [], provenance,
 } satisfies ReceptorInspectionReport;
+
+const analysis = {
+  generated_at: "2026-10-14T00:00:00Z", input_sha256: "b".repeat(64), target_ph: 7.4,
+  force_field: "AMBER", tool_version: "synthetic", reference_component_id: null,
+  near_reference_cutoff_angstrom: 8, metal_warning_cutoff_angstrom: 4,
+  proposals: [{ proposal_id: "his", residue: { ...residue, residue_name: "HIS", sequence_number: 5 },
+    group_label: "Synthetic HIS A:5", group_type: "HIS", predicted_pka: 6.5, model_pka: null,
+    buried_fraction: null, coupled_group: null, predicted_state: "HIS_NEUTRAL_AUTO",
+    default_state: "HIS_NEUTRAL_AUTO", selected_state: "HIS_NEUTRAL_AUTO", output_state: "HID",
+    allowed_states: ["HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"], decision_source: "propka_prediction",
+    distance_to_reference_angstrom: null, near_reference: false, nearby_metals: [], warnings: ["PKA_NEAR_TARGET_PH"] },
+  { proposal_id: "lys", residue: { ...residue, residue_name: "LYS", sequence_number: 6 },
+    group_label: "Synthetic LYS A:6", group_type: "LYS", predicted_pka: 10.5, model_pka: null,
+    buried_fraction: null, coupled_group: null, predicted_state: "LYS", default_state: "LYS",
+    selected_state: "LYS", output_state: "LYS", allowed_states: ["LYS", "LYN"], decision_source: "propka_prediction",
+    distance_to_reference_angstrom: null, near_reference: false, nearby_metals: [], warnings: [] }],
+} satisfies ReceptorProtonationAnalysis;
+
+function connectivityFailure() {
+  return new ApiError("Synthetic Meeko failure", 422, {
+    code: "MEEKO_CONNECTIVITY_FAILURE", stage: "receptor_pdbqt", recoverable: true,
+    message: "Synthetic Meeko failure", details: { affected_residues: [residue] },
+  });
+}
 
 async function openWorkspace(inspection: ReceptorInspectionReport = report) {
   vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(inspection);
@@ -119,4 +143,79 @@ it("retains preparation evidence after changing the distance reference and refre
   expect(screen.getByText("Synthetic previous failure")).toBeInTheDocument();
   expect(screen.getByText("Technical evidence")).toBeInTheDocument();
   expect(prepare).toHaveBeenCalledTimes(1);
+});
+
+it("guides a changed Meeko removal plan to a fresh review, without automatic preparation", async () => {
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  await openWorkspace();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Run PDB2PQR/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Generate receptor PDBQT/ }));
+  const next = within(screen.getByRole("region", { name: "Preparation next step" }));
+  fireEvent.click(next.getByRole("button", { name: "Analyze pKa proposals" }));
+  await screen.findByText("2 pKa proposals");
+  fireEvent.click(next.getByRole("button", { name: "Prepare this receptor" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Mark 1 affected residue for removal" }));
+  expect(screen.getByText("Previous attempt · your updated plan has not run").closest(".receptor-error")).toHaveAttribute("role", "status");
+  expect(screen.getByText(/Previous attempt evidence ·/).closest("details")).not.toHaveAttribute("open");
+  expect(next.getByText(/Your structural plan changed/)).toBeInTheDocument();
+  expect(next.getByRole("button", { name: "Analyze pKa proposals" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Apply explicit preparation plan" })).toBeDisabled();
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(preview).toHaveBeenCalledTimes(1);
+  fireEvent.click(next.getByRole("button", { name: "Analyze pKa proposals" }));
+  await waitFor(() => expect(next.getByRole("button", { name: "Prepare this receptor" })).toBeEnabled());
+  expect(preview).toHaveBeenLastCalledWith("source-1", expect.objectContaining({
+    issue_decisions: [expect.objectContaining({ issue_id: "missing-1", action: "remove" })],
+  }));
+  expect(prepare).toHaveBeenCalledTimes(1);
+});
+
+it("offers opt-in clash relief and 3D inspection before removal, without rerunning tools", async () => {
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  const { onSelect, relaxation } = await openWorkspace();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare this receptor" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Inspect ALA A:1 in 3D" }));
+  expect(onSelect).toHaveBeenLastCalledWith({ kind: "residue", residue: { chainId: "A", residueName: "ALA", sequenceNumber: 1, insertionCode: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Enable clash relief for repaired atoms in the plan" }));
+  expect(relaxation).toBeChecked();
+  expect(screen.getByLabelText("Decision for ALA 1")).toHaveValue("repair");
+  expect(prepare).toHaveBeenCalledTimes(1);
+});
+
+it("fills missing-atom and missing-residue decisions in groups without overwriting explicit removal", async () => {
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  const varied = { ...report, issues: [report.issues[0],
+    { ...report.issues[0], issue_id: "missing-2", residue: { ...residue, sequence_number: 2 } },
+    { ...report.issues[0], issue_id: "absent-3", residue: { ...residue, sequence_number: 3 }, kind: "missing_residue" as const,
+      missing_atoms: [], allowed_actions: ["leave", "remove", "manual_review"] as const },
+  ] };
+  // Copy the readonly literal to the API's mutable array contract.
+  const inspection: ReceptorInspectionReport = { ...varied, issues: varied.issues.map((issue) => ({ ...issue, allowed_actions: [...issue.allowed_actions] })) };
+  await openWorkspace(inspection);
+  fireEvent.change(screen.getByLabelText("Decision for ALA 1"), { target: { value: "remove" } });
+  fireEvent.click(screen.getByRole("button", { name: "Mark 1 missing-atom residue(s) for repair" }));
+  fireEvent.click(screen.getByRole("button", { name: "Leave 1 missing residue(s) unmodelled" }));
+  expect(screen.getByLabelText("Decision for ALA 1")).toHaveValue("remove");
+  expect(screen.getByLabelText("Decision for ALA 2")).toHaveValue("repair");
+  expect(screen.getByLabelText("Decision for ALA 3")).toHaveValue("leave");
+  expect(screen.getByRole("button", { name: "Prepare this receptor" })).toBeEnabled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("filters attention proposals without losing hidden scientist overrides in the final request", async () => {
+  vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  await openWorkspace();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Run PDB2PQR/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await screen.findByText("2 pKa proposals");
+  fireEvent.change(screen.getByLabelText("Protonation decision for Synthetic LYS A:6"), { target: { value: "LYN" } });
+  fireEvent.click(screen.getByRole("button", { name: "Needs attention (1)" }));
+  expect(screen.queryByLabelText("Protonation decision for Synthetic LYS A:6")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Protonation decision for Synthetic HIS A:5")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare this receptor" }));
+  await waitFor(() => expect(prepare).toHaveBeenCalledWith("source-1", expect.objectContaining({
+    protonation: expect.objectContaining({ overrides: [{ residue: analysis.proposals[1].residue, state: "LYN" }] }),
+  })));
 });

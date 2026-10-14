@@ -667,6 +667,40 @@ button.project-context:hover { border-color: var(--line); background: var(--pane
   grid-template-rows: minmax(240px, 1fr) minmax(220px, 40%);
   gap: var(--space-3);
 }
+.receptor-next-step {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  margin-bottom: var(--space-3);
+}
+.previous-receptor-attempt { flex-shrink: 0; margin-bottom: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.previous-receptor-attempt > summary { padding: var(--space-3); color: var(--muted); font-size: var(--text-xs); cursor: pointer; }
+.previous-receptor-attempt .receptor-error { margin: var(--space-2); }
+.workspace.receptor-workspace { overflow-y: auto; }
+.receptor-workspace > .receptor-workbench { flex: 1 0 580px; grid-template-rows: minmax(300px, 1fr) minmax(260px, 40%); }
+.receptor-next-step > div { flex: 1 1 260px; min-width: 0; display: grid; gap: 4px; }
+.receptor-next-step strong { color: var(--text); font-size: var(--text-sm); }
+.receptor-next-step p,
+.receptor-next-step ul { margin: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.receptor-next-step ul { padding-left: 18px; }
+.receptor-next-step > button { width: auto; max-width: 100%; margin: 0; flex: 0 1 auto; }
+.receptor-draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.receptor-draft-actions small { flex-basis: 100%; color: var(--muted); font-size: var(--text-2xs); }
+.receptor-draft-actions button { padding: 6px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text); background: var(--panel-raised); font-size: var(--text-xs); cursor: pointer; }
+.receptor-error.previous-plan { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); background: color-mix(in srgb, var(--warning) 6%, var(--panel-solid)); }
+.receptor-error.previous-plan > strong { color: var(--warning); }
+.receptor-error.previous-plan > span { overflow-wrap: anywhere; }
+.meeko-recovery li { flex-wrap: wrap; }
+.meeko-recovery li button { width: auto; }
+.protonation-analysis .filter-tabs { flex-wrap: wrap; }
+.protonation-analysis .filter-tabs button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .viewer-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .viewer-pane > .viewer-live,
 .viewer-pane > .viewer-placeholder { flex: 1; }

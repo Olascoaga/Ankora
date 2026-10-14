@@ -2,6 +2,23 @@
 
 All notable project changes are recorded here.
 
+## Receptor preparation guidance - 2026-10-14
+
+- Put the current draft's prerequisites and next action above the viewer;
+  changing residues directs the scientist to a fresh protonation review rather
+  than misleadingly asking them to press disabled Apply again.
+- Add explicit grouped draft actions for missing atoms and missing residues,
+  preserving already selected repairs/removals. Filter protonation proposals
+  needing attention without dropping other selected states from the request.
+- Inspect Meeko-affected residues in 3D, offer existing opt-in clash relief,
+  distinguish previous failures from current failures, and fold previous Meeko
+  evidence after the affected residues are explicitly marked for removal.
+- Make the receptor lane scrollable at laptop sizes and label unassessed
+  distances honestly. No automatic residue deletion, retry, chemistry shortcut,
+  force-field/default change, relaxed safety limit or installer rebuild.
+- Acceptance and remaining reconstruction problem:
+  `docs/validation/RECEPTOR_PREPARATION_GUIDANCE_2026-10-14.md`.
+
 ## Private-beta receptor recovery installer - 2026-10-13
 
 - Rebuild both desktop and frozen backend with the accepted receptor-recovery

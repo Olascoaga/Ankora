@@ -28,8 +28,11 @@ assert(!csp.includes("unsafe-eval"));
 let fixture = await readFile(resolve(root, "backend/tests/fixtures/synthetic_m1.pdb"));
 const id = "00000000-0000-0000-0000-000000000001";
 const receptorRecovery = process.argv.includes("--receptor-recovery");
+const receptorGuidance = process.argv.includes("--receptor-guidance");
+assert(!receptorGuidance || receptorRecovery, "Receptor guidance extends the explicit recovery smoke");
 const syntheticResidue = { chain_id: "A", residue_name: "ALA", sequence_number: 1, insertion_code: "" };
 let preparationRequests = 0;
+let protonationReviews = 0;
 const provenance = {
   event_id: "synthetic-ui-smoke", event_type: "structure_imported", timestamp: "2026-10-08T00:00:00Z",
   input_artifacts: [], output_artifacts: [id], tool: { name: "synthetic-ui-fixture", version: "1" },
@@ -131,8 +134,25 @@ try {
       return route.fulfill({ status: 200, contentType: "text/plain", body: fixture });
     }
     if (path.endsWith("/receptor-inspection")) return json(inspection);
+    if (receptorGuidance && path.endsWith("/receptor-protonation-preview")) {
+      protonationReviews++;
+      return json({ generated_at: provenance.timestamp, input_sha256: "b".repeat(64), target_ph: 7.4,
+        force_field: "AMBER", tool_version: "synthetic", reference_component_id: null,
+        near_reference_cutoff_angstrom: 8, metal_warning_cutoff_angstrom: 4,
+        proposals: [{ proposal_id: "synthetic-his", residue: { ...syntheticResidue, residue_name: "HIS", sequence_number: 2 },
+          group_label: "Synthetic HIS A:2", group_type: "HIS", predicted_pka: 7, model_pka: null,
+          buried_fraction: null, coupled_group: null, predicted_state: "HIS_NEUTRAL_AUTO",
+          default_state: "HIS_NEUTRAL_AUTO", selected_state: "HIS_NEUTRAL_AUTO", output_state: "HID",
+          allowed_states: ["HIS_NEUTRAL_AUTO", "HID", "HIE", "HIP"], decision_source: "propka_prediction",
+          distance_to_reference_angstrom: null, near_reference: false, nearby_metals: [], warnings: ["PKA_NEAR_TARGET_PH"] }],
+      });
+    }
     if (receptorRecovery && path === `/structures/${id}/receptors`) {
       preparationRequests++;
+      if (receptorGuidance && preparationRequests > 1) return json({
+        code: "MEEKO_CONNECTIVITY_FAILURE", stage: "receptor_pdbqt", message: "Synthetic Meeko connectivity failure.",
+        details: { affected_residues: [syntheticResidue] }, recoverable: true,
+      }, 422);
       return json({ code: "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED", stage: "receptor_relaxation",
         message: "Synthetic UI fixture: an observed atom exceeded the 0.5 Å safety limit.", recoverable: true,
         details: { max_displacement_angstrom: 0.9, tolerance_angstrom: 0.5, displaced_atom_count: 1,
@@ -214,6 +234,44 @@ try {
           assert.equal(preparationRequests, 1, "Recovery controls must not trigger another preparation");
           evidence.receptor_recovery = { synthetic: true, viewports: [[1280, 800], [960, 680]], preparation_requests: preparationRequests,
             focus_without_viewer_error: true, checkbox_recovered: true, previous_plan_labeled: true };
+          if (receptorGuidance) {
+            await decision.selectOption("repair");
+            await page.getByRole("checkbox", { name: /Run PDB2PQR/ }).check();
+            await page.getByRole("checkbox", { name: /Generate receptor PDBQT/ }).check();
+            const nextStep = page.getByRole("region", { name: "Preparation next step" });
+            await nextStep.getByRole("button", { name: "Analyze pKa proposals", exact: true }).click();
+            await page.getByText("1 pKa proposals", { exact: true }).waitFor();
+            await nextStep.getByRole("button", { name: "Prepare this receptor", exact: true }).click();
+            await page.getByRole("button", { name: "Inspect ALA A:1 in 3D", exact: true }).click();
+            await page.getByRole("button", { name: "Mark 1 affected residue for removal", exact: true }).click();
+            await page.getByText(/Your structural plan changed/).waitFor();
+            assert(await page.getByRole("button", { name: "Apply explicit preparation plan", exact: true }).isDisabled());
+            assert.equal(preparationRequests, 2);
+            assert.equal(protonationReviews, 1);
+            assert.equal(await page.locator(".receptor-error").getAttribute("role"), "status");
+            for (const [width, height] of [[1280, 800], [960, 680]]) {
+              await page.setViewportSize({ width, height });
+              await nextStep.scrollIntoViewIfNeeded();
+              // Mol* asynchronously resizes its drawing buffer after viewport/scroll changes.
+              await page.waitForTimeout(500);
+              assert(await nextStep.getByRole("button", { name: "Analyze pKa proposals", exact: true }).isVisible());
+              assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+              await page.screenshot({ path: resolve(output, `guidance-${width}.png`) });
+              await page.getByLabel("Decision for ALA 1", { exact: true }).scrollIntoViewIfNeeded();
+              const bounds = await page.getByLabel("Decision for ALA 1", { exact: true }).boundingBox();
+              assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height,
+                "Structural decisions must remain reachable below the error and guidance");
+            }
+            await nextStep.getByRole("button", { name: "Analyze pKa proposals", exact: true }).click();
+            await nextStep.getByRole("button", { name: "Prepare this receptor", exact: true }).waitFor();
+            await page.getByRole("button", { name: "Needs attention (1)", exact: true }).click();
+            await page.getByLabel("Protonation decision for Synthetic HIS A:2").selectOption("HIE");
+            assert.equal(preparationRequests, 2, "Review/filter controls must not create a receptor");
+            assert.equal(protonationReviews, 2);
+            evidence.receptor_guidance = { synthetic: true, preparation_requests: 2, reviews: 2,
+              no_automatic_retry: true, stale_review_invalidated: true, table_reachable: true,
+              next_action_visible: true, proposal_override_reachable: true };
+          }
           await page.setViewportSize({ width: 1280, height: 800 });
         }
         await page.screenshot({ path: resolve(output, `${extension}-${stage}.png`) });

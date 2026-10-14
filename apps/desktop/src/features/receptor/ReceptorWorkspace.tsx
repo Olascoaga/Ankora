@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ankoraApi, ApiError } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
@@ -12,6 +12,7 @@ import type {
   ReceptorPreparationRecord,
   ReceptorPreparationRequest,
   ReceptorProtonationAnalysis,
+  ReceptorProtonationProposal,
   ResidueLocator,
   StructureRecord,
   TerminalHeavyAtomAddition,
@@ -80,6 +81,8 @@ export function ReceptorWorkspace({
   const [errorPlanSignature, setErrorPlanSignature] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(restoredRecord ? "prepared" : "original");
   const [issueFilter, setIssueFilter] = useState<IssueFilter>("all");
+  const [proposalFilter, setProposalFilter] = useState<"all" | "attention">("all");
+  const nextStepRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const restored = initialRecord?.source_artifact_id === structure.artifact.artifact_id ? initialRecord : null;
@@ -99,6 +102,7 @@ export function ReceptorWorkspace({
     setGeneratePdbqt(restored?.decisions.generate_pdbqt ?? false);
     setProtonationPreview(restoredProtonationPreview(restored));
     setProtonationOverrides(protonationOverrideMap(restored));
+    setProposalFilter("all");
     setRecord(restored);
     setError(null);
     setErrorPlanSignature(null);
@@ -232,6 +236,29 @@ export function ReceptorWorkspace({
     ? protonationPreview.analysis
     : null;
   const planComplete = structuralPlanComplete && (!protonate || activeProtonationAnalysis !== null);
+  const undecidedIssues = selectedIssues.filter((issue) => {
+    const action = issueDecisions[issue.issue_id]?.action;
+    return !action || action === "manual_review";
+  });
+  const incompleteAltlocs = selectedIssues.filter((issue) => issue.kind === "alternate_location"
+    && issueDecisions[issue.issue_id]?.action === "repair" && !issueDecisions[issue.issue_id]?.selectedAltloc);
+  const unresolvedComponents = selectedComponents.filter((item) => componentActions[item.component_id] === undefined);
+  const bulkRepairIssues = selectedIssues.filter((issue) => issue.kind === "missing_atoms"
+    && issue.allowed_actions.includes("repair")
+    && [undefined, "manual_review", "leave"].includes(issueDecisions[issue.issue_id]?.action));
+  const bulkMissingResidues = undecidedIssues.filter((issue) => issue.kind === "missing_residue"
+    && issue.allowed_actions.includes("leave"));
+  const attentionProposals = activeProtonationAnalysis?.proposals.filter(proposalNeedsAttention) ?? [];
+  const visibleProposals = proposalFilter === "attention" ? attentionProposals : activeProtonationAnalysis?.proposals ?? [];
+  const draftBlockers = [
+    ...(!selectedChains.length ? ["Choose at least one polymer chain."] : []),
+    ...(waterAction === null ? ["Choose whether to keep or remove waters."] : []),
+    ...(unresolvedComponents.length ? [`Decide ${unresolvedComponents.length} component(s): ligands, cofactors or ions.`] : []),
+    ...(undecidedIssues.length ? [`Resolve ${undecidedIssues.length} undecided or manual-review residue issue(s).`] : []),
+    ...(incompleteAltlocs.length ? [`Choose a conformation for ${incompleteAltlocs.length} alternate-location issue(s).`] : []),
+    ...(protonationBlockingIssues.length ? [`Repair or remove ${protonationBlockingIssues.length} incomplete/ambiguous residue issue(s), or disable protonation.`] : []),
+    ...(relax && !plannedRepairCount ? ["Disable relaxation or explicitly mark missing atoms for repair."] : []),
+  ];
   // Capture attempted decisions even when later edits make the plan incomplete.
   const decisionSignature = JSON.stringify({
     source: structure.artifact.artifact_id, referenceComponentId,
@@ -298,6 +325,19 @@ export function ReceptorWorkspace({
     });
   }
 
+  function fillIssueDraft(issues: ReceptorIssue[], action: "repair" | "leave") {
+    setIssueDecisions((current) => {
+      const next = { ...current };
+      for (const issue of issues) next[issue.issue_id] = { action };
+      return next;
+    });
+  }
+
+  function focusNextStep() {
+    nextStepRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    nextStepRef.current?.focus({ preventScroll: true });
+  }
+
   function authorizeProposedTerminalAdditions() {
     setAuthorizedTerminalAdditions((current) => {
       const byIdentity = new Map(
@@ -353,6 +393,7 @@ export function ReceptorWorkspace({
         request,
       );
       setProtonationOverrides({});
+      setProposalFilter("all");
       setProtonationPreview({ signature: protonationSignature, analysis });
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason : new Error("Protonation analysis failed"));
@@ -362,9 +403,28 @@ export function ReceptorWorkspace({
     }
   }
 
+  const errorNotice = error ? <ReceptorErrorNotice
+    error={error}
+    affectedIssues={meekoAffectedIssues}
+    recoveryApplied={meekoRecoveryApplied}
+    onRemoveAffected={removeMeekoAffectedResidues}
+    proposedTerminalAdditions={proposedTerminalAdditions}
+    authorizedTerminalAdditions={authorizedTerminalAdditions}
+    onAuthorizeTerminalAdditions={authorizeProposedTerminalAdditions}
+    fromPreviousPlan={errorFromPreviousPlan}
+    relaxationEnabled={relax}
+    canEnableRelaxation={plannedRepairCount > 0 && operation === "idle"}
+    onEnableRelaxation={() => setRelax(true)}
+    onDisableRelaxation={() => setRelax(false)}
+    onInspectResidue={(residue) => { setViewMode("original"); onSelect({ kind: "residue", residue: {
+      chainId: residue.chain_id, residueName: residue.residue_name,
+      sequenceNumber: residue.sequence_number, insertionCode: residue.insertion_code,
+    } }); }}
+  /> : null;
+
   return (
     <>
-      <section className="workspace" aria-label="Receptor workspace">
+      <section className="workspace receptor-workspace" aria-label="Receptor workspace">
         <div className="workspace-heading">
           <div><span className="eyebrow">02 / Receptor</span><h2>Inspect, decide, apply, review</h2></div>
           <div className="workspace-actions">
@@ -383,22 +443,25 @@ export function ReceptorWorkspace({
           </div>
         </div>
         {operation !== "idle" ? <div className="operation-progress" role="progressbar"><span /><p>{operation === "inspecting" ? "Building the read-only receptor report…" : operation === "analyzing" ? "Computing residue-level pKa proposals for review…" : "Applying explicit decisions and preserving every output…"}</p></div> : null}
-        {error ? <ReceptorErrorNotice
-          error={error}
-          affectedIssues={meekoAffectedIssues}
-          recoveryApplied={meekoRecoveryApplied}
-          onRemoveAffected={removeMeekoAffectedResidues}
-          proposedTerminalAdditions={proposedTerminalAdditions}
-          authorizedTerminalAdditions={authorizedTerminalAdditions}
-          onAuthorizeTerminalAdditions={authorizeProposedTerminalAdditions}
-          fromPreviousPlan={errorFromPreviousPlan}
-          relaxationEnabled={relax}
-          onDisableRelaxation={() => setRelax(false)}
-          onInspectResidue={(residue) => { setViewMode("original"); onSelect({ kind: "residue", residue: {
-            chainId: residue.chain_id, residueName: residue.residue_name,
-            sequenceNumber: residue.sequence_number, insertionCode: residue.insertion_code,
-          } }); }}
-        /> : null}
+        {report ? <section className="receptor-next-step" aria-label="Preparation next step" tabIndex={-1} ref={nextStepRef}>
+          <div>
+            <span className="section-label">Current draft · next step</span>
+            <strong>{!structuralPlanComplete ? "1 · Complete the structural decisions"
+              : protonate && !activeProtonationAnalysis ? "2 · Review protonation for this plan"
+              : "3 · Ready for explicit preparation"}</strong>
+            {!structuralPlanComplete ? <ul>{draftBlockers.map((message) => <li key={message}>{message}</li>)}</ul>
+              : protonate && !activeProtonationAnalysis ? <p>{protonationPreview
+                ? "Your structural plan changed. Recalculate and review the pKa proposals for these exact decisions before preparing the receptor."
+                : "Calculate the pKa proposals, review the selected states, then prepare the receptor. Nothing is accepted automatically."}</p>
+              : <p>{protonate ? `${activeProtonationAnalysis?.proposals.length ?? 0} proposals available · ${attentionProposals.length} need focused review. Inspect the selected states before confirming.`
+                : "The explicit plan is complete. Protonation is off; this creates a structural derivative, not a docking-ready receptor."}</p>}
+          </div>
+          {structuralPlanComplete && protonate && !activeProtonationAnalysis ? <button type="button" className="apply-plan" disabled={operation !== "idle"} onClick={() => void analyzeProtonation()}>Analyze pKa proposals</button>
+            : <button type="button" className="apply-plan" disabled={!planComplete || operation !== "idle"} onClick={() => void applyPlan()}>Prepare this receptor</button>}
+        </section> : null}
+        {errorNotice && errorFromPreviousPlan && meekoRecoveryApplied
+          ? <details className="previous-receptor-attempt"><summary>Previous attempt evidence · affected residues marked for removal in the draft</summary>{errorNotice}</details>
+          : errorNotice}
         <div className="scientific-workbench receptor-workbench">
           <div className="viewer-pane">
             {displayOutput ? <div className={`viewer-mode-notice ${viewMode}`} role="status">
@@ -418,6 +481,11 @@ export function ReceptorWorkspace({
               </div>
               <div className="bulk-actions"><button type="button" onClick={() => setAllIssues("leave")}>Explicitly leave all</button><button type="button" onClick={() => setAllIssues("manual_review")}>Mark all for review</button></div>
             </div>
+            {bulkRepairIssues.length || bulkMissingResidues.length ? <div className="receptor-draft-actions">
+              <small>Fill the draft only; no calculation or removal. Existing Repair/Remove choices are preserved.</small>
+              {bulkRepairIssues.length ? <button type="button" disabled={operation !== "idle"} onClick={() => fillIssueDraft(bulkRepairIssues, "repair")}>Mark {bulkRepairIssues.length} missing-atom residue(s) for repair</button> : null}
+              {bulkMissingResidues.length ? <button type="button" disabled={operation !== "idle"} onClick={() => fillIssueDraft(bulkMissingResidues, "leave")}>Leave {bulkMissingResidues.length} missing residue(s) unmodelled</button> : null}
+            </div> : null}
             <div className="receptor-table-scroll">
               <table className="receptor-issues-table">
                 <thead><tr><th>Residue</th><th>Issue</th><th>Distance</th><th>Severity</th><th>Decision</th></tr></thead>
@@ -499,13 +567,13 @@ export function ReceptorWorkspace({
                 <button type="button" onClick={() => { setProtonate(false); setGeneratePdbqt(false); }}>Disable protonation</button>
               </div>
             </div> : null}
-            {protonate && !protonationBlockingIssues.length ? <>
+            {protonate && activeProtonationAnalysis ? <>
               <button
                 type="button"
                 className="protonation-analysis-action"
                 disabled={!structuralPlanComplete || operation !== "idle"}
                 onClick={() => void analyzeProtonation()}
-              >{activeProtonationAnalysis ? "Refresh pKa proposals" : "Analyze pKa proposals"}</button>
+              >Refresh pKa proposals</button>
               <p className="field-note">This review runs the exact chain, component, repair, relaxation, force-field, and pH plan in an isolated workspace. The final derivative reruns and records its own evidence.</p>
             </> : null}
             {protonate && activeProtonationAnalysis ? <div className="protonation-analysis" role="region" aria-label="PROPKA protonation proposals">
@@ -516,8 +584,12 @@ export function ReceptorWorkspace({
                 <span>{Object.keys(protonationOverrides).length} overrides</span>
               </div>
               <p className="field-note">PROPKA predicts; the selected state is Ankora's recorded decision. For histidine, Ankora also verifies the tautomer actually written to both PDB and PQR. Amber-incompatible states remain visible but cannot be selected.</p>
+              <div className="filter-tabs" aria-label="Protonation proposal filters">
+                <button type="button" aria-pressed={proposalFilter === "all"} onClick={() => setProposalFilter("all")}>All proposals ({activeProtonationAnalysis.proposals.length})</button>
+                <button type="button" aria-pressed={proposalFilter === "attention"} onClick={() => setProposalFilter("attention")}>Needs attention ({attentionProposals.length})</button>
+              </div>
               <div className="protonation-proposal-list">
-                {activeProtonationAnalysis.proposals.map((proposal) => {
+                {visibleProposals.map((proposal) => {
                   const selectedState = protonationOverrides[proposal.proposal_id] ?? proposal.default_state;
                   return <article className={`protonation-proposal ${proposal.warnings.length ? "attention" : ""}`} key={proposal.proposal_id}>
                     <div className="protonation-proposal-heading">
@@ -550,12 +622,14 @@ export function ReceptorWorkspace({
                     </div>
                   </article>;
                 })}
+                {!visibleProposals.length ? <p className="field-note">No proposals match this filter. All selected states remain part of the plan.</p> : null}
               </div>
               <small className="protonation-evidence">{activeProtonationAnalysis.tool_version} · input {activeProtonationAnalysis.input_sha256.slice(0, 12)}…</small>
             </div> : null}
           </ReceptorSection>
 
           <button type="button" className="apply-plan" disabled={!planComplete || operation !== "idle"} onClick={() => void applyPlan()}>{record ? "Create another immutable derivative" : "Apply explicit preparation plan"}</button>
+          {protonate && !activeProtonationAnalysis ? <button type="button" className="protonation-analysis-action" onClick={focusNextStep}>Go to preparation next step</button> : null}
           {!structuralPlanComplete && protonationBlockingIssues.length === 0 && (!relax || plannedRepairCount > 0) ? <p className="plan-status">Complete every chain, component, and residue decision to continue.</p> : null}
           {structuralPlanComplete && protonate && !activeProtonationAnalysis ? <p className="plan-status">Review the PROPKA pKa proposals before creating the receptor derivative.</p> : null}
           {!planComplete && relax && plannedRepairCount === 0 ? <p className="plan-status">Relaxation is enabled but no residue is marked Repair. Mark one, or disable relaxation, to continue.</p> : null}
@@ -586,6 +660,8 @@ function ReceptorErrorNotice({
   fromPreviousPlan,
   relaxationEnabled,
   onDisableRelaxation,
+  canEnableRelaxation,
+  onEnableRelaxation,
   onInspectResidue,
 }: {
   error: Error;
@@ -598,6 +674,8 @@ function ReceptorErrorNotice({
   fromPreviousPlan: boolean;
   relaxationEnabled: boolean;
   onDisableRelaxation: () => void;
+  canEnableRelaxation: boolean;
+  onEnableRelaxation: () => void;
   onInspectResidue: (residue: ResidueLocator) => void;
 }) {
   const apiError = error instanceof ApiError ? error : null;
@@ -606,8 +684,9 @@ function ReceptorErrorNotice({
     && proposedTerminalAdditions.every((item) => authorizedTerminalAdditions.some(
       (authorized) => terminalAdditionIdentity(authorized) === terminalAdditionIdentity(item),
     ));
-  return <div className="structure-error receptor-error" role="alert">
-    <strong>{error.message}</strong>
+  return <div className={`structure-error receptor-error${fromPreviousPlan ? " previous-plan" : ""}`} role={fromPreviousPlan ? "status" : "alert"}>
+    <strong>{fromPreviousPlan ? "Previous attempt · your updated plan has not run" : error.message}</strong>
+    {fromPreviousPlan ? <span>{error.message}</span> : null}
     {apiError?.code ? <span>{apiError.code} · {apiError.stage ?? "unknown stage"}</span> : null}
     {fromPreviousPlan ? <p role="status">This failure belongs to a previous plan. Current decisions have changed; no new calculation has run. The original technical evidence is retained below.</p> : null}
     {apiError?.code === "RECEPTOR_RELAXATION_TOLERANCE_EXCEEDED" ? <section className="meeko-recovery relaxation-recovery">
@@ -621,10 +700,14 @@ function ReceptorErrorNotice({
       <small>This only changes the draft. Skipping relaxation does not prove reconstructed geometry is acceptable; review it before a new explicit calculation. No residue is removed automatically.</small>
     </section> : null}
     {apiError?.code === "MEEKO_CONNECTIVITY_FAILURE" && affectedIssues.length ? <section className="meeko-recovery">
-      <p>Invalid connectivity remained in these repaired residues:</p>
-      <ul>{affectedIssues.map((issue) => <li key={issue.issue_id}><strong>{issue.residue.residue_name} {issue.residue.chain_id}:{issue.residue.sequence_number}{issue.residue.insertion_code}</strong><span>{formatDistance(issue.distance_to_reference_angstrom)}</span></li>)}</ul>
+      <p>Meeko reported connectivity problems in these residues of the attempted receptor:</p>
+      <ul>{affectedIssues.map((issue) => <li key={issue.issue_id}><button type="button" onClick={() => onInspectResidue(issue.residue)}>Inspect {issue.residue.residue_name} {issue.residue.chain_id}:{issue.residue.sequence_number}{issue.residue.insertion_code} in 3D</button><span>{formatDistance(issue.distance_to_reference_angstrom)}</span></li>)}</ul>
+      {canEnableRelaxation && !relaxationEnabled ? <>
+        <button type="button" onClick={onEnableRelaxation}>Enable clash relief for repaired atoms in the plan</button>
+        <small>This optional stage tries to separate reconstructed atoms; it is not full protein minimization and can still fail the 0.5 Å observed-atom safety limit. Review protonation again before a new explicit preparation.</small>
+      </> : null}
       <button type="button" disabled={recoveryApplied} onClick={onRemoveAffected}>{recoveryApplied ? `${affectedIssues.length} affected residue${affectedIssues.length === 1 ? "" : "s"} marked for removal` : `Mark ${affectedIssues.length} affected residue${affectedIssues.length === 1 ? "" : "s"} for removal`}</button>
-      <small>This updates the visible plan only. Review the affected menu{affectedIssues.length === 1 ? "" : "s"} and press Apply again to create a new immutable derivative.</small>
+      <small>Removal is one possible scientific choice, not a chemical repair. It can create chain gaps, even far from the reference. This edits the draft only. Review the residues, then follow Current draft · next step; changing residues requires a fresh protonation review when protonation is enabled.</small>
     </section> : null}
     {apiError?.code === "PDB2PQR_UNAPPROVED_HEAVY_ATOM_CHANGE" && proposedTerminalAdditions.length ? <section className="meeko-recovery terminal-addition-recovery">
       <p>PDB2PQR proposed exact terminal oxygen completion:</p>
@@ -732,7 +815,14 @@ function issueFilterLabel(filter: IssueFilter): string {
 }
 
 function severityLabel(severity: ReceptorIssue["severity"]): string {
-  return severity === "near_reference" ? "Near pocket" : "Remote";
+  if (severity === "near_reference") return "Near pocket";
+  return severity === "remote" ? "Remote" : "Unassessed";
+}
+
+function proposalNeedsAttention(proposal: ReceptorProtonationProposal): boolean {
+  return proposal.near_reference || proposal.nearby_metals.length > 0
+    || proposal.warnings.length > 0 || Boolean(proposal.coupled_group)
+    || proposal.default_state !== proposal.predicted_state;
 }
 
 function viewModeTitle(mode: ViewMode): string {

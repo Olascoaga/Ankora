@@ -368,10 +368,10 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await waitFor(() => expect(apply).not.toBeDisabled());
   fireEvent.click(apply);
-  await screen.findByText("Invalid connectivity remained in these repaired residues:");
+  await screen.findByText("Meeko reported connectivity problems in these residues of the attempted receptor:");
   fireEvent.click(screen.getByRole("button", { name: "Mark 1 affected residue for removal" }));
   expect(screen.getByRole("combobox", { name: "Decision for ALA 1" })).toHaveValue("remove");
-  expect(screen.getByRole("button", { name: "1 affected residue marked for removal" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "1 affected residue marked for removal", hidden: true })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await waitFor(() => expect(apply).not.toBeDisabled());
   fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIE" } });
