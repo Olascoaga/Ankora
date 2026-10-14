@@ -65,3 +65,25 @@ for ARG A:300's incompatible observed anchors. Its preliminary Meeko acceptance
 is not promoted. The additional synthetic UI regression verifies that the
 measured conflict is understandable and does not advertise clash relief as a
 bond repair; no scientific reconstruction of observed atoms is inferred.
+
+## General component review follow-up
+
+The guided steps now explicitly distinguish incomplete retained components from
+repairable standard polymer residues. A retained-component warning explains
+the geometry/charge support boundary without changing Keep to Remove. An
+explicit component removal excludes only exact-locator observations, explains
+their exclusion and omits duplicate issue decisions from the submitted plan.
+The original structure and any draft choices for other residues remain intact.
+Final confirmation lists individual kept/removed components, including insertion
+codes, so the scientist can review the actual system.
+
+Two additional synthetic UI regressions cover the retained-component boundary,
+no offered protein repair, guided return to system choices, explicit exclusion,
+reachable next step, final summary and exact request. They assert no automatic
+preview/preparation; the separate native matrix is not inferred from UI mocks.
+Full frontend acceptance is now **297 tests across 39 files** (18 receptor tests),
+with strict TypeScript/build passing. The rebuilt production Edge 155 smoke again
+passes the existing guided/recovery scenarios at 960×680 and 1280×800, using
+genuine Mol* under strict CSP with synthetic API replies. It is not an installed
+binary or native cofactor-preparation test. Existing fixture warnings and the
+large-bundle notice remain visible.

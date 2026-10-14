@@ -80,6 +80,59 @@ it("starts with three guided steps and no scientific defaults applied", async ()
   expect(preview).not.toHaveBeenCalled();
 });
 
+it("requires individual review for a retained incomplete component without offering protein repair", async () => {
+  const component = { component_id: "synthetic-component", name: "LIG", chain_id: "A", sequence_number: 101,
+    insertion_code: "X", atom_count: 2, kind: "ligand" as const };
+  const componentIssue = { ...report.issues[0], issue_id: "synthetic-component-missing",
+    residue: { ...residue, residue_name: "LIG", sequence_number: 101, insertion_code: "X" },
+    missing_atoms: ["N1"], allowed_actions: ["leave", "remove", "manual_review"] as const };
+  vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue({ ...report, candidate_chains: ["A", "B"],
+    components: [component], issues: [report.issues[0], { ...componentIssue, allowed_actions: [...componentIssue.allowed_actions] }] });
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation");
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor");
+  render(<ReceptorWorkspace structure={structure} initialRecord={null} tools={null} selection={null} onSelect={vi.fn()} onRecordChange={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Chain A" }));
+  const rows = screen.getAllByRole("button", { name: "Remove" });
+  fireEvent.click(rows[0]); // Explicit water choice, not a component default.
+  fireEvent.click(screen.getAllByRole("button", { name: "Keep" })[1]);
+  expect(screen.getByText(/Retained ligands and metals may require/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next · review repairs" }));
+  expect(screen.getByText(/1 incomplete component\(s\) need individual review/)).toBeInTheDocument();
+  expect(within(screen.getByLabelText("Decision for LIG 101X")).queryByRole("option", { name: "Repair" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Repair 1 incomplete side-chain(s)" }));
+  expect(screen.getByRole("button", { name: "Next · hydrogens and preparation" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Review component choices" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+  expect(screen.queryByLabelText("Decision for LIG 101X")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next · review repairs" }));
+  expect(screen.getByText(/1 observation\(s\) excluded by your component-removal choices/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Next · hydrogens and preparation" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Next · hydrogens and preparation" }));
+  expect(screen.getByText("LIG A:101X · remove")).toBeInTheDocument();
+  expect(preview).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("sends only included residue decisions after an explicit component exclusion", async () => {
+  const component = { component_id: "synthetic-component", name: "LIG", chain_id: "A", sequence_number: 101,
+    insertion_code: "", atom_count: 2, kind: "ligand" as const };
+  const componentIssue = { ...report.issues[0], issue_id: "synthetic-component-missing",
+    residue: { ...residue, residue_name: "LIG", sequence_number: 101 }, allowed_actions: ["leave", "remove", "manual_review"] as const };
+  vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue({ ...report, components: [component],
+    issues: [report.issues[0], { ...componentIssue, allowed_actions: [...componentIssue.allowed_actions] }] });
+  const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());
+  render(<ReceptorWorkspace structure={structure} initialRecord={null} tools={null} selection={null} onSelect={vi.fn()} onRecordChange={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Advanced controls" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chain A" }));
+  for (const button of screen.getAllByRole("button", { name: "Remove" })) fireEvent.click(button);
+  fireEvent.change(screen.getByLabelText("Decision for ALA 1"), { target: { value: "leave" } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply explicit preparation plan" }));
+  await waitFor(() => expect(prepare).toHaveBeenCalledWith("source-1", expect.objectContaining({
+    component_decisions: [{ component_id: component.component_id, action: "remove" }],
+    issue_decisions: [expect.objectContaining({ issue_id: "missing-1", action: "leave" })],
+  })));
+});
+
 it("requires an exact protonation review and explicit confirmation before guided preparation", async () => {
   const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
   const prepare = vi.spyOn(ankoraApi, "prepareReceptor").mockRejectedValue(connectivityFailure());

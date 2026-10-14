@@ -167,7 +167,18 @@ export function ReceptorWorkspace({
   }, [onActivityChange, operation]);
 
   const selectedComponents = report?.components.filter((item) => selectedChains.includes(item.chain_id)) ?? [];
-  const selectedIssues = report?.issues.filter((item) => selectedChains.includes(item.residue.chain_id)) ?? [];
+  const selectedChainIssues = report?.issues.filter((item) => selectedChains.includes(item.residue.chain_id)) ?? [];
+  const selectedIssues = selectedChainIssues.filter((issue) => !selectedComponents.some((component) => (
+    componentActions[component.component_id] === "remove"
+    && component.chain_id === issue.residue.chain_id
+    && component.name === issue.residue.residue_name
+    && component.sequence_number === issue.residue.sequence_number
+    && component.insertion_code === issue.residue.insertion_code
+  )));
+  const excludedComponentIssueCount = selectedChainIssues.length - selectedIssues.length;
+  const unsupportedMissingAtomIssues = selectedIssues.filter((issue) => issue.kind === "missing_atoms"
+    && !issue.allowed_actions.includes("repair"));
+  const retainedComponents = selectedComponents.filter((component) => componentActions[component.component_id] === "keep");
   const plannedRepairCount = selectedIssues.filter((issue) => issue.kind === "missing_atoms"
     && issueDecisions[issue.issue_id]?.action === "repair").length;
   const protonationBlockingIssues = protonate ? selectedIssues.filter((issue) => {
@@ -528,7 +539,7 @@ export function ReceptorWorkspace({
                     <td><strong>{issue.kind.replaceAll("_", " ")}</strong><small>{issue.message}</small></td>
                     <td>{formatDistanceCompact(issue.distance_to_reference_angstrom)}</td>
                     <td><span className={`severity-badge ${issue.severity}`}>{severityLabel(issue.severity)}</span></td>
-                    <td><select aria-label={`Decision for ${issue.residue.residue_name} ${issue.residue.sequence_number}`} value={decision.action ?? ""} onChange={(event) => setIssueDecisions((current) => ({ ...current, [issue.issue_id]: { action: event.target.value as ReceptorDecisionAction } }))}>
+                    <td><select aria-label={`Decision for ${issue.residue.residue_name} ${issue.residue.sequence_number}${issue.residue.insertion_code}`} value={decision.action ?? ""} onChange={(event) => setIssueDecisions((current) => ({ ...current, [issue.issue_id]: { action: event.target.value as ReceptorDecisionAction } }))}>
                       <option value="">Decision required</option>
                       {issue.allowed_actions.map((action) => <option key={action} value={action}>{decisionLabel(action, issue.kind)}</option>)}
                     </select>{issue.kind === "alternate_location" && decision.action === "repair" ? <div className="altloc-actions">{issue.alternate_locations.map((label) => <button type="button" key={label} className={decision.selectedAltloc === label ? "selected" : ""} onClick={() => setIssueDecisions((current) => ({ ...current, [issue.issue_id]: { action: "repair", selectedAltloc: label } }))}>Use {label}</button>)}</div> : null}</td>
@@ -575,7 +586,8 @@ export function ReceptorWorkspace({
 
           <ReceptorSection title={uiMode === "guided" ? "What to keep" : "3 · Components"}>
             <DecisionRow label={`Resolved waters (${report.water_count})`} value={waterAction} onChange={setWaterAction} />
-            {selectedComponents.map((component) => <DecisionRow key={component.component_id} label={`${component.name} ${component.chain_id}:${component.sequence_number ?? "?"} · ${component.kind}`} value={componentActions[component.component_id] ?? null} onChange={(action) => setComponentActions((current) => ({ ...current, [component.component_id]: action }))} />)}
+            {selectedComponents.map((component) => <DecisionRow key={component.component_id} label={`${component.name} ${component.chain_id}:${component.sequence_number ?? "?"}${component.insertion_code} · ${component.kind}`} value={componentActions[component.component_id] ?? null} onChange={(action) => setComponentActions((current) => ({ ...current, [component.component_id]: action }))} />)}
+            {retainedComponents.length ? <p className="field-note">Retained ligands and metals may require specific protonation and charge parameters. Keeping a component is not evidence that the protein preparation tools support it. Review its role in your system.</p> : null}
             {!selectedChains.length ? <p className="empty-list">Choose at least one chain to inspect its components.</p> : null}
           </ReceptorSection>
 
@@ -584,6 +596,13 @@ export function ReceptorWorkspace({
           <div hidden={!showRepairs}>
 
           <ReceptorSection title={`${uiMode === "advanced" ? "4 · " : ""}Structural issues (${selectedIssues.length})`}>
+            {excludedComponentIssueCount ? <p className="field-note">{excludedComponentIssueCount} observation(s) excluded by your component-removal choices. The imported structure is unchanged.</p> : null}
+            {unsupportedMissingAtomIssues.length ? <div className="protonation-blocker" role="alert">
+              <strong>{unsupportedMissingAtomIssues.length} incomplete component(s) need individual review.</strong>
+              <p>The protein repair tool cannot reconstruct these missing atoms. Prepare the component with an appropriate external workflow, or exclude it only if justified for your experiment. Nothing is removed automatically.</p>
+              <ul>{unsupportedMissingAtomIssues.map((issue) => <li key={issue.issue_id}>{issue.residue.residue_name} {issue.residue.chain_id}:{issue.residue.sequence_number}{issue.residue.insertion_code}</li>)}</ul>
+              {uiMode === "guided" ? <button type="button" onClick={() => setGuidedStep(0)}>Review component choices</button> : null}
+            </div> : null}
             {uiMode === "guided" ? <div className="receptor-draft-actions">
               {bulkRepairIssues.length ? <button type="button" onClick={() => fillIssueDraft(bulkRepairIssues, "repair")}>Repair {bulkRepairIssues.length} incomplete side-chain(s)</button> : null}
               {bulkMissingResidues.length ? <button type="button" onClick={() => fillIssueDraft(bulkMissingResidues, "leave")}>Keep {bulkMissingResidues.length} gap(s) unmodelled</button> : null}
@@ -709,6 +728,7 @@ export function ReceptorWorkspace({
           {uiMode === "guided" ? <section className="prepared-summary" aria-label="Preparation confirmation">
             <strong>Review this exact plan</strong>
             <span>Chain(s) {selectedChains.join(", ")} · waters {waterAction} · {plannedRepairCount} missing-atom repairs</span>
+            {selectedComponents.map((component) => <span key={component.component_id}>{component.name} {component.chain_id}:{component.sequence_number ?? "?"}{component.insertion_code} · {componentActions[component.component_id]}</span>)}
             <span>{selectedIssues.filter((issue) => issueDecisions[issue.issue_id]?.action === "remove").length} residue(s) marked for removal · {protonate ? `pH ${formatScientificNumber(ph, 1)} · AMBER charges` : "No hydrogens or docking file"}</span>
             <label className="check-row"><input type="checkbox" checked={reviewConfirmed} disabled={!planComplete || !protonate || !generatePdbqt} onChange={(event) => setReviewConfirmed(event.target.checked)} /><span>I reviewed the system, repairs and selected protonation states.</span></label>
             {!protonate || !generatePdbqt ? <p className="field-note">Select Prepare for docking to complete this guided workflow. Advanced controls also allow a structure-only derivative.</p> : null}

@@ -4,6 +4,9 @@ All notable project changes are recorded here.
 
 ## General receptor preparation boundaries - 2026-10-14
 
+- Explain incomplete retained components in the guided review, allow return to
+  system choices without calculation, show excluded observations once, and list
+  individual kept/removed components in final confirmation.
 - Restrict missing-atom Repair to standard polymer residues; reject unsupported
   non-protein component repair before creating a derivative or launching tools.
 - Resolve observations once at explicit component-removal scope while retaining

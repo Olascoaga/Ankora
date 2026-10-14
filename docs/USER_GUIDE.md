@@ -186,6 +186,16 @@ case, not a guaranteed one-click successful re-preparation.
    Editing the system, repair settings, pH or selected states requires a fresh
    confirmation; structural/pH edits also invalidate the previous pKa analysis.
 
+For any receptor, **What to keep** is the authoritative component decision:
+once you explicitly remove a component, its observations are excluded from
+the repair table and no second residue decision is required. The source remains
+unchanged. Retained incomplete components are identified separately; Ankora does
+not offer amino-acid reconstruction for a ligand or metal-containing component.
+Review its experimental role and use an appropriate preparation workflow when
+needed; removal is never an automatic workaround. The final plan lists the
+actual kept/removed components, not just a total. These general checks and their
+limits are documented in [the workflow matrix](validation/GENERAL_RECEPTOR_WORKFLOW_2026-10-14.md).
+
 New requests explicitly record **Topology-guarded repair**, with fixed observed
 atoms during reconstruction and connectivity/stereochemistry checks before
 protonation. The separate optional elastic relaxation is off by default and

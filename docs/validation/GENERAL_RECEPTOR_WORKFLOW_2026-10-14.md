@@ -102,3 +102,13 @@ recorded outcome rather than interpreting exit zero as universal success.
 This evidence broadens regression coverage. It does not imply arbitrary
 cofactor support, correct biological protonation in every system, a validated
 repair of incompatible observed geometry, or new installer acceptance.
+
+Final integrated acceptance: **798 backend tests passed**; the focused receptor/
+diagnostic subset passed 103 tests. Ruff and strict mypy passed (139 source
+files). The frontend passed 297 tests across 39 files, strict TypeScript and
+production build; production Edge 155 guided/recovery smoke passed at laptop
+sizes under strict CSP. UI replies there are synthetic, with genuine Mol*
+rendering, not native preparation evidence. The public-path and frozen-status
+checks passed. The existing Starlette/httpx and synthetic React fixture warnings
+and large-bundle notice remain visible. No native shell/installer rebuild or
+remote CI run is claimed.
