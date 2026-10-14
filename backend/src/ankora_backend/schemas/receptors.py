@@ -4,7 +4,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
@@ -263,6 +270,18 @@ class ReceptorPreparationRequest(BaseModel):
     relaxation: RelaxationSettings = Field(default_factory=RelaxationSettings)
     protonation: ProtonationSettings = Field(default_factory=ProtonationSettings)
     generate_pdbqt: bool = False
+    repair_method: Literal["legacy", "topology_guard_v3"] = "legacy"
+    repair_seed: int = Field(default=20261014, ge=1, le=2147483647)
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_request_shape(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        result: dict[str, object] = handler(self)
+        if self.repair_method == "legacy":
+            result.pop("repair_method", None)
+            result.pop("repair_seed", None)
+        return result
 
     @model_validator(mode="after")
     def pdbqt_requires_protonation(self) -> "ReceptorPreparationRequest":

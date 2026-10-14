@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from importlib import import_module, metadata
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 from ankora_backend.adapters.tools.discovery import (
     discover_python_package,
@@ -21,6 +21,11 @@ from ankora_backend.schemas.receptors import ProtonationOverride, ResidueLocator
 
 PqrResidueParser = Callable[[str], object]
 PqrBondFinder = Callable[[dict[str, tuple[object, str]]], object]
+
+
+class RepairOptions(TypedDict, total=False):
+    repair_method: str
+    repair_seed: int
 
 
 def package_version(distribution: str) -> str:
@@ -38,6 +43,8 @@ def run_pdbfixer(
     relaxed_output_path: Path | None = None,
     restraint_force_constant_kcal_mol_a2: float | None = None,
     relax_max_iterations: int | None = None,
+    repair_method: str = "legacy",
+    repair_seed: int = 20261014,
 ) -> tuple[ToolExecution, str]:
     discovered = discover_python_package("pdbfixer", "pdbfixer")
     if not discovered.available:
@@ -66,6 +73,8 @@ def run_pdbfixer(
                 ),
             ]
         )
+    if repair_method != "legacy":
+        arguments.extend(["--repair-method", repair_method, "--repair-seed", str(repair_seed)])
     if relaxed_output_path is not None:
         assert restraint_force_constant_kcal_mol_a2 is not None
         assert relax_max_iterations is not None
@@ -98,6 +107,27 @@ def run_pdbfixer(
         repaired_output_path=output_path,
         relaxed_output_path=relaxed_output_path,
     )
+    if repair_method != "legacy":
+        report = json.loads(execution.stdout)
+        if (
+            report.get("repair_method") != repair_method
+            or report.get("repair_seed") != repair_seed
+            or report.get("platform") != "Reference"
+            or not isinstance(report.get("openmm_version"), str)
+            or not report.get("openmm_version")
+        ):
+            raise AnkoraDomainError(
+                code="PDBFIXER_REPAIR_PROTOCOL_MISMATCH",
+                stage="receptor_repair",
+                status_code=422,
+                message="The repair worker did not apply the requested geometry protocol.",
+                details={
+                    "command": execution.command,
+                    "stdout": execution.stdout,
+                    "stderr": execution.stderr,
+                    "report": report,
+                },
+            )
     return execution, discovered.version or package_version("pdbfixer")
 
 
@@ -322,19 +352,41 @@ def run_meeko_receptor(
 
 def diagnose_meeko_pqr_connectivity(input_pqr_path: Path) -> list[dict[str, object]]:
     """Identify residue blocks that Meeko cannot convert into valid RDKit molecules."""
+    return diagnose_meeko_pqr_content(input_pqr_path.read_text())
+
+
+def diagnose_meeko_pqr_content(content: str, *, required: bool = False) -> list[dict[str, object]]:
     tools = _load_meeko_pqr_tools()
     if tools is None:
+        if required:
+            raise AnkoraDomainError(
+                code="RECEPTOR_GEOMETRY_CHECK_UNAVAILABLE",
+                stage="receptor_geometry",
+                status_code=422,
+                message="The required Meeko geometry check is unavailable.",
+                details={},
+            )
         return []
     parser, bond_finder = tools
-    return _diagnose_pqr_connectivity(
-        input_pqr_path.read_text(), parser, bond_finder
-    )
+    try:
+        return _diagnose_pqr_connectivity(content, parser, bond_finder, required=required)
+    except AnkoraDomainError:
+        raise
+    except Exception as error:
+        if not required:
+            raise
+        raise AnkoraDomainError(
+            code="RECEPTOR_GEOMETRY_CHECK_FAILED", stage="receptor_geometry",
+            status_code=422, message="The required PQR connectivity check failed.",
+            details={"diagnostic_error": f"{type(error).__name__}: {error}"},
+        ) from error
 
 
 def _diagnose_pqr_connectivity(
     pqr_text: str,
     parser: PqrResidueParser,
     bond_finder: PqrBondFinder | None = None,
+    *, required: bool = False,
 ) -> list[dict[str, object]]:
     residue_blocks: dict[tuple[str, str, int, str], list[str]] = {}
     for line in pqr_text.splitlines(keepends=True):
@@ -349,13 +401,18 @@ def _diagnose_pqr_connectivity(
         )
         residue_blocks.setdefault(key, []).append(line)
 
+    if required and not residue_blocks:
+        raise AnkoraDomainError(
+            code="RECEPTOR_GEOMETRY_CHECK_FAILED", stage="receptor_geometry",
+            status_code=422, message="The geometry check found no readable PQR residues.",
+            details={},
+        )
+
     affected: list[dict[str, object]] = []
     affected_keys: set[tuple[str, str, int, str]] = set()
     parsed_residues: dict[str, tuple[object, str]] = {}
     locators_by_meeko_key: dict[str, ResidueLocator] = {}
-    for (chain_id, residue_name, sequence_number, insertion_code), lines in (
-        residue_blocks.items()
-    ):
+    for (chain_id, residue_name, sequence_number, insertion_code), lines in residue_blocks.items():
         locator = ResidueLocator(
             chain_id=chain_id,
             residue_name=residue_name,
@@ -375,14 +432,21 @@ def _diagnose_pqr_connectivity(
                     and isinstance(payload[1], str)
                 ):
                     parsed_residues[meeko_key] = (payload[0], payload[1])
+                    continue
+            if required:
+                raise ValueError("Meeko did not return the expected residue molecule")
         except Exception as error:  # Meeko/RDKit exposes several versioned exception types.
-            affected.append(
-                _affected_residue(locator, f"{type(error).__name__}: {error}")
-            )
+            affected.append(_affected_residue(locator, f"{type(error).__name__}: {error}"))
             affected_keys.add((chain_id, residue_name, sequence_number, insertion_code))
 
     if bond_finder is not None and parsed_residues:
         bonds = bond_finder(parsed_residues)
+        if required and not isinstance(bonds, dict):
+            raise AnkoraDomainError(
+                code="RECEPTOR_GEOMETRY_CHECK_FAILED", stage="receptor_geometry",
+                status_code=422, message="Meeko did not return structured inter-residue bonds.",
+                details={},
+            )
         if isinstance(bonds, dict):
             for pair, atom_pairs in bonds.items():
                 if (

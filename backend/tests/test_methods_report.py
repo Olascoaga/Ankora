@@ -113,6 +113,43 @@ class _ExactPreparation:
         return SimpleNamespace(state=SimpleNamespace(state_id="state-exact"))
 
 
+@pytest.mark.parametrize("guarded", [True, False])
+def test_methods_distinguishes_new_geometry_protocol_from_legacy(guarded: bool) -> None:
+    # Explicitly synthetic provenance exercises text, not native scientific output.
+    receptor = SimpleNamespace(
+        source_artifact_id="synthetic-source",
+        decisions=SimpleNamespace(
+            selected_chains=["A"],
+            water_action="remove",
+            component_decisions=[],
+            relaxation=SimpleNamespace(enabled=False),
+        ),
+        provenance=[
+            SimpleNamespace(
+                event_type="receptor_residues_repaired",
+                tool=SimpleNamespace(name="PDBFixer", version="1.12.0"),
+                parameters={
+                    "residues": ["synthetic-residue"],
+                    "repair_method": "topology_guard_v3" if guarded else "legacy",
+                    "repair_seed": 20261014,
+                    "openmm_version": "8.5.2",
+                },
+            )
+        ],
+    )
+    report = _service(_entry(), receptors=SimpleNamespace(load_record=lambda _: receptor)).render(
+        "synthetic-campaign"
+    )
+    if guarded:
+        assert "topology_guard_v3" in report.markdown
+        assert "recorded repair seed 20261014" in report.markdown
+        assert "not full protein minimization" in report.markdown
+        assert "OpenMM" in report.markdown and "8.5.2" in report.markdown
+    else:
+        assert "topology_guard_v3" not in report.markdown
+        assert "observed heavy atoms were fixed" not in report.markdown
+
+
 @pytest.mark.parametrize(
     ("engine_key", "store_name", "loader_name", "engine_label", "scoring_name"),
     [

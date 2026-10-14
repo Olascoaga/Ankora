@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -59,7 +60,7 @@ class _Fixer(Protocol):
     def findMissingResidues(self) -> None: ...
     def findNonstandardResidues(self) -> None: ...
     def findMissingAtoms(self) -> None: ...
-    def addMissingAtoms(self) -> None: ...
+    def addMissingAtoms(self, seed: int | None = None) -> None: ...
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -67,6 +68,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repair", action="append", default=[])
+    parser.add_argument(
+        "--repair-method", choices=["legacy", "topology_guard_v3"], default="legacy"
+    )
+    parser.add_argument("--repair-seed", type=int, default=20261014)
     parser.add_argument("--relax", action="store_true")
     parser.add_argument("--relaxed-output", type=Path, default=None)
     parser.add_argument("--restraint-force-constant", type=float, default=200.0)
@@ -77,6 +82,8 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _parser()
     args = parser.parse_args()
+    if not 1 <= args.repair_seed <= 2147483647:
+        parser.error("--repair-seed must be a positive 32-bit integer")
     if args.relax and args.relaxed_output is None:
         # A bare `assert` here disappears under `python -O`, which would
         # let execution reach `_relax_new_atoms(..., output_path=None)` and
@@ -87,7 +94,12 @@ def main() -> None:
     from pdbfixer import PDBFixer
 
     requested = {tuple(value.split("|")) for value in args.repair}
-    fixer = cast(_Fixer, PDBFixer(filename=str(args.input)))
+    if args.repair_method == "topology_guard_v3":
+        from ankora_backend.adapters.tools.receptor_geometry import guarded_fixer
+
+        fixer = cast(_Fixer, guarded_fixer(args.input))
+    else:
+        fixer = cast(_Fixer, PDBFixer(filename=str(args.input)))
     fixer.findMissingResidues()
     fixer.missingResidues = {}
     fixer.findNonstandardResidues()
@@ -108,7 +120,10 @@ def main() -> None:
     fixer.missingTerminals = selected_terminals
 
     before_keys = {_atom_key(atom) for atom in fixer.topology.atoms()}
-    fixer.addMissingAtoms()
+    if args.repair_method == "topology_guard_v3":
+        fixer.addMissingAtoms(seed=args.repair_seed)
+    else:
+        fixer.addMissingAtoms()
 
     with args.output.open("x", encoding="utf-8", newline="\n") as stream:
         PDBFile.writeFile(fixer.topology, fixer.positions, stream, keepIds=True)
@@ -130,6 +145,10 @@ def main() -> None:
                 "requested_residues": len(requested),
                 "matched_residues": len(set(selected_atoms) | set(selected_terminals)),
                 "relaxation": relaxation_report,
+                "repair_method": args.repair_method,
+                "repair_seed": args.repair_seed if args.repair_method != "legacy" else None,
+                "platform": "Reference" if args.repair_method != "legacy" else "tool_default",
+                "openmm_version": version("openmm"),
             },
             sort_keys=True,
         )
@@ -139,12 +158,15 @@ def main() -> None:
 def _residue_key(residue: _Residue) -> tuple[str, str, str, str]:
     residue_id = residue.id.strip()
     number = "".join(character for character in residue_id if character in "-0123456789")
-    insertion = residue_id[len(number) :] if residue_id.startswith(number) else ""
+    insertion = getattr(residue, "insertionCode", "").strip()
+    if not insertion:
+        insertion = residue_id[len(number) :] if residue_id.startswith(number) else ""
     return residue.chain.id, residue.name, number, insertion
 
 
 def _atom_key(atom: _Atom) -> tuple[str, str, str, str]:
-    return (atom.residue.chain.id, atom.residue.name, atom.residue.id, atom.name)
+    chain, name, number, insertion = _residue_key(atom.residue)
+    return (chain, name, f"{number}{insertion}", atom.name)
 
 
 def _relax_new_atoms(
@@ -242,9 +264,7 @@ def _relax_new_atoms(
             )
             max_restrained_displacement_nm = max(max_restrained_displacement_nm, displacement)
 
-    min_pair_after_nm = _min_new_atom_pair_distance_nm(
-        relaxed_positions, new_index_set, bond_pairs
-    )
+    min_pair_after_nm = _min_new_atom_pair_distance_nm(relaxed_positions, new_index_set, bond_pairs)
 
     with output_path.open("x", encoding="utf-8", newline="\n") as stream:
         PDBFile.writeFile(fixer.topology, relaxed_positions, stream, keepIds=True)

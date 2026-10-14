@@ -33,6 +33,17 @@ If Meeko rejects PQR connectivity, Ankora reuses Meeko's residue parser and stru
 
 ## Optional repair relaxation and recovery
 
+New UI requests explicitly select the versioned `topology_guard_v3` construction
+method, seed and recorded OpenMM Reference platform. It keeps observed atoms
+fixed during reconstruction, retains native bonded geometry with stronger
+new-atom bond restraints, and checks repaired connectivity and template
+chirality before protonation, then PQR connectivity after hydrogenation.
+This is separate from optional elastic relaxation and is not full receptor
+minimization. Historical requests/records without the method remain `legacy`;
+restoring one never silently upgrades it. See
+[ADR-025](../architecture/ADR/ADR-025-topology-guarded-receptor-repair.md) for the
+exact protocol, rejected candidates, validation boundary and limitations.
+
 The opt-in OpenMM declash stage acts after explicit missing-atom repairs.
 Selecting an alternate conformation is not a PDBFixer atom repair. The existing
 repulsive potential and bond tethers are not a full biomolecular force field;

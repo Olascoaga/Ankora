@@ -8,6 +8,7 @@ from ankora_backend.adapters.tools.discovery import DiscoveredTool
 from ankora_backend.adapters.tools.receptor_preparation import (
     _diagnose_pqr_connectivity,
     _pqr_residue_locator,
+    diagnose_meeko_pqr_content,
     run_meeko_receptor,
     run_pdb2pqr_propka,
     run_pdbfixer,
@@ -84,6 +85,90 @@ def test_pdbfixer_adapter_uses_isolated_worker_and_explicit_residues(
     ]
     assert execution.command[-2:] == ["--repair", "A|ARG|271|"]
     assert tool_version == "1.12.0"
+    assert "--repair-method" not in execution.command
+
+
+@pytest.mark.parametrize("report_matches", [True, False])
+def test_guarded_repair_requires_worker_protocol_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_matches: bool
+) -> None:
+    monkeypatch.setattr(
+        "ankora_backend.adapters.tools.receptor_preparation.discover_python_package",
+        lambda *_args: DiscoveredTool(True, "pdbfixer.py", "1.12.0"),
+    )
+
+    def synthetic_guard(**kwargs: object) -> ToolExecution:
+        execution = _successful_pdbfixer_execution(**kwargs)  # type: ignore[arg-type]
+        report = json.loads(execution.stdout)
+        report.update(
+            repair_method="topology_guard_v3",
+            repair_seed=20261014,
+            platform="Reference" if report_matches else "synthetic-wrong-platform",
+            openmm_version="synthetic-version",
+        )
+        return ToolExecution(command=execution.command, exit_code=0,
+                             stdout=json.dumps(report), stderr=execution.stderr)
+
+    monkeypatch.setattr(
+        "ankora_backend.adapters.tools.receptor_preparation.run_tool", synthetic_guard
+    )
+    arguments = dict(
+        input_path=tmp_path / "input.pdb",
+        output_path=tmp_path / "output.pdb",
+        residues=[ResidueLocator(chain_id="A", residue_name="ALA", sequence_number=1)],
+        repair_method="topology_guard_v3",
+        repair_seed=20261014,
+    )
+    if report_matches:
+        execution, _ = run_pdbfixer(**arguments)  # type: ignore[arg-type]
+        assert execution.command[-4:] == [
+            "--repair-method",
+            "topology_guard_v3",
+            "--repair-seed",
+            "20261014",
+        ]
+    else:
+        with pytest.raises(AnkoraDomainError, match="requested geometry protocol") as captured:
+            run_pdbfixer(**arguments)  # type: ignore[arg-type]
+        assert captured.value.code == "PDBFIXER_REPAIR_PROTOCOL_MISMATCH"
+
+
+def test_required_meeko_geometry_check_never_silently_skips_an_unavailable_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ankora_backend.adapters.tools.receptor_preparation._load_meeko_pqr_tools", lambda: None
+    )
+    with pytest.raises(AnkoraDomainError) as captured:
+        diagnose_meeko_pqr_content("SYNTHETIC", required=True)
+    assert captured.value.code == "RECEPTOR_GEOMETRY_CHECK_UNAVAILABLE"
+    assert diagnose_meeko_pqr_content("SYNTHETIC", required=False) == []
+
+
+def test_required_connectivity_check_rejects_empty_or_unparsed_content() -> None:
+    # Synthetic parser deliberately violates the required native protocol.
+    with pytest.raises(AnkoraDomainError, match="no readable PQR residues"):
+        _diagnose_pqr_connectivity("SYNTHETIC EMPTY CONTENT", lambda _: {}, required=True)
+    pqr = "ATOM      1  N   ALA A   1      10.000  10.000  10.000  0.1000 1.8000\n"
+    affected = _diagnose_pqr_connectivity(pqr, lambda _: {}, required=True)
+    assert len(affected) == 1
+    assert "expected residue molecule" in affected[0]["diagnostic"]
+
+
+def test_required_geometry_parser_exception_becomes_a_recordable_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken_bond_finder(_residues: object) -> object:
+        raise ValueError("Synthetic unsupported parser boundary")
+    monkeypatch.setattr(
+        "ankora_backend.adapters.tools.receptor_preparation._load_meeko_pqr_tools",
+        lambda: (lambda _: {"A:1": (object(), "ALA", False, False)}, broken_bond_finder),
+    )
+    pqr = "ATOM      1  N   ALA A   1      10.000  10.000  10.000  0.1000 1.8000\n"
+    with pytest.raises(AnkoraDomainError) as captured:
+        diagnose_meeko_pqr_content(pqr, required=True)
+    assert captured.value.code == "RECEPTOR_GEOMETRY_CHECK_FAILED"
+    assert "Synthetic unsupported" in captured.value.details["diagnostic_error"]
 
 
 def test_pdbfixer_adapter_appends_relaxation_flags_only_when_requested(

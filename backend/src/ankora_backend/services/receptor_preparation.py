@@ -12,6 +12,9 @@ import gemmi
 
 from ankora_backend import __version__
 from ankora_backend.adapters.tools.receptor_preparation import (
+    RepairOptions,
+    diagnose_meeko_pqr_content,
+    package_version,
     run_meeko_receptor,
     run_pdb2pqr_propka,
     run_pdbfixer,
@@ -161,6 +164,11 @@ def prepare_receptor(
             and issue_decisions[issue.issue_id].action is ReceptorDecisionAction.REPAIR
         ]
         if repair_residues:
+            repair_options: RepairOptions = (
+                {"repair_method": request.repair_method, "repair_seed": request.repair_seed}
+                if request.repair_method != "legacy"
+                else {}
+            )
             repaired_path = receptor_store.output_path(receptor_id, "repaired_receptor.pdb")
             relaxed_path = (
                 receptor_store.output_path(receptor_id, "relaxed_receptor.pdb")
@@ -180,6 +188,7 @@ def prepare_receptor(
                 relax_max_iterations=(
                     request.relaxation.max_iterations if relaxed_path is not None else None
                 ),
+                **repair_options,
             )
             log_files = _save_execution_logs(
                 receptor_store,
@@ -188,6 +197,35 @@ def prepare_receptor(
                 execution,
                 additional_files=[relaxed_path] if relaxed_path is not None else None,
             )
+            if request.repair_method != "legacy":
+                from ankora_backend.adapters.tools.receptor_geometry import (
+                    validate_repaired_geometry,
+                )
+
+                try:
+                    validate_repaired_geometry(selected_path, repaired_path)
+                    if relaxed_path is not None:
+                        _assert_restrained_atoms_stable(
+                            original_path=selected_path, relaxed_path=relaxed_path
+                        )
+                        validate_repaired_geometry(
+                            selected_path,
+                            relaxed_path,
+                            observed_tolerance_angstrom=0.502,
+                        )
+                except AnkoraDomainError:
+                    raise
+                except Exception as error:
+                    raise AnkoraDomainError(
+                        code="RECEPTOR_GEOMETRY_CHECK_FAILED",
+                        stage="receptor_repair",
+                        status_code=422,
+                        message=(
+                            "The required repair geometry check failed; "
+                            "this receptor was not accepted."
+                        ),
+                        details={"diagnostic_error": f"{type(error).__name__}: {error}"},
+                    ) from error
             repaired_output = _record_output(
                 receptor_id=receptor_id,
                 path=repaired_path,
@@ -210,6 +248,21 @@ def prepare_receptor(
                         "missing_loops_added": False,
                         "nonstandard_residues_replaced": False,
                         "raw_logs": log_files,
+                        "repair_method": request.repair_method,
+                        "repair_seed": request.repair_seed
+                        if request.repair_method != "legacy"
+                        else None,
+                        **(
+                            {
+                                "platform": "Reference",
+                                "openmm_version": json.loads(execution.stdout)["openmm_version"],
+                                "repulsive_wall": "1.0*(0.22/r)^12; kJ/mol, nm",
+                                "minimum_rebuilt_bond_strength_kj_mol_nm2": 300000.0,
+                                "heavy_connectivity_and_rebuilt_chirality_checked": True,
+                            }
+                            if request.repair_method != "legacy"
+                            else {}
+                        ),
                     },
                 )
             )
@@ -366,6 +419,47 @@ def prepare_receptor(
             )
             status = ReceptorPreparationStatus.PROTONATED
             display_output = pdb_output
+
+            if request.repair_method == "topology_guard_v3":
+                normalized, normalized_lines = _normalize_pqr_for_meeko(pqr_path.read_bytes())
+                findings = diagnose_meeko_pqr_content(normalized.decode("utf-8"), required=True)
+                if findings:
+                    raise AnkoraDomainError(
+                        code="MEEKO_CONNECTIVITY_FAILURE",
+                        stage="receptor_geometry",
+                        status_code=422,
+                        message=(
+                            "The protonated receptor has invalid inferred connectivity. "
+                            "Review the affected residues before creating PDBQT."
+                        ),
+                        details={
+                            "affected_residues": findings,
+                            "source_pqr_sha256": pqr_output.sha256,
+                            "normalized_compact_residue_lines": normalized_lines,
+                        },
+                    )
+                provenance.append(
+                    ProvenanceEvent(
+                        event_id=f"receptor-geometry-{receptor_id}",
+                        event_type="receptor_geometry_verified",
+                        timestamp=datetime.now(UTC),
+                        input_artifacts=[pqr_output.artifact_id],
+                        output_artifacts=[],
+                        tool=ToolIdentity(
+                            name="Meeko/RDKit connectivity check",
+                            version=(
+                                f"meeko {package_version('meeko')}; "
+                                f"rdkit {package_version('rdkit')}"
+                            ),
+                        ),
+                        parameters={
+                            "repair_method": request.repair_method,
+                            "pqr_sha256": pqr_output.sha256,
+                            "unexpected_connectivity_count": 0,
+                        },
+                        warnings=[],
+                    )
+                )
 
         if request.generate_pdbqt:
             if pqr_path is None or pqr_output is None:
@@ -978,9 +1072,10 @@ def _assert_restrained_atoms_stable(*, original_path: Path, relaxed_path: Path) 
         relaxed_position = relaxed.get(key)
         if relaxed_position is None:
             continue
-        displacement = sum(
-            (a - b) ** 2 for a, b in zip(original_position, relaxed_position, strict=True)
-        ) ** 0.5
+        displacement = (
+            sum((a - b) ** 2 for a, b in zip(original_position, relaxed_position, strict=True))
+            ** 0.5
+        )
         max_displacement = max(max_displacement, displacement)
         if displacement > _RESTRAINED_ATOM_TOLERANCE_ANGSTROM:
             exceeded.append((displacement, key))
@@ -1073,11 +1168,7 @@ def _normalize_pqr_for_meeko(content: bytes) -> tuple[bytes, int]:
             rewritten = body[:22] + b" " + body[22:]
             before_tokens = body.split()
             after_tokens = rewritten.split()
-            expected_tokens = (
-                before_tokens[:4]
-                + [chain_id, residue_sequence]
-                + before_tokens[5:]
-            )
+            expected_tokens = before_tokens[:4] + [chain_id, residue_sequence] + before_tokens[5:]
             if len(before_tokens) < 6 or after_tokens != expected_tokens:
                 raise AnkoraDomainError(
                     code="MEEKO_PQR_FORMAT_NORMALIZATION_FAILED",

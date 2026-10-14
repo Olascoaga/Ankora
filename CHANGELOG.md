@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## Versioned receptor reconstruction - 2026-10-14
+
+- Add explicit `topology_guard_v3` repair: seeded PDBFixer 1.12 reconstruction
+  on OpenMM Reference with fixed observed atoms, strengthened new-atom bonds,
+  repaired connectivity/chirality QC and required post-hydrogen PQR checks.
+- Preserve historical legacy decision serialization and artifacts. Record method,
+  seed, versions, force parameters and QC in provenance and Methods; do not
+  delete residues, change partial charges or automatically retry on failure.
+- Validate the original failing 7AQF plan with all 17 repairs and no observed
+  residue removal, including paired outputs and complete preview/final runs.
+  Scope and limitations: `docs/validation/RECEPTOR_TOPOLOGY_GUARD_2026-10-14.md`.
+
 ## Receptor preparation guidance - 2026-10-14
 
 - Put the current draft's prerequisites and next action above the viewer;

@@ -265,6 +265,18 @@ class MethodsReportService:
                 f"{'s' if len(residues) != 1 else ''} were rebuilt with "
                 f"{tool.name} {tool.version}."
             )
+            if repaired.parameters.get("repair_method") == "topology_guard_v3":
+                openmm_version = repaired.parameters.get("openmm_version")
+                if openmm_version:
+                    draft.tool("OpenMM", str(openmm_version), "topology-guarded reconstruction")
+                draft.say(
+                    "The topology_guard_v3 geometry protocol used the recorded repair seed "
+                    f"{repaired.parameters.get('repair_seed')} and OpenMM Reference. "
+                    "Native bonded terms were retained with strengthened restraints on bonds "
+                    "involving reconstructed atoms and a repulsive steric wall; observed heavy "
+                    "atoms were fixed. Inferred connectivity and rebuilt template chirality "
+                    "were checked before protonation. This is not full protein minimization."
+                )
 
         relax = events.get("receptor_clashes_relaxed")
         if relax is not None and getattr(decisions.relaxation, "enabled", False):
