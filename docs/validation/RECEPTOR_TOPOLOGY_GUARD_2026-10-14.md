@@ -1,8 +1,42 @@
 # Topology-guarded receptor repair — 2026-10-14
 
+## Final acceptance correction — stretched bonds are not an acceptable repair
+
+The preliminary Meeko-accepted results below are **not accepted final scientific
+receptors** under the completed geometry guard. A final bond-length audit found
+ARG A:300's original, observed CD and CZ atoms **3.580498 Å apart**. The two
+native-template bonds through missing NE total **2.803160 Å**. No placement of
+NE can satisfy those lengths while keeping both observed anchors fixed.
+The preliminary reconstructed CD–NE / CZ–NE distances were 1.851998 / 1.728703 Å,
+versus template 1.483273 / 1.319886 Å. Passing RDKit connectivity and Meeko
+template matching alone did not catch that distortion.
+
+The final QC therefore also rejects a rebuilt, template-known bond deviating
+by more than **0.2 Å** from its pinned-template length. This generous internal
+construction safeguard is not a universal chemical-validation standard. It
+also reports pairs of observed anchors whose separation exceeds the sum of
+their template bonds plus both allowed deviations, explaining why a fixed-atom
+repair cannot work. The threshold was declared before executing this added gate;
+the wall, seed and harmonic terms were not tuned to make the structure pass.
+
+The complete real service now correctly rejects **only ARG A:300**, before
+hydrogenation, with `RECEPTOR_REPAIRED_GEOMETRY_INVALID`. Failed attempt
+`59dfe957-281a-4452-9544-abb90bac1a77` retains selected/repaired PDBs, worker logs,
+structured distorted bonds, fixed-anchor conflict and failure record. The source
+hash is unchanged. Neither this failure nor preliminary `docking_ready` records
+in isolated diagnostic stores are promoted to the user's project or installer.
+
+Preparing this exact 17-repair plan to completion remains **blocked on a
+scientific decision about the original ARG A:300 coordinates**. Rebuilding an
+already observed side-chain segment would need an explicit new protocol and
+authorization; deleting the residue is not performed by the agent or a fallback.
+The interface explains the conflict, offers original-residue inspection and
+keeps scientific decisions explicit. It does not advertise elastic clash relief
+as a fix for this incompatible-anchor case.
+
 ## Acceptance contract
 
-Repair the retained failing 7AQF chain-A plan without deleting its 17 incomplete
+Attempt the retained failing 7AQF chain-A plan without deleting its 17 incomplete
 observed residues, moving observed heavy atoms during reconstruction, inventing
 loops, changing protonation/charge policy, or modifying historical artifacts.
 Preserve legacy request serialization and workers unless the new method is
@@ -10,6 +44,10 @@ explicit. Reject missing/excess repaired connectivity and rebuilt stereochemical
 inversion; preserve raw final-tool evidence and method/version identity.
 
 ## Native Windows evidence
+
+The success records in this subsection describe the preliminary connectivity/
+chirality gates. Their limitation and final rejection are recorded above; they
+must not be cited as successful acceptance of the completed geometry policy.
 
 The untouched deposited mmCIF SHA-256 is
 `79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac`.
@@ -28,7 +66,7 @@ recommendation for every target or a blanket acceptance of pKa predictions.
 Runtime: PDBFixer 1.12.0, OpenMM 8.5.2 / Reference, PDB2PQR 3.7.1, PROPKA
 3.5.1, Meeko 0.7.1, RDKit 2025.9.6 and Gemmi 0.7.5.
 
-Two independent adapter-level preparations passed all gates with identical
+Two independent adapter-level preparations passed the then-implemented gates with identical
 artifact bytes on this machine. Full-service preview/final preparations from
 an isolated copy of the original mmCIF also passed: 98 pKa proposals, final
 `docking_ready`, and the same hashes. The final service repetition records

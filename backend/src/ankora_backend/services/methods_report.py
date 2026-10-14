@@ -277,6 +277,14 @@ class MethodsReportService:
                     "atoms were fixed. Inferred connectivity and rebuilt template chirality "
                     "were checked before protonation. This is not full protein minimization."
                 )
+                bond_limit = repaired.parameters.get("maximum_rebuilt_bond_deviation_angstrom")
+                if repaired.parameters.get("geometry_qc_version") == "template_bonds_v1":
+                    draft.say(
+                        f"Reconstructed template-known bonds were required to differ by no more "
+                        f"than {bond_limit} Å from template lengths; incompatible observed-anchor "
+                        "spans were rejected. This is an internal construction safeguard, not "
+                        "general chemical validation."
+                    )
 
         relax = events.get("receptor_clashes_relaxed")
         if relax is not None and getattr(decisions.relaxation, "enabled", False):

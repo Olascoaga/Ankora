@@ -84,7 +84,9 @@ def test_geometry_accepts_template_completion_and_normalizes_blank_insertion(
     validate_repaired_geometry(original, output)
 
 
-@pytest.mark.parametrize("mutation", ["observed", "missing_bond", "extra_bond", "mirror"])
+@pytest.mark.parametrize(
+    "mutation", ["observed", "missing_bond", "extra_bond", "mirror", "stretched"]
+)
 def test_geometry_rejects_synthetic_mutations(tmp_path: Path, mutation: str) -> None:
     original, output = _template_pair(tmp_path)
     structure = gemmi.read_structure(str(output))
@@ -97,6 +99,9 @@ def test_geometry_rejects_synthetic_mutations(tmp_path: Path, mutation: str) -> 
         cb.pos.x += 10.0
     elif mutation == "extra_bond":
         cb.pos = residue.find_atom("O", "*").pos + gemmi.Position(0.0, 0.0, 0.8)
+    elif mutation == "stretched":
+        delta = cb.pos - ca.pos
+        cb.pos = ca.pos + delta * ((delta.length() + 0.3) / delta.length())
     else:
         # Reflect CB through the backbone plane, retaining its CA bond length.
         import numpy as np
@@ -120,6 +125,7 @@ def test_geometry_rejects_synthetic_mutations(tmp_path: Path, mutation: str) -> 
             "missing_bond": "missing_bonds",
             "extra_bond": "unexpected_bonds",
             "mirror": "chirality_mismatch_centers",
+            "stretched": "distorted_bonds",
         }[mutation]
         assert affected[field]
 

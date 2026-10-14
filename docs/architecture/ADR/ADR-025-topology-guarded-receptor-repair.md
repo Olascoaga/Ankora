@@ -1,7 +1,9 @@
 # ADR-025: Versioned topology-guarded receptor reconstruction
 
-Status: accepted for the bounded Windows regression described below; not a
-general validation of reconstructed side-chain conformations.
+Status: accepted as a fail-closed construction guard; the original 17-repair
+7AQF plan is not an accepted prepared receptor. See the final bond/anchor
+rejection in the validation record. This is not general validation of
+reconstructed side-chain conformations.
 
 ## Context
 
@@ -34,6 +36,15 @@ templates. The optional separate elastic relaxation remains opt-in and retains
 its existing 0.5 Å observed-heavy-atom limit; its output receives the same
 connectivity/chirality checks. Blank insertion codes are normalized between
 OpenMM and Gemmi; nonblank insertion codes remain part of atom identity.
+
+Connectivity alone can accept stretched bonds. The completed gate also rejects
+new-atom bonds deviating more than 0.2 Å from template-known bond lengths and
+reports impossible fixed-anchor spans. This is an internal construction check,
+not a calibrated quality score. The unchanged original ARG A:300 CD–CZ span
+cannot accommodate its two normal bonds through missing NE. The final gate
+rejects that attempt rather than promote the preliminary Meeko-accepted output.
+Moving/reconstructing observed atoms requires a separately authorized protocol;
+it is not a hidden extension of missing-atom repair.
 
 After hydrogenation, check the normalized PQR with Meeko's own residue parser
 and inter-residue bond finder, including during protonation preview. A missing

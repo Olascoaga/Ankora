@@ -14,6 +14,10 @@ import gemmi
 
 from ankora_backend.domain.errors import AnkoraDomainError
 
+# A deliberately generous construction QC limit, not a universal chemical
+# validity criterion. Connectivity alone can accept a seriously stretched bond.
+_MAX_REBUILT_BOND_DEVIATION_ANGSTROM = 0.2
+
 
 def guarded_fixer(input_path: Path) -> Any:
     # PDBFixer's private force-field boundary is intentionally pinned. Never
@@ -219,6 +223,45 @@ def validate_repaired_geometry(
                 for atom in template.topology.atoms()
             }
             actual = {atom.name: (atom.pos.x, atom.pos.y, atom.pos.z) for atom in atoms}
+            distorted_bonds = []
+            for pair in required:
+                a, b = sorted(key[3] for key in pair)
+                if not all(name in ideal and name in actual for name in (a, b)):
+                    continue
+                expected_distance = sum(
+                    (ideal[a][i] - ideal[b][i]) ** 2 for i in range(3)
+                ) ** 0.5 * 10.0
+                distance = sum(
+                    (actual[a][i] - actual[b][i]) ** 2 for i in range(3)
+                ) ** 0.5
+                if abs(distance - expected_distance) > _MAX_REBUILT_BOND_DEVIATION_ANGSTROM:
+                    distorted_bonds.append({
+                        "atoms": [a, b], "distance_angstrom": distance,
+                        "template_distance_angstrom": expected_distance,
+                        "maximum_deviation_angstrom": _MAX_REBUILT_BOND_DEVIATION_ANGSTROM,
+                    })
+            anchor_conflicts = []
+            for center in new_names:
+                neighbors = sorted({
+                    key[3] for pair in required
+                    if any(key[3] == center for key in pair)
+                    for key in pair if key[3] != center and key[3] not in new_names
+                })
+                for index, a in enumerate(neighbors):
+                    for b in neighbors[index + 1:]:
+                        if not all(name in ideal and name in actual for name in (a, b, center)):
+                            continue
+                        span = sum((actual[a][i] - actual[b][i]) ** 2 for i in range(3)) ** 0.5
+                        ideal_span = sum(
+                            sum((ideal[name][i] - ideal[center][i]) ** 2 for i in range(3))
+                            ** 0.5 * 10 for name in (a, b)
+                        )
+                        if span > ideal_span + 2 * _MAX_REBUILT_BOND_DEVIATION_ANGSTROM:
+                            anchor_conflicts.append({
+                                "reconstructed_atom": center, "observed_atoms": [a, b],
+                                "observed_distance_angstrom": span,
+                                "template_bond_sum_angstrom": ideal_span,
+                            })
             for center, neighbors in centers:
                 names = [center, *neighbors]
                 if not set(names) & new_names or not all(
@@ -231,7 +274,7 @@ def validate_repaired_geometry(
                     <= 0
                 ):
                     chirality_errors.append(center)
-            if extras or missing or chirality_errors:
+            if extras or missing or chirality_errors or distorted_bonds:
                 affected.append(
                     {
                         "chain_id": chain.name,
@@ -241,6 +284,8 @@ def validate_repaired_geometry(
                         "unexpected_bonds": extras,
                         "missing_bonds": missing,
                         "chirality_mismatch_centers": chirality_errors,
+                        "distorted_bonds": sorted(distorted_bonds, key=lambda item: item["atoms"]),
+                        "fixed_anchor_conflicts": anchor_conflicts,
                     }
                 )
     if affected:
@@ -249,7 +294,7 @@ def validate_repaired_geometry(
             stage="receptor_repair",
             status_code=422,
             message=(
-                "Reconstructed atoms have invalid inferred connectivity. "
+                "Reconstructed atoms have invalid bond geometry or connectivity. "
                 "Review these residues before protonation."
             ),
             details={"affected_residues": affected},

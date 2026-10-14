@@ -259,6 +259,8 @@ def prepare_receptor(
                                 "repulsive_wall": "1.0*(0.22/r)^12; kJ/mol, nm",
                                 "minimum_rebuilt_bond_strength_kj_mol_nm2": 300000.0,
                                 "heavy_connectivity_and_rebuilt_chirality_checked": True,
+                                "geometry_qc_version": "template_bonds_v1",
+                                "maximum_rebuilt_bond_deviation_angstrom": 0.2,
                             }
                             if request.repair_method != "legacy"
                             else {}
