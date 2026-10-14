@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here.
 
+## General receptor preparation boundaries - 2026-10-14
+
+- Restrict missing-atom Repair to standard polymer residues; reject unsupported
+  non-protein component repair before creating a derivative or launching tools.
+- Resolve observations once at explicit component-removal scope while retaining
+  redundant historical request entries as evidence. Imported artifacts stay
+  immutable; no automatic component removal or protein-specific rule is added.
+- Exercise all 20 native standard amino-acid templates and independent complete
+  preparation/support-boundary cases. Record both the original matrix failure
+  and the predeclared follow-up, rather than rewriting validation outcomes.
+  See `docs/validation/GENERAL_RECEPTOR_WORKFLOW_2026-10-14.md` for limits.
+
 ## Three-step guided receptor preparation - 2026-10-14
 
 - Default to Choose system → Review repairs → Prepare, retaining Advanced

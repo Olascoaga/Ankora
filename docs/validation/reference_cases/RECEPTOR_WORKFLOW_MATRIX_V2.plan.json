@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "purpose": "Predeclared follow-up: general preparation and incomplete retained-component decision boundary; not docking validation",
+  "repair_method": "topology_guard_v3",
+  "repair_seed": 20261014,
+  "platform": "Reference",
+  "missing_atoms": "repair_if_supported_otherwise_needs_decision",
+  "missing_residues": "leave_unmodelled",
+  "alternate_location": "A_if_reported_otherwise_needs_decision",
+  "nonstandard": "needs_decision",
+  "water_action": "remove",
+  "force_field": "AMBER",
+  "cases": [
+    { "case_id": "complete-disulfide", "pdb_id": "1CRN", "source_sha256": "23787562c427d7c1abe5420e86d5f1d0a6c7007dec1e8ce85645a6d69c32e8ba", "selected_chains": ["A"], "ph": 7.4, "component_action": "remove", "terminal_policy": "exact_missing_final_OXT" },
+    { "case_id": "different-ph", "pdb_id": "1UBQ", "source_sha256": "056f98710cb2b36f633c45e41902a02eb446e82871da21ff2dd44f74a56ca0f6", "selected_chains": ["A"], "ph": 6.5, "component_action": "remove", "terminal_policy": "exact_missing_final_OXT" },
+    { "case_id": "multichain-retained-cofactors", "pdb_id": "4HHB", "source_sha256": "2d3ca1bf21ddff35af2e2bc5d331720f7bfc46a16c4829ea3ec1b41062d5f5a6", "selected_chains": ["A", "B"], "ph": 7.4, "component_action": "keep", "terminal_policy": "exact_missing_final_OXT" }
+  ]
+}

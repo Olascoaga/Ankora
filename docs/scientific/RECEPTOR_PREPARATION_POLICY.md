@@ -82,6 +82,17 @@ rules are unchanged by this diagnostic/recovery correction.
 
 ## Guided preparation and review recovery
 
+Missing-atom reconstruction is offered only for standard polymer residues, not
+arbitrary ligands, metals or other non-polymer components. Retaining a component
+does not establish that protein preparation tools can assign its geometry,
+protonation or charges. Incomplete retained components need individual review
+and an appropriate preparation workflow; they are never removed automatically.
+When a component is explicitly removed, its exact-locator observations no longer
+require duplicate residue decisions or trigger a repair worker. Redundant old
+request entries remain recorded but do not apply to excluded coordinates.
+General native coverage and its limits are recorded in
+[the receptor workflow matrix](../validation/GENERAL_RECEPTOR_WORKFLOW_2026-10-14.md).
+
 The default guided inspector has three steps: Choose system, Review repairs,
 Prepare. Only one is shown at a time, with prerequisite gates and draft-only
 grouped repairs/gaps. Advanced controls retain the complete specialist plan,

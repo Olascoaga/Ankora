@@ -149,6 +149,94 @@ def test_explicit_selection_creates_immutable_receptor_derivative(tmp_path: Path
     assert record.provenance[0].input_artifacts == [artifact_id]
 
 
+@pytest.mark.parametrize("action", [None, "manual_review", "repair"])
+def test_removed_component_issues_do_not_require_or_trigger_repairs(
+    tmp_path: Path, action: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Synthetic incomplete ligand: a component choice must not also require a
+    # protein-repair decision. Redundant historical decisions stay in evidence.
+    structures = StructureArtifactStore(tmp_path)
+    receptors = ReceptorArtifactStore(tmp_path)
+    source = (FIXTURES / "synthetic_m1.pdb").read_bytes()
+    source = b"REMARK 470     LIG A 101    N1\n" + source
+    imported = import_structure_bytes(
+        content=source,
+        filename="synthetic_incomplete_component.pdb",
+        source=StructureSource.LOCAL,
+        source_uri=None,
+        store=structures,
+    )
+    report = inspect_receptor(artifact_id=imported.artifact.artifact_id, store=structures)
+    ligand_issue = next(issue for issue in report.issues if issue.residue.residue_name == "LIG")
+    assert ReceptorDecisionAction.REPAIR not in ligand_issue.allowed_actions
+    assert "standard polymer residues" in ligand_issue.message
+    request = _selection_request(report)
+    request.component_decisions = [
+        ComponentDecision(component_id=item.component_id, action=ComponentAction.REMOVE)
+        for item in report.components
+    ]
+    request.issue_decisions = [
+        item for item in request.issue_decisions if item.issue_id != ligand_issue.issue_id
+    ]
+    if action is not None:
+        request.issue_decisions.append(
+            IssueDecision(issue_id=ligand_issue.issue_id, action=ReceptorDecisionAction(action))
+        )
+
+    # Fail if an excluded component invokes a repair worker.
+    def forbidden_worker(**_kwargs: object) -> None:
+        pytest.fail("Removed component invoked protein repair")
+
+    monkeypatch.setattr(
+        "ankora_backend.services.receptor_preparation.run_pdbfixer", forbidden_worker
+    )
+    record = prepare_receptor(
+        source_artifact_id=imported.artifact.artifact_id,
+        request=request,
+        structure_store=structures,
+        receptor_store=receptors,
+    )
+    selected = receptors.content_path(record.receptor_id, record.outputs[0].artifact_id)
+    assert "LIG" not in {
+        residue.name for chain in gemmi.read_pdb(str(selected))[0] for residue in chain
+    }
+    assert structures.content_path(imported.artifact.artifact_id).read_bytes() == source
+    assert record.decisions == request
+
+
+def test_retained_incomplete_component_rejects_protein_repair_before_tool_calls(
+    tmp_path: Path,
+) -> None:
+    structures = StructureArtifactStore(tmp_path)
+    receptors = ReceptorArtifactStore(tmp_path)
+    imported = import_structure_bytes(
+        content=b"REMARK 470     LIG A 101    N1\n" + (FIXTURES / "synthetic_m1.pdb").read_bytes(),
+        filename="synthetic_incomplete_component.pdb",
+        source=StructureSource.LOCAL,
+        source_uri=None,
+        store=structures,
+    )
+    report = inspect_receptor(artifact_id=imported.artifact.artifact_id, store=structures)
+    request = _selection_request(report)
+    issue = next(item for item in report.issues if item.residue.residue_name == "LIG")
+    request.issue_decisions = [
+        IssueDecision(issue_id=item.issue_id, action=ReceptorDecisionAction.REPAIR)
+        if item.issue_id == issue.issue_id
+        else item
+        for item in request.issue_decisions
+    ]
+    with pytest.raises(AnkoraDomainError) as failure:
+        prepare_receptor(
+            source_artifact_id=imported.artifact.artifact_id,
+            request=request,
+            structure_store=structures,
+            receptor_store=receptors,
+        )
+    assert failure.value.code == "RECEPTOR_COMPONENT_REPAIR_UNSUPPORTED"
+    assert failure.value.details["issue"]["issue_id"] == issue.issue_id
+    assert not list(tmp_path.glob("projects/default/derived/receptors/*"))
+
+
 def test_repair_removes_reported_zero_occupancy_atoms_before_pdbfixer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

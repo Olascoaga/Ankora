@@ -361,7 +361,19 @@ def _build_issue(
         ReceptorDecisionAction.REMOVE,
         ReceptorDecisionAction.MANUAL_REVIEW,
     ]
-    if raw.kind in {ReceptorIssueKind.MISSING_ATOMS, ReceptorIssueKind.ALTERNATE_LOCATION}:
+    standard_polymer = any(
+        residue.entity_type is gemmi.EntityType.Polymer
+        and gemmi.find_tabulated_residue(residue.name).is_standard()
+        and residue.name.strip() == raw.locator.residue_name
+        and residue.seqid.num == raw.locator.sequence_number
+        and _clean_char(residue.seqid.icode) == raw.locator.insertion_code
+        for chain in model
+        if chain.name == raw.locator.chain_id
+        for residue in chain
+    )
+    if raw.kind is ReceptorIssueKind.ALTERNATE_LOCATION or (
+        raw.kind is ReceptorIssueKind.MISSING_ATOMS and standard_polymer
+    ):
         allowed_actions.insert(1, ReceptorDecisionAction.REPAIR)
     locator = raw.locator
     issue_id = "|".join(
@@ -382,7 +394,14 @@ def _build_issue(
         distance_to_reference_angstrom=distance,
         severity=severity,
         allowed_actions=allowed_actions,
-        message=_issue_message(raw),
+        message=_issue_message(raw)
+        + (
+            " Automatic missing-atom repair is available only for standard polymer residues; "
+            "this component or nonstandard residue needs an appropriate external preparation "
+            "or an explicit exclusion decision."
+            if raw.kind is ReceptorIssueKind.MISSING_ATOMS and not standard_polymer
+            else ""
+        ),
     )
 
 

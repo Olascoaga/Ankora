@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "purpose": "Bounded receptor preparation mechanics and support-boundary diagnostics; not docking or universal chemical validation",
+  "repair_method": "topology_guard_v3",
+  "repair_seed": 20261014,
+  "platform": "Reference",
+  "missing_atoms": "repair",
+  "missing_residues": "leave_unmodelled",
+  "alternate_location": "A_if_reported_otherwise_needs_decision",
+  "nonstandard": "needs_decision",
+  "water_action": "remove",
+  "force_field": "AMBER",
+  "cases": [
+    { "case_id": "complete-disulfide", "pdb_id": "1CRN", "selected_chains": ["A"], "ph": 7.4, "component_action": "remove", "terminal_policy": "exact_missing_final_OXT" },
+    { "case_id": "different-ph", "pdb_id": "1UBQ", "selected_chains": ["A"], "ph": 6.5, "component_action": "remove", "terminal_policy": "exact_missing_final_OXT" },
+    { "case_id": "multichain-retained-cofactors", "pdb_id": "4HHB", "selected_chains": ["A", "B"], "ph": 7.4, "component_action": "keep", "terminal_policy": "exact_missing_final_OXT" }
+  ]
+}

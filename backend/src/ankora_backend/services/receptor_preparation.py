@@ -590,9 +590,7 @@ def _validate_decisions(
         )
 
     expected_components = {
-        item.component_id
-        for item in report.components
-        if item.chain_id in selected_chains
+        item.component_id for item in report.components if item.chain_id in selected_chains
     }
     component_map = {item.component_id: item for item in request.component_decisions}
     if len(component_map) != len(request.component_decisions):
@@ -609,24 +607,79 @@ def _validate_decisions(
             },
         )
 
-    selected_issues = [
+    all_selected_issues = [
         issue for issue in report.issues if issue.residue.chain_id in selected_chains
+    ]
+    excluded_issues = {
+        issue.issue_id
+        for issue in all_selected_issues
+        if any(
+            item.chain_id == issue.residue.chain_id
+            and item.name == issue.residue.residue_name
+            and item.sequence_number == issue.residue.sequence_number
+            and item.insertion_code == issue.residue.insertion_code
+            and component_map[item.component_id].action is ComponentAction.REMOVE
+            for item in report.components
+            if item.chain_id in selected_chains
+        )
+    }
+    selected_issues = [
+        issue for issue in all_selected_issues if issue.issue_id not in excluded_issues
     ]
     expected_issues = {issue.issue_id for issue in selected_issues}
     issue_map = {item.issue_id: item for item in request.issue_decisions}
     if len(issue_map) != len(request.issue_decisions):
         raise _decision_error("Residue decisions must not contain duplicates.")
-    if set(issue_map) != expected_issues:
+    if expected_issues - set(issue_map) or set(issue_map) - expected_issues - excluded_issues:
         raise _decision_error(
-            "Every reported issue in the selected chains requires an explicit decision.",
+            "Every included residue issue in the selected chains requires an explicit decision.",
             {
                 "missing_issue_decisions": sorted(expected_issues - set(issue_map)),
-                "unexpected_issue_decisions": sorted(set(issue_map) - expected_issues),
+                "unexpected_issue_decisions": sorted(
+                    set(issue_map) - expected_issues - excluded_issues
+                ),
             },
         )
+    # Older plans may include redundant decisions for components explicitly
+    # removed at component scope. Preserve those recorded requests, but never
+    # repair or require protonation decisions for coordinates not in the system.
+    issue_map = {key: value for key, value in issue_map.items() if key in expected_issues}
     by_id = {issue.issue_id: issue for issue in selected_issues}
     for issue_id, decision in issue_map.items():
         issue = by_id[issue_id]
+        component = next(
+            (
+                item
+                for item in report.components
+                if item.chain_id == issue.residue.chain_id
+                and item.name == issue.residue.residue_name
+                and item.sequence_number == issue.residue.sequence_number
+                and item.insertion_code == issue.residue.insertion_code
+            ),
+            None,
+        )
+        if (
+            component is not None
+            and issue.kind is ReceptorIssueKind.MISSING_ATOMS
+            and decision.action is ReceptorDecisionAction.REPAIR
+        ):
+            raise AnkoraDomainError(
+                code="RECEPTOR_COMPONENT_REPAIR_UNSUPPORTED",
+                stage="receptor_decisions",
+                status_code=422,
+                message=(
+                    "Missing atoms in a non-protein component cannot be rebuilt "
+                    "by the amino-acid repair workflow."
+                ),
+                details={
+                    "component": component.model_dump(mode="json"),
+                    "issue": issue.model_dump(mode="json"),
+                    "possible_actions": [
+                        "Review or prepare the component with an appropriate external workflow.",
+                        "Remove it from this plan only if scientifically justified.",
+                    ],
+                },
+            )
         if decision.action not in issue.allowed_actions:
             raise _decision_error(
                 "A residue decision requests an unsupported action.",

@@ -37,8 +37,10 @@ def test_worker_identity_retains_separate_insertion_code() -> None:
     assert _residue_key(residue)[3] == ""
 
 
-def _template_pair(tmp_path: Path, insertion: str = "") -> tuple[Path, Path]:
-    """Use the installed pinned ALA template, not hand-authored chemical expectations."""
+def _template_pair(
+    tmp_path: Path, insertion: str = "", residue_name: str = "ALA"
+) -> tuple[Path, Path]:
+    """Use pinned standard templates, not hand-authored chemical expectations."""
     pytest.importorskip("openmm")
     pdbfixer = pytest.importorskip("pdbfixer")
     from openmm import unit
@@ -47,12 +49,12 @@ def _template_pair(tmp_path: Path, insertion: str = "") -> tuple[Path, Path]:
     seed.write_text(
         "ATOM      1  N   ALA A 100       0.000   0.000   0.000  1.00  0.00           N\nEND\n"
     )
-    template = pdbfixer.PDBFixer(filename=str(seed)).templates["ALA"]
+    template = pdbfixer.PDBFixer(filename=str(seed)).templates[residue_name]
     structure = gemmi.Structure()
     model = gemmi.Model("1")
     chain = gemmi.Chain("A")
     residue = gemmi.Residue()
-    residue.name = "ALA"
+    residue.name = residue_name
     residue.seqid = gemmi.SeqId(100, insertion or " ")
     residue.het_flag = "A"
     for source in template.topology.atoms():
@@ -70,10 +72,63 @@ def _template_pair(tmp_path: Path, insertion: str = "") -> tuple[Path, Path]:
     structure.add_model(model)
     output = tmp_path / "complete.pdb"
     structure.write_pdb(str(output))
-    structure[0][0][0].remove_atom("CB", "\x00")
+    for name in [atom.name for atom in structure[0][0][0]]:
+        if (residue_name == "GLY" and name == "O") or (
+            residue_name != "GLY" and name not in {"N", "CA", "C", "O"}
+        ):
+            structure[0][0][0].remove_atom(name, "\x00")
     original = tmp_path / "incomplete.pdb"
     structure.write_pdb(str(original))
     return original, output
+
+
+@pytest.mark.parametrize(
+    "residue_name",
+    [
+        "ALA",
+        "ARG",
+        "ASN",
+        "ASP",
+        "CYS",
+        "GLN",
+        "GLU",
+        "GLY",
+        "HIS",
+        "ILE",
+        "LEU",
+        "LYS",
+        "MET",
+        "PHE",
+        "PRO",
+        "SER",
+        "THR",
+        "TRP",
+        "TYR",
+        "VAL",
+    ],
+)
+def test_guarded_reconstruction_of_all_standard_templates(
+    tmp_path: Path, residue_name: str
+) -> None:
+    """Synthetic native-tool regression, not proof of any biological rotamer."""
+    original, reference = _template_pair(tmp_path, residue_name=residue_name)
+    original_bytes = original.read_bytes()
+    fixer = guarded_fixer(original)
+    fixer.findMissingResidues()
+    fixer.missingResidues = {}
+    fixer.findMissingAtoms()
+    fixer.missingTerminals = {}
+    fixer.addMissingAtoms(seed=20261014)
+    from openmm.app import PDBFile
+
+    output = tmp_path / "reconstructed.pdb"
+    with output.open("x") as stream:
+        PDBFile.writeFile(fixer.topology, fixer.positions, stream, keepIds=True)
+    validate_repaired_geometry(original, output)
+    assert original.read_bytes() == original_bytes
+    assert {atom.name for atom in gemmi.read_structure(str(output))[0][0][0]} == {
+        atom.name for atom in gemmi.read_structure(str(reference))[0][0][0]
+    }
 
 
 @pytest.mark.parametrize("insertion", ["", "A"])
