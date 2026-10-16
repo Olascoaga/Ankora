@@ -10,6 +10,9 @@ All notable project changes are recorded here.
 - Correct reverse library/state dependencies and consult effective stale state
   before admitting and executing maps/docking, including selected preparations
   and cached map reuse. Preserve historical inspection and evidence.
+- Fail unsuccessful/zero-result GPU campaigns, retain valid partial results,
+  isolate truncated molecule logs and persist collection incrementally. Count
+  parseable complete logs for progress and stop the watcher with the process.
 
 ## General receptor preparation boundaries - 2026-10-14
 

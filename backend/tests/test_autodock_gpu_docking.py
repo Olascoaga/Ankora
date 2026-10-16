@@ -531,8 +531,93 @@ def test_a_campaign_states_the_backend_and_its_irreproducibility(
 
     assert record.backend is AutoDockBackend.GPU
     assert record.bitwise_reproducible is False
-    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {
-        w.code for w in record.warnings
-    }
+    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {w.code for w in record.warnings}
     service.cancel_batch(record.batch_id)
     service.shutdown()
+
+
+@pytest.mark.parametrize("mode", ["timeout", "nonzero", "reported_failure", "no_output"])
+def test_zero_result_campaign_is_failed_not_completed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        gpu_module,
+        "execute_autodock_gpu_cancellable",
+        lambda **_: _execution(
+            timed_out=mode == "timeout",
+            exit_code=1 if mode == "nonzero" else 0,
+            stdout=FAILURE_STDOUT if mode == "reported_failure" else SUCCESS_STDOUT,
+        ),
+    )
+    try:
+        record = _wait_batch(service, service.start_batch(request).batch_id)
+        assert record.status is AutoDockJobStatus.FAILED
+        assert record.succeeded_count == 0
+        assert record.completed_count == record.selected_count
+        assert record.failure is not None
+        assert record.execution is not None
+        assert record.provenance.event_type == "autodock_gpu_campaign_failed"
+    finally:
+        service.shutdown()
+
+
+@pytest.mark.parametrize("broken_first", [True, False])
+def test_truncated_molecule_log_does_not_discard_other_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    broken_first: bool,
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+    raw_paths = []
+
+    def replay_with_truncation(**kwargs: object) -> CancellableToolExecution:
+        work = kwargs["job_directory"]
+        assert isinstance(work, Path)
+        tags = (work / "campaign.lst").read_text(encoding="ascii").splitlines()[2::2]
+        broken = tags[0] if broken_first else tags[-1]
+        for tag in tags:
+            path = work / f"{tag}.dlg"
+            content = "DOCKED: MODEL 1\n" if tag == broken else REAL_LOG
+            path.write_text(content, encoding="utf-8")
+            raw_paths.append((path, path.read_bytes()))
+        return _execution()
+
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", replay_with_truncation)
+    try:
+        record = _wait_batch(service, service.start_batch(request).batch_id)
+        assert record.succeeded_count >= 1
+        assert any(
+            entry.failure and entry.failure.code == "AUTODOCK_GPU_MOLECULE_OUTPUT_INVALID"
+            for entry in record.entries
+        )
+        assert sum(bool(entry.runs) for entry in record.entries) == record.succeeded_count
+        assert all(path.read_bytes() == raw for path, raw in raw_paths)
+        assert record.completed_count == record.selected_count
+    finally:
+        service.shutdown()
+
+
+def test_failed_campaign_retains_successful_partial_molecule_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+
+    def partial(**kwargs: object) -> CancellableToolExecution:
+        work = kwargs["job_directory"]
+        assert isinstance(work, Path)
+        tags = (work / "campaign.lst").read_text(encoding="ascii").splitlines()[2::2]
+        (work / f"{tags[0]}.dlg").write_text(REAL_LOG, encoding="utf-8")
+        return _execution(stdout=FAILURE_STDOUT, timed_out=True)
+
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", partial)
+    try:
+        record = _wait_batch(service, service.start_batch(request).batch_id)
+        assert record.status is AutoDockJobStatus.FAILED
+        assert record.succeeded_count == 1
+        assert any(entry.runs for entry in record.entries)
+        assert record.execution.timed_out
+    finally:
+        service.shutdown()

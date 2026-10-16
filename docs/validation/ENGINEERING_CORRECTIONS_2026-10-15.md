@@ -33,3 +33,22 @@ for sibling independence, original/state aliases, project isolation, stale
 receptor/site/map/PDBQT rejection before work creation and all three campaign
 backends rejecting a selected stale preparation. Engine fixtures are synthetic
 execution boundaries replaying recorded logs, not new GPU scientific results.
+
+## GPU campaign terminal state and isolated collection
+
+Confirmed unconditional Completed status after failed/timed-out file-list runs
+and uncontained parsing of each molecule log. A cancellation remains Canceled;
+timeout, failed exit/stdout verdict or zero successful molecules now yields
+Failed with execution evidence. Valid partial results remain accessible. A
+confirmed successful engine invocation with at least one valid molecule may
+complete with explicit per-molecule failures/counts, consistent with the other
+campaign backends; it does not claim every selected molecule succeeded.
+
+Invalid/truncated logs fail only their molecule. Each collected entry is saved
+incrementally, counters are updated without rescanning all molecules, and raw
+logs are never overwritten. Progress counts parsed complete logs, not merely
+filenames; the watcher is stopped when the process ends, including exceptions.
+The GPU gate passed 24 tests, including zero-output timeout/nonzero/tool-failure,
+truncated logs before/after valid molecules, explicit cancellation and retained
+partial output after engine failure. Results are replayed from the existing real
+captured DLG fixture; no new scientific scores are manufactured or asserted.

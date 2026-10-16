@@ -19,7 +19,7 @@ import os
 import shutil
 import threading
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -979,23 +979,27 @@ class AutoDockGpuDockingService:
         )
         # AutoDock-GPU writes each molecule's log as it finishes, so progress is
         # read from the directory while the single process is still running.
+        progress_stop = threading.Event()
         watcher = threading.Thread(
             target=self._watch_progress,
-            args=(batch_id, work, len(prepared.molecules), cancel_event),
+            args=(batch_id, work, len(prepared.molecules), progress_stop),
             daemon=True,
         )
         watcher.start()
 
         started = time.monotonic()
-        execution = execute_autodock_gpu_cancellable(
-            installation=prepared.installation,
-            job_directory=work,
-            arguments=arguments,
-            timeout_seconds=parameters.timeout_minutes * 60,
-            cancel_event=cancel_event,
-        )
+        try:
+            execution = execute_autodock_gpu_cancellable(
+                installation=prepared.installation,
+                job_directory=work,
+                arguments=arguments,
+                timeout_seconds=parameters.timeout_minutes * 60,
+                cancel_event=cancel_event,
+            )
+        finally:
+            progress_stop.set()
+            watcher.join(timeout=2)
         duration = time.monotonic() - started
-        watcher.join(timeout=2)
         evidence = AutoDockGpuExecutionEvidence(
             command=execution.command,
             exit_code=execution.exit_code,
@@ -1015,11 +1019,22 @@ class AutoDockGpuDockingService:
         batch_id: str,
         work: Path,
         total: int,
-        cancel_event: threading.Event,
+        stop_event: threading.Event,
     ) -> None:
         seen = 0
-        while not cancel_event.is_set():
-            done = sum(1 for path in work.glob("m*.dlg"))
+        parsed_files: dict[Path, tuple[int, int, bool]] = {}
+        while not stop_event.is_set():
+            for path in work.glob("m*.dlg"):
+                try:
+                    stat = path.stat()
+                    previous = parsed_files.get(path)
+                    if previous is not None and previous[:2] == (stat.st_mtime_ns, stat.st_size):
+                        continue
+                    parse_autodock4_log(path.read_text(encoding="utf-8", errors="replace"))
+                except (AnkoraDomainError, OSError, ValueError):
+                    continue  # Still being written, or invalid: not completed work.
+                parsed_files[path] = (stat.st_mtime_ns, stat.st_size, True)
+            done = len(parsed_files)
             if done != seen:
                 seen = done
                 current = self._job_store.load_batch_overview(batch_id)
@@ -1037,7 +1052,7 @@ class AutoDockGpuDockingService:
                 )
             if done >= total:
                 return
-            time.sleep(0.5)
+            stop_event.wait(0.5)
 
     def _collect_batch(
         self,
@@ -1050,6 +1065,36 @@ class AutoDockGpuDockingService:
         results: dict[str, AutoDockGpuBatchLigandResult] = {
             entry.ligand_id: entry for entry in record.entries
         }
+        persisted_status = {key: entry.status for key, entry in results.items()}
+        counts = Counter(persisted_status.values())
+
+        def persist(entry: AutoDockGpuBatchLigandResult) -> None:
+            counts[persisted_status[entry.ligand_id]] -= 1
+            counts[entry.status] += 1
+            persisted_status[entry.ligand_id] = entry.status
+            results[entry.ligand_id] = entry
+            current = self._job_store.load_batch_overview(batch_id)
+            self._job_store.update_batch(
+                current.model_copy(
+                    update={
+                        "execution": evidence,
+                        "completed_count": sum(
+                            counts[status]
+                            for status in {
+                                AutoDockJobStatus.COMPLETED,
+                                AutoDockJobStatus.FAILED,
+                                AutoDockJobStatus.CANCELED,
+                            }
+                        ),
+                        "succeeded_count": counts[AutoDockJobStatus.COMPLETED],
+                        "failed_count": counts[AutoDockJobStatus.FAILED],
+                        "canceled_count": counts[AutoDockJobStatus.CANCELED],
+                        "revision": current.revision + 1,
+                    }
+                ),
+                changed_entries=[entry],
+            )
+
         succeeded = 0
         for tag, molecule in tags.items():
             log = work / f"{tag}.dlg"
@@ -1071,8 +1116,28 @@ class AutoDockGpuDockingService:
                         "revision": entry.revision + 1,
                     }
                 )
+                persist(results[molecule.ligand_id])
                 continue
-            parsed = parse_autodock4_log(log.read_text(encoding="utf-8", errors="replace"))
+            try:
+                parsed = parse_autodock4_log(log.read_text(encoding="utf-8", errors="replace"))
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                persist(
+                    entry.model_copy(
+                        update={
+                            "status": AutoDockJobStatus.FAILED,
+                            "phase": AutoDockJobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                            "revision": entry.revision + 1,
+                            "failure": AutoDockFailure(
+                                code=f"{_CODE_PREFIX}_MOLECULE_OUTPUT_INVALID",
+                                message=("This molecule's docking log is incomplete or invalid; "
+                                         "other results are retained."),
+                                details={"log": log.name, "diagnostic": str(error)},
+                            ),
+                        }
+                    )
+                )
+                continue
             runs, clusters = self._persist_batch_results(batch_id, molecule.ligand_id, parsed)
             succeeded += 1
             results[molecule.ligand_id] = entry.model_copy(
@@ -1085,11 +1150,40 @@ class AutoDockGpuDockingService:
                     "revision": entry.revision + 1,
                 }
             )
+            persist(results[molecule.ligand_id])
         entries = [results[entry.ligand_id] for entry in record.entries]
         canceled = sum(1 for entry in entries if entry.status is AutoDockJobStatus.CANCELED)
         failed = sum(1 for entry in entries if entry.status is AutoDockJobStatus.FAILED)
         completed_at = datetime.now(UTC)
-        status = AutoDockJobStatus.CANCELED if evidence.canceled else AutoDockJobStatus.COMPLETED
+        failure = None
+        if evidence.canceled:
+            status = AutoDockJobStatus.CANCELED
+        elif (
+            evidence.timed_out
+            or evidence.exit_code != 0
+            or not evidence.success_reported_on_stdout
+            or succeeded == 0
+        ):
+            status = AutoDockJobStatus.FAILED
+            failure = AutoDockFailure(
+                code=(
+                    f"{_CODE_PREFIX}_TIMEOUT"
+                    if evidence.timed_out
+                    else f"{_CODE_PREFIX}_CAMPAIGN_FAILED"
+                ),
+                message=("The GPU campaign did not complete successfully. "
+                         "Any valid molecule results are retained."),
+                details={
+                    "succeeded_count": succeeded,
+                    "failed_count": failed,
+                    "exit_code": evidence.exit_code,
+                    "timed_out": evidence.timed_out,
+                    "success_reported_on_stdout": evidence.success_reported_on_stdout,
+                },
+            )
+        else:
+            status = AutoDockJobStatus.COMPLETED
+        current = self._job_store.load_batch_overview(batch_id)
         self._job_store.update_batch(
             record.model_copy(
                 update={
@@ -1097,15 +1191,16 @@ class AutoDockGpuDockingService:
                     "phase": AutoDockJobPhase.COMPLETE,
                     "completed_at": completed_at,
                     "execution": evidence,
+                    "failure": failure,
                     "entries": entries,
                     "completed_count": len(entries),
                     "succeeded_count": succeeded,
                     "failed_count": failed,
                     "canceled_count": canceled,
-                    "revision": record.revision + 1,
+                    "revision": current.revision + 1,
                     "provenance": ProvenanceEvent(
                         event_id=f"autodock-gpu-campaign-{batch_id}",
-                        event_type="autodock_gpu_campaign_completed",
+                        event_type=f"autodock_gpu_campaign_{status.value}",
                         timestamp=completed_at,
                         input_artifacts=[record.map_set_id, record.binding_site_id],
                         output_artifacts=[batch_id],
