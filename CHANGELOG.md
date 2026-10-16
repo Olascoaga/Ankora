@@ -2,6 +2,12 @@
 
 All notable project changes are recorded here.
 
+## Project isolation correction - 2026-10-15
+
+- Store ligand states, conformers, filter runs and PDBQT derivatives under the
+  captured project, rather than hardcoded `default`; scope preparation locks
+  by project-specific status path. Preserve existing immutable evidence.
+
 ## General receptor preparation boundaries - 2026-10-14
 
 - Explain incomplete retained components in the guided review, allow return to

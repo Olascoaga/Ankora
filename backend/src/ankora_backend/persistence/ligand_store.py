@@ -35,16 +35,16 @@ _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 # Route handlers construct a fresh LigandArtifactStore per request, so the lock
 # guarding a library's aggregate status file must live at module scope, keyed by
 # library_id, to actually serialize concurrent batch-preparation workers.
-_PREPARATION_LOCKS: dict[str, threading.Lock] = {}
+_PREPARATION_LOCKS: dict[Path, threading.Lock] = {}
 _PREPARATION_LOCKS_GUARD = threading.Lock()
 
 
-def _preparation_lock(library_id: str) -> threading.Lock:
+def _preparation_lock(status_path: Path) -> threading.Lock:
     with _PREPARATION_LOCKS_GUARD:
-        lock = _PREPARATION_LOCKS.get(library_id)
+        lock = _PREPARATION_LOCKS.get(status_path)
         if lock is None:
             lock = threading.Lock()
-            _PREPARATION_LOCKS[library_id] = lock
+            _PREPARATION_LOCKS[status_path] = lock
         return lock
 
 
@@ -225,7 +225,7 @@ class LigandArtifactStore:
     def upsert_preparation_entry(
         self, library_id: str, entry: LigandPreparationEntry
     ) -> LigandLibraryPreparationRecord:
-        with _preparation_lock(library_id):
+        with _preparation_lock(self._preparation_status_path(library_id)):
             record = self.load_preparation_status(library_id)
             record.entries[entry.ligand_id] = entry
             record.updated_at = entry.updated_at
@@ -491,9 +491,7 @@ class LigandArtifactStore:
         except ValueError as error:
             raise self._conformer_not_found(ligand_id, conformer_id) from error
         path = (
-            self._root
-            / "projects"
-            / "default"
+            self._project_root
             / "derived"
             / "ligands"
             / normalized_ligand
@@ -522,9 +520,7 @@ class LigandArtifactStore:
         except ValueError as error:
             raise self._library_not_found(library_id) from error
         path = (
-            self._root
-            / "projects"
-            / "default"
+            self._project_root
             / "derived"
             / "ligand_libraries"
             / normalized_library
@@ -542,9 +538,7 @@ class LigandArtifactStore:
         except ValueError as error:
             raise self._state_not_found(ligand_id, state_id) from error
         path = (
-            self._root
-            / "projects"
-            / "default"
+            self._project_root
             / "derived"
             / "ligands"
             / normalized_ligand
@@ -563,9 +557,7 @@ class LigandArtifactStore:
         except ValueError as error:
             raise self._preparation_not_found(ligand_id, preparation_id) from error
         path = (
-            self._root
-            / "projects"
-            / "default"
+            self._project_root
             / "derived"
             / "ligands"
             / normalized_ligand
