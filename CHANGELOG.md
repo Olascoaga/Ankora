@@ -2,6 +2,14 @@
 
 All notable project changes are recorded here.
 
+## Complete private beta package - 2026-10-15
+
+- Rebuild the full offline Windows package from the accepted engineering
+  corrections. Verify the installed guided receptor workflow, 3D/interactions,
+  source identity, legal inventory and all ten native scientific adapter smokes.
+  Preserve the unsigned/private-beta status and retire eight obsolete local
+  installers only after acceptance. See the recorded installer validation.
+
 ## Installed guided-preparation acceptance - 2026-10-15
 
 - Extend the opt-in installed WebView2 gate to cover the guided receptor wizard

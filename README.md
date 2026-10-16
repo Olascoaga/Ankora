@@ -111,7 +111,7 @@ Linux and macOS are not accepted release platforms yet.
 The beta installer is **unsigned**. Follow your institution's software policy;
 do not disable system security to install it. Signing, broader clean-machine
 acceptance and hardware coverage remain public-release gates. See the
-[latest installer acceptance record](docs/validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md).
+[latest installer acceptance record](docs/validation/PRIVATE_BETA_INSTALLER_2026-10-15.md).
 
 ## Traceability is part of the workflow
 
