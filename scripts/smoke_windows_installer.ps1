@@ -5,10 +5,14 @@ param(
     [switch]$ScientificMatrix,
     [switch]$FrontendSmoke,
     [switch]$InteractionSmoke,
-    [switch]$ReceptorRecoverySmoke
+    [switch]$ReceptorRecoverySmoke,
+    [switch]$ReceptorGuidanceSmoke,
+    [switch]$ReceptorWizardSmoke
 )
 
 $ErrorActionPreference = "Stop"
+# Both newer presentation gates extend the original recovery/startup scenario.
+$ReceptorRecoverySmoke = $ReceptorRecoverySmoke -or $ReceptorGuidanceSmoke -or $ReceptorWizardSmoke
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $projectRoot "build\windows-runtime")
@@ -181,6 +185,8 @@ try {
     if ($FrontendSmoke -or $ReceptorRecoverySmoke) {
         $frontendArguments = @((Join-Path $projectRoot "scripts/smoke_packaged_frontend.mjs"), "--cdp", "http://127.0.0.1:$debugPort")
         if ($ReceptorRecoverySmoke) { $frontendArguments += "--receptor-recovery" }
+        if ($ReceptorGuidanceSmoke) { $frontendArguments += "--receptor-guidance" }
+        if ($ReceptorWizardSmoke) { $frontendArguments += "--receptor-wizard" }
         & $nodePath @frontendArguments
         if ($LASTEXITCODE -ne 0) { throw "Installed WebView2 frontend smoke failed" }
     }

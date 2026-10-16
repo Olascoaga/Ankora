@@ -102,6 +102,14 @@ def test_installed_receptor_recovery_gate_is_opt_in_and_loopback_only() -> None:
     assert "[switch]$ReceptorRecoverySmoke" in source
     assert "if ($FrontendSmoke -or $ReceptorRecoverySmoke)" in source
     assert 'if ($ReceptorRecoverySmoke) { $frontendArguments += "--receptor-recovery" }' in source
+    assert "[switch]$ReceptorGuidanceSmoke" in source
+    assert "[switch]$ReceptorWizardSmoke" in source
+    assert (
+        "$ReceptorRecoverySmoke = $ReceptorRecoverySmoke -or "
+        "$ReceptorGuidanceSmoke -or $ReceptorWizardSmoke"
+    ) in source
+    assert 'if ($ReceptorGuidanceSmoke) { $frontendArguments += "--receptor-guidance" }' in source
+    assert 'if ($ReceptorWizardSmoke) { $frontendArguments += "--receptor-wizard" }' in source
     assert "& $nodePath @frontendArguments" in source
     assert "--remote-debugging-address=127.0.0.1" in source
     assert '$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $oldWebViewArguments' in source

@@ -2,6 +2,13 @@
 
 All notable project changes are recorded here.
 
+## Installed guided-preparation acceptance - 2026-10-15
+
+- Extend the opt-in installed WebView2 gate to cover the guided receptor wizard
+  and recovery guidance at laptop sizes, reusing explicitly synthetic fixtures.
+  Both switches include the original startup/recovery checks. Loopback debugging
+  remains test-child-only; shipping application behavior is unchanged.
+
 ## Project isolation correction - 2026-10-15
 
 - Store ligand states, conformers, filter runs and PDBQT derivatives under the
