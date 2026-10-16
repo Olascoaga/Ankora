@@ -1,7 +1,7 @@
 """Bootstrap API routes."""
 
 import os
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -878,11 +878,13 @@ def get_ligand_pdbqt_content(ligand_id: str, preparation_id: str) -> FileRespons
 def get_receptor_inspection(
     artifact_id: str,
     reference_component_id: str | None = Query(default=None),
+    inspection_method: Literal["reported_only", "templates_v1"] = Query(default="templates_v1"),
 ) -> ReceptorInspectionReport:
     return inspect_receptor(
         artifact_id=artifact_id,
         store=StructureArtifactStore.from_environment(),
         reference_component_id=reference_component_id,
+        inspection_method=inspection_method,
     )
 
 

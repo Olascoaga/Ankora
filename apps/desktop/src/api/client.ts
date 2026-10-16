@@ -248,8 +248,11 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     getJson<StructureRecord>(`/structures/${structureId}`),
   latestReceptor: (): Promise<ReceptorPreparationRecord> =>
     getJson<ReceptorPreparationRecord>("/receptors/latest"),
-  inspectReceptor: (structureId: string, referenceComponentId: string | null): Promise<ReceptorInspectionReport> => {
-    const query = referenceComponentId ? `?reference_component_id=${encodeURIComponent(referenceComponentId)}` : "";
+  inspectReceptor: (structureId: string, referenceComponentId: string | null, method: "reported_only" | "templates_v1" = "templates_v1"): Promise<ReceptorInspectionReport> => {
+    const parameters = new URLSearchParams();
+    if (referenceComponentId) parameters.set("reference_component_id", referenceComponentId);
+    if (method !== "templates_v1") parameters.set("inspection_method", method);
+    const query = parameters.size ? `?${parameters}` : "";
     return getJson<ReceptorInspectionReport>(`/structures/${structureId}/receptor-inspection${query}`);
   },
   prepareReceptor: (structureId: string, request: ReceptorPreparationRequest): Promise<ReceptorPreparationRecord> =>

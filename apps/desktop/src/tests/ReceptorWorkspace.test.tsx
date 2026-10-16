@@ -151,6 +151,7 @@ it("requires an exact protonation review and explicit confirmation before guided
   fireEvent.click(apply);
   await waitFor(() => expect(prepare).toHaveBeenCalledWith("source-1", expect.objectContaining({
     repair_method: "topology_guard_v3", repair_seed: 20261014,
+    inspection_method: "templates_v1",
     relaxation: expect.objectContaining({ enabled: false }), generate_pdbqt: true,
     issue_decisions: [expect.objectContaining({ action: "repair" })],
   })));
@@ -203,6 +204,8 @@ it("does not silently upgrade a restored historical repair method", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Prepare this receptor" }));
   await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
   expect(prepare.mock.calls[0][1]).not.toHaveProperty("repair_method");
+  expect(prepare.mock.calls[0][1]).not.toHaveProperty("inspection_method");
+  expect(ankoraApi.inspectReceptor).toHaveBeenCalledWith("source-1", null, "reported_only");
 });
 
 it("explains incompatible observed anchors without offering clash relief as a bond repair", async () => {
@@ -304,7 +307,7 @@ it("retains preparation evidence after changing the distance reference and refre
   fireEvent.click(screen.getByRole("button", { name: "Apply explicit preparation plan" }));
   await screen.findByText("Synthetic previous failure");
   fireEvent.change(screen.getByLabelText("Reference component"), { target: { value: "reference-1" } });
-  await waitFor(() => expect(ankoraApi.inspectReceptor).toHaveBeenLastCalledWith("source-1", "reference-1"));
+  await waitFor(() => expect(ankoraApi.inspectReceptor).toHaveBeenLastCalledWith("source-1", "reference-1", "templates_v1"));
   expect(screen.getByText(/This failure belongs to a previous plan/)).toBeInTheDocument();
   expect(screen.getByText("Synthetic previous failure")).toBeInTheDocument();
   expect(screen.getByText("Technical evidence")).toBeInTheDocument();

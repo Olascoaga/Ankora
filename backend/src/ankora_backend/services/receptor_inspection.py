@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 
 import gemmi
+from rdkit import rdBase
 
 from ankora_backend import __version__
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -13,6 +14,7 @@ from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import (
     ReceptorComponent,
     ReceptorDecisionAction,
+    ReceptorInspectionMethod,
     ReceptorInspectionReport,
     ReceptorIssue,
     ReceptorIssueKind,
@@ -21,6 +23,7 @@ from ankora_backend.schemas.receptors import (
 )
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.receptor_completeness import missing_standard_heavy_atoms
 
 NEAR_REFERENCE_CUTOFF_ANGSTROM = 8.0
 
@@ -51,6 +54,7 @@ def inspect_receptor(
     artifact_id: str,
     store: StructureArtifactStore,
     reference_component_id: str | None = None,
+    inspection_method: ReceptorInspectionMethod = "reported_only",
 ) -> ReceptorInspectionReport:
     record = store.load_record(artifact_id)
     content = store.content_path(artifact_id).read_bytes()
@@ -76,11 +80,45 @@ def inspect_receptor(
         for item in record.metadata.heterogens
         if item.kind is not HeterogenKind.WATER
     ]
-    water_count = sum(
-        item.kind is HeterogenKind.WATER for item in record.metadata.heterogens
-    )
+    water_count = sum(item.kind is HeterogenKind.WATER for item in record.metadata.heterogens)
     reference_positions = _reference_positions(model, components, reference_component_id)
     raw_issues = _reported_coordinate_issues(text, cif_block)
+    if inspection_method == "templates_v1":
+        for chain, residue, missing in missing_standard_heavy_atoms(model):
+            number = residue.seqid.num
+            if number is None:
+                raise AnkoraDomainError(
+                    code="RECEPTOR_RESIDUE_IDENTITY_INVALID", stage="receptor_inspection",
+                    message=("A template-incomplete residue has no sequence identifier; "
+                             "review the source before preparation."),
+                    status_code=422, details={"chain_id": chain.name, "residue_name": residue.name},
+                )
+            locator = ResidueLocator(
+                chain_id=chain.name,
+                residue_name=residue.name,
+                sequence_number=number,
+                insertion_code=_clean_char(residue.seqid.icode),
+            )
+            previous = next(
+                (
+                    issue
+                    for issue in raw_issues
+                    if issue.kind is ReceptorIssueKind.MISSING_ATOMS and issue.locator == locator
+                ),
+                None,
+            )
+            if previous is not None:
+                previous.missing_atoms = sorted(set(previous.missing_atoms) | set(missing))
+                previous.template_checked = True
+            else:
+                raw_issues.append(
+                    _RawIssue(
+                        kind=ReceptorIssueKind.MISSING_ATOMS,
+                        locator=locator,
+                        missing_atoms=missing,
+                        template_checked=True,
+                    )
+                )
     raw_issues.extend(_alternate_location_issues(model))
     raw_issues.extend(_nonstandard_residue_issues(model))
     issues = [
@@ -99,6 +137,19 @@ def inspect_receptor(
             "reference_component_id": reference_component_id,
             "near_reference_cutoff_angstrom": NEAR_REFERENCE_CUTOFF_ANGSTROM,
             "coordinate_model": 1,
+            **(
+                {
+                    "inspection_method": inspection_method,
+                    "template_source": "RDKit MolFromSequence standard heavy-atom names",
+                    "rdkit_version": rdBase.rdkitVersion,
+                    "terminal_OXT_inferred": False,
+                    "alternate_location_policy": (
+                        "observed positive-occupancy union; not per-conformer completeness"
+                    ),
+                }
+                if inspection_method == "templates_v1"
+                else {}
+            ),
         },
         warnings=warnings,
     )
@@ -106,9 +157,7 @@ def inspect_receptor(
         source_artifact_id=artifact_id,
         generated_at=generated_at,
         candidate_chains=[
-            chain.chain_id
-            for chain in record.metadata.chains
-            if chain.polymer_residue_count > 0
+            chain.chain_id for chain in record.metadata.chains if chain.polymer_residue_count > 0
         ],
         components=components,
         water_count=water_count,
@@ -143,11 +192,13 @@ class _RawIssue:
         locator: ResidueLocator,
         missing_atoms: list[str] | None = None,
         alternate_locations: list[str] | None = None,
+        template_checked: bool = False,
     ) -> None:
         self.kind = kind
         self.locator = locator
         self.missing_atoms = missing_atoms or []
         self.alternate_locations = alternate_locations or []
+        self.template_checked = template_checked
 
 
 def _reported_coordinate_issues(
@@ -410,6 +461,9 @@ def _issue_message(raw: _RawIssue) -> str:
         return "The source reports this residue without observed coordinates."
     if raw.kind is ReceptorIssueKind.MISSING_ATOMS:
         atoms = ", ".join(raw.missing_atoms)
+        if raw.template_checked:
+            return ("Standard-template comparison and retained source reports identify "
+                    f"missing atoms: {atoms}.")
         return f"The source reports missing atoms: {atoms}."
     if raw.kind is ReceptorIssueKind.ALTERNATE_LOCATION:
         labels = ", ".join(raw.alternate_locations)
@@ -442,6 +496,11 @@ def _minimum_distance(
 def _issue_warning(issue: ReceptorIssue) -> StructuredWarning:
     if issue.kind is ReceptorIssueKind.MISSING_RESIDUE:
         code = WarningCode.REC_MISSING_RESIDUE
+    elif issue.kind is ReceptorIssueKind.MISSING_ATOMS and (
+        not issue.allowed_actions or ReceptorDecisionAction.REPAIR not in issue.allowed_actions
+        or bool(set(issue.missing_atoms) & {"N", "CA", "C", "O"})
+    ):
+        code = WarningCode.STR_MISSING_ATOMS
     elif issue.kind is ReceptorIssueKind.ALTERNATE_LOCATION:
         code = WarningCode.REC_ALTERNATE_LOCATION
     elif issue.kind is ReceptorIssueKind.NONSTANDARD_RESIDUE:

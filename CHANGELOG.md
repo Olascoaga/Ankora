@@ -16,6 +16,10 @@ All notable project changes are recorded here.
 - Accept all official UniProt accession families in both UI and backend, without
   truncating supported isoform IDs. Include recorded pocket-detection software
   and parent-site provenance in Methods, exposing missing evidence as gaps.
+- Version new receptor inspections with standard amino-acid heavy-atom template
+  comparison in addition to source headers. Preserve legacy request identity,
+  require explicit decisions and record limitations for altlocs/termini and
+  unsupported residue classes. No automatic reconstruction is introduced.
 
 ## General receptor preparation boundaries - 2026-10-14
 

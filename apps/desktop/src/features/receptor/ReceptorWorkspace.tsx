@@ -50,6 +50,7 @@ export function ReceptorWorkspace({
 }: ReceptorWorkspaceProps) {
   const [report, setReport] = useState<ReceptorInspectionReport | null>(null);
   const restoredRecord = initialRecord?.source_artifact_id === structure.artifact.artifact_id ? initialRecord : null;
+  const inspectionMethod = restoredRecord?.decisions.inspection_method ?? (restoredRecord ? "reported_only" : "templates_v1");
   const [referenceComponentId, setReferenceComponentId] = useState<string | null>(restoredRecord?.decisions.reference_component_id ?? null);
   const [selectedChains, setSelectedChains] = useState<string[]>(restoredRecord?.decisions.selected_chains ?? []);
   const [waterAction, setWaterAction] = useState<ComponentAction | null>(restoredRecord?.decisions.water_action ?? null);
@@ -127,7 +128,7 @@ export function ReceptorWorkspace({
     // A changed distance reference must not discard evidence from the last
     // attempted preparation. Its decision snapshot will label it as previous.
     if (errorPlanSignature === null) setError(null);
-    void ankoraApi.inspectReceptor(structure.artifact.artifact_id, referenceComponentId)
+    void ankoraApi.inspectReceptor(structure.artifact.artifact_id, referenceComponentId, inspectionMethod)
       .then((nextReport) => {
         if (active) {
           setReport(nextReport);
@@ -142,7 +143,7 @@ export function ReceptorWorkspace({
         }
       });
     return () => { active = false; };
-  }, [referenceComponentId, structure.artifact.artifact_id]);
+  }, [referenceComponentId, structure.artifact.artifact_id, inspectionMethod]);
 
   useEffect(() => {
     if (meekoAffectedResidues(error).length) setIssueFilter("affected");
@@ -254,6 +255,7 @@ export function ReceptorWorkspace({
       },
       generate_pdbqt: protonate && generatePdbqt,
       ...(repairMethod !== "legacy" ? { repair_method: repairMethod, repair_seed: repairSeed } : {}),
+      ...(inspectionMethod !== "reported_only" ? { inspection_method: inspectionMethod } : {}),
     };
   }
 
@@ -596,6 +598,9 @@ export function ReceptorWorkspace({
           <div hidden={!showRepairs}>
 
           <ReceptorSection title={`${uiMode === "advanced" ? "4 · " : ""}Structural issues (${selectedIssues.length})`}>
+            <p className="field-note">{inspectionMethod === "templates_v1"
+              ? "Source reports plus standard amino-acid heavy-atom templates. Hydrogens and terminal OXT are not inferred; alternate conformations still need review."
+              : "Historical source-reported inspection preserved for this record."}</p>
             {excludedComponentIssueCount ? <p className="field-note">{excludedComponentIssueCount} observation(s) excluded by your component-removal choices. The imported structure is unchanged.</p> : null}
             {unsupportedMissingAtomIssues.length ? <div className="protonation-blocker" role="alert">
               <strong>{unsupportedMissingAtomIssues.length} incomplete component(s) need individual review.</strong>
@@ -604,7 +609,7 @@ export function ReceptorWorkspace({
               {uiMode === "guided" ? <button type="button" onClick={() => setGuidedStep(0)}>Review component choices</button> : null}
             </div> : null}
             {uiMode === "guided" ? <div className="receptor-draft-actions">
-              {bulkRepairIssues.length ? <button type="button" onClick={() => fillIssueDraft(bulkRepairIssues, "repair")}>Repair {bulkRepairIssues.length} incomplete side-chain(s)</button> : null}
+              {bulkRepairIssues.length ? <button type="button" onClick={() => fillIssueDraft(bulkRepairIssues, "repair")}>Repair {bulkRepairIssues.length} incomplete {bulkRepairIssues.some((issue) => issue.missing_atoms.some((atom) => ["N", "CA", "C", "O"].includes(atom))) ? "residue(s)" : "side-chain(s)"}</button> : null}
               {bulkMissingResidues.length ? <button type="button" onClick={() => fillIssueDraft(bulkMissingResidues, "leave")}>Keep {bulkMissingResidues.length} gap(s) unmodelled</button> : null}
               <p className="field-note">These choices fill the plan only. Alternate conformations and nonstandard residues still need individual review in the table.</p>
             </div> : null}

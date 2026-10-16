@@ -70,3 +70,47 @@ explicit gaps, not invented P2Rank versions. The targeted metadata/backend gate
 passed 54 tests; UI identifier/App coverage passed 20 tests, including a full-
 length accession-plus-isoform form submission. Synthetic records do not assert actual
 model retrieval or pocket prediction.
+
+## Versioned coordinate/template completeness inspection
+
+Confirmed that the prior inspector only used source missing-atom headers.
+New GUI requests record `inspection_method: templates_v1`; the API's read-only
+inspection default matches that method. Historical requests/records retain
+`reported_only` and their old serialized shape, rather than acquiring different
+decisions on reopen. The template source/version is preserved in inspection and
+new preparation-selection provenance. Legacy regression/frozen protocols were
+not rerun with changed chemistry, and historical artifacts were not rewritten.
+
+The checker compares positive-occupancy heavy-atom names for 20 standard amino
+acids against RDKit standard templates. It merges header/template observations
+without duplicating residue decisions, includes backbone omissions, preserves
+chain/insertion identity, and does not synthesize coordinates. It excludes
+hydrogens/OXT from inference and skips unsupported residue classes. The union
+across observed altloc labels is deliberately **not per-conformer completeness**;
+individual conformer choices and downstream atom-preservation checks remain.
+
+The focused receptor gate passed 89 tests, including 29 new completeness tests:
+all 20 template name sets match native PDBFixer; headerless PDB/mmCIF omissions,
+zero occupancy, insertion codes, source/header merging, OXT/OT1, alternate-
+location union, nonstandard exclusions, legacy serialization and early refusal
+of an incomplete undecided new plan are covered. The API/header-merging tests
+also run without optional OpenMM/PDBFixer. Native template fixtures are synthetic
+mechanical tests, not biological models or receptor-quality guarantees. No
+protein-specific rule, observed-atom reconstruction or automatic deletion was
+introduced. Details and limits are in the scientific preparation policy.
+
+## Integrated acceptance
+
+Windows native: **867 backend tests passed**; final focused receptor recheck
+passed 89 tests. **310 frontend tests across 40 files**, strict TypeScript,
+production build, Ruff and strict mypy (141 source files) passed. The production
+Edge 155 cold-start/Structure/Receptor/guided/recovery smoke passed at 960×680
+and 1280×800 with genuine Mol* rendering under strict CSP and synthetic API
+responses, without viewer/CSP errors. Existing Starlette/httpx and React fixture
+warnings and the large Mol* bundle notice remain visible.
+
+Public-path and frozen-validation-status checks passed. Existing frozen
+scientific benchmarks/results were not rewritten; no new docking benchmark,
+native-shell/installer rebuild or remote CI success is claimed. Raw local test
+artifacts and private continuity state remain ignored. The pre-existing commits
+were pushed before these corrections; these new correction units are local.

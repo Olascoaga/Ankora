@@ -196,6 +196,13 @@ needed; removal is never an automatic workaround. The final plan lists the
 actual kept/removed components, not just a total. These general checks and their
 limits are documented in [the workflow matrix](validation/GENERAL_RECEPTOR_WORKFLOW_2026-10-14.md).
 
+New development plans also compare observed heavy-atom names with templates for
+the 20 standard amino acids, even when a local file has no missing-atom headers.
+The report does not infer hydrogens, terminal OXT or whole missing residues, and
+it does not guarantee completeness of each alternate conformation. Review those
+choices separately. Reopened historical records keep their original source-
+reported inspection method; no old preparation is silently upgraded.
+
 New requests explicitly record **Topology-guarded repair**, with fixed observed
 atoms during reconstruction and connectivity/stereochemistry checks before
 protonation. The separate optional elastic relaxation is off by default and

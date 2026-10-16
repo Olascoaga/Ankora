@@ -259,6 +259,9 @@ class RelaxationSettings(BaseModel):
     max_iterations: int = Field(default=200, ge=1, le=5000)
 
 
+ReceptorInspectionMethod = Literal["reported_only", "templates_v1"]
+
+
 class ReceptorPreparationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -272,12 +275,15 @@ class ReceptorPreparationRequest(BaseModel):
     generate_pdbqt: bool = False
     repair_method: Literal["legacy", "topology_guard_v3"] = "legacy"
     repair_seed: int = Field(default=20261014, ge=1, le=2147483647)
+    inspection_method: ReceptorInspectionMethod = "reported_only"
 
     @model_serializer(mode="wrap")
     def preserve_legacy_request_shape(
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
         result: dict[str, object] = handler(self)
+        if self.inspection_method == "reported_only":
+            result.pop("inspection_method", None)
         if self.repair_method == "legacy":
             result.pop("repair_method", None)
             result.pop("repair_seed", None)

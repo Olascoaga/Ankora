@@ -103,6 +103,7 @@ def prepare_receptor(
         artifact_id=source_artifact_id,
         store=structure_store,
         reference_component_id=request.reference_component_id,
+        inspection_method=request.inspection_method,
     )
     selected_issues, issue_decisions = _validate_decisions(report, request)
     source_record = structure_store.load_record(source_artifact_id)
@@ -151,6 +152,8 @@ def prepare_receptor(
                     decision.model_dump(mode="json") for decision in request.issue_decisions
                 ],
                 "coordinate_model": 1,
+                **({"inspection": report.provenance.parameters}
+                   if request.inspection_method == "templates_v1" else {}),
             },
             warnings=report.warnings,
         )

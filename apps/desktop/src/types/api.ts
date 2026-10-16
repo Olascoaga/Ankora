@@ -313,6 +313,7 @@ export interface ReceptorPreparationRequest {
   generate_pdbqt: boolean;
   repair_method?: "legacy" | "topology_guard_v3";
   repair_seed?: number;
+  inspection_method?: "reported_only" | "templates_v1";
 }
 
 export interface ReceptorOutputArtifact {

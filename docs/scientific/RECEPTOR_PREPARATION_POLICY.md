@@ -82,6 +82,30 @@ rules are unchanged by this diagnostic/recovery correction.
 
 ## Guided preparation and review recovery
 
+New guided plans explicitly use inspection method `templates_v1`: source-reported
+issues are merged by exact residue identity with a read-only standard amino-acid
+heavy-atom name comparison. Templates come from RDKit's `MolFromSequence`; its
+version and the inspection policy are recorded. The 20 standard residue name
+sets are independently cross-checked against native PDBFixer templates.
+
+The comparison uses positive-occupancy atom names across observed alternate
+locations. It does **not** establish that each alternate conformer is complete;
+the separate conformer decision and downstream preservation/geometry guards
+remain mandatory. It neither infers hydrogens/OXT nor invents wholly absent
+residues, biological termini, nonstandard residues, nucleic acids or cofactors.
+OXT is a leaving/terminal atom, not a required atom of every polymer residue;
+see the [wwPDB processing policy](https://www.wwpdb.org/documentation/procedure).
+The conventional OT1 name satisfies backbone O for this comparison without
+renaming or changing the source atom.
+
+Old preparation requests without an inspection method remain `reported_only`;
+the default value is omitted from their serialized request to preserve previous
+fingerprints. Reopening an old record explicitly requests its old inspection
+method. The read-only inspection endpoint defaults to the current method and
+accepts an explicit legacy query. This is a versioned diagnostic improvement,
+not retroactive proof that old inputs were complete or permission to repair
+observed atoms. Every newly inferred issue still requires a scientist decision.
+
 Missing-atom reconstruction is offered only for standard polymer residues, not
 arbitrary ligands, metals or other non-polymer components. Retaining a component
 does not establish that protein preparation tools can assign its geometry,
