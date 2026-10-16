@@ -29,6 +29,7 @@ from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
+from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.methods import MethodsReport, MethodsSoftware
 from ankora_backend.schemas.results_catalog import (
@@ -155,6 +156,7 @@ class MethodsReportService:
         structures: StructureArtifactStore,
         receptors: ReceptorArtifactStore,
         binding_sites: BindingSiteArtifactStore,
+        pockets: PocketDetectionArtifactStore,
         ligands: LigandArtifactStore,
         maps: AutoGridMapStore,
         docking: DockingArtifactStore,
@@ -165,6 +167,7 @@ class MethodsReportService:
         self._structures = structures
         self._receptors = receptors
         self._binding_sites = binding_sites
+        self._pockets = pockets
         self._ligands = ligands
         self._maps = maps
         self._docking = docking
@@ -178,6 +181,7 @@ class MethodsReportService:
             structures=StructureArtifactStore.from_environment(),
             receptors=ReceptorArtifactStore.from_environment(),
             binding_sites=BindingSiteArtifactStore.from_environment(),
+            pockets=PocketDetectionArtifactStore.from_environment(),
             ligands=LigandArtifactStore.from_environment(),
             maps=AutoGridMapStore.from_environment(),
             docking=DockingArtifactStore.from_environment(),
@@ -343,6 +347,44 @@ class MethodsReportService:
             return
 
         decisions = site.decisions
+        origin = site
+        visited = {site.binding_site_id}
+        while getattr(origin.decisions, "parent_binding_site_id", None) and not getattr(
+            origin.decisions, "pocket_selection", None
+        ):
+            parent_id = origin.decisions.parent_binding_site_id
+            parent = _load(self._binding_sites.load_record, parent_id)
+            if parent is None or parent_id in visited or parent.receptor_id != site.receptor_id:
+                draft.say(
+                    f"Earlier site provenance was {draft.missing('binding site origin lineage')}.\n"
+                )
+                break
+            visited.add(parent_id)
+            origin = parent
+        pocket_selection = getattr(origin.decisions, "pocket_selection", None)
+        if pocket_selection is not None:
+            pocket = _load(self._pockets.load_record, pocket_selection.report_id)
+            gap = None
+            if pocket is None:
+                gap = "pocket detection report"
+            elif pocket.receptor_id != site.receptor_id:
+                gap = "matching pocket detection receptor"
+            elif not any(
+                candidate.pocket_id == pocket_selection.pocket_id for candidate in pocket.candidates
+            ):
+                gap = "selected pocket in detection report"
+            else:
+                draft.tool(pocket.tool.name, pocket.tool.version, "binding pocket detection")
+                if pocket.tool.version:
+                    draft.say(
+                        f"Candidate pockets were detected with {pocket.tool.name} "
+                        f"{pocket.tool.version}; the recorded initial selection was "
+                        f"{pocket_selection.pocket_id}.\n"
+                    )
+                else:
+                    gap = "pocket detection tool version"
+            if gap:
+                draft.say(f"Pocket detection provenance was {draft.missing(gap)}.\n")
         source = _SITE_SOURCE.get(str(decisions.source), str(decisions.source))
         detail = ""
         if decisions.ligand_origin is not None:

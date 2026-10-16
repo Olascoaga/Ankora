@@ -112,10 +112,13 @@ it("renders the connected backend and tool states", async () => {
 });
 
 it("offers explicit source actions without fetching a structure on menu entry", async () => {
-  const requests: Array<{ url: string; method: string }> = [];
+  const requests: Array<{ url: string; method: string; body?: BodyInit | null }> = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
-    requests.push({ url, method: init?.method ?? "GET" });
+    requests.push({ url, method: init?.method ?? "GET", body: init?.body });
+    if (url.endsWith("/structures/fetch/alphafold")) return new Response(JSON.stringify({
+      code: "SYNTHETIC_NOT_FOUND", stage: "test", message: "Synthetic response; no model downloaded.", details: {}, recoverable: true,
+    }), { status: 404, headers: { "Content-Type": "application/json" } });
     if (url.endsWith("/receptors/latest")) return noSavedReceptor();
     const payload = url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources : url.endsWith("/system") ? system : tools;
     return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -135,6 +138,12 @@ it("offers explicit source actions without fetching a structure on menu entry", 
   expect(screen.getByLabelText("PDB ID")).toHaveFocus();
   expect(screen.getByRole("button", { name: "Fetch" })).toBeVisible();
   expect(requests.filter(({ method }) => method !== "GET")).toEqual([]);
+  fireEvent.click(screen.getByLabelText("UniProt ID"));
+  fireEvent.change(screen.getByLabelText("UniProt accession"), { target: { value: "A0A023GPI8-123" } });
+  expect(screen.getByLabelText("UniProt accession")).toHaveValue("A0A023GPI8-123");
+  fireEvent.click(screen.getByRole("button", { name: "Fetch" }));
+  await waitFor(() => expect(requests.some(({ url }) => url.endsWith("/structures/fetch/alphafold"))).toBe(true));
+  expect(JSON.parse(String(requests.find(({ url }) => url.endsWith("/structures/fetch/alphafold"))?.body))).toEqual({ uniprot_id: "A0A023GPI8-123" });
 });
 
 it("renders a disconnected state when the backend cannot be reached", async () => {

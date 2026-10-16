@@ -52,3 +52,21 @@ The GPU gate passed 24 tests, including zero-output timeout/nonzero/tool-failure
 truncated logs before/after valid molecules, explicit cancellation and retained
 partial output after engine failure. Results are replayed from the existing real
 captured DLG fixture; no new scientific scores are manufactured or asserted.
+
+## UniProt identifiers and pocket Methods provenance
+
+The incomplete UniProt grammar existed in both UI and backend, and the input
+also truncated 10-character accessions with an isoform suffix. Both now accept
+the official six/ten-character families, normalize whitespace/case and retain
+the existing bounded isoform suffix support (up to three digits).
+Source: [UniProt accession specification](https://www.uniprot.org/help/accession_numbers).
+Syntax acceptance does not assert a prediction exists in AlphaFold DB.
+
+Methods now loads the exact selected pocket-detection report, validates receptor
+and candidate identity and includes its recorded tool/version and citation in
+the software table. Manual adjustments follow recorded parent-site lineage to
+the original pocket. Missing/mismatched reports or unknown versions create
+explicit gaps, not invented P2Rank versions. The targeted metadata/backend gate
+passed 54 tests; UI identifier/App coverage passed 20 tests, including a full-
+length accession-plus-isoform form submission. Synthetic records do not assert actual
+model retrieval or pocket prediction.

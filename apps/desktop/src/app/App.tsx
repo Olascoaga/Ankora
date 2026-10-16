@@ -21,6 +21,7 @@ import type { BindingSiteRecord, HeterogenSummary, LigandDockingInput, LigandLib
 import { MolecularViewer } from "../viewer/MolecularViewer";
 import type { ViewerSelection } from "../viewer/adapter";
 import { formatApplicationDateTime, formatCount, formatScientificNumber } from "../utils/format";
+import { isUniprotAccession } from "../utils/identifiers";
 import { createInitialApplicationState, type ApplicationState } from "./state";
 import { loadBackend } from "./backendStartup";
 import type { WorkspaceActivity } from "./activity";
@@ -288,8 +289,8 @@ export function App() {
     event.preventDefault();
     const normalizedId = pdbId.trim().toUpperCase();
     if (fetchSource === "alphafold") {
-      if (!/^([OPQ][0-9][A-Z0-9]{3}[0-9])(-[0-9]{1,3})?$/.test(normalizedId)) {
-        setState((current) => ({ ...current, structureError: "Enter a valid UniProt accession, e.g. P04637 or P04637-2." }));
+      if (!isUniprotAccession(normalizedId)) {
+        setState((current) => ({ ...current, structureError: "Enter a valid UniProt accession, e.g. P04637, A2BC19 or A0A023GPI8; an isoform suffix is optional." }));
         return;
       }
       void runStructureOperation(() => ankoraApi.fetchAlphafoldStructure(normalizedId));
@@ -669,7 +670,7 @@ export function App() {
                   </div>
                   <label htmlFor="pdb-id">{fetchSource === "alphafold" ? "UniProt accession" : "PDB ID"}</label>
                   <div>
-                    <input id="pdb-id" value={pdbId} onChange={(event) => setPdbId(event.target.value.slice(0, fetchSource === "alphafold" ? 10 : 4))} placeholder={fetchSource === "alphafold" ? "P04637" : "7AQF"} autoComplete="off" spellCheck={false} />
+                    <input id="pdb-id" value={pdbId} onChange={(event) => setPdbId(event.target.value.slice(0, fetchSource === "alphafold" ? 14 : 4))} placeholder={fetchSource === "alphafold" ? "P04637 or A0A023GPI8" : "7AQF"} autoComplete="off" spellCheck={false} />
                     <button type="submit" disabled={state.structureOperation === "loading"}>Fetch</button>
                   </div>
                 </form>

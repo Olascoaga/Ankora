@@ -32,6 +32,60 @@ class _Missing:
         return _raise
 
 
+@pytest.mark.parametrize(
+    "mode",
+    ["available", "missing", "version_missing", "wrong_receptor", "missing_candidate", "adjusted"],
+)
+def test_methods_records_only_available_matching_pocket_provenance(mode: str) -> None:
+    selection = SimpleNamespace(report_id="synthetic-report", pocket_id="pocket-1")
+    source_site = SimpleNamespace(
+        binding_site_id="source-site",
+        receptor_id="receptor-1",
+        decisions=SimpleNamespace(
+            source="pocket_detected",
+            pocket_selection=selection,
+            parent_binding_site_id=None,
+            ligand_origin=None,
+            residue_selection=None,
+        ),
+        box=SimpleNamespace(center_x=0, center_y=0, center_z=0, size_x=20, size_y=20, size_z=20),
+    )
+    adjusted = SimpleNamespace(
+        **{
+            **vars(source_site),
+            "binding_site_id": "site-1",
+            "decisions": SimpleNamespace(
+                source="manual",
+                pocket_selection=None,
+                parent_binding_site_id="source-site",
+                ligand_origin=None,
+                residue_selection=None,
+            ),
+        }
+    )
+    pocket = SimpleNamespace(
+        receptor_id="other" if mode == "wrong_receptor" else "receptor-1",
+        tool=SimpleNamespace(name="P2Rank", version=None if mode == "version_missing" else "2.5.1"),
+        candidates=[] if mode == "missing_candidate" else [SimpleNamespace(pocket_id="pocket-1")],
+    )
+    report = _service(
+        _entry(),
+        binding_sites=SimpleNamespace(
+            load_record=lambda key: (
+                adjusted if mode == "adjusted" and key == "site-1" else source_site
+            )
+        ),
+        pockets=_Missing() if mode == "missing" else SimpleNamespace(load_record=lambda _: pocket),
+    ).render("autodock_gpu_batch:batch-1")
+    if mode in {"available", "adjusted"}:
+        assert any(tool.name == "P2Rank" and tool.version == "2.5.1" for tool in report.software)
+        assert "| P2Rank | 2.5.1 | binding pocket detection |" in report.markdown
+        assert "10.1186/s13321-018-0285-8" in report.markdown
+    else:
+        assert not any(tool.name == "P2Rank" for tool in report.software)
+        assert any("pocket" in gap for gap in report.gaps)
+
+
 def _entry(**overrides: Any) -> Any:
     defaults: dict[str, Any] = {
         "catalog_id": "autodock_gpu_batch:batch-1",
@@ -68,7 +122,8 @@ class _Catalog:
 def _service(entry: Any, **stores: Any) -> MethodsReportService:
     defaults = {
         "structures": _Missing(), "receptors": _Missing(),
-        "binding_sites": _Missing(), "ligands": _Missing(), "maps": _Missing(),
+        "binding_sites": _Missing(), "pockets": _Missing(),
+        "ligands": _Missing(), "maps": _Missing(),
         "docking": _Missing(), "autodock4": _Missing(), "autodock_gpu": _Missing(),
     }
     defaults.update(stores)
@@ -789,7 +844,7 @@ def test_an_unknown_campaign_is_refused_rather_than_described() -> None:
 
     service = MethodsReportService(
         catalog=_Absent(),  # type: ignore[arg-type]
-        structures=_Missing(), receptors=_Missing(), binding_sites=_Missing(),  # type: ignore[arg-type]
+        structures=_Missing(), receptors=_Missing(), binding_sites=_Missing(), pockets=_Missing(),  # type: ignore[arg-type]
         ligands=_Missing(), maps=_Missing(), docking=_Missing(),  # type: ignore[arg-type]
         autodock4=_Missing(), autodock_gpu=_Missing(),  # type: ignore[arg-type]
     )

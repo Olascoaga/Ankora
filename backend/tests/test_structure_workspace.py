@@ -149,10 +149,13 @@ def test_invalid_import_uses_stable_error_contract(
         "recoverable": True,
     }
 
-def test_alphafold_request_normalizes_valid_accessions() -> None:
-    request = FetchAlphaFoldStructureRequest(uniprot_id=" p04637-2 ")
 
-    assert request.uniprot_id == "P04637-2"
+@pytest.mark.parametrize(
+    "value", ["P04637", "p04637-2", "A2BC19", "A0A023GPI8", "A0A023GPI8-123", " Q8WZ42 "]
+)
+def test_alphafold_request_normalizes_valid_accessions(value: str) -> None:
+    request = FetchAlphaFoldStructureRequest(uniprot_id=value)
+    assert request.uniprot_id == value.strip().upper()
 
 
 @pytest.mark.parametrize(

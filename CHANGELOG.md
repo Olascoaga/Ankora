@@ -13,6 +13,9 @@ All notable project changes are recorded here.
 - Fail unsuccessful/zero-result GPU campaigns, retain valid partial results,
   isolate truncated molecule logs and persist collection incrementally. Count
   parseable complete logs for progress and stop the watcher with the process.
+- Accept all official UniProt accession families in both UI and backend, without
+  truncating supported isoform IDs. Include recorded pocket-detection software
+  and parent-site provenance in Methods, exposing missing evidence as gaps.
 
 ## General receptor preparation boundaries - 2026-10-14
 

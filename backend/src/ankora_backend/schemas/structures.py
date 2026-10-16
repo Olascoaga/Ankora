@@ -102,18 +102,24 @@ class FetchStructureRequest(BaseModel):
             raise ValueError("PDB ID must contain exactly four letters or digits")
         return normalized
 
-_UNIPROT_ACCESSION_PATTERN = re.compile(r"^([OPQ][0-9][A-Z0-9]{3}[0-9])(-[0-9]{1,3})?$")
+_UNIPROT_ACCESSION_PATTERN = re.compile(
+    r"^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-[0-9]{1,3})?$"
+)
 
 
 class FetchAlphaFoldStructureRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    uniprot_id: str = Field(min_length=6, max_length=10)
+    uniprot_id: str = Field(min_length=6, max_length=14)
 
-    @field_validator("uniprot_id")
+    @field_validator("uniprot_id", mode="before")
     @classmethod
-    def validate_uniprot_id(cls, value: str) -> str:
+    def validate_uniprot_id(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("UniProt accession must be text")
         normalized = value.strip().upper()
         if not _UNIPROT_ACCESSION_PATTERN.fullmatch(normalized):
-            raise ValueError("UniProt accession must look like P12345 or P12345-2")
+            raise ValueError(
+                "Enter a 6- or 10-character UniProt accession, optionally with an isoform suffix"
+            )
         return normalized
