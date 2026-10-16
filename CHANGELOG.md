@@ -7,6 +7,9 @@ All notable project changes are recorded here.
 - Store ligand states, conformers, filter runs and PDBQT derivatives under the
   captured project, rather than hardcoded `default`; scope preparation locks
   by project-specific status path. Preserve existing immutable evidence.
+- Correct reverse library/state dependencies and consult effective stale state
+  before admitting and executing maps/docking, including selected preparations
+  and cached map reuse. Preserve historical inspection and evidence.
 
 ## General receptor preparation boundaries - 2026-10-14
 

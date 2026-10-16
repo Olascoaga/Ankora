@@ -57,6 +57,10 @@ class LigandArtifactStore:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def project_root(self) -> Path:
+        return self._project_root
+
     @classmethod
     def from_environment(cls, project_id: str | None = None) -> "LigandArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")

@@ -28,3 +28,21 @@ intrinsic stale flags remain honored and also propagate downstream.
 
 Project identity is governed by ADR-023. In particular, stale metadata is
 scoped by project and cannot create a dependency across project boundaries.
+
+## Execution enforcement (2026-10-15)
+
+Vina, AutoGrid4 and both AutoDock backends consult effective project-scoped stale
+metadata when admitting work and again before executing queued calculations.
+The selected library/filter and exact preparation/state/conformer identities
+are included, not just the binding site's intrinsic flag. Cached map reuse also
+checks the map set. A stale input causes `PROJECT_INPUT_STALE`; existing results
+remain inspectable and retain their original bytes. Marking an input during an
+already-running calculation does not kill the process; its retained result is
+downstream and appears stale in the graph.
+
+Library entry snapshots are outputs/membership, not reverse input dependencies.
+An imported library is upstream of its ligands. Likewise a ligand's embedded
+initial chemical state is its output alias, not an upstream state. Invalidating
+one ligand/state must not invalidate its original library or sibling ligands.
+Aggregate filters/campaigns that actually reference that ligand remain genuine
+downstream dependencies and can become stale.

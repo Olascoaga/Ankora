@@ -101,6 +101,35 @@ class ProjectDependencyService:
         root = Path(configured) if configured else Path.cwd() / ".ankora-data"
         return cls(root=root)
 
+    @classmethod
+    def for_project_root(cls, project_root: Path) -> ProjectDependencyService:
+        """Capture store ownership, not a worker thread's ambient context."""
+        return cls(root=project_root.parent.parent, project_id=project_root.name)
+
+    def require_current(self, node_ids: Iterable[str]) -> None:
+        """Reject stale execution inputs without changing immutable evidence."""
+        requested = {_normalized_reference(value) for value in node_ids if value}
+        candidates = self._candidates()
+        aliases = {alias: item.node_id for item in candidates for alias in item.aliases}
+        aliases.update({item.node_id: item.node_id for item in candidates})
+        requested = {aliases.get(value, value) for value in requested}
+        graph = self._graph(offset=0, limit=max(1, len(candidates)), candidates=candidates)
+        blocked = [node for node in graph.nodes if node.node_id in requested and node.stale]
+        if blocked:
+            raise AnkoraDomainError(
+                code="PROJECT_INPUT_STALE",
+                stage=_STAGE,
+                status_code=409,
+                message=("These inputs are marked stale. Review or create current inputs "
+                         "before running calculations."),
+                details={
+                    "project_id": self._project_id,
+                    "stale_inputs": [
+                        {"node_id": node.node_id, "reasons": node.stale_reasons} for node in blocked
+                    ],
+                },
+            )
+
     def graph(self, *, offset: int = 0, limit: int = 100) -> ProjectDependencyGraph:
         if offset < 0 or limit < 1 or limit > 500:
             raise AnkoraDomainError(
@@ -112,13 +141,14 @@ class ProjectDependencyService:
             )
         return self._graph(offset=offset, limit=limit)
 
-    def _graph(self, *, offset: int, limit: int) -> ProjectDependencyGraph:
-        candidates = self._candidates()
+    def _graph(
+        self, *, offset: int, limit: int, candidates: list[_Candidate] | None = None
+    ) -> ProjectDependencyGraph:
+        candidates = self._candidates() if candidates is None else candidates
         aliases = {
-            alias: item.node_id
-            for item in candidates
-            for alias in {item.node_id, *item.aliases}
+            alias: item.node_id for item in candidates for alias in {item.node_id, *item.aliases}
         }
+        aliases.update({item.node_id: item.node_id for item in candidates})
         edge_pairs: set[tuple[str, str]] = set()
         unresolved: dict[str, set[str]] = {}
         for item in candidates:
@@ -158,9 +188,7 @@ class ProjectDependencyService:
                 kind=item.kind,
                 label=item.label,
                 relative_path=item.path.relative_to(self._project_root).as_posix(),
-                parent_ids=sorted(
-                    parent for parent, child in edge_pairs if child == item.node_id
-                ),
+                parent_ids=sorted(parent for parent, child in edge_pairs if child == item.node_id),
                 unresolved_parent_ids=sorted(unresolved.get(item.node_id, set())),
                 stale=item.node_id in stale_ids,
                 stale_reasons=list(dict.fromkeys(reasons.get(item.node_id, []))),
@@ -222,9 +250,23 @@ class ProjectDependencyService:
                 continue
             kind = _kind_for(path.relative_to(self._project_root).parts)
             node_id = path.parent.name
-            references = set(_references(raw))
+            # Library entries are immutable output snapshots, not upstream
+            # inputs. Likewise the initial state embedded in a ligand is its
+            # output, not an input that may make its parent stale backwards.
+            reference_payload = (
+                {key: value for key, value in raw.items() if key != "entries"}
+                if kind is DependencyNodeKind.LIGAND_LIBRARY
+                else raw.get("artifact", {})
+                if kind is DependencyNodeKind.LIGAND
+                else raw
+            )
+            references = set(_references(reference_payload))
             references.discard(node_id)
             aliases = set(_artifact_aliases(raw)) if kind in _OUTPUT_OWNER_KINDS else set()
+            if kind is DependencyNodeKind.LIGAND and isinstance(raw.get("state"), dict):
+                state_id = raw["state"].get("state_id")
+                if isinstance(state_id, str):
+                    aliases.add(state_id)
             aliases.discard(node_id)
             candidates.append(
                 _Candidate(
@@ -386,11 +428,7 @@ def _artifact_aliases(value: Any) -> Iterable[str]:
         artifact_id = value.get("artifact_id")
         if isinstance(artifact_id, str) and artifact_id:
             yield artifact_id
-        yield from (
-            alias
-            for item in value.values()
-            for alias in _artifact_aliases(item)
-        )
+        yield from (alias for item in value.values() for alias in _artifact_aliases(item))
     elif isinstance(value, list):
         yield from (alias for item in value for alias in _artifact_aliases(item))
 

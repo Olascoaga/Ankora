@@ -15,6 +15,10 @@ class BindingSiteArtifactStore:
         self._root = root.resolve()
         self._project_root = resolve_project_root(self._root, project_id)
 
+    @property
+    def project_root(self) -> Path:
+        return self._project_root
+
     @classmethod
     def from_environment(cls, project_id: str | None = None) -> "BindingSiteArtifactStore":
         configured = os.getenv("ANKORA_DATA_DIR")

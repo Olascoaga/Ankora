@@ -60,6 +60,8 @@ from ankora_backend.schemas.receptors import (
     ReceptorPreparationStatus,
 )
 from ankora_backend.schemas.work_recovery import WorkKind
+from ankora_backend.services.execution_freshness import require_current_inputs
+from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceLease,
@@ -363,6 +365,9 @@ class AutoGridMapService:
             self._cancel_events.pop(job_id, None)
 
     def _prepare(self, request: AutoGridMapSetRequest) -> "_PreparedMapSet":
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_autogrid4()
         receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
@@ -398,6 +403,9 @@ class AutoGridMapService:
             request=request,
             installation=installation,
         )
+        existing = self._map_store.find_by_identity(identity_key)
+        if existing is not None:
+            ProjectDependencyService.for_project_root(self._binding_site_store.project_root).require_current([existing.map_set_id])
         return _PreparedMapSet(
             request=request,
             installation=installation,
@@ -408,7 +416,7 @@ class AutoGridMapService:
             binding_site=binding_site,
             geometry=geometry,
             preflight=preflight,
-            existing=self._map_store.find_by_identity(identity_key),
+            existing=existing,
         )
 
     def _generate(
@@ -419,6 +427,9 @@ class AutoGridMapService:
         job: AutoGridMapJobRecord | None = None,
     ) -> AutoGridMapSetRecord:
         request = prepared.request
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = prepared.installation
         identity_key = prepared.identity_key
         receptor_output = prepared.receptor_output

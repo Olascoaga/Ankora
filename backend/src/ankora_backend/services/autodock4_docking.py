@@ -66,6 +66,7 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.execution_freshness import require_current_inputs
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceLease,
@@ -303,6 +304,11 @@ class AutoDock4DockingService:
     ) -> None:
         job_id = record.job_id
         job_directory = self._job_store.job_directory(job_id)
+        require_current_inputs(
+            record.request,
+            binding_site_store=self._binding_site_store,
+            ligand_store=self._ligand_store,
+        )
         self._require_ascii_job_directory(job_directory)
         self._stage_inputs(job_directory, prepared)
 
@@ -500,6 +506,9 @@ class AutoDock4DockingService:
                 shutil.copyfile(source, destination)
 
     def _prepare(self, request: AutoDock4DockingRequest) -> _PreparedDocking:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_autodock4()
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = self._validate_receptor_and_site(request)
@@ -677,6 +686,9 @@ class AutoDock4DockingService:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
     def _create_batch(self, request: AutoDock4BatchRequest) -> AutoDock4BatchRecord:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_autodock4()
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = self._validate_receptor_and_site(request)
@@ -927,6 +939,11 @@ class AutoDock4DockingService:
                     ),
                     cancel_event=cancel_event,
                 )
+            require_current_inputs(
+                record.request,
+                binding_site_store=self._binding_site_store,
+                ligand_store=self._ligand_store,
+            )
             self._update_batch(
                 batch_id,
                 lambda current: current.model_copy(

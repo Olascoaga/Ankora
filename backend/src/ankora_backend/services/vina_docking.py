@@ -47,6 +47,7 @@ from ankora_backend.schemas.receptors import (
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
+from ankora_backend.services.execution_freshness import require_current_inputs
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceLease,
@@ -230,6 +231,9 @@ class VinaDockingService:
             return self._create_batch(request)
 
     def _create_batch(self, request: VinaBatchDockingRequest) -> VinaBatchDockingRecord:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_vina()
         receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
@@ -612,6 +616,11 @@ class VinaDockingService:
             if cancel_event.is_set():
                 self._finish_batch(batch_id, canceled=True)
                 return
+            require_current_inputs(
+                record.request,
+                binding_site_store=self._binding_site_store,
+                ligand_store=self._ligand_store,
+            )
             with self._lock:
                 record = self._docking_store.load_batch_overview(batch_id)
                 self._docking_store.update_batch_record(
@@ -1065,6 +1074,9 @@ class VinaDockingService:
     def _validate_inputs(
         self, request: VinaDockingRequest
     ) -> tuple[ReceptorOutputArtifact, Path, Path, BindingSiteRecord]:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
         )
@@ -1176,6 +1188,11 @@ class VinaDockingService:
         )
         self._docking_store.update_record(running)
         try:
+            require_current_inputs(
+                record.request,
+                binding_site_store=self._binding_site_store,
+                ligand_store=self._ligand_store,
+            )
             execution = execute_vina(
                 installation=installation,
                 receptor_path=receptor_path,

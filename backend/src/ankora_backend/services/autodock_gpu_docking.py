@@ -77,6 +77,7 @@ from ankora_backend.services.autodock_inputs import (
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
+from ankora_backend.services.execution_freshness import require_current_inputs
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceLease,
@@ -332,6 +333,11 @@ class AutoDockGpuDockingService:
     ) -> None:
         job_id = record.job_id
         job_directory = self._job_store.job_directory(job_id)
+        require_current_inputs(
+            record.request,
+            binding_site_store=self._binding_site_store,
+            ligand_store=self._ligand_store,
+        )
         self._require_ascii_job_directory(job_directory)
         self._stage_inputs(job_directory, prepared)
 
@@ -491,6 +497,9 @@ class AutoDockGpuDockingService:
     # --- inputs ------------------------------------------------------------
 
     def _prepare(self, request: AutoDockGpuDockingRequest) -> _PreparedDocking:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_autodock_gpu(device_number=request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
@@ -754,6 +763,9 @@ class AutoDockGpuDockingService:
     def _create_batch(
         self, request: AutoDockGpuBatchRequest
     ) -> tuple[AutoDockGpuBatchRecord, "_PreparedCampaign"]:
+        require_current_inputs(
+            request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
+        )
         installation = probe_autodock_gpu(device_number=request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
@@ -868,6 +880,12 @@ class AutoDockGpuDockingService:
                     autodock_gpu_claim(batch_id, ligand_count=len(prepared.molecules)),
                     cancel_event=cancel_event,
                 )
+            current = self._job_store.load_batch_overview(batch_id)
+            require_current_inputs(
+                current.request,
+                binding_site_store=self._binding_site_store,
+                ligand_store=self._ligand_store,
+            )
             self._execute_batch(batch_id, prepared, cancel_event)
         except ResourceRequestCanceled:
             current = self._job_store.load_batch_overview(batch_id)
