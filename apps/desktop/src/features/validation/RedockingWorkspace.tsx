@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { ankoraApi } from "../../api/client";
 import type { RedockingRunRecord } from "../../types/api";
 import { formatScientificNumber } from "../../utils/format";
+import { CreateRedockingValidation } from "./CreateRedockingValidation";
+import "./redocking.css";
 
 /**
  * Redocking validation (M7).
@@ -32,28 +34,35 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
   const [runs, setRuns] = useState<RedockingRunRecord[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let disposed = false;
+    setLoading(true); setError(null);
     void ankoraApi.listRedockingValidations()
       .then((next) => {
         if (disposed) return;
-        setRuns(next);
+        // A creation may finish before this initial history request returns.
+        setRuns((current) => [
+          ...(current ?? []).filter((item) => !next.some((run) => run.validation_id === item.validation_id)),
+          ...next,
+        ]);
         setSelectedId((current) => current ?? next[0]?.validation_id ?? null);
       })
       .catch((reason: unknown) => {
         if (!disposed) {
           setError(reason instanceof Error ? reason.message : "Validations could not be read.");
         }
-      });
+      }).finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, []);
+  }, [reload]);
 
   const selected = runs?.find((run) => run.validation_id === selectedId) ?? null;
 
   return (
     <>
-      <section className="workspace docking-workspace" aria-label="Redocking validation workspace">
+      <section className="workspace docking-workspace redocking-workspace" aria-label="Redocking validation workspace">
         <div className="workspace-heading">
           <div>
             <span className="eyebrow">07 / Validation</span>
@@ -64,12 +73,16 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
             <span className="read-only-badge">M7 · Redocking</span>
           </div>
         </div>
-        {error ? <div className="structure-error" role="alert">{error}</div> : null}
-        {runs === null ? (
+        <CreateRedockingValidation onCreated={(record) => {
+          setRuns((current) => [record, ...(current ?? []).filter((run) => run.validation_id !== record.validation_id)]);
+          setSelectedId(record.validation_id);
+        }} />
+        {error ? <div className="structure-error" role="alert">{error} <button type="button" onClick={() => setReload((n) => n + 1)}>Retry validations</button></div> : null}
+        {loading ? (
           <div className="operation-progress" role="progressbar" aria-label="Reading validations">
             <span /><p>Reading recorded validations</p>
           </div>
-        ) : runs.length === 0 ? (
+        ) : runs?.length === 0 ? (
           <div className="viewer-placeholder ligand-placeholder">
             <div className="viewer-message">
               <div className="molecule-glyph">⌾</div>
@@ -193,6 +206,8 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
           <dd>{run.bitwise_reproducible ? "Bit-identical on a repeat" : "Not from its seed"}</dd>
         </div>
       </dl>
+      <p className="field-note">Repeatability above is source metadata, not established by this RMSD calculation.
+        A recovered pose is not evidence of affinity or validation on other targets.</p>
 
       <div className="docking-results-scroll" tabIndex={0} aria-label="Scrollable pose RMSD table">
         <table>
@@ -200,7 +215,7 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
             <tr>
               <th>Rank</th>
               <th>Run</th>
-              <th>Binding energy (kcal/mol)</th>
+              <th>{run.source_kind === "vina_job" ? "Vina score (kcal/mol)" : "AutoDock4 binding energy (kcal/mol)"}</th>
               <th>RMSD (Å)</th>
               <th>Recovered</th>
             </tr>

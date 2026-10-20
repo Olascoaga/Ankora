@@ -501,7 +501,26 @@ we want to know whether the atoms are where the crystal says they are.
 > Aligning the ligand alone can hide an incorrect placement in the pocket.
 > Ankora therefore evaluates placement in the receptor's coordinate frame.
 
-### 6.1 Read a recorded validation
+### 6.1 Create or read a validation
+
+1. Extract the crystal ligand from the original structure in **Ligand**, keeping
+   its original reference. Prepare an independent docking conformer and run it
+   in **Docking · Single ligand** with Vina, AutoDock4 CPU or AutoDock-GPU.
+2. Open **7 · Validation**. Choose the **completed individual result** to measure.
+   This screen is available even after restarting without a loaded structure.
+3. Choose its **original crystallographic reference**. The list contains only
+   preserved 3D extractions in the receptor's original coordinate frame;
+   minimized conformers and unrelated structures are not reference options.
+   If the list is empty, extract the original ligand in the same project, then
+   refresh the references. A screening campaign is not an individual redocking
+   experiment.
+4. Review the **recovery threshold** (default 2.0 Å), confirm the exact pair and
+   press **Calculate RMSD and save validation**. This measures existing poses;
+   it does **not** run docking again. Fingerprint or molecular-compatibility
+   failures are reported without saving a verdict.
+5. Read the separate sampling and ranking verdicts and the per-pose table below.
+   The independent validation record is saved and can be reopened in the
+   inspector. A read error offers a retry, not an endless loading indicator.
 
 Choose **7 · Validation**, then select a recorded validation in the inspector.
 Read its reference, threshold and per-pose RMSD table. The historical verdicts
@@ -509,12 +528,9 @@ below used the different chemical states listed in §5.3 and a recorded 2.0 Å
 threshold. Neither this historical evidence set nor the new Vina tutorial
 contains a Vina reference-RMSD verdict; a docking score cannot supply one.
 
-> **Current beta UI limitation.** This workspace reviews saved validations;
-> it does not yet expose a desktop control to create a new redocking-validation
-> record. If your project has none, “No redocking validation recorded yet” is
-> the correct state, not a successful validation. Do not look for a nonexistent
-> “Run validation” button or substitute Vina's inter-mode RMSD. New-record
-> creation exists in the backend and needs a future UI entry point.
+> **Do not substitute Vina's inter-mode RMSD.** Only the explicit comparison to
+> the original crystal pose answers this question. “No redocking validation
+> recorded yet” means no measurement has been saved, not successful validation.
 
 | | AutoDock4 CPU | AutoDock-GPU |
 |---|---|---|

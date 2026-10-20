@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Redocking desktop workflow - 2026-10-20
+
+- Enable creation of saved RMSD validations from completed individual Vina,
+  AutoDock4 CPU and AutoDock-GPU results with an explicit crystal reference,
+  threshold and confirmation. No new docking is launched by this step.
+- Verify preserved reference/pose fingerprints and source coordinate identity;
+  reject incompatible molecules without saving misleading verdicts.
+- Unlock Validation/history from empty sessions, recover from read errors and
+  keep setup/results accessible at laptop sizes. Historical evidence is unchanged.
+  This correction is source-only; the distributed installer is not rebuilt here.
+
 ## Complete private beta package - 2026-10-15
 
 - Rebuild the full offline Windows package from the accepted engineering

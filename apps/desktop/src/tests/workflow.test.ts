@@ -8,12 +8,14 @@ it("unlocks Receptor only after a structure is available", () => {
   expect(workflowSteps.filter((step) => canNavigateTo(step))).toEqual([
     "Structure",
     "Results",
+    "Validation",
     "Export",
   ]);
   expect(workflowSteps.filter((step) => canNavigateTo(step, true))).toEqual([
     "Structure",
     "Receptor",
     "Results",
+    "Validation",
     "Export",
   ]);
   expect(workflowSteps.filter((step) => canNavigateTo(step, true, true))).toEqual([
@@ -22,6 +24,7 @@ it("unlocks Receptor only after a structure is available", () => {
     "Ligand",
     "Binding site",
     "Results",
+    "Validation",
     "Export",
   ]);
   expect(workflowSteps.filter((step) => canNavigateTo(step, true, true, true))).toEqual([

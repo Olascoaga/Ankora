@@ -59,6 +59,7 @@ import type {
   CampaignExport,
   CampaignHistory,
   RedockingRunRecord,
+  RedockingReferencePage,
   RedockingValidationRequest,
   AutoDock4BatchRequest,
   AutoDock4CancelResponse,
@@ -574,6 +575,12 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
 
   listRedockingValidations: (): Promise<RedockingRunRecord[]> =>
     getJson<RedockingRunRecord[]>("/validation/redocking"),
+
+  redockingReferences: (sourceKind: RedockingValidationRequest["source_kind"], sourceId: string,
+    offset = 0): Promise<RedockingReferencePage> =>
+    getJson<RedockingReferencePage>(`/validation/redocking/references?${new URLSearchParams({
+      source_kind: sourceKind, source_id: sourceId, offset: String(offset), limit: "100",
+    })}`),
 
   getRedockingValidation: (validationId: string): Promise<RedockingRunRecord> =>
     getJson<RedockingRunRecord>(`/validation/redocking/${validationId}`),

@@ -647,8 +647,8 @@ export function App() {
         ? <ExportWorkspace />
         : activeStep === "Results"
         ? <ResultsWorkspace />
-        : activeStep === "Validation" && receptorRecord?.status === "docking_ready" && bindingSiteRecord
-        ? <RedockingWorkspace />
+        : activeStep === "Validation"
+        ? <RedockingWorkspace key={activeProject.project_id} />
         : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} onActivityChange={setWorkspaceActivity} /> : <>
       <section className="workspace" aria-label="Structure workspace">
         <div className="workspace-heading">
@@ -930,7 +930,7 @@ function workflowStepSummary(
   if (step === "Docking") return bindingSite ? "Ready to configure" : "Requires binding site";
   if (step === "Results") return "Everything recorded";
   if (step === "Export") return "Bundles and figures";
-  if (step === "Validation") return bindingSite ? "Redocking" : "Requires binding site";
+  if (step === "Validation") return "Redocking RMSD";
   return "Not implemented";
 }
 
@@ -942,6 +942,7 @@ function workflowNote(step: WorkflowStep): string {
   if (step === "Docking") return "Configure an explicit engine, ligand input, search parameters, and reproducible command before execution.";
   if (step === "Export") return "Everything this project has sent out — campaign bundles, publication figures, and ligand–receptor complexes — with the result each one came from.";
   if (step === "Results") return "Browse every result this project has recorded — each with the engine that produced it, the space it searched, and whether repeating it would reproduce the numbers.";
+  if (step === "Validation") return "Compare preserved docking poses with an original crystal reference and review saved RMSD validations. No new docking is launched here.";
   return "This stage remains locked until its scientific contract is implemented and validated.";
 }
 

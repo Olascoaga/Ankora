@@ -1770,6 +1770,20 @@ export interface RedockingValidationRequest {
   reference_case?: string | null;
 }
 
+export interface RedockingReferencePage {
+  references: {
+    ligand_id: string;
+    name: string;
+    source_structure_id: string;
+    locator: LigandLocator;
+    heavy_atom_count: number;
+    sha256: string;
+  }[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export type ReproducibilityStatus =
   | "measured_reproducible"
   | "measured_variable"

@@ -32,6 +32,6 @@ export function canNavigateTo(
     // and unlike before, it opens at all.
     || step === "Export"
     // Validation measures results already recorded, so it stays reachable
-    // once there is a search space those results could belong to.
-    || (step === "Validation" && hasStructure && hasReceptor && hasBindingSite);
+    // without rebuilding the current session's inputs.
+    || step === "Validation";
 }

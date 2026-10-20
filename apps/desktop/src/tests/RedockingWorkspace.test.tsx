@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { RedockingWorkspace } from "../features/validation/RedockingWorkspace";
 import type { RedockingRunRecord } from "../types/api";
@@ -56,7 +56,9 @@ function run(overrides: Partial<RedockingRunRecord> = {}): RedockingRunRecord {
 }
 
 function mock(runs: RedockingRunRecord[]) {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(runs));
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).includes("/results/campaigns?")
+      ? json({ entries: [], total: 0, offset: 0, limit: 25 }) : json(runs));
 }
 
 it("reports finding the pose and ranking it as two separate verdicts", async () => {
@@ -127,4 +129,90 @@ it("says plainly when nothing has been validated yet", async () => {
   ).toBeInTheDocument();
   // And that validating docks nothing, so it is never mistaken for a run.
   expect(screen.getByText(/It docks nothing itself/)).toBeInTheDocument();
+});
+
+// Synthetic UI/routing metadata; the saved numbers reuse the recorded CPU case
+// above. This test does not simulate running a docking engine.
+function mockCreation(kind = "vina_job") {
+  const source = {
+    catalog_id: `${kind}:job-1`, engine_key: kind, record_id: "job-1",
+    mode: "single_ligand", status: "completed", engine_label: "Test engine",
+    created_at: "2026-10-20T12:00:00Z", best_molecule: "RV2",
+  };
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes("/results/campaigns?")) return json({ entries: [source], total: 1, offset: 0, limit: 25 });
+    if (url.includes("/redocking/references?")) return json({
+      references: [{ ligand_id: "crystal", name: "RV2", heavy_atom_count: 27, sha256: "a".repeat(64),
+        locator: { component_name: "RV2", chain_id: "A", sequence_number: 401, insertion_code: "" } }],
+      total: 1, offset: 0, limit: 100,
+    });
+    return init?.method === "POST" ? json(run({ validation_id: "new-validation" }), 201) : json([]);
+  });
+}
+
+async function chooseInputs(kind = "vina_job") {
+  await screen.findByRole("option", { name: /Test engine/ });
+  fireEvent.change(screen.getByLabelText("Completed docking result"), { target: { value: `${kind}:job-1` } });
+  await screen.findByRole("option", { name: /27 heavy atoms/ });
+  fireEvent.change(screen.getByLabelText("Crystallographic reference"), { target: { value: "crystal" } });
+}
+
+it.each(["vina_job", "autodock4_job", "autodock_gpu_job"])("creates and displays a %s validation only after explicit confirmation", async (kind) => {
+  const fetch = mockCreation(kind);
+  render(<RedockingWorkspace />);
+  await chooseInputs(kind);
+  const save = screen.getByRole("button", { name: "Calculate RMSD and save validation" });
+  expect(save).toBeDisabled();
+  expect(fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  fireEvent.change(screen.getByLabelText("Recovery threshold (Å)"), { target: { value: "1.5" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(save);
+  const results = await screen.findByRole("region", { name: "Redocking validation results" });
+  expect(results).toHaveTextContent("3.139 Å"); // Recorded metrics, not recomputed in the UI.
+  const post = fetch.mock.calls.filter(([, init]) => init?.method === "POST");
+  expect(post).toHaveLength(1);
+  expect(JSON.parse(String(post[0]?.[1]?.body))).toEqual({
+    source_kind: kind, source_id: "job-1", reference_ligand_id: "crystal", threshold_angstrom: 1.5,
+  });
+  expect(post[0]?.[1]?.headers).toMatchObject({ "Content-Type": "application/json" });
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+});
+
+it("resets acknowledgement on input changes and rejects invalid thresholds", async () => {
+  mockCreation(); render(<RedockingWorkspace />); await chooseInputs();
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.change(screen.getByLabelText("Recovery threshold (Å)"), { target: { value: "0" } });
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect(screen.getByRole("button", { name: "Calculate RMSD and save validation" })).toBeDisabled();
+  expect(screen.getByRole("alert")).toHaveTextContent("greater than 0");
+});
+
+it("stops the history spinner on failure and retries without creating a record", async () => {
+  let attempts = 0;
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).includes("/results/campaigns?")) return json({ entries: [], total: 0, limit: 25, offset: 0 });
+    return ++attempts === 1 ? json({ message: "History unavailable" }, 503) : json([run()]);
+  });
+  render(<RedockingWorkspace />);
+  await screen.findByText("History unavailable", { exact: false });
+  await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "Retry validations" }));
+  await screen.findByRole("region", { name: "Redocking validation results" });
+  expect(fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+});
+
+it("retains selections on a rejected calculation and does not retry POST automatically", async () => {
+  const fetch = mockCreation();
+  const implementation = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (input, init) => init?.method === "POST"
+    ? json({ message: "The pose and reference are different molecules." }, 422)
+    : implementation(input, init));
+  render(<RedockingWorkspace />); await chooseInputs();
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Calculate RMSD and save validation" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("different molecules");
+  expect(screen.getByLabelText("Crystallographic reference")).toHaveValue("crystal");
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
 });
