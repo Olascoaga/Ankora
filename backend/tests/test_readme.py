@@ -65,32 +65,42 @@ def test_readme_separates_bundled_installation_from_source_setup() -> None:
     assert "not redistributed by Ankora" not in DEVELOPMENT.read_text(encoding="utf-8")
 
 
-def test_readme_reuses_real_verified_7aqf_figures() -> None:
+def test_readme_shows_current_7aqf_workflow_captures() -> None:
     content = README.read_text(encoding="utf-8")
-    guide = (ROOT / "docs/USER_GUIDE.md").read_text(encoding="utf-8")
-    for name in ("guide03-receptor.jpg", "guide06-binding-site.jpg"):
+    for name in ("readme-receptor.jpg", "readme-binding-site.jpg"):
         assert name in content
-        assert name in guide
+    assert "guide03-receptor.jpg" not in content
+    assert "guide06-binding-site.jpg" not in content
     assert "not interface mockups" in content
     assert "Contacts describe geometry—not measured affinity" in content
     assert "Completed evidence is not synonymous with a successful recovery" in content
 
 
-def test_readme_current_obsidian_captures_have_explicit_provenance() -> None:
+def test_readme_current_captures_have_explicit_provenance() -> None:
     content = README.read_text(encoding="utf-8")
     provenance = (ROOT / "docs/images/README.md").read_text(encoding="utf-8")
-    for name in ("readme-obsidian-interactions.jpg", "readme-obsidian-startup.jpg"):
+    for name in (
+        "readme-obsidian-interactions.jpg", "readme-receptor.jpg", "readme-binding-site.jpg"
+    ):
         assert name in content
         assert name in provenance
         image = ROOT / "docs/images" / name
         assert image.read_bytes().startswith(b"\xff\xd8\xff")
         assert image.stat().st_size < 1_000_000
-    assert "Obsidian Instrument" in content
     assert "read-only" in content
-    assert "pending" in provenance
     assert "20" in provenance
     assert "not a new calculation" in content
     assert "source development" in content
+
+
+def test_readme_focuses_on_scientific_workflow_not_theme_or_splash() -> None:
+    content = README.read_text(encoding="utf-8")
+    assert "## A workbench you can inspect" in content
+    assert "Obsidian Instrument" not in content
+    assert "Anchoring" not in content
+    assert "readme-obsidian-startup.jpg" not in content
+    assert "Midnight Laboratory" not in content
+    assert "theme" not in content.lower()
 
 
 def test_readme_describes_current_redocking_without_overclaiming() -> None:

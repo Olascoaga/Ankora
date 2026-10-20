@@ -21,9 +21,9 @@ and calculation carries its inputs, parameters, tool identity and raw outputs.
 
 **[Official website](https://olascoaga.github.io/ankora-website/) · [User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Installation](#installation) · [Scientific evidence](#scientific-validation-status) · [For developers](docs/DEVELOPMENT.md)**
 
-[![Obsidian Instrument: a preserved 7AQF pose, linked 3D view, skeletal 2D diagram and recorded contact table](docs/images/readme-obsidian-interactions.jpg)](docs/images/readme-obsidian-interactions.jpg)
+[![A preserved 7AQF pose: linked 3D view, skeletal 2D diagram and recorded contact table](docs/images/readme-obsidian-interactions.jpg)](docs/images/readme-obsidian-interactions.jpg)
 
-*Current development interface in Obsidian Instrument, replaying a preserved
+*Current development interface, replaying a preserved
 7AQF analysis read-only: 20 recorded atomic contacts, not a new calculation.
 Contacts describe geometry—not measured affinity. [Capture provenance](docs/images/README.md).*
 
@@ -65,31 +65,12 @@ GNINA is deferred, not a supported engine in this beta. Scores from different
 scoring functions are not interchangeable, and a lower docking score is not
 proof of stronger experimental affinity.
 
-## Obsidian Instrument
-
-Carbon surfaces, warm brass accents, ivory typography and restrained molecular
-colors give the workbench a quieter instrument-like identity. The same palette
-continues into the 3D viewport; warnings, chemical states and provenance retain
-their own meaning rather than becoming decoration.
-
-[![Anchoring startup in Obsidian Instrument, with the recorded 7AQF pocket and pending readiness checks](docs/images/readme-obsidian-startup.jpg)](docs/images/readme-obsidian-startup.jpg)
-
-**An opening screen that reports, not performs.** The new **Anchoring** screen
-uses the recorded 7AQF pocket and deposited RV2 pose. Its five rows report the
-backend, runtime, tools, recovery and project responses; missing tools and
-failures remain visible. The pre-ready search motion is illustrative—not a
-docking simulation. [Startup design and provenance](docs/design/STARTUP_SCREEN.md).
-
-The startup capture holds the actual interface before readiness replies arrive;
-it does not assert a successful tool check. The source includes Anchoring and
-the updated redocking workflow; an already distributed installer may be older.
-
-### A workbench you can inspect
+## A workbench you can inspect
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/images/guide03-receptor.jpg"><img src="docs/images/guide03-receptor.jpg" alt="7AQF receptor preparation with explicit chain and residue decisions" width="100%"></a></td>
-    <td width="50%"><a href="docs/images/guide06-binding-site.jpg"><img src="docs/images/guide06-binding-site.jpg" alt="7AQF binding-site workspace with an editable search box around the reference ligand" width="100%"></a></td>
+    <td width="50%"><a href="docs/images/readme-receptor.jpg"><img src="docs/images/readme-receptor.jpg" alt="Current receptor workspace reopening a preserved 7AQF preparation and its explicit decisions" width="100%"></a></td>
+    <td width="50%"><a href="docs/images/readme-binding-site.jpg"><img src="docs/images/readme-binding-site.jpg" alt="Current binding-site workspace previewing a box around 7AQF reference ligand RV2" width="100%"></a></td>
   </tr>
   <tr>
     <td><strong>Inspect before transforming.</strong><br>Viewer-linked issues and explicit receptor decisions.</td>
@@ -97,13 +78,10 @@ the updated redocking workflow; an already distributed installer may be older.
   </tr>
 </table>
 
-*Real 7AQF screenshots from the [illustrated walkthrough](docs/USER_GUIDE.md),
-not interface mockups. These two walkthrough captures retain the earlier
-Midnight Laboratory theme. Open an image to see it at full resolution.*
+*Real current-interface captures, not interface mockups: a saved 7AQF receptor
+reopened for review, and a transient box preview around RV2 A:401. No preparation
+or docking was rerun. Open an image to see it at full resolution.*
 
-The current Obsidian design also offers Midnight Laboratory, Cryo-EM Graphite,
-Spectra Quartz, Light and Windows-following themes,
-comfortable/compact density, and resizable or collapsible side panels.
 Activity, tool readiness, warnings and provenance stay accessible in one place.
 Independent project workspaces keep separate evidence, while the dependency
 graph makes stale inputs and their affected derivatives visible.

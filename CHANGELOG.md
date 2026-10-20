@@ -14,6 +14,11 @@ All notable project changes are recorded here.
 
 ## Obsidian README presentation - 2026-10-20
 
+- Follow-up: keep the README focused on scientific capabilities rather than a
+  splash/theme feature tour. Replace both earlier-theme workflow images with
+  current receptor-review and non-persistent binding-box captures, retaining
+  their read-only provenance and the unchanged historical manual figures.
+
 - Refresh the repository banner and badges in the Obsidian carbon/ivory/brass
   palette; add real current-UI startup and preserved 7AQF interaction captures
   with explicit replay provenance, keeping historical walkthrough images labeled.
