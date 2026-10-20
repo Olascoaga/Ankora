@@ -2,6 +2,16 @@
 
 All notable project changes are recorded here.
 
+## Slim installer with Anchoring - 2026-10-20
+
+- Rebuild the ~400 MB Option A private-beta installer (427 MB, SHA-256
+  `5465308e…065ae2`) from `06ddaae` plus the uncommitted Obsidian theme and slim
+  packager. All 122 frozen backend modules match current source.
+- Payload acceptance passes: legal, packaged-mode backend, 10/10 tools and the
+  10/10 native matrix. The strict-CSP frontend smoke also passes.
+- The installed NSIS smoke was not run because an existing installation is
+  registered. See `docs/validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md`.
+
 ## Obsidian README presentation - 2026-10-20
 
 - Refresh the repository banner and badges in the Obsidian carbon/ivory/brass
