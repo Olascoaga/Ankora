@@ -151,11 +151,11 @@ it("renders a disconnected state when the backend cannot be reached", async () =
   try {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
     render(<App />);
-    expect(screen.queryByRole("button", { name: /Retry Connection/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Retry connection/i })).not.toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
     expect(screen.getAllByText("Backend disconnected").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/120 seconds/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Retry Connection/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Retry connection/i })).toBeEnabled();
   } finally {
     vi.useRealTimers();
   }

@@ -74,6 +74,10 @@ export function App() {
   const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
   const [toolsRefreshing, setToolsRefreshing] = useState(false);
   const [projectCatalog, setProjectCatalog] = useState<ProjectCatalog>(DEFAULT_PROJECT_CATALOG);
+  // The default catalog keeps the workbench usable before /projects answers;
+  // the startup record must not mistake that stand-in for a confirmed answer.
+  const [projectCatalogLoaded, setProjectCatalogLoaded] = useState(false);
+  const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
   const [projectGraph, setProjectGraph] = useState<ProjectDependencyGraph | null>(null);
   const [projectWorkspaceOpen, setProjectWorkspaceOpen] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
@@ -121,11 +125,19 @@ export function App() {
     let active = true;
     void ankoraApi.projects()
       .then((catalog) => {
-        if (active && isProjectCatalog(catalog)) setProjectCatalog(catalog);
+        if (!active) return;
+        if (isProjectCatalog(catalog)) {
+          setProjectCatalog(catalog);
+          setProjectCatalogLoaded(true);
+          setProjectLoadError(null);
+        } else {
+          setProjectLoadError("The backend returned an unrecognised project catalog.");
+        }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         // Project identity is additive during development. The rest of the
         // workbench remains usable against an older local backend.
+        if (active) setProjectLoadError(error instanceof Error ? error.message : "Project catalog unavailable");
       });
     return () => { active = false; };
   }, [state.connection]);
@@ -804,6 +816,11 @@ export function App() {
         system={state.system}
         tools={state.tools}
         error={state.error}
+        recovery={workRecovery}
+        recoveryError={recoveryLoadError}
+        projects={projectCatalogLoaded ? projectCatalog : null}
+        projectsError={projectLoadError}
+        theme={theme}
         onRetry={initializeBackend}
         onDismiss={dismissSplash}
       />

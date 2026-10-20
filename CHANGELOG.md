@@ -2,6 +2,21 @@
 
 All notable project changes are recorded here.
 
+## Anchoring startup screen - 2026-10-20
+
+- Replace the image splash with a live startup record:
+  - five rows, each bound to the backend response that proves it;
+  - missing tools and unreadable recovery are named as notices;
+  - nothing is shown before the backend reports it.
+- Draw the recorded SERPINE1 7AQF pocket with RV2 in its deposited pose. The
+  asset is hash-checked against the frozen reference case. RV2 anchors only
+  when every check is recorded, and never on failure. Only the search motion is
+  illustrative.
+- The screen follows the active theme, respects reduced motion and hands its
+  mark over to the top bar. On failure it stops, with Retry and copyable
+  diagnostics. See `docs/design/STARTUP_SCREEN.md`. Source-only; the
+  distributed installer is not rebuilt here.
+
 ## Redocking desktop workflow - 2026-10-20
 
 - Enable creation of saved RMSD validations from completed individual Vina,
