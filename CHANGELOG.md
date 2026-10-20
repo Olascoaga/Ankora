@@ -2,6 +2,17 @@
 
 All notable project changes are recorded here.
 
+## Obsidian README presentation - 2026-10-20
+
+- Refresh the repository banner and badges in the Obsidian carbon/ivory/brass
+  palette; add real current-UI startup and preserved 7AQF interaction captures
+  with explicit replay provenance, keeping historical walkthrough images labeled.
+- Link the official website and describe guided receptor preparation, Anchoring,
+  and the restored individual-result redocking workflow and its limits.
+- Separate current source capabilities from older distributed beta installers.
+  The generated scientific-status block and original scientific evidence remain
+  unchanged; this documentation unit does not rebuild an installer.
+
 ## Anchoring startup screen - 2026-10-20
 
 - Replace the image splash with a live startup record:

@@ -5,9 +5,9 @@
 # Ankora
 
 [![Windows CI](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml)
-[![Status: private beta](https://img.shields.io/badge/status-private%20beta-60d6a6?style=flat-square&labelColor=132127)](#installation)
-[![Platform: Windows 11 x64](https://img.shields.io/badge/platform-Windows%2011%20x64-5dc7dc?style=flat-square&labelColor=132127)](#installation)
-[![License: MIT](https://img.shields.io/badge/license-MIT-60d6a6?style=flat-square&labelColor=132127)](LICENSE)
+[![Status: private beta](https://img.shields.io/badge/status-private%20beta-dfa45a?style=flat-square&labelColor=16191f)](#installation)
+[![Platform: Windows 11 x64](https://img.shields.io/badge/platform-Windows%2011%20x64-789bb0?style=flat-square&labelColor=16191f)](#installation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-dfa45a?style=flat-square&labelColor=16191f)](LICENSE)
 
 **Molecular docking, with the scientist in control.**
 
@@ -19,25 +19,25 @@ separate command-line tools.
 Chemical decisions stay visible. Imported files stay unchanged. Every derivative
 and calculation carries its inputs, parameters, tool identity and raw outputs.
 
-**[User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Installation](#installation) · [Scientific evidence](#scientific-validation-status) · [For developers](docs/DEVELOPMENT.md)**
+**[Official website](https://olascoaga.github.io/ankora-website/) · [User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Installation](#installation) · [Scientific evidence](#scientific-validation-status) · [For developers](docs/DEVELOPMENT.md)**
 
-[![Real 7AQF/RV2 pose review: linked 3D view, skeletal 2D interaction diagram and recorded contact table](docs/images/guide11-interactions.jpg)](docs/images/guide11-interactions.jpg)
+[![Obsidian Instrument: a preserved 7AQF pose, linked 3D view, skeletal 2D diagram and recorded contact table](docs/images/readme-obsidian-interactions.jpg)](docs/images/readme-obsidian-interactions.jpg)
 
-*Actual private-beta interface: a preserved RV2 pose in 7AQF, reviewed in 3D
-and 2D. This analysis contains 17 atomic contacts in eight residue/subtype
-groups. Contacts describe geometry—not measured affinity.*
+*Current development interface in Obsidian Instrument, replaying a preserved
+7AQF analysis read-only: 20 recorded atomic contacts, not a new calculation.
+Contacts describe geometry—not measured affinity. [Capture provenance](docs/images/README.md).*
 
 ## From structure to evidence
 
 | Workspace | What you can do |
 | --- | --- |
 | **Structure** | Import PDB/mmCIF, fetch from RCSB or AlphaFold DB, and inspect chains, components and structural issues. |
-| **Receptor** | Explicitly choose chains, waters, components and residue actions; repair, protonate and prepare receptor PDBQT with recorded decisions. |
+| **Receptor** | Follow guided chain, component and structural-issue decisions; review protonation proposals, then create receptor PDBQT. Advanced controls and exact failure evidence remain available. |
 | **Ligands** | Inspect one compound or import multi-molecule SDF/SD-style MOL/SMILES libraries. Review molecular properties, chemical states and filtering before independent 3D preparation and minimization. |
 | **Binding site** | Define an editable search box from the full protein, a reference ligand, selected residues, manual coordinates or a P2Rank pocket. Move and resize it directly in the viewer. |
 | **Docking** | Run a single ligand or a prepared library, with explicit engine settings, bounded resource allocation, live molecule-level progress and preserved failures. |
 | **Results** | Browse campaigns, sort compounds, inspect poses or clusters, compare rankings without combining incompatible scores, and move selected campaigns to recoverable Trash. |
-| **Validation** | Review recorded redocking evidence, RMSD, ranking and repeatability. Current redocking review is read-only; see the guide for that boundary. |
+| **Validation** | Create a saved redocking validation from a completed individual Vina or AutoDock4 CPU/GPU result and its compatible crystallographic reference. Inspect sampling and ranking separately with symmetry-aware, in-place heavy-atom RMSD. |
 | **Export** | Save figures, exact ligand–receptor PDB complexes, record-derived Methods and portable screening campaign bundles. |
 
 ### Prepare libraries deliberately
@@ -65,7 +65,26 @@ GNINA is deferred, not a supported engine in this beta. Scores from different
 scoring functions are not interchangeable, and a lower docking score is not
 proof of stronger experimental affinity.
 
-## A workbench you can inspect
+## Obsidian Instrument
+
+Carbon surfaces, warm brass accents, ivory typography and restrained molecular
+colors give the workbench a quieter instrument-like identity. The same palette
+continues into the 3D viewport; warnings, chemical states and provenance retain
+their own meaning rather than becoming decoration.
+
+[![Anchoring startup in Obsidian Instrument, with the recorded 7AQF pocket and pending readiness checks](docs/images/readme-obsidian-startup.jpg)](docs/images/readme-obsidian-startup.jpg)
+
+**An opening screen that reports, not performs.** The new **Anchoring** screen
+uses the recorded 7AQF pocket and deposited RV2 pose. Its five rows report the
+backend, runtime, tools, recovery and project responses; missing tools and
+failures remain visible. The pre-ready search motion is illustrative—not a
+docking simulation. [Startup design and provenance](docs/design/STARTUP_SCREEN.md).
+
+The startup capture holds the actual interface before readiness replies arrive;
+it does not assert a successful tool check. The source includes Anchoring and
+the updated redocking workflow; an already distributed installer may be older.
+
+### A workbench you can inspect
 
 <table>
   <tr>
@@ -79,19 +98,38 @@ proof of stronger experimental affinity.
 </table>
 
 *Real 7AQF screenshots from the [illustrated walkthrough](docs/USER_GUIDE.md),
-not interface mockups. Open an image to see it at full resolution.*
+not interface mockups. These two walkthrough captures retain the earlier
+Midnight Laboratory theme. Open an image to see it at full resolution.*
 
-The interface supports dark, light and Windows-following themes,
+The current Obsidian design also offers Midnight Laboratory, Cryo-EM Graphite,
+Spectra Quartz, Light and Windows-following themes,
 comfortable/compact density, and resizable or collapsible side panels.
 Activity, tool readiness, warnings and provenance stay accessible in one place.
 Independent project workspaces keep separate evidence, while the dependency
 graph makes stale inputs and their affected derivatives visible.
+
+### Validate the pose, not just its score
+
+Redocking validation measures **existing saved poses**; it does not start another
+docking run. Select a completed individual result, its compatible original
+crystallographic reference and an explicit RMSD threshold. Ankora verifies
+preserved inputs and coordinate identity before saving the validation.
+
+Sampling (was a reference-like pose found?) and ranking (was it ranked first?)
+are separate outcomes. Poses are **not superposed** before placement is judged.
+Library campaigns are not individual redocking inputs, and a successful
+redocking result does not validate prospective affinity prediction.
+See the [current workflow correction](docs/validation/REDOCKING_WORKFLOW_2026-10-20.md).
 
 ## Installation
 
 **Current distribution: private beta for Windows 11 x64.** The source is public;
 there is not yet a public installer release. Invited testers receive the complete
 installer and its checksum through the beta distribution channel.
+
+**Which version am I seeing?** This README describes current source development.
+Compare your installer/build identity with the [changelog](CHANGELOG.md) when
+reporting a bug; source changes do not update an installed beta automatically.
 
 1. Obtain the reviewed beta installer and verify its SHA-256 checksum.
 2. Run the installer and follow the setup steps.

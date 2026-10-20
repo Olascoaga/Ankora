@@ -21,7 +21,11 @@ def _headings(content: str) -> set[str]:
     }
 
 
-@pytest.mark.parametrize("document", [README, DEVELOPMENT], ids=["readme", "development"])
+@pytest.mark.parametrize(
+    "document",
+    [README, DEVELOPMENT, ROOT / "docs/images/README.md"],
+    ids=["readme", "development", "image-provenance"],
+)
 def test_presentation_local_links_and_images_resolve(document: Path) -> None:
     content = document.read_text(encoding="utf-8")
     targets = re.findall(r"\]\(([^)\s]+)\)", content)
@@ -64,12 +68,38 @@ def test_readme_separates_bundled_installation_from_source_setup() -> None:
 def test_readme_reuses_real_verified_7aqf_figures() -> None:
     content = README.read_text(encoding="utf-8")
     guide = (ROOT / "docs/USER_GUIDE.md").read_text(encoding="utf-8")
-    for name in ("guide11-interactions.jpg", "guide03-receptor.jpg", "guide06-binding-site.jpg"):
+    for name in ("guide03-receptor.jpg", "guide06-binding-site.jpg"):
         assert name in content
         assert name in guide
     assert "not interface mockups" in content
     assert "Contacts describe geometry—not measured affinity" in content
     assert "Completed evidence is not synonymous with a successful recovery" in content
+
+
+def test_readme_current_obsidian_captures_have_explicit_provenance() -> None:
+    content = README.read_text(encoding="utf-8")
+    provenance = (ROOT / "docs/images/README.md").read_text(encoding="utf-8")
+    for name in ("readme-obsidian-interactions.jpg", "readme-obsidian-startup.jpg"):
+        assert name in content
+        assert name in provenance
+        image = ROOT / "docs/images" / name
+        assert image.read_bytes().startswith(b"\xff\xd8\xff")
+        assert image.stat().st_size < 1_000_000
+    assert "Obsidian Instrument" in content
+    assert "read-only" in content
+    assert "pending" in provenance
+    assert "20" in provenance
+    assert "not a new calculation" in content
+    assert "source development" in content
+
+
+def test_readme_describes_current_redocking_without_overclaiming() -> None:
+    content = README.read_text(encoding="utf-8")
+    assert "Current redocking review is read-only" not in content
+    assert "existing saved poses" in content
+    assert "not superposed" in content
+    assert "Library campaigns are not individual redocking inputs" in content
+    assert "REDOCKING_WORKFLOW_2026-10-20.md" in content
 
 
 def test_readme_banner_is_accessible_self_contained_svg() -> None:
@@ -87,7 +117,9 @@ def test_readme_banner_is_accessible_self_contained_svg() -> None:
 
 
 def test_presentation_has_no_personal_absolute_paths() -> None:
-    for document in (README, DEVELOPMENT, ROOT / "docs/images/readme-banner.svg"):
+    for document in (
+        README, DEVELOPMENT, ROOT / "docs/images/readme-banner.svg", ROOT / "docs/images/README.md"
+    ):
         content = document.read_text(encoding="utf-8")
         assert not re.search(r"(?<![A-Za-z0-9])[A-Z]:[\\/]", content)
         assert not re.search(r"/(?:home|Users)/[^/\s]+", content)
