@@ -5,6 +5,7 @@ preserved it, and two poses AutoDock-GPU actually produced against it - the one
 the engine ranked first, and the one that recovered the crystal.
 """
 
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +20,7 @@ from ankora_backend.adapters.chemistry.redocking_rmsd import (
     pdbqt_to_pdb_block,
 )
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.provenance import ToolIdentity
 from ankora_backend.schemas.redocking import RedockingOutcome, RedockingValidationRequest
 from ankora_backend.services.redocking_validation import (
@@ -33,9 +35,7 @@ RECOVERING = FIXTURES / "redocking_gpu_recovering_pose.pdbqt"
 
 
 def _pose(rank: int, rmsd: float, *, run: int = 1, energy: float = -5.0) -> PoseRmsd:
-    return PoseRmsd(
-        run=run, rank=rank, binding_energy_kcal_mol=energy, rmsd_angstrom=rmsd
-    )
+    return PoseRmsd(run=run, rank=rank, binding_energy_kcal_mol=energy, rmsd_angstrom=rmsd)
 
 
 # --- the two traps, against real files ------------------------------------
@@ -56,10 +56,7 @@ def test_an_autodock_type_is_not_an_element() -> None:
 
 
 def test_an_unmappable_atom_type_is_refused_rather_than_guessed() -> None:
-    line = (
-        "ATOM      1  C   LIG A 401      10.000  10.000  10.000  0.00  0.00"
-        "    +0.000 Xx"
-    )
+    line = "ATOM      1  C   LIG A 401      10.000  10.000  10.000  0.00  0.00    +0.000 Xx"
 
     with pytest.raises(AnkoraDomainError) as error:
         pdbqt_to_pdb_block(line)
@@ -218,14 +215,17 @@ def test_vina_modes_use_the_same_recorded_in_place_validation_path() -> None:
                     SimpleNamespace(
                         mode=1,
                         affinity_kcal_mol=-7.1,
-                        artifact=SimpleNamespace(filename="pose_1.pdbqt"),
+                        artifact=SimpleNamespace(
+                            filename="pose_1.pdbqt",
+                            sha256=hashlib.sha256(TOP_RANKED.read_bytes()).hexdigest(),
+                            size_bytes=TOP_RANKED.stat().st_size,
+                        ),
                     )
                 ],
-                request=SimpleNamespace(
-                    receptor_id="receptor", binding_site_id="binding-site"
-                ),
+                request=SimpleNamespace(receptor_id="receptor", binding_site_id="binding-site"),
                 tool=ToolIdentity(name="AutoDock Vina", version="1.2.7"),
                 warnings=[],
+                status="completed",
             )
 
         def output_path(self, source_id: str, filename: str) -> Path:
@@ -235,7 +235,16 @@ def test_vina_modes_use_the_same_recorded_in_place_validation_path() -> None:
     class LigandStore:
         def load_record(self, ligand_id: str) -> SimpleNamespace:
             assert ligand_id == "reference"
-            return SimpleNamespace(artifact=SimpleNamespace(sha256="a" * 64))
+            return SimpleNamespace(
+                artifact=SimpleNamespace(
+                    sha256=hashlib.sha256(CRYSTAL.read_bytes()).hexdigest(),
+                    size_bytes=CRYSTAL.stat().st_size,
+                    source=LigandSource.CRYSTALLOGRAPHIC,
+                    source_structure_id="structure",
+                    locator=object(),
+                ),
+                inspection=SimpleNamespace(has_3d_coordinates=True),
+            )
 
         def content_path(self, ligand_id: str) -> Path:
             assert ligand_id == "reference"
@@ -248,6 +257,10 @@ def test_vina_modes_use_the_same_recorded_in_place_validation_path() -> None:
         docking_store=VinaStore(),  # type: ignore[arg-type]
         autodock4_store=SimpleNamespace(),  # type: ignore[arg-type]
         autodock_gpu_store=SimpleNamespace(),  # type: ignore[arg-type]
+        receptor_store=SimpleNamespace(
+            load_record=lambda _: SimpleNamespace(source_artifact_id="structure")
+        ),  # type: ignore[arg-type]
+        structure_store=SimpleNamespace(),  # type: ignore[arg-type]
     )
 
     record = service.validate(

@@ -137,6 +137,8 @@ def load_pose(document: str, reference: Any) -> Any:
             {},
         )
     try:
+        if probe.GetNumAtoms() != reference.GetNumAtoms():
+            raise ValueError("The pose and reference have different heavy-atom counts.")
         matched = AllChem.AssignBondOrdersFromTemplate(reference, probe)
     except Exception as error:  # RDKit raises bare exceptions here
         raise _rejected(

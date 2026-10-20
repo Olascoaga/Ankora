@@ -28,6 +28,7 @@ from ankora_backend.schemas.ligands import (
     LigandPdbqtRecord,
     LigandProtonationRecord,
     LigandRecord,
+    LigandSource,
 )
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -68,6 +69,24 @@ class LigandArtifactStore:
 
     def new_ligand_id(self) -> str:
         return str(uuid4())
+
+    def list_crystallographic_records(self) -> list[LigandRecord]:
+        """Read preserved extracted originals only, never conformers or library rows."""
+        directory = self._project_root / "original" / "ligands"
+        if not directory.is_dir():
+            return []
+        records = []
+        for candidate in directory.iterdir():
+            if not candidate.is_dir():
+                continue
+            try:
+                record = self.load_record(candidate.name)
+            except (AnkoraDomainError, OSError, ValueError):
+                continue
+            if record.artifact.source is LigandSource.CRYSTALLOGRAPHIC:
+                records.append(record)
+        return sorted(records, key=lambda item: (item.artifact.created_at, item.artifact.ligand_id),
+                      reverse=True)
 
     def new_library_id(self) -> str:
         return str(uuid4())

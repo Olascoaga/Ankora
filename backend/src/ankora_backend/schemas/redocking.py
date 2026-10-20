@@ -21,6 +21,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ankora_backend.schemas.ligands import LigandLocator
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.warnings import StructuredWarning
 
@@ -83,6 +84,7 @@ class RedockingRunRecord(BaseModel):
     validation_id: str = Field(min_length=1)
     created_at: datetime
     reference_case: str | None = None
+
     """The documented case this reproduces, when it is one of them."""
 
     receptor_id: str = Field(min_length=1)
@@ -115,10 +117,28 @@ class RedockingValidationRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    source_kind: str = Field(
-        pattern=r"^(autodock4_job|autodock_gpu_job|vina_job)$"
-    )
+    source_kind: str = Field(pattern=r"^(autodock4_job|autodock_gpu_job|vina_job)$")
     source_id: str = Field(min_length=1)
     reference_ligand_id: str = Field(min_length=1)
     threshold_angstrom: float = Field(default=2.0, gt=0, le=20)
     reference_case: str | None = None
+
+
+class RedockingReferenceOption(BaseModel):
+    """An immutable extracted reference in the result's original coordinate frame."""
+
+    model_config = ConfigDict(extra="forbid")
+    ligand_id: str
+    name: str
+    source_structure_id: str
+    locator: LigandLocator
+    heavy_atom_count: int
+    sha256: str
+
+
+class RedockingReferencePage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    references: list[RedockingReferenceOption]
+    total: int
+    offset: int
+    limit: int
