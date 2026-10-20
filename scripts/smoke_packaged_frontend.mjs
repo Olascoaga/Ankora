@@ -171,12 +171,17 @@ try {
   evidence.served_csp = navigation?.headers()["content-security-policy"];
   assert(evidence.served_csp && !evidence.served_csp.includes("unsafe-eval"),
     "The tested surface must actually serve a restrictive CSP");
-  await page.getByTestId("splash-screen").waitFor();
-  evidence.splash_images = await page.locator(".splash-card img").evaluateAll(async (images) => {
-    await Promise.all(images.map((image) => image.decode().catch(() => {})));
-    return images.map((image) => ({ loaded: image.naturalWidth > 0, source: new URL(image.src).pathname }));
-  });
-  await page.getByTestId("splash-screen").waitFor({ state: "detached", timeout: 20_000 });
+  const splash = page.getByTestId("splash-screen");
+  await splash.waitFor();
+  // The startup screen carries no images: it draws the recorded pocket on a
+  // canvas and holds once every startup row has been answered.
+  evidence.splash_images = await splash.locator("img").count();
+  await page.locator('[data-testid="splash-screen"][data-phase="ready"]').waitFor({ timeout: 20_000 });
+  evidence.startup_record = await splash.locator(".ak-row").evaluateAll(
+    (rows) => rows.map((row) => row.getAttribute("data-status")));
+  evidence.splash_scene = await splash.locator("canvas.ak-scene").evaluate(
+    (canvas) => canvas.width > 0 && canvas.height > 0);
+  await splash.waitFor({ state: "detached", timeout: 20_000 });
   for (const extension of ["pdb", "cif"]) {
     const filename = `synthetic_m1.${extension}`;
     inspection.issues = receptorRecovery && extension === "pdb" ? [{
@@ -321,7 +326,10 @@ try {
   }
   assert.deepEqual(evidence.errors, []);
   assert.deepEqual(evidence.csp_violations, []);
-  assert(evidence.splash_images.every((image) => image.loaded));
+  assert.equal(evidence.splash_images, 0);
+  assert.equal(evidence.startup_record.length, 5);
+  assert(evidence.startup_record.every((status) => status === "ok" || status === "notice"));
+  assert(evidence.splash_scene);
   assert(evidence.content_requests >= 4);
   assert.deepEqual(evidence.stages, ["pdb-structure", "pdb-receptor", "cif-structure", "cif-receptor"]);
   if (!process.argv.includes("--ready-immediately")) assert.equal(evidence.health_attempts, 3);
