@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import indexHtml from "../../index.html?raw";
+import themeBoot from "../../public/theme-boot.js?raw";
 import sceneSource from "../assets/splash-scene.json?raw";
 import { SplashScreen, type SplashScreenProps } from "../components/SplashScreen";
 import { parseScene } from "../components/splash/anchoringScene";
@@ -112,6 +114,39 @@ describe("startup scene asset", () => {
     expect(scene?.ligand.atoms).toHaveLength(1);
     expect(scene?.ligand.bonds).toHaveLength(0);
     expect(scene?.edges).toHaveLength(0);
+  });
+});
+
+describe("startup document", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    document.documentElement.setAttribute("data-theme", "dark");
+  });
+
+  it("draws nothing of its own before the startup screen mounts", () => {
+    const page = new DOMParser().parseFromString(indexHtml, "text/html");
+
+    expect(page.getElementById("root")?.childNodes).toHaveLength(0);
+    expect(page.querySelectorAll("img")).toHaveLength(0);
+    expect(indexHtml).not.toMatch(/splash-(bg|logo)|pre-splash/);
+  });
+
+  it("opens on the stored theme before the first paint", () => {
+    localStorage.setItem("ankora-theme", "light");
+    new Function(themeBoot)();
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("keeps the default theme for a malformed value or refused storage", () => {
+    localStorage.setItem("ankora-theme", "x\" onload=\"");
+    new Function(themeBoot)();
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    expect(() => new Function(themeBoot)()).not.toThrow();
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 });
 

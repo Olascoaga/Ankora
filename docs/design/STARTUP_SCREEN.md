@@ -69,6 +69,19 @@ Each row is `pending` until its response arrives:
 No version, tool or count is shown before the backend reports it. The screen
 never says "all systems nominal".
 
+## First paint
+
+`index.html` draws nothing of its own. Before React mounts, the window shows
+only the startup screen's canvas:
+
+- `public/theme-boot.js` is a blocking script loaded from `'self'`. It applies
+  the stored theme before the first paint, and accepts only a theme-shaped
+  value.
+- An `#root:empty` rule paints the body with that theme's `--canvas`.
+
+As a result, no earlier splash, image or theme flash appears ahead of this
+screen. The workbench still validates the stored theme.
+
 ## Timing and hand-over
 
 - Anchoring starts no earlier than 900 ms after the window opens. Anchoring

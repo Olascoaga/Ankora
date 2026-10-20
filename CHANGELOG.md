@@ -16,6 +16,9 @@ All notable project changes are recorded here.
   mark over to the top bar. On failure it stops, with Retry and copyable
   diagnostics. See `docs/design/STARTUP_SCREEN.md`. Source-only; the
   distributed installer is not rebuilt here.
+- Remove the static pre-splash card from `index.html`. The window now opens on
+  the stored theme's canvas, and the Anchoring screen is the only startup
+  screen drawn.
 
 ## Redocking desktop workflow - 2026-10-20
 
