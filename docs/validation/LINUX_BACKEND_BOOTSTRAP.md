@@ -16,6 +16,10 @@ and runs both children from the repository root:
   vanishes;
 - frontend: `[<npm>, "run", "dev"]` (Vite on 127.0.0.1:1420);
 - optional `--startup-timeout SECONDS` (default 90) bounds each readiness wait.
+  It must be finite and greater than zero. NaN, infinity, zero, negative or
+  non-numeric values are rejected (exit status 2) before any interpreter is
+  selected or process spawned. `run_session` applies the same check to its
+  startup and stop-grace bounds before checking ports.
 
 Python selection, first match wins:
 
@@ -96,6 +100,36 @@ grandchild. The tests prove:
   every owned process gone.
 
 The interpreter-selection tests use synthetic, never-executed files.
+
+### Review follow-up
+
+Codex reviewed the first commit and raised two findings:
+
+- **Unbounded `--startup-timeout`:** NaN or infinity could make startup
+  unbounded. It is now validated as described above. The regression tests:
+  - pass 11 rejected CLI values; each must exit with status 2 while
+    `select_python` and `Popen` are set to fail if called;
+  - check that three valid values are accepted;
+  - check that `run_session` rejects NaN, infinity, zero and negative
+    startup/stop bounds and leaves its log directory empty.
+- **Hard-coded platform in the API test:**
+  `test_api.py::test_system_endpoint_reports_runtime` asserted
+  `platform == "windows"`, so it failed on Linux, where the API correctly
+  reports `linux`. The expected value now comes from the interpreter
+  (`win32` → `windows`, `linux` → `linux`). On Windows it still checks for
+  `windows`, and an unsupported host fails. `system_info` is unchanged.
+
+Follow-up checks:
+
+- `pytest backend/tests/test_linux_dev.py backend/tests/test_api.py
+  backend/tests/test_structure_workspace.py`: 73 passed. The only warning is
+  the existing Starlette/httpx `TestClient` deprecation.
+- `ruff check`, run from `backend/` with its project configuration, on the
+  launcher and both test files: passed.
+- `ruff format --check`: the launcher and launcher tests pass. `test_api.py`
+  has three previously unformatted blocks in lines this change does not
+  touch; they were left as they are.
+- `mypy --strict` on the launcher: no issues.
 
 ## Not executed / limitations
 

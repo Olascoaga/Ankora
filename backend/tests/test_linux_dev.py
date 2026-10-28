@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import signal
 import socket
@@ -254,6 +255,55 @@ def test_commands_are_argument_arrays_with_the_existing_parent_guard(launcher) -
         "4321",
     ]
     assert launcher.frontend_command("/usr/bin/npm") == ["/usr/bin/npm", "run", "dev"]
+
+
+def _forbidden(*_arguments: object, **_keywords: object) -> None:
+    raise AssertionError("nothing may be selected or spawned")
+
+
+@pytest.mark.parametrize(
+    "value", ["nan", "NaN", "inf", "-inf", "infinity", "1e400", "0", "-0", "-1", "abc", ""]
+)
+def test_cli_rejects_unbounded_startup_timeout_before_spawning(
+    launcher, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    monkeypatch.setattr(launcher, "select_python", _forbidden)
+    monkeypatch.setattr(launcher.subprocess, "Popen", _forbidden)
+    with pytest.raises(SystemExit) as excinfo:
+        launcher.main([f"--startup-timeout={value}"])
+    assert excinfo.value.code == 2
+    error = capsys.readouterr().err
+    assert "--startup-timeout" in error
+    assert "seconds" in error
+
+
+@pytest.mark.parametrize(("value", "expected"), [("2.5", 2.5), ("90", 90.0), ("1e-3", 0.001)])
+def test_startup_timeout_parser_accepts_finite_positive_seconds(
+    launcher, value: str, expected: float
+) -> None:
+    assert launcher.startup_seconds(value) == expected
+
+
+@pytest.mark.parametrize("field", ["startup_timeout", "stop_grace"])
+@pytest.mark.parametrize("seconds", [math.nan, math.inf, 0.0, -1.0])
+def test_session_refuses_unbounded_waits_before_spawning(
+    launcher, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, field: str, seconds: float
+) -> None:
+    monkeypatch.setattr(launcher.subprocess, "Popen", _forbidden)
+    with pytest.raises(launcher.LauncherError, match=field):
+        launcher.run_session(
+            ["synthetic-never-run-backend"],
+            ["synthetic-never-run-frontend"],
+            cwd=tmp_path,
+            backend_env={},
+            frontend_env={},
+            log_directory=tmp_path,
+            stop=launcher.StopRequest(),
+            api_port=_free_port(),
+            web_port=_free_port(),
+            **{field: seconds},
+        )
+    assert list(tmp_path.iterdir()) == []
 
 
 # --- Real ports, identity and lifecycle (synthetic children) ------------------------

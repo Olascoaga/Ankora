@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import re
 import shutil
@@ -541,6 +542,24 @@ def wait_until_ready(
         stop.wait(0.25)
 
 
+def _is_bound(seconds: float) -> bool:
+    # NaN and infinity never reach a deadline, so they would make waits unbounded.
+    return math.isfinite(seconds) and seconds > 0
+
+
+def startup_seconds(text: str) -> float:
+    """Parse ``--startup-timeout``; rejected values fail before anything is spawned."""
+    try:
+        seconds = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number of seconds") from None
+    if not _is_bound(seconds):
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a finite number of seconds greater than zero"
+        )
+    return seconds
+
+
 def run_session(
     backend: Sequence[str],
     frontend: Sequence[str],
@@ -556,6 +575,11 @@ def run_session(
     stop_grace: float = STOP_GRACE_SECONDS,
 ) -> int:
     """Run backend then frontend; return the frontend's status or 128+signal."""
+    for name, seconds in (("startup_timeout", startup_timeout), ("stop_grace", stop_grace)):
+        if not _is_bound(seconds):
+            raise LauncherError(
+                f"{name} must be finite seconds greater than zero, not {seconds!r}."
+            )
     started: list[OwnedProcess] = []
     try:
         stop.raise_if_requested()
@@ -602,7 +626,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run Ankora's Linux development backend and web frontend."
     )
-    parser.add_argument("--startup-timeout", type=float, default=DEFAULT_STARTUP_TIMEOUT)
+    parser.add_argument("--startup-timeout", type=startup_seconds, default=DEFAULT_STARTUP_TIMEOUT)
     arguments = parser.parse_args(argv)
     if not sys.platform.startswith("linux"):
         _say("dev_linux.py runs only on Linux; use scripts/dev.ps1 on Windows.")
