@@ -229,11 +229,11 @@ export class MolstarViewerAdapter implements MolecularViewerAdapter {
   private currentSources: ViewerSource[] = [];
 
   async mount(container: HTMLElement): Promise<void> {
-    const currentTheme = document.documentElement.dataset.theme as "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
+    const currentTheme = document.documentElement.dataset.theme as "obsidian" | "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
     const isLight = currentTheme === "light" || (currentTheme === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches);
     const isBlue = currentTheme === "blue";
     const isAmethyst = currentTheme === "amethyst";
-    const bgColor = isLight ? "#ffffff" : isBlue ? "#090e1a" : isAmethyst ? "#0a0910" : "#090f14";
+    const bgColor = isLight ? "#f2efe9" : isBlue ? "#090c12" : isAmethyst ? "#0b090e" : currentTheme === "dark" ? "#080c10" : "#090a0d";
 
     this.viewer = await Viewer.create(container, {
       layoutIsExpanded: false,
@@ -258,11 +258,11 @@ export class MolstarViewerAdapter implements MolecularViewerAdapter {
     this.gizmoRepresentationRef = null;
     this.currentSources = sources;
 
-    const currentTheme = document.documentElement.dataset.theme as "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
+    const currentTheme = document.documentElement.dataset.theme as "obsidian" | "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
     const isLight = currentTheme === "light" || (currentTheme === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches);
     const isBlue = currentTheme === "blue";
     const isAmethyst = currentTheme === "amethyst";
-    const accentColor = Color(isLight ? 0x14b8a6 : isBlue ? 0x3b82f6 : isAmethyst ? 0xc084fc : 0x60d6a6);
+    const accentColor = Color(isLight ? 0x217a65 : isBlue ? 0x66a3dc : isAmethyst ? 0xc98ea2 : currentTheme === "dark" ? 0x5ec2a8 : 0xd8a65e);
 
     for (const source of sources) {
       await this.viewer.loadStructureFromUrl(
@@ -278,14 +278,14 @@ export class MolstarViewerAdapter implements MolecularViewerAdapter {
     if (this.currentBox) await this._requestRender(this.currentBox, this.interactionMode);
   }
 
-  setTheme(theme: "light" | "dark" | "blue" | "amethyst" | "system"): void {
+  setTheme(theme: "obsidian" | "light" | "dark" | "blue" | "amethyst" | "system"): void {
     if (!this.viewer?.plugin.canvas3d) return;
     const isLight = theme === "light" || (theme === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches);
     const isBlue = theme === "blue";
     const isAmethyst = theme === "amethyst";
-    const bgColor = Color(isLight ? 0xffffff : isBlue ? 0x090e1a : isAmethyst ? 0x0a0910 : 0x090f14);
+    const bgColor = Color(isLight ? 0xf2efe9 : isBlue ? 0x090c12 : isAmethyst ? 0x0b090e : theme === "dark" ? 0x080c10 : 0x090a0d);
     // For light theme, #00796b can look too dark in 3D with shadows. #14b8a6 (a lighter teal) looks better.
-    const accentColor = Color(isLight ? 0x14b8a6 : isBlue ? 0x3b82f6 : isAmethyst ? 0xc084fc : 0x60d6a6);
+    const accentColor = Color(isLight ? 0x217a65 : isBlue ? 0x66a3dc : isAmethyst ? 0xc98ea2 : theme === "dark" ? 0x5ec2a8 : 0xd8a65e);
 
     this.viewer.plugin.canvas3d.setProps({ renderer: { backgroundColor: bgColor } });
 

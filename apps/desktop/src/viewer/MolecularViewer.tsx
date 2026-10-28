@@ -190,7 +190,7 @@ export function MolecularViewer({
     if (!adapter) return;
 
     function applyTheme() {
-      const currentTheme = document.documentElement.dataset.theme as "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
+      const currentTheme = document.documentElement.dataset.theme as "obsidian" | "light" | "dark" | "blue" | "amethyst" | "system" | undefined;
       if (currentTheme) adapter?.setTheme(currentTheme);
     }
     

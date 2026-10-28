@@ -30,7 +30,7 @@ import { describeUsage, useResourceUsage } from "./useResourceUsage";
 import { useWorkbenchLayout } from "./workbenchLayout";
 
 type ActivityTab = "activity" | "warnings" | "provenance" | "tools" | "about";
-type ThemeMode = "dark" | "light" | "blue" | "amethyst" | "system";
+type ThemeMode = "obsidian" | "dark" | "light" | "blue" | "amethyst" | "system";
 type DensityMode = "comfortable" | "compact";
 
 const DEFAULT_PROJECT_CATALOG: ProjectCatalog = {
@@ -83,7 +83,7 @@ export function App() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [projectGraphLimit, setProjectGraphLimit] = useState(100);
-  const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme", ["dark", "light", "blue", "amethyst", "system"], "dark"));
+  const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme-v2", ["obsidian", "dark", "light", "blue", "amethyst", "system"], "obsidian"));
   const [density, setDensity] = useState<DensityMode>(() => readUiSetting("ankora-density", ["comfortable", "compact"], "comfortable"));
   const importMenuRef = useRef<HTMLDetailsElement>(null);
   const globalFileInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +172,7 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.density = density;
     try {
-      localStorage.setItem("ankora-theme", theme);
+      localStorage.setItem("ankora-theme-v2", theme); localStorage.setItem("ankora-theme", theme);
       localStorage.setItem("ankora-density", density);
     } catch { /* Settings persistence is optional in restricted WebViews. */ }
   }, [density, theme]);
@@ -599,7 +599,7 @@ export function App() {
             <button type="button" onClick={() => setInspectorCollapsed((value) => !value)}><AppIcon name="panel-right" />{inspectorCollapsed ? "Show" : "Hide"} inspector</button>
             <button type="button" onClick={() => setActivityOpen((value) => !value)}><AppIcon name="activity" />{activityOpen ? "Close" : "Open"} activity center</button>
             <div className="menu-section-label">Theme</div>
-            {(["dark", "light", "blue", "amethyst", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "dark" ? "Midnight Laboratory" : option === "light" ? "Light" : option === "blue" ? "Dark (Blue)" : option === "amethyst" ? "Dark (Amethyst)" : "Follow Windows"}</button>)}
+            {(["obsidian", "dark", "blue", "amethyst", "light", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "obsidian" ? "Obsidian Instrument" : option === "dark" ? "Midnight Laboratory" : option === "light" ? "Light" : option === "blue" ? "Cryo-EM Graphite" : option === "amethyst" ? "Spectra Quartz" : "Follow Windows"}</button>)}
             <div className="menu-section-label">Density</div>
             {(["comfortable", "compact"] as const).map((option) => <button type="button" className={density === option ? "selected" : ""} key={option} onClick={() => setDensity(option)}>{option === "comfortable" ? "Comfortable" : "Compact"}</button>)}
           </AppMenu>

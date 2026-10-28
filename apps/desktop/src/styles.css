@@ -28,7 +28,7 @@ button { font: inherit; }
   grid-template-columns: 220px minmax(480px, 1fr) 300px;
   grid-template-rows: 76px minmax(540px, 1fr) 76px;
   grid-template-areas: "top top top" "workflow workspace inspector" "status status status";
-  background: radial-gradient(circle at 48% 42%, rgba(39, 106, 82, 0.08), transparent 34%), var(--bg);
+  background: var(--bg);
 }
 
 .topbar {

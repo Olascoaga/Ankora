@@ -47,9 +47,9 @@ This document is the implementation contract for the professional scientific int
 
 ## Visual language
 
-- Use variables from `apps/desktop/src/design-system.css`; do not introduce screen-local palettes for shared states.
-- Ankora's default identity is **Midnight Laboratory**: graphite scientific surfaces, mineral-green action, muted cyan precision guides, amber review, and violet ligand-state evidence. It should read as a local scientific instrument rather than a generic cloud dashboard.
-- Fine coordinate grids, clipped geometric marks, hairline spectral accents, and monospaced metadata labels are the recurring brand motifs. Keep them subordinate to data and never place decorative texture over molecular evidence.
+- Use variables from `apps/desktop/src/design-system.css`; do not introduce screen-local palettes or hardcoded RGBA colors for shared states.
+- Ankora's default identity is **Obsidian Instrument** (`obsidian`), complemented by a curated suite of architectural laboratory themes (**Midnight Laboratory** `dark`, **Cryo-EM Graphite** `blue`, **Spectra Quartz** `amethyst`, **Light** archival paper `light`, and **Follow Windows** `system`). The flagship aesthetic uses matte anodized carbon surfaces (`#0b0c0e` / `#111317`), warm optical ivory typography (`#eceae4`), burnished optical brass primary actions (`#dfa45a`), steel-slate precision guides (`#789bb0`), terracotta-copper ligand state accents (`#c98368`), and botanical mineral sage completion states (`#58b387`). It reads as a physical scientific instrument rather than a neon sci-fi or cloud dashboard.
+- Fine coordinate grids, anodized jewel marks, subtle specular top-edge hairlines, and monospaced metadata labels are the recurring brand motifs. Keep them subordinate to data and never place decorative texture over molecular evidence.
 - Confine decorative grids to bounded identity graphics. Working surfaces stay
   quiet; do not repeat the grid beneath every panel. Use typographic scale and
   spacing, not additional saturation, to establish hierarchy.
@@ -62,7 +62,7 @@ This document is the implementation contract for the professional scientific int
   heights and lets the center workspace scroll. Its data table may scroll its
   rows independently; no second page-level scroller is introduced.
 - Corners are compact and engineered. Large pill shapes are reserved for compact status chips; scientific workspaces, tables, menus, and dialogs use the shared small/medium/large radii instead of screen-local rounding.
-- Mint is the primary interaction and success family. Amber indicates review, red indicates blocking/failure, blue indicates information, and violet distinguishes generated ligand state where appropriate.
+- Semantic tokens (`--accent`, `--success`, `--warning`, `--danger`, `--info`, `--ligand`, `--precision`) govern all interactive and status states across themes so switching palettes never leaves hardcoded hues behind.
 - Surfaces use restrained elevation and borders; glow is reserved for connection/activity emphasis rather than decoration.
 - Scientific values use tabular numerals. Units belong in headers or labels, for example `MW (g/mol)` and `Final MMFF E (kcal/mol)`.
 - Scientific quantities use the shared locale-neutral formatter: `.` is the
@@ -75,7 +75,7 @@ This document is the implementation contract for the professional scientific int
   workstation's local time zone (`28 Aug 2026, 12:34`). Stored timestamps stay
   unchanged. If a historical timestamp is invalid, show it literally rather
   than manufacturing a date.
-- Dark, light, and Windows-following themes plus comfortable/compact densities are user settings and persist locally when the WebView permits it.
+- Curated dark, light, and Windows-following themes plus comfortable/compact densities are user settings and persist locally when the WebView permits it.
 
 ## Interaction and accessibility
 

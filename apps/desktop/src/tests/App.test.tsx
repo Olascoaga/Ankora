@@ -98,8 +98,12 @@ it("renders the connected backend and tool states", async () => {
   expect(screen.getByText("of 11 tools detected")).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
   expect(document.querySelector(".app-shell")).toHaveAttribute("data-visual-system", "midnight-laboratory");
+  expect(document.documentElement).toHaveAttribute("data-theme", "obsidian");
   fireEvent.click(screen.getByText("View"));
+  expect(screen.getByRole("button", { name: "Obsidian Instrument" })).toHaveClass("selected");
   expect(screen.getByRole("button", { name: "Midnight Laboratory" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Cryo-EM Graphite" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Spectra Quartz" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Light" }));
   expect(document.documentElement).toHaveAttribute("data-theme", "light");
   fireEvent.click(screen.getByText("Tools"));
