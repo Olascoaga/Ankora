@@ -49,6 +49,26 @@ _PACKAGED_PYTHON_TOOLS = {
     "pdb2pqr": ("pdb2pqr", "pdb2pqr"),
     "propka3": ("propka", "propka"),
 }
+# Native (non-Windows) hosts. Meeko 0.7 declares its console entry points with
+# a `.py` suffix; PDB2PQR, PROPKA and P2Rank use their plain tool names.
+_NATIVE_CONSOLE_NAMES = {
+    "mk_prepare_ligand": ("mk_prepare_ligand.py", "mk_prepare_ligand"),
+    "mk_prepare_receptor": ("mk_prepare_receptor.py", "mk_prepare_receptor"),
+}
+_NATIVE_VINA_EXECUTABLE_PATTERN = re.compile(
+    r"^vina(?:[_-](\d+(?:\.\d+)+))?(?:[_-]linux(?:[_-](?:x86_64|aarch64))?)?$"
+)
+_NATIVE_AUTODOCK_SUBDIRECTORIES = ("bin", "x86_64Linux2")
+_WINDOWS_AUTODOCK_SUBDIRECTORIES = ("bin", "windows", "x86", "x64")
+_WINDOWS_EXECUTABLE_SUFFIXES = frozenset({".exe", ".bat", ".cmd", ".com", ".ps1", ".dll"})
+_WSL_DRIVE_MOUNT = re.compile(r"^/mnt/[A-Za-z](?:/|$)")
+_ELF_MAGIC = b"\x7fELF"
+_ELF_MACHINES = {0x03: "x86", 0x3E: "x86_64", 0xB7: "arm64"}
+
+
+def _windows_host() -> bool:
+    """Windows keeps its accepted resolution; other hosts use native executable rules."""
+    return os.name == "nt"
 
 
 def build_windows_candidate(
@@ -82,6 +102,16 @@ def discover_tool(
         distribution, module = _PACKAGED_PYTHON_TOOLS[tool_name]
         available = discover_python_package(distribution, module).available
         return DiscoveredTool(available=available, path=sys.executable if available else None)
+    if not _windows_host():
+        located_native = _native_candidate(
+            _NATIVE_CONSOLE_NAMES.get(tool_name, (tool_name,)),
+            configured_path,
+            path_lookup=path_lookup,
+            candidate_directories=candidate_directories,
+        )
+        if located_native is None:
+            return DiscoveredTool(available=False, path=None)
+        return DiscoveredTool(available=True, path=str(located_native.resolve()))
     candidate: Path | None = None
     if configured_path:
         candidate = _configured_candidate(configured_path, tool_name, extension)
@@ -145,7 +175,8 @@ def discover_p2rank(
     P2Rank has no Windows installer and does not add ``prank.bat`` to PATH.
     In addition to normal discovery, Ankora therefore checks versioned
     distributions directly below the user's conventional ``tools`` folder.
-    An explicit configured path remains authoritative when supplied.
+    An explicit configured path remains authoritative when supplied. Other
+    hosts select the distribution's executable ``prank`` shell launcher instead.
     """
     if getattr(sys, "frozen", False):
         return _bundled_discovery("p2rank")
@@ -187,6 +218,10 @@ def discover_vina(
     """
     if getattr(sys, "frozen", False):
         return _bundled_discovery("vina")
+    if not _windows_host():
+        return _discover_native_vina(
+            configured_path, path_lookup=path_lookup, candidate_directories=candidate_directories
+        )
     if configured_path:
         configured = Path(configured_path).expanduser()
         if configured.is_dir():
@@ -228,6 +263,10 @@ def discover_autodock4(
             *_runtime_candidate_directories(),
             *_portable_autodock4_candidate_directories(Path.home()),
         )
+    if not _windows_host():
+        return _discover_native_autodock_binary(
+            "autodock4", configured_path, path_lookup=path_lookup, directories=directories or ()
+        )
     return _discover_autodock_binary(
         configured_path,
         executable_names=("autodock4.exe",),
@@ -252,6 +291,10 @@ def discover_autogrid4(
             *_runtime_candidate_directories(),
             *_portable_autodock4_candidate_directories(Path.home()),
         )
+    if not _windows_host():
+        return _discover_native_autodock_binary(
+            "autogrid4", configured_path, path_lookup=path_lookup, directories=directories or ()
+        )
     return _discover_autodock_binary(
         configured_path,
         executable_names=("autogrid4.exe",),
@@ -270,6 +313,10 @@ def discover_autodock_gpu(
     """Discover official-style AutoDock-GPU Windows executables side-effect-free."""
     if getattr(sys, "frozen", False):
         return _bundled_discovery("autodock_gpu")
+    if not _windows_host():
+        # Each GPU engine/runtime needs its own native acceptance (ADR-026); none
+        # exists for Linux yet, and a Windows build reached through WSL never counts.
+        return DiscoveredTool(available=False, path=None)
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (
@@ -299,10 +346,14 @@ def discover_java_home(
     """Resolve a Java home suitable for P2Rank without launching Java."""
     if getattr(sys, "frozen", False):
         java = bundled_tool("java")
-        if java is None:
+        if java is None or not _windows_host():
             return None
         home = java[0].parent.parent
         return home if _is_p2rank_compatible_java_home(home) else None
+    if not _windows_host():
+        return _discover_native_java_home(
+            configured_home, path_lookup=path_lookup, candidate_homes=candidate_homes
+        )
     if configured_home:
         home = Path(configured_home).expanduser()
         if _is_p2rank_compatible_java_home(home):
@@ -321,6 +372,10 @@ def discover_java_home(
 
 
 def _bundled_discovery(name: str) -> DiscoveredTool:
+    if not _windows_host():
+        # The private payload is a Windows inventory; a frozen Linux payload is
+        # not implemented, so nothing in it is reported as Linux-supported.
+        return DiscoveredTool(available=False, path=None)
     found = bundled_tool(name)
     if found is None:
         return DiscoveredTool(available=False, path=None)
@@ -383,9 +438,12 @@ def _portable_autodock_candidate_directories(
         key=lambda path: _version_from_match(directory_pattern.match(path.name)),
         reverse=True,
     )
+    subdirectories = (
+        _WINDOWS_AUTODOCK_SUBDIRECTORIES if _windows_host() else _NATIVE_AUTODOCK_SUBDIRECTORIES
+    )
     candidates: list[Path] = []
     for root in roots:
-        candidates.extend((root, root / "bin", root / "windows", root / "x86", root / "x64"))
+        candidates.extend((root, *(root / name for name in subdirectories)))
     return tuple(path for path in candidates if path.is_dir())
 
 
@@ -641,6 +699,14 @@ def _is_p2rank_compatible_java_home(home: Path) -> bool:
 
 def _runtime_candidate_directories() -> tuple[Path, ...]:
     """Return executable directories belonging to the active Python environment."""
+    if not _windows_host():
+        # Unresolved: a virtual environment's interpreter symlinks to the system
+        # Python, whose directory is not part of the active environment.
+        return tuple(
+            dict.fromkeys(
+                (Path(sys.executable).absolute().parent, Path(sys.prefix).absolute() / "bin")
+            )
+        )
     executable_directory = Path(sys.executable).resolve().parent
     prefix = Path(sys.prefix).resolve()
     candidates = (
@@ -651,6 +717,242 @@ def _runtime_candidate_directories() -> tuple[Path, ...]:
         prefix / "bin",
     )
     return tuple(dict.fromkeys(candidates))
+
+
+def _is_wsl_drive_path(path: Path) -> bool:
+    return _WSL_DRIVE_MOUNT.match(path.as_posix()) is not None
+
+
+def _is_windows_location(path: Path) -> bool:
+    return path.suffix.lower() in _WINDOWS_EXECUTABLE_SUFFIXES or _is_wsl_drive_path(path)
+
+
+def _is_native_executable(path: Path) -> bool:
+    """True for a launchable ELF binary or ``#!`` script; never for a Windows file.
+
+    WSL appends Windows directories to PATH and drive mounts mark every file
+    executable, so names and permission bits alone prove nothing: a PE image
+    renamed without ``.exe`` is still rejected by its content. Nothing is run.
+    """
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    if _is_windows_location(path.absolute()) or _is_windows_location(resolved):
+        return False
+    if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        return False
+    try:
+        with resolved.open("rb") as stream:
+            header = stream.read(256)
+    except OSError:
+        return False
+    if header.startswith(_ELF_MAGIC):
+        return True
+    if not header.startswith(b"#!"):
+        return False
+    words = header[2:].split(b"\n", 1)[0].split()
+    if not words:
+        return False
+    interpreter = Path(os.fsdecode(words[0]))
+    return interpreter.is_absolute() and not _is_windows_location(interpreter)
+
+
+def _native_which(name: str) -> str | None:
+    """Return the first native executable named ``name`` on PATH, skipping Windows entries."""
+    for directory in os.environ.get("PATH", os.defpath).split(os.pathsep):
+        if not directory:
+            continue
+        candidate = Path(directory) / name
+        if _is_native_executable(candidate):
+            return str(candidate)
+    return None
+
+
+def _native_lookup(path_lookup: Callable[[str], str | None]) -> Callable[[str], str | None]:
+    # `shutil.which` stops at the first match, which on WSL may be a Windows file.
+    return _native_which if path_lookup is shutil.which else path_lookup
+
+
+def _native_candidate(
+    names: tuple[str, ...],
+    configured_path: str | Path | None,
+    *,
+    path_lookup: Callable[[str], str | None],
+    candidate_directories: Iterable[Path] | None,
+) -> Path | None:
+    """Explicit path (authoritative), then PATH, then the given directories."""
+    if configured_path:
+        configured = Path(configured_path).expanduser()
+        candidates = [configured / name for name in names] if configured.is_dir() else [configured]
+        return next((path for path in candidates if _is_native_executable(path)), None)
+    lookup = _native_lookup(path_lookup)
+    for name in names:
+        located = lookup(name)
+        if located and _is_native_executable(Path(located)):
+            return Path(located)
+    directories = (
+        _runtime_candidate_directories() if candidate_directories is None else candidate_directories
+    )
+    for directory in directories:
+        for name in names:
+            if _is_native_executable(directory / name):
+                return directory / name
+    return None
+
+
+def _read_elf_architecture(executable: Path) -> str | None:
+    try:
+        with executable.open("rb") as stream:
+            header = stream.read(20)
+    except OSError:
+        return None
+    if len(header) < 20 or not header.startswith(_ELF_MAGIC):
+        return None
+    if header[5] == 1:
+        machine = int.from_bytes(header[18:20], byteorder="little")
+    elif header[5] == 2:
+        machine = int.from_bytes(header[18:20], byteorder="big")
+    else:
+        return "unknown"
+    return _ELF_MACHINES.get(machine, "unknown")
+
+
+def _native_engine_result(executable: Path, version: str | None) -> DiscoveredTool:
+    resolved = executable.resolve()
+    return DiscoveredTool(
+        available=True,
+        path=str(resolved),
+        version=version,
+        architecture=_read_elf_architecture(resolved),
+        sha256=_file_sha256(resolved),
+    )
+
+
+def _native_vina_version(path: Path) -> tuple[int, ...]:
+    match = _NATIVE_VINA_EXECUTABLE_PATTERN.match(path.name)
+    if match is None or match.group(1) is None:
+        return ()
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def _native_vina_executables_in(directory: Path) -> list[Path]:
+    try:
+        children = list(directory.iterdir())
+    except OSError:
+        return []
+    candidates = [
+        path
+        for path in children
+        if _NATIVE_VINA_EXECUTABLE_PATTERN.match(path.name) and _is_native_executable(path)
+    ]
+    candidates.sort(key=lambda path: (_native_vina_version(path), path.name), reverse=True)
+    return candidates
+
+
+def _discover_native_vina(
+    configured_path: str | Path | None,
+    *,
+    path_lookup: Callable[[str], str | None],
+    candidate_directories: Iterable[Path] | None,
+) -> DiscoveredTool:
+    if configured_path:
+        configured = Path(configured_path).expanduser()
+        if configured.is_dir():
+            candidates = _native_vina_executables_in(configured)
+        else:
+            candidates = [configured] if _is_native_executable(configured) else []
+    else:
+        located = _native_lookup(path_lookup)("vina")
+        candidates = [Path(located)] if located and _is_native_executable(Path(located)) else []
+        if not candidates:
+            directories = candidate_directories
+            if directories is None:
+                directories = (
+                    *_runtime_candidate_directories(),
+                    *_portable_vina_candidate_directories(Path.home()),
+                )
+            for directory in directories:
+                candidates = _native_vina_executables_in(directory)
+                if candidates:
+                    break
+    if not candidates:
+        return DiscoveredTool(available=False, path=None, version=None)
+    # Only a versioned release name is version evidence; plain `vina` stays unknown
+    # until the adapter verifies `--version` before docking.
+    match = _NATIVE_VINA_EXECUTABLE_PATTERN.match(candidates[0].resolve().name)
+    return _native_engine_result(candidates[0], match.group(1) if match is not None else None)
+
+
+def _discover_native_autodock_binary(
+    name: str,
+    configured_path: str | Path | None,
+    *,
+    path_lookup: Callable[[str], str | None],
+    directories: Iterable[Path],
+) -> DiscoveredTool:
+    candidate = _native_candidate(
+        (name,), configured_path, path_lookup=path_lookup, candidate_directories=directories
+    )
+    if candidate is None:
+        return DiscoveredTool(available=False, path=None)
+    version = _autodock_version_from_path(candidate.resolve(), _AUTODOCK4_DIRECTORY_PATTERN)
+    return _native_engine_result(candidate, version)
+
+
+def _java_major(version: str | None) -> int | None:
+    numbers = re.findall(r"\d+", version or "")
+    if not numbers:
+        return None
+    return int(numbers[1] if numbers[0] == "1" and len(numbers) > 1 else numbers[0])
+
+
+def _is_native_p2rank_java_home(home: Path) -> bool:
+    # Unlike Windows, a home without `release` metadata is not assumed compatible.
+    if not _is_native_executable(home / "bin" / "java"):
+        return False
+    return _java_major(_read_java_release_version(home)) in _P2RANK_JAVA_MAJOR_RANGE
+
+
+def _native_java_candidate_homes(home: Path) -> tuple[Path, ...]:
+    prefix = Path(sys.prefix).absolute()
+    candidates = [prefix, prefix / "lib" / "jvm"]
+    tools_root = home / "tools"
+    try:
+        named = [
+            path
+            for path in tools_root.iterdir()
+            if path.is_dir() and _JAVA_DIRECTORY_PATTERN.match(path.name)
+        ]
+    except OSError:
+        named = []
+    named.sort(key=_java_home_version, reverse=True)
+    candidates.extend(named)
+    return tuple(dict.fromkeys(candidates))
+
+
+def _discover_native_java_home(
+    configured_home: str | Path | None,
+    *,
+    path_lookup: Callable[[str], str | None],
+    candidate_homes: Iterable[Path] | None,
+) -> Path | None:
+    if configured_home:
+        # An explicit JAVA_HOME stays authoritative; no other Java is substituted.
+        configured = Path(configured_home).expanduser()
+        return configured.resolve() if _is_native_p2rank_java_home(configured) else None
+    located = _native_lookup(path_lookup)("java")
+    if located and _is_native_executable(Path(located)):
+        home = Path(located).resolve().parent.parent
+        if _is_native_p2rank_java_home(home):
+            return home
+    homes = (
+        _native_java_candidate_homes(Path.home()) if candidate_homes is None else candidate_homes
+    )
+    for home in homes:
+        if _is_native_p2rank_java_home(home):
+            return home.resolve()
+    return None
 
 
 def discover_python_package(distribution: str, module: str) -> DiscoveredTool:
