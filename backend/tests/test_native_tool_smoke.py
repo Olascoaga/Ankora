@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -35,13 +36,20 @@ def test_native_tool_smoke_matrix_covers_every_supported_process_adapter() -> No
     assert "gnina" in DEFERRED_TOOLS
 
 
+# Exact synthetic bytes, written without newline translation so the identity is
+# the same on every host. The CRLF digest is the historical Windows expectation.
+SYNTHETIC_FIXTURES = {
+    "fixture-lf.txt": b"explicitly synthetic fixture\n",
+    "fixture-crlf.txt": b"explicitly synthetic fixture\r\n",
+}
+HISTORICAL_CRLF_SHA256 = "d853489ab6b76afcf17ccf3963f0d055a52ad9409d735d57f9d98fb13ce4a2ce"
+
+
 def test_evidence_writer_preserves_raw_output_commands_and_fixture_hashes(
     tmp_path: Path,
 ) -> None:
     writer = EvidenceWriter(tmp_path / "evidence")
     directory = writer.adapter_directory("synthetic_adapter")
-    fixture = directory / "fixture.txt"
-    fixture.write_text("explicitly synthetic fixture\n", encoding="utf-8")
     result = AdapterResult(
         adapter_id="synthetic_adapter",
         adapter="synthetic adapter",
@@ -49,7 +57,10 @@ def test_evidence_writer_preserves_raw_output_commands_and_fixture_hashes(
         status="passed",
         version="1.0",
     )
-    result.fixtures.append(writer.file(path=fixture, role="synthetic_fixture"))
+    for name, content in SYNTHETIC_FIXTURES.items():
+        fixture = directory / name
+        fixture.write_bytes(content)
+        result.fixtures.append(writer.file(path=fixture, role="synthetic_fixture"))
     writer.execution(
         result=result,
         execution=ToolExecution(
@@ -68,15 +79,15 @@ def test_evidence_writer_preserves_raw_output_commands_and_fixture_hashes(
         "synthetic-tool",
         "--version",
     ]
-    assert manifest["results"][0]["fixtures"][0]["sha256"] == (
-        "d853489ab6b76afcf17ccf3963f0d055a52ad9409d735d57f9d98fb13ce4a2ce"
-    )
-    assert (directory / "execution.stdout.txt").read_text(encoding="utf-8") == (
-        "synthetic stdout\n"
-    )
-    assert (directory / "execution.stderr.txt").read_text(encoding="utf-8") == (
-        "synthetic stderr\n"
-    )
+    fixtures = {Path(item["path"]).name: item for item in manifest["results"][0]["fixtures"]}
+    for name, content in SYNTHETIC_FIXTURES.items():
+        assert fixtures[name]["sha256"] == hashlib.sha256(content).hexdigest()
+        assert fixtures[name]["size_bytes"] == len(content)
+        assert (directory / name).read_bytes() == content
+    assert fixtures["fixture-crlf.txt"]["sha256"] == HISTORICAL_CRLF_SHA256
+    assert fixtures["fixture-lf.txt"]["sha256"] != HISTORICAL_CRLF_SHA256
+    assert (directory / "execution.stdout.txt").read_bytes() == b"synthetic stdout\n"
+    assert (directory / "execution.stderr.txt").read_bytes() == b"synthetic stderr\n"
 
 
 def test_evidence_writer_refuses_to_overwrite_an_existing_run(tmp_path: Path) -> None:
