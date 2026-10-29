@@ -42,3 +42,31 @@ source/reference immutability, saved pose hashes, and that the redocking record
 references the actual completed job and reference. Stop at the first failed
 stage and retain the evidence. This one case cannot establish scientific
 accuracy, native-workstation behavior, or general Windows/Linux equivalence.
+
+## Observed run — 2026-10-29 UTC
+
+The isolated WSL2 run stopped at receptor preparation as required by the
+predeclared protocol; **no docking or redocking was performed**. API import,
+inspection and extraction succeeded, and the extracted reference SHA-256 was
+`0dfcb7d3d6024bbe5572c990ff57fdd38e46cfe20b928acb8601bae3ad550982`.
+The extraction reported `LIG_FORMAL_CHARGE_INFERRED` because the source did not
+provide atomic formal charges; the calculated and deposited formulas matched.
+
+PDB2PQR attempted to add `OXT` to PHE A:99 and PHE B:99. Neither was authorized
+in this plan, so the API correctly returned HTTP 422 with
+`PDB2PQR_UNAPPROVED_HEAVY_ATOM_CHANGE` and rejected the derivative. The
+template-based inspection had reported no issues. This exposes a limitation of
+that inspection for this input: it did not flag the terminal additions later
+proposed by PDB2PQR. This observation is not a claim about all structures.
+
+Evidence JSON SHA-256:
+`000318151effd33e41b0b421706b2d92313e4c211087cdd25778e2544fa731e9`.
+The isolated project retains the full API evidence, failure record, PDB2PQR
+stdout and stderr, and rejected PDB/PQR derivatives. No existing project was
+used. Source inspection and extraction succeeded; the engineering smoke as a
+whole did not pass. This result does not establish redocking accuracy.
+
+The runner's fixed requests and output-isolation guards were tested with
+synthetic inputs alongside the existing redocking tests: 36 tests passed on
+Linux. A new protocol with explicit decisions would be needed for any later
+calculation; the present failed run and this protocol must remain unchanged.
