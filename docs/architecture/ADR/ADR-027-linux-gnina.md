@@ -51,3 +51,15 @@ Linux port unit in ADR-026; it does not alter the Windows release contract.
    library campaigns with progress, redocking, interactions and exports.
 5. Test WSLg, Windows regressions and native Linux workstation; review licenses,
    model redistribution and runtime size before packaging.
+
+### Single-job persistence foundation
+
+GNINA jobs have a distinct project-scoped store and score-bearing schema; they
+are not inserted into the existing Vina or AutoDock result catalog. Pose files
+are create-only and cannot be served until a completed record publishes them.
+The record requires the engine's descending CNN-score order, exact input hashes,
+the executable hash and successful execution evidence. A CUDA record also
+requires evidence that the process was observed on a GPU. Such observation
+confirms a GPU process was reported, not independently that every neural-network
+operation used the GPU. Failure and cancellation do not publish poses. This
+foundation alone does not execute jobs or expose an API or UI.
