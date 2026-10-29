@@ -31,3 +31,12 @@ Read-only inspection of the exact 1HSG mmCIF used in the previous failed smoke
 reported candidates PHE A:99 and PHE B:99, matching the earlier PDB2PQR
 proposal. This confirms detection for that input, not a chemical judgment that
 the atoms should be added. The original failed protocol remains unchanged.
+
+Focused receptor/API and guard tests passed on Linux (89 tests); the receptor
+preparation and completeness subset also passed natively on Windows (60 tests).
+The complete frontend suite passed on Linux (338 tests), including the
+existing recovery workflow updated to require clearing an authorization when
+its residue is removed. Backend Ruff, backend mypy (142 source files) and
+frontend TypeScript checks passed. The scientific tools and generated artifacts
+from the independent exploratory 1HSG run are documented separately in
+`LINUX_CRYSTAL_REDOCKING_FOLLOWUP.md`.
