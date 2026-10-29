@@ -13,6 +13,8 @@ from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.gnina import GninaDockingParameters
 
 FIXTURE = (Path(__file__).parent / "fixtures" / "gnina_real_synthetic_ethanol.sdf").read_bytes()
+PDBQT = (Path(__file__).parent / "fixtures" / "gnina_real_1hsg_mk1.pdbqt").read_bytes()
+CONFORMER = (Path(__file__).parent / "fixtures" / "gnina_input_1hsg_mk1.sdf").read_bytes()
 
 
 def test_real_gnina_sdf_preserves_pose_order_scores_and_original_records() -> None:
@@ -30,6 +32,47 @@ def test_real_gnina_sdf_preserves_pose_order_scores_and_original_records() -> No
     assert poses[0].cnn_vs == 2.7173078060
     assert poses[0].cnn_affinity_variance == 0.1869647652
     assert b"".join(pose.sdf for pose in poses) == FIXTURE
+
+
+def test_real_gnina_pdbqt_preserves_cnn_order_and_matches_prepared_topology() -> None:
+    """In this observed run the first pose has higher energy, but ranks by CNNscore."""
+    assert (
+        sha256(PDBQT).hexdigest()
+        == "831ea0384cbff50568b8de9c767d79e855bc84971a8fd3abf3e84de8af9b25e0"
+    )
+    assert (
+        sha256(CONFORMER).hexdigest()
+        == "cd1adf846078e3815ed7fac7cb9105bceedf41bd136d066aa8311df747898c01"
+    )
+    poses = gnina.parse_gnina_pdbqt(PDBQT)
+    assert [pose.mode for pose in poses] == [1, 2]
+    assert [pose.minimized_affinity_kcal_mol for pose in poses] == [27.0064907, -9.32558155]
+    assert [pose.cnn_score for pose in poses] == [0.266823769, 0.213049844]
+    assert b"".join(pose.pdbqt for pose in poses) == PDBQT
+    for pose in poses:
+        gnina.require_matching_topology(pose, CONFORMER)
+
+
+def test_gnina_pdbqt_topology_mismatch_is_not_silently_accepted() -> None:
+    pose = gnina.parse_gnina_pdbqt(PDBQT)[0]
+    with pytest.raises(AnkoraDomainError) as error:
+        gnina.require_matching_topology(pose, FIXTURE.split(b"$$$$", 1)[0] + b"$$$$\n")
+    assert error.value.code == "GNINA_POSE_TOPOLOGY_MISMATCH"
+
+
+@pytest.mark.parametrize(
+    "corrupted",
+    [
+        PDBQT.replace(b"REMARK CNNscore", b"REMARK missing", 1),
+        PDBQT.replace(b"0.266823769", b"nan", 1),
+        PDBQT.replace(b"MODEL 2", b"MODEL 3", 1),
+        PDBQT.rsplit(b"ENDMDL", 1)[0],
+    ],
+)
+def test_incomplete_or_corrupt_gnina_pdbqt_is_rejected(corrupted: bytes) -> None:
+    with pytest.raises(AnkoraDomainError) as error:
+        gnina.parse_gnina_pdbqt(corrupted)
+    assert error.value.code == "GNINA_OUTPUT_INVALID"
 
 
 @pytest.mark.parametrize(
@@ -104,9 +147,9 @@ def test_command_keeps_scores_and_compute_choice_explicit(tmp_path: Path, comput
         size_z=18.635,
     )
     args = gnina.build_gnina_arguments(
-        receptor_path=tmp_path / "receptor.pdb",
-        ligand_path=tmp_path / "ligand.sdf",
-        output_path=tmp_path / "poses.sdf",
+        receptor_path=tmp_path / "receptor.pdbqt",
+        ligand_path=tmp_path / "ligand.pdbqt",
+        output_path=tmp_path / "poses.pdbqt",
         box=box,
         parameters=parameters,
     )
@@ -114,8 +157,10 @@ def test_command_keeps_scores_and_compute_choice_explicit(tmp_path: Path, comput
     assert args[args.index("--seed") + 1] == "20261029"
     assert ("--no_gpu" in args) == (compute == "cpu")
     assert ("--device" in args) == (compute == "cuda")
-    assert parameters.cnn_model == "gnina_1_3_3_builtin_default"
-    assert parameters.hydrogen_handling == "gnina_1_3_3_default"
+    assert args[args.index("--cnn") + 1] == "dense_1_3"
+    assert args[args.index("--addH") + 1] == "0"
+    assert args[args.index("--stripH") + 1] == "0"
+    assert parameters.pose_sort_order == "cnn_score_descending"
 
 
 def test_command_rejects_nonfinite_box_and_overwriting_input(tmp_path: Path) -> None:
@@ -123,9 +168,9 @@ def test_command_rejects_nonfinite_box_and_overwriting_input(tmp_path: Path) -> 
     box = BindingBox(center_x=float("nan"), center_y=0, center_z=0, size_x=20, size_y=20, size_z=20)
     with pytest.raises(AnkoraDomainError) as error:
         gnina.build_gnina_arguments(
-            receptor_path=tmp_path / "rec.pdb",
-            ligand_path=tmp_path / "lig.sdf",
-            output_path=tmp_path / "poses.sdf",
+            receptor_path=tmp_path / "rec.pdbqt",
+            ligand_path=tmp_path / "lig.pdbqt",
+            output_path=tmp_path / "poses.pdbqt",
             box=box,
             parameters=parameters,
         )
@@ -133,9 +178,9 @@ def test_command_rejects_nonfinite_box_and_overwriting_input(tmp_path: Path) -> 
     box.center_x = 0
     with pytest.raises(AnkoraDomainError) as error:
         gnina.build_gnina_arguments(
-            receptor_path=tmp_path / "rec.pdb",
-            ligand_path=tmp_path / "lig.sdf",
-            output_path=tmp_path / "lig.sdf",
+            receptor_path=tmp_path / "rec.pdbqt",
+            ligand_path=tmp_path / "lig.pdbqt",
+            output_path=tmp_path / "lig.pdbqt",
             box=box,
             parameters=parameters,
         )

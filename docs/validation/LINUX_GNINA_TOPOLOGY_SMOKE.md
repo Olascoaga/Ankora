@@ -34,3 +34,44 @@ could accept the PDBQT output; do not force an answer or repair mismatches.
 Different executions cannot be assumed to yield the same poses. Verify source
 and copied input hashes unchanged. No native-workstation, reproducibility or
 scientific accuracy claim follows.
+
+## Observed result
+
+Both predeclared calculations exited zero and their PIDs were observed on the
+CUDA device. The inspected MK1 state contained 45 heavy atoms; both SDF output
+poses contained the same 45 heavy atoms and the same canonical isomeric SMILES
+as that state. PDBQT output retained Meeko's SMILES mapping remarks; Meeko
+reconstructed the ligand and its isomeric SMILES matched the input state.
+These are observations for this particular molecule and settings, not a
+general guarantee for arbitrary ligands.
+
+The PDBQT scores were emitted as `REMARK minimizedAffinity`, `REMARK CNNscore`
+and `REMARK CNNaffinity`. Pose 1 ranked above pose 2 by CNNscore even though
+its empirical energy was higher; preserving the recorded GNINA order is
+essential. Both the PDBQT fixture and the independently minimized input
+conformer are retained in backend tests using the public reference case. Each
+pose is validated against the exact conformer topology before it can be used
+by a future GNINA service.
+
+The SDF output hash was
+`dc24a24c6d260f5cdc25115fd711ec9cde9193c5c5c10e936f01ad1dfdaff16f` and
+the PDBQT output hash was
+`831ea0384cbff50568b8de9c767d79e855bc84971a8fd3abf3e84de8af9b25e0`.
+The retained machine evidence SHA-256 is
+`0467acccf862079be9b3dc22d39b524ab8a0067f66874f1c94e3114bfa8578d0`.
+Original inputs remained unchanged. Raw stdout, stderr and output files remain
+in the ignored local investigation directory.
+
+## Adapter check — predeclared
+
+Run one further create-only WSL engineering check using the exact same
+hash-pinned PDBQT receptor, PDBQT ligand and prepared conformer. Invoke
+Ankora's GNINA adapter and its real probe, with CUDA device 0, `dense_1_3`,
+`rescore`, explicit `--addH 0 --stripH 0`, seed 20261029, two CPU threads,
+exhaustiveness 1, two maximum poses and the same declared search box. Use
+GNINA's normal Monte Carlo step policy and a three-minute timeout; do not
+substitute a CPU execution or change the parameters after seeing a result.
+Observe the executable PID on the GPU, retain command/stdout/stderr and output
+hashes, parse each PDBQT score, verify every pose against the exact conformer
+using the same isomeric topology guard, and check the original input hashes.
+This is not an API, GUI, campaign, redocking, or scientific acceptance test.

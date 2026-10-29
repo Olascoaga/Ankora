@@ -18,5 +18,6 @@ class GninaDockingParameters(BaseModel):
     min_rmsd_filter_angstrom: float = Field(default=1.0, ge=0, le=20, allow_inf_nan=False)
     timeout_minutes: int = Field(default=360, ge=1, le=2880)
     cnn_scoring: Literal["rescore"] = "rescore"
-    cnn_model: Literal["gnina_1_3_3_builtin_default"] = "gnina_1_3_3_builtin_default"
-    hydrogen_handling: Literal["gnina_1_3_3_default"] = "gnina_1_3_3_default"
+    cnn_model: Literal["dense_1_3"] = "dense_1_3"
+    hydrogen_handling: Literal["prepared_pdbqt_no_add_no_strip"] = "prepared_pdbqt_no_add_no_strip"
+    pose_sort_order: Literal["cnn_score_descending"] = "cnn_score_descending"

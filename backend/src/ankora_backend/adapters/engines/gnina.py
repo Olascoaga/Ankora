@@ -56,6 +56,17 @@ class GninaPose:
     sdf: bytes
 
 
+@dataclass(frozen=True, slots=True)
+class GninaPdbqtPose:
+    """One intact GNINA PDBQT pose in the engine's recorded rank order."""
+
+    mode: int
+    minimized_affinity_kcal_mol: float
+    cnn_score: float
+    cnn_affinity: float
+    pdbqt: bytes
+
+
 def _error(code: str, message: str, **details: object) -> AnkoraDomainError:
     return AnkoraDomainError(
         code=code, stage=_STAGE, message=message, status_code=422, details=details
@@ -123,15 +134,24 @@ def build_gnina_arguments(
     box: BindingBox,
     parameters: GninaDockingParameters,
 ) -> list[str]:
-    """Build an argument array; built-in model and hydrogen defaults are recorded settings."""
+    """Build an argument array for explicitly recorded model and hydrogen handling."""
     values = (box.center_x, box.center_y, box.center_z, box.size_x, box.size_y, box.size_z)
     if not all(math.isfinite(value) for value in values):
         raise _error("GNINA_INPUT_INVALID", "The GNINA search box must contain finite coordinates.")
-    if output_path.suffix.lower() != ".sdf" or output_path.resolve() in {
-        receptor_path.resolve(),
-        ligand_path.resolve(),
-    }:
-        raise _error("GNINA_INPUT_INVALID", "GNINA poses require a distinct SDF output path.")
+    if (
+        receptor_path.suffix.lower() != ".pdbqt"
+        or ligand_path.suffix.lower() != ".pdbqt"
+        or output_path.suffix.lower() not in {".sdf", ".pdbqt"}
+        or output_path.resolve()
+        in {
+            receptor_path.resolve(),
+            ligand_path.resolve(),
+        }
+    ):
+        raise _error(
+            "GNINA_INPUT_INVALID",
+            "GNINA requires prepared PDBQT inputs and a distinct SDF or PDBQT output.",
+        )
     arguments = [
         "--receptor",
         str(receptor_path),
@@ -161,6 +181,12 @@ def build_gnina_arguments(
         str(parameters.min_rmsd_filter_angstrom),
         "--cnn_scoring",
         parameters.cnn_scoring,
+        "--cnn",
+        parameters.cnn_model,
+        "--addH",
+        "0",
+        "--stripH",
+        "0",
         "--out",
         str(output_path),
     ]
@@ -283,3 +309,107 @@ def parse_gnina_sdf(content: bytes) -> list[GninaPose]:
             )
         )
     return poses
+
+
+def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
+    """Parse actual GNINA pose records without reordering or rewriting them."""
+    poses: list[GninaPdbqtPose] = []
+    block: list[bytes] | None = None
+    mode = 0
+    scores: dict[str, float] = {}
+    atom_count = 0
+    for line in content.splitlines(keepends=True):
+        words = line.strip().split()
+        if words and words[0] == b"MODEL":
+            if block is not None or len(words) != 2:
+                raise _error("GNINA_OUTPUT_INVALID", "GNINA has an invalid MODEL record.")
+            try:
+                mode = int(words[1])
+            except ValueError as error:
+                raise _error("GNINA_OUTPUT_INVALID", "GNINA has an invalid pose number.") from error
+            if mode != len(poses) + 1:
+                raise _error("GNINA_OUTPUT_INVALID", "GNINA pose numbers are not sequential.")
+            block = [line]
+            scores = {}
+            atom_count = 0
+            continue
+        if block is None:
+            if words:
+                raise _error("GNINA_OUTPUT_INVALID", "GNINA has content outside a pose.")
+            continue
+        block.append(line)
+        if words and words[0] in {b"ATOM", b"HETATM"}:
+            atom_count += 1
+        if (
+            len(words) >= 2
+            and words[0] == b"REMARK"
+            and words[1] in {b"minimizedAffinity", b"CNNscore", b"CNNaffinity"}
+        ):
+            name = words[1].decode("ascii")
+            if name in scores or len(words) != 3:
+                raise _error(
+                    "GNINA_OUTPUT_INVALID", "GNINA has a repeated or invalid score.", field=name
+                )
+            try:
+                value = float(words[2])
+            except ValueError as error:
+                raise _error(
+                    "GNINA_OUTPUT_INVALID", "GNINA has an invalid score.", field=name
+                ) from error
+            if not math.isfinite(value):
+                raise _error("GNINA_OUTPUT_INVALID", "GNINA has a non-finite score.", field=name)
+            scores[name] = value
+        if words and words[0] == b"ENDMDL":
+            if (
+                len(words) != 1
+                or atom_count == 0
+                or set(scores) != {"minimizedAffinity", "CNNscore", "CNNaffinity"}
+            ):
+                raise _error(
+                    "GNINA_OUTPUT_INVALID", "GNINA pose has missing scores or atoms.", mode=mode
+                )
+            poses.append(
+                GninaPdbqtPose(
+                    mode=mode,
+                    minimized_affinity_kcal_mol=scores["minimizedAffinity"],
+                    cnn_score=scores["CNNscore"],
+                    cnn_affinity=scores["CNNaffinity"],
+                    pdbqt=b"".join(block),
+                )
+            )
+            block = None
+    if block is not None or not poses:
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA output is empty or has an incomplete pose.")
+    return poses
+
+
+def require_matching_topology(pose: GninaPdbqtPose, conformer_sdf: bytes) -> None:
+    """Apply the same isomeric topology guard used by the interaction adapter."""
+    from meeko import PDBQTMolecule, RDKitMolCreate
+
+    try:
+        pdbqt = PDBQTMolecule(pose.pdbqt.decode("utf-8"), skip_typing=True)
+        ligands = [mol for mol in RDKitMolCreate.from_pdbqt_mol(pdbqt) if mol is not None]
+        supplier = Chem.ForwardSDMolSupplier(
+            io.BytesIO(conformer_sdf), sanitize=True, removeHs=False
+        )
+        template = next(supplier, None)
+        if template is None or next(supplier, None) is not None or len(ligands) != 1:
+            raise ValueError("Expected one reconstructable ligand and one prepared conformer.")
+        ligand_smiles = Chem.MolToSmiles(Chem.RemoveHs(ligands[0]), isomericSmiles=True)
+        expected_smiles = Chem.MolToSmiles(Chem.RemoveHs(template), isomericSmiles=True)
+    except Exception as error:  # noqa: BLE001 - normalize third-party parsing failures
+        raise _error(
+            "GNINA_POSE_TOPOLOGY_UNVERIFIED",
+            "GNINA pose topology could not be reconstructed.",
+            mode=pose.mode,
+            reason=type(error).__name__,
+        ) from error
+    if ligand_smiles != expected_smiles:
+        raise _error(
+            "GNINA_POSE_TOPOLOGY_MISMATCH",
+            "GNINA pose does not match its prepared conformer.",
+            mode=pose.mode,
+            pose_smiles=ligand_smiles,
+            conformer_smiles=expected_smiles,
+        )
