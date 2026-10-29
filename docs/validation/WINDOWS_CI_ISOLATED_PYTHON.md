@@ -168,3 +168,19 @@ test previously passed locally; this failure reported a timeout, not a failed
 assertion. Its per-test limit is now 15 seconds; assertions and product behavior
 are unchanged. The focused seven-test App suite passed on WSL2. The new commit's
 own hosted CI result must be checked independently.
+
+## Interaction-display race follow-up
+
+Windows CI run 40891287744 for `8148a8c` passed backend checks but failed one
+frontend assertion: after selecting all atom contacts, the diagram retained one
+summary line. A read-only review identified a plausible race: the passive
+effect resetting filters for a newly loaded analysis could run after an early
+click and overwrite it. This mechanism is consistent with the failure but was
+not independently reproduced on the local host.
+
+The reset now uses a layout effect, so it runs before the new analysis can be
+painted or clicked. The existing 30-contact assertion and analysis-switch reset
+tests remain unchanged; 29 focused diagram, presentation and panel tests pass
+on WSL2; the panel suite also passed five consecutive runs. This is a timing
+correction, with no change to the stored analysis or
+contact data. Hosted CI must still pass for the new exact commit.

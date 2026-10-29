@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
@@ -90,9 +90,9 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     return () => { disposed = true; };
   }, [entry.catalog_id, molecule.ligand_id, selectedPoseId]);
 
-  // Display settings are scoped to one immutable analysis, not carried into
-  // another pose where the same subtype or contact may not exist.
-  useEffect(() => {
+  // Reset before the new analysis can be painted or clicked. A deferred effect
+  // could otherwise overwrite a user's choice immediately after it appeared.
+  useLayoutEffect(() => {
     setContactType("");
     setDetail("summary");
   }, [analysis?.analysis_id]);
