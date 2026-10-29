@@ -23,6 +23,7 @@ jobs:
           cache: npm
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -30,6 +31,42 @@ jobs:
           cache-dependency-path: |
             requirements/windows-py312.lock
             requirements/windows-packaging.lock
+
+      # The hosted interpreter carries unrelated tools (CI run 40808598327: pipx 1.18.4
+      # requiring newer filelock/packaging than the locks), which made `pip check` fail.
+      # Every later `python` resolves to this clean, project-only virtual environment.
+      - name: Create isolated Python environment
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP "ankora-ci-venv"
+          & "${{ steps.setup-python.outputs.python-path }}" -m venv $venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VIRTUAL_ENV=$venv" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Join-Path $venv "Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify the isolated Python environment
+        shell: python
+        run: |
+          import importlib.metadata
+          import os
+          import site
+          import sys
+          from pathlib import Path
+
+          venv = Path(os.environ["VIRTUAL_ENV"]).resolve()
+          if sys.prefix == sys.base_prefix or Path(sys.prefix).resolve() != venv:
+              sys.exit(f"python on PATH is not the isolated environment: {sys.executable}")
+          if site.ENABLE_USER_SITE:
+              sys.exit("User site-packages must be disabled in the isolated environment.")
+          distributions = list(importlib.metadata.distributions())
+          outside = sorted(
+              f"{dist.metadata['Name']} at {dist.locate_file('')}"
+              for dist in distributions
+              if not Path(str(dist.locate_file(""))).resolve().is_relative_to(venv)
+          )
+          if outside:
+              sys.exit(f"Distributions outside the isolated environment are visible: {outside}")
+          names = sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in distributions)
+          print(f"Isolated interpreter {sys.executable} (base {sys.base_prefix}); {names}")
 
       - name: Reject private absolute paths
         run: python scripts/check_public_paths.py
