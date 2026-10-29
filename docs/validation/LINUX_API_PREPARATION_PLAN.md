@@ -49,3 +49,27 @@ geometry is an acceptance threshold. Tool outputs remain in the project data
 directory, whose root is separate from any user project.
 
 The planned run will be appended below after execution.
+
+## Observed run — 2026-10-29
+
+The predeclared Linux WSL2 API smoke completed in a new isolated project.
+The real API returned success for structure import, template-based receptor
+inspection, receptor preparation, ligand import, conformer generation,
+ligand PDBQT preparation, binding-site creation and Vina execution. The Vina
+job completed with three sequential poses, whose downloaded bytes matched
+their recorded SHA-256 hashes. Original source bytes remained unchanged.
+
+- Evidence JSON SHA-256: `db178bd662b3644b6667d49593d028ab0a5038eb63ed47ad6026e0eb4ab9d923`.
+- Raw Vina PDBQT SHA-256: `22a94ca6e959979a73c863dcc1527155f15ad50f6c3c16403cfbb56031419b6d`.
+- Vina stdout SHA-256: `8bd81fc26945c8476a5d85bc4c478e916d5fa93d8f391d62a46687305b2f5b00`;
+  Vina stderr was empty (SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+- Receptor output stages selected, PQR, protonated PDB, Meeko input and PDBQT
+  each matched their recorded file hashes. Recorded tool versions include
+  PDB2PQR 3.7.1, PROPKA 3.5.1, Meeko 0.7.1 and Vina 1.2.7. The raw PDB2PQR
+  stderr is retained; it includes warnings that 465 header lines were ignored
+  in its output. The API receptor record itself reported no warnings.
+- Fifteen focused API/guard tests passed on Linux, and the three new guard
+  tests passed on native Windows. Ruff and focused mypy checks passed.
+
+The result tests this exact fixture and protocol only. It is not a GUI test,
+redocking, biological validation, release acceptance or proof of accuracy.
