@@ -52,7 +52,16 @@ it("offers the portable campaign bundle and states its existing M9 evidence", as
 
   expect(await screen.findByText("283 molecules exported")).toBeInTheDocument();
   expect(screen.getByText("PIK3CD validation · repeat 2")).toBeInTheDocument();
-  expect(screen.getByText("27 Aug 2026, 06:00:00")).toBeInTheDocument();
+  const localTimestamp = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date("2026-08-27T12:00:00Z"));
+  expect(screen.getByText(localTimestamp)).toBeInTheDocument();
   expect(screen.getByText("cccccccccccc…")).toBeInTheDocument();
   expect(screen.getByText("dddddddddddd…")).toBeInTheDocument();
   expect(screen.getByText("2 pose analyses · 3 saved figures")).toBeInTheDocument();

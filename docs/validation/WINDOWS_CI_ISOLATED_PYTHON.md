@@ -149,3 +149,12 @@ After the correction, mypy passed over 142 source files on native Windows and
 Linux. Linux subprocess tests passed 20 with two Windows-specific skips;
 native Windows passed seven with 15 POSIX-only skips. A new hosted CI run is
 required; this local evidence is not a claim that the full CI is green.
+
+## CI timezone follow-up
+
+The Windows CI run for commit `7050bf7` passed the previous backend and typing
+gates but failed the campaign export frontend test: it asserted a timestamp in
+the developer's local timezone while the runner uses UTC. The test now checks
+the recorded UTC instant formatted in the environment's local timezone, matching
+the existing UI contract. Five focused tests passed independently under both
+`TZ=UTC` and `TZ=America/Mexico_City`; application date behavior was not changed.
