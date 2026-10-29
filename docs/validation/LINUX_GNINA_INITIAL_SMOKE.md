@@ -34,3 +34,24 @@ Make byte-verified copies in a new create-only run directory.
 
 No release, multi-ligand, native workstation, docking-accuracy, reproducibility
 or packaging claim follows from this single test.
+
+## First observed execution
+
+The official asset's published size and SHA-256 matched. On Ubuntu 24.04 WSL2
+the version probe reported `gnina v1.3.3 master:6fe1ce2`; `--help` completed.
+The predeclared synthetic-ethanol docking completed with exit code 0 in 3.23 s;
+`nvidia-smi` observed the GNINA PID as a GPU compute process. The two-pose SDF
+SHA-256 is `6d2256abe89a9c1a73a5a080a697acae76c09b3a6bee19d0c846f4414d347b3f`;
+the machine-readable evidence SHA-256 is
+`33175d77626868886e8f31f8e87eb91b4dd0c803fbdda0d010f1c86fa5aacd10`.
+The original input hashes remained unchanged.
+
+Observed SDF properties on each record include `minimizedAffinity`,
+`CNNscore`, `CNNaffinity`, `CNN_VS` and `CNNaffinity_variance`. The raw
+two-record SDF is included as a test fixture; it contains synthetic ethanol,
+not a user's proprietary ligand. GNINA's stdout reported the independently
+generated initial pose outside the chosen box. The input had explicit
+hydrogens and the returned SDF has only the retained hydrogens: the upcoming
+integration must make GNINA's hydrogen handling explicit and verify topology
+and coordinates before connecting the result to interactions or redocking.
+No inference about binding activity follows from this short calculation.
