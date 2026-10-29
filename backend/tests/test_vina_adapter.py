@@ -116,15 +116,6 @@ def test_parse_vina_poses_rejects_output_without_structured_result() -> None:
 
 
 @pytest.mark.parametrize(
-    ("simulated_system", "expected_message"),
-    [
-        ("Windows", "AutoDock Vina is not configured on this Windows system."),
-        ("Linux", "AutoDock Vina is not configured on this Linux system."),
-        ("Darwin", "AutoDock Vina is not configured on this system."),
-        ("", "AutoDock Vina is not configured on this system."),
-    ],
-)
-@pytest.mark.parametrize(
     "discovered_state",
     [
         DiscoveredTool(available=False, path=None, version=None),
@@ -132,10 +123,8 @@ def test_parse_vina_poses_rejects_output_without_structured_result() -> None:
         DiscoveredTool(available=False, path="/synthetic/vina", version="1.2.7"),
     ],
 )
-def test_probe_vina_unavailable_reports_platform_message_and_preserves_error_contract(
+def test_probe_vina_unavailable_preserves_frozen_error_contract(
     monkeypatch: pytest.MonkeyPatch,
-    simulated_system: str,
-    expected_message: str,
     discovered_state: DiscoveredTool,
 ) -> None:
     monkeypatch.setenv("ANKORA_VINA_PATH", "/synthetic/configured/vina")
@@ -149,7 +138,6 @@ def test_probe_vina_unavailable_reports_platform_message_and_preserves_error_con
         raise AssertionError("run_tool must not be called when Vina is unavailable")
 
     monkeypatch.setattr(vina, "discover_vina", fake_discover_vina)
-    monkeypatch.setattr(vina, "_host_system", lambda: simulated_system)
     monkeypatch.setattr(vina, "run_tool", forbid_run_tool)
 
     with pytest.raises(AnkoraDomainError) as captured:
@@ -158,7 +146,7 @@ def test_probe_vina_unavailable_reports_platform_message_and_preserves_error_con
     assert observed_configured_paths == ["/synthetic/configured/vina"]
     assert captured.value.code == "SCIENTIFIC_TOOL_UNAVAILABLE"
     assert captured.value.stage == "docking_configuration"
-    assert captured.value.message == expected_message
+    assert captured.value.message == "AutoDock Vina is not configured on this Windows system."
     assert captured.value.status_code == 422
     assert captured.value.details == {
         "tool": "AutoDock Vina",
@@ -167,20 +155,11 @@ def test_probe_vina_unavailable_reports_platform_message_and_preserves_error_con
     assert captured.value.recoverable is True
 
 
-@pytest.mark.parametrize(
-    ("windows_rules", "simulated_system", "expected_message"),
-    [
-        (True, "Windows", "AutoDock Vina is not configured on this Windows system."),
-        (False, "Linux", "AutoDock Vina is not configured on this Linux system."),
-        (False, "FreeBSD", "AutoDock Vina is not configured on this system."),
-    ],
-)
+@pytest.mark.parametrize("windows_rules", [True, False])
 def test_probe_vina_preserves_original_discovery_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     windows_rules: bool,
-    simulated_system: str,
-    expected_message: str,
 ) -> None:
     missing_path = tmp_path / "missing" / ("vina.exe" if windows_rules else "vina")
     non_executable_file = tmp_path / "plain-file"
@@ -188,7 +167,6 @@ def test_probe_vina_preserves_original_discovery_failures(
     non_executable_file.chmod(0o644)
 
     monkeypatch.setattr(discovery, "_windows_host", lambda: windows_rules)
-    monkeypatch.setattr(vina, "_host_system", lambda: simulated_system)
 
     def forbid_run_tool(**_: object) -> ToolExecution:
         raise AssertionError("run_tool must not be called when discovery fails")
@@ -209,7 +187,7 @@ def test_probe_vina_preserves_original_discovery_failures(
 
         assert captured.value.code == "SCIENTIFIC_TOOL_UNAVAILABLE"
         assert captured.value.stage == "docking_configuration"
-        assert captured.value.message == expected_message
+        assert captured.value.message == "AutoDock Vina is not configured on this Windows system."
         assert captured.value.status_code == 422
         assert captured.value.details == {
             "tool": "AutoDock Vina",

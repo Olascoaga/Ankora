@@ -168,12 +168,46 @@ The exact command, input copies, streams, raw output, and pose identities are
 retained as local create-only evidence. This is not application-level or
 scientific acceptance, a redocking result, or a Linux workstation test.
 
-## Follow-up: Vina discovery message
+## Earlier Vina discovery-message change
 
-The native Vina adapter now identifies Linux when Vina is unavailable, while
-preserving the original Windows wording, error code, stage, details, and
-discovery behavior. Simulated Windows, Linux, and other platforms are covered
-by adapter tests. On the reviewed branch, 28 Vina adapter and docking tests
-passed on Linux, and 19 adapter tests passed on native Windows; Ruff and
-focused mypy checks passed. This is an error-message portability correction,
-not additional docking or scientific validation.
+An earlier Linux-specific unavailable-message change passed 28 Vina adapter
+and docking tests on Linux and 19 adapter tests on Windows. It was subsequently
+reverted because the Vina source file is hash-bound by a frozen historical
+protocol. The restored message may mention Windows on Linux; correcting that
+presentation without changing frozen parser identity remains future work.
+
+## Follow-up: Windows CI regressions on `a24190b` (run `40811138710`)
+
+GitHub Actions Windows run `40811138710` on PR head `a24190b` exposed 11 test
+failures from two regressions:
+
+1. **Frozen Vina parser-source hash (`2` failures):**
+   `test_primary_vina_executor_is_hash_bound_before_real_docking` and
+   `test_recorded_primary_plan_closes_before_any_score_is_seen` failed because
+   commit `1f19366` modified `backend/src/ankora_backend/adapters/engines/vina.py`
+   for a platform-specific unavailable message. That file's exact bytes
+   (`7120` bytes, SHA-256
+   `e13e32f5b6c401966debe80fe0049f4ae87f1cc3c8eb31f4566c57c1acc50993`) are
+   hash-bound as `strict_pose_parser` / `parser_source` in
+   `LIT_PCBA_ANKORA_VS_V1.vina-executor-readiness.json` and
+   `LIT_PCBA_ANKORA_VS_V1.vina-primary-plan.json`. `vina.py` is restored
+   byte-for-byte to its frozen pre-`1f19366` state, and
+   `backend/tests/test_vina_adapter.py` is reconciled to verify the frozen
+   `probe_vina` unavailable, discovery-failure, and version-probe contracts
+   without modifying `vina.py` or frozen benchmark manifests.
+2. **Windows CRLF translation in synthetic smoke-test CSV fixtures (`9` failures):**
+   Nine tests in `backend/tests/test_linux_vina_smoke.py` failed on Windows at
+   `input_verification` (`role="pocket_predictions"`) because `_fixtures` and
+   `_run` wrote the synthetic `predictions.csv` fixture via
+   `Path.write_text(..., encoding="utf-8")`, translating `\n` to `\r\n` on
+   Windows while `_pinned` hashed the `\n` UTF-8 bytes. The test helpers now
+   write `predictions.csv` with `write_bytes(predictions.encode("utf-8"))`,
+   keeping synthetic fixture bytes identical across Windows and Linux without
+   weakening `validate_linux_vina_smoke.py` hash or pocket verification, and an
+   explicit LF/CRLF byte-identity test covers both mismatch and pinned-CRLF
+   cases.
+
+Coordinator focused execution passed 30 tests on Linux and 30 on native
+Windows, including both frozen-parser checks and the synthetic smoke tests.
+Ruff and focused mypy passed. A new remote CI run remains required; remote CI
+is not claimed green here.

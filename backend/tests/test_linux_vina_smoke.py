@@ -16,7 +16,6 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-
 from ankora_backend.adapters.engines.vina import VinaInstallation, build_vina_arguments
 from ankora_backend.execution.cancellable_subprocess import CancellableToolExecution
 from ankora_backend.schemas.binding_sites import BindingBox
@@ -103,7 +102,7 @@ def _fixtures(tmp_path: Path) -> dict[str, Path]:
     }
     paths["receptor"].write_bytes(RECEPTOR)
     paths["ligand"].write_bytes(LIGAND)
-    paths["pocket_predictions"].write_text(PREDICTIONS, encoding="utf-8")
+    paths["pocket_predictions"].write_bytes(PREDICTIONS.encode("utf-8"))
     return paths
 
 
@@ -111,7 +110,7 @@ def _pinned(smoke: ModuleType, predictions: str = PREDICTIONS) -> Any:
     return smoke.PinnedIdentities(
         receptor_sha256=hashlib.sha256(RECEPTOR).hexdigest(),
         ligand_sha256=hashlib.sha256(LIGAND).hexdigest(),
-        pocket_predictions_sha256=hashlib.sha256(predictions.encode()).hexdigest(),
+        pocket_predictions_sha256=hashlib.sha256(predictions.encode("utf-8")).hexdigest(),
         vina_sha256=hashlib.sha256(BINARY).hexdigest(),
     )
 
@@ -126,7 +125,7 @@ def _run(
 ) -> tuple[dict[str, Any], Path]:
     paths = _fixtures(tmp_path)
     if predictions != PREDICTIONS:
-        paths["pocket_predictions"].write_text(predictions, encoding="utf-8")
+        paths["pocket_predictions"].write_bytes(predictions.encode("utf-8"))
     output = tmp_path / "evidence"
     returned = smoke.run_smoke(
         **paths,
@@ -344,3 +343,38 @@ def test_pinned_identities_and_protocol_are_those_of_the_plan(smoke: ModuleType)
     assert "(-23.7785, 40.9869, 25.9487)" in plan
     for setting in ("20261028", "exhaustiveness | 2", "num_modes | 3", "cpu_threads | 2"):
         assert setting in plan
+
+
+def test_predictions_fixture_bytes_are_newline_exact_across_platforms(
+    smoke: ModuleType, tmp_path: Path
+) -> None:
+    adapter = FakeAdapter(tmp_path)
+    paths = _fixtures(tmp_path)
+    assert paths["pocket_predictions"].read_bytes() == PREDICTIONS.encode("utf-8")
+    assert b"\r\n" not in paths["pocket_predictions"].read_bytes()
+
+    crlf_predictions = PREDICTIONS.replace("\n", "\r\n")
+    paths["pocket_predictions"].write_bytes(crlf_predictions.encode("utf-8"))
+    mismatched = smoke.run_smoke(
+        **paths,
+        output=tmp_path / "evidence-crlf-mismatch",
+        probe=adapter.probe,
+        execute=adapter.execute,
+        host=("linux", "x86_64"),
+        pinned=_pinned(smoke, PREDICTIONS),
+    )
+    assert mismatched["status"] == "failed"
+    assert mismatched["failure"]["stage"] == "input_verification"
+    assert mismatched["failure"]["details"]["role"] == "pocket_predictions"
+    assert (adapter.probed, adapter.calls) == (0, [])
+
+    matched = smoke.run_smoke(
+        **paths,
+        output=tmp_path / "evidence-crlf-pinned",
+        probe=adapter.probe,
+        execute=adapter.execute,
+        host=("linux", "x86_64"),
+        pinned=_pinned(smoke, crlf_predictions),
+    )
+    assert matched["status"] == "completed"
+    assert len(adapter.calls) == 1
