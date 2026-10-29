@@ -20,6 +20,7 @@ from ankora_backend.adapters.engines.autodock_gpu import (
     AutoDockGpuInstallation,
     _version_identity,
     build_arguments,
+    execution_device_report,
     require_device,
     run_reports_success,
 )
@@ -61,6 +62,21 @@ def test_version_identity_preserves_windows_contract_and_linux_unreported_fields
     assert _version_identity(linux, linux=False) is None
     assert _version_identity(linux, linux=True) == ("1.6", "unreported", None)
     assert _version_identity("AutoDock-GPU version: v1.6 unexpected", linux=True) is None
+
+
+def test_execution_device_report_preserves_uncertainty_and_probe_mismatch() -> None:
+    cuda = "Cuda device: NVIDIA GeForce RTX synthetic\n"
+    assert execution_device_report(cuda, "", probed_device="NVIDIA GeForce RTX synthetic") == {
+        "status": "reported", "runtime": "CUDA", "device_name": "NVIDIA GeForce RTX synthetic",
+        "matches_probe": True,
+    }
+    assert execution_device_report("OpenCL device: other\n", "", probed_device="expected") == {
+        "status": "reported", "runtime": "OpenCL", "device_name": "other", "matches_probe": False,
+    }
+    assert execution_device_report("", "", probed_device="expected")["status"] == "missing"
+    ambiguous = execution_device_report(cuda, "OpenCL device: other\n", probed_device="expected")
+    assert ambiguous["status"] == "ambiguous"
+    assert ambiguous["device_name"] is None and ambiguous["matches_probe"] is None
 
 
 def test_probe_records_linux_version_without_inventing_build(

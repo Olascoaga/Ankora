@@ -157,6 +157,13 @@ def test_a_completed_job_reports_clusters_and_names_its_backend(
     assert record.status is AutoDockJobStatus.COMPLETED  # type: ignore[attr-defined]
     assert record.backend is AutoDockBackend.GPU  # type: ignore[attr-defined]
     assert record.clusters and record.runs  # type: ignore[attr-defined]
+    assert record.provenance.parameters["execution_device_report"] == {  # type: ignore[attr-defined]
+        "status": "reported", "runtime": "OpenCL", "device_name": "synthetic",
+        "matches_probe": False,
+    }
+    assert WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED in {  # type: ignore[attr-defined]
+        warning.code for warning in record.warnings  # type: ignore[attr-defined]
+    }
     # Every ranked run got its own create-only pose file.
     for run in record.runs:  # type: ignore[attr-defined]
         path = service.pose_content_path(started.job_id, run.artifact.artifact_id)
@@ -164,23 +171,19 @@ def test_a_completed_job_reports_clusters_and_names_its_backend(
     service.shutdown()
 
 
-def test_every_job_states_that_it_cannot_be_reproduced(
+def test_every_job_states_that_repeatability_is_unverified(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Six repeats of one seed gave six different rankings on real hardware.
-
-    Ankora's provenance model promises recorded inputs reproduce a result. This
-    backend cannot keep that promise, so it says so on the record itself rather
-    than leaving a scientist to infer determinism from the presence of a seed.
-    """
+    """A historical result must not be presented as a measurement of this job."""
     service, request = _fixture(tmp_path, monkeypatch)
 
     record = service.start(request)
 
     assert record.bitwise_reproducible is False
-    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {
+    assert WarningCode.DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED in {
         warning.code for warning in record.warnings
     }
+    assert all("measured_spread_kcal_mol" not in warning.details for warning in record.warnings)
     service.shutdown()
 
 
@@ -194,6 +197,21 @@ def test_the_device_is_recorded_because_hardware_changes_the_result(
     assert record.autodock_gpu.device_name == DEVICE
     assert record.autodock_gpu.build == "Release"
     service.shutdown()
+
+
+def test_execution_device_warning_does_not_infer_missing_or_conflicting_identity() -> None:
+    matching = {"status": "reported", "runtime": "CUDA", "device_name": "GPU",
+                "matches_probe": True}
+    assert gpu_module._execution_device_warning(matching) == []
+    for report in (
+        {"status": "missing", "runtime": None, "device_name": None, "matches_probe": None},
+        {"status": "ambiguous", "runtime": None, "device_name": None, "matches_probe": None},
+        {**matching, "matches_probe": False},
+    ):
+        warnings = gpu_module._execution_device_warning(report)
+        assert len(warnings) == 1
+        assert warnings[0].code == WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED
+        assert warnings[0].details["execution_device_report"] == report
 
 
 def test_a_machine_with_no_opencl_device_is_refused_before_any_record_exists(
@@ -394,6 +412,13 @@ def test_a_campaign_is_one_invocation_over_a_file_list(
     assert "--lfile" not in record.command
     assert "--resnam" not in record.command
     assert record.provenance.parameters["invocations"] == 1
+    assert record.provenance.parameters["execution_device_report"] == {
+        "status": "reported", "runtime": "OpenCL", "device_name": "synthetic",
+        "matches_probe": False,
+    }
+    assert WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED in {
+        warning.code for warning in record.warnings
+    }
     service.shutdown()
 
 
@@ -531,7 +556,7 @@ def test_a_campaign_states_the_backend_and_its_irreproducibility(
 
     assert record.backend is AutoDockBackend.GPU
     assert record.bitwise_reproducible is False
-    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {w.code for w in record.warnings}
+    assert WarningCode.DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED in {w.code for w in record.warnings}
     service.cancel_batch(record.batch_id)
     service.shutdown()
 

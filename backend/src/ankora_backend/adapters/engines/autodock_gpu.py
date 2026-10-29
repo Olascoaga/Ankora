@@ -56,6 +56,10 @@ _LINUX_VERSION_PATTERN = re.compile(
 )
 # "OpenCL device:                           NVIDIA GeForce RTX 5050 Laptop GPU"
 _DEVICE_PATTERN = re.compile(r"^\s*(?:OpenCL|Cuda)\s+device:\s*(.+?)\s*$", re.MULTILINE)
+_EXECUTION_DEVICE_PATTERN = re.compile(
+    r"^[ \t]*(OpenCL|CUDA)[ \t]+device:[ \t]*([^\r\n]+?)[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 # The tool's own verdicts, captured verbatim from real successful and failed
 # runs. Exit codes are useless here, so these are the only signal.
@@ -98,6 +102,31 @@ def _version_identity(output: str, *, linux: bool) -> tuple[str, str, str | None
         if linux_match:
             return linux_match.group(1), "unreported", None
     return None
+
+
+def execution_device_report(
+    stdout: str, stderr: str, *, probed_device: str
+) -> dict[str, object]:
+    """Record the tool's report, not an independent proof of hardware execution."""
+    matches = {
+        (runtime.casefold(), device.strip())
+        for runtime, device in _EXECUTION_DEVICE_PATTERN.findall(f"{stdout}\n{stderr}")
+        if device.strip()
+    }
+    if len(matches) != 1:
+        return {
+            "status": "missing" if not matches else "ambiguous",
+            "runtime": None,
+            "device_name": None,
+            "matches_probe": None,
+        }
+    runtime, device = next(iter(matches))
+    return {
+        "status": "reported",
+        "runtime": "CUDA" if runtime == "cuda" else "OpenCL",
+        "device_name": device,
+        "matches_probe": device == probed_device,
+    }
 
 
 def _linux_host() -> bool:

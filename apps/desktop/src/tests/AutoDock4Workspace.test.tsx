@@ -381,7 +381,7 @@ it("states the GPU's irreproducibility before anything is run", () => {
 
   chooseGpuBackend();
 
-  expect(screen.getByText(/does not reproduce a run from its seed/)).toBeInTheDocument();
+  expect(screen.getByText(/does not establish reproducibility for this GPU run/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Run AutoDock-GPU" })).toBeInTheDocument();
 });
 
