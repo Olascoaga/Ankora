@@ -115,3 +115,39 @@ The following are not executed or claimed here; Codex will append acceptance:
   matrix (P2Rank on the fixed upstream receptor), recording raw streams,
   version and output hashes.
 - The Windows-native rerun of the adapter and bundled tests.
+
+## Coordinator acceptance — real native prediction
+
+On Ubuntu 24.04 WSL2, the existing upstream PDBFixer 1BHL receptor fixture
+(SHA-256 `7ff77930c706778d5009d49fe314d36829fb24b42392c9ca76a49b91301f228f`)
+was analyzed through the native adapter with two available CPUs. P2Rank 2.5.1
+returned exit code 0 and wrote a structured predictions CSV containing one
+candidate (CSV SHA-256
+`42574b705d8a1d6e0fd3a122b05b879e3cc5855bc30b6aa32c777d9eec458e7b`).
+This is a runtime smoke, not a claim that the pocket is experimentally validated.
+
+The native launcher, Java executable and P2Rank main JAR were separately hashed:
+
+- Launcher: `ad7bedfcb833b639aebe171c005920017e68acb071cb5508e8147726ad5d115c`
+- OpenJDK 21 executable: `635baf419576ec4ad4f785014283fb93f1be1103e6d02252f7a00517f0e2a245`
+- Main P2Rank JAR: `4d73a85b796bd5ec5563d840abb5b1005f37b4651fd7f8aaad4b01a936ea1ece`
+
+The existing cached upstream P2Rank 2.5.1 archive was independently verified
+against SHA-256 `d243f2d9036ac053fefb9407b5fe1c85f4fe077c519fd975ac585e995feab274`.
+The development runtime uses the previously reviewed
+`ankora-vecmath-1.5.2-only-v1` variant: the documented vecmath 1.3.1 file was
+omitted after verifying its own hash, and vecmath 1.5.2 was retained and
+verified. This does not establish redistribution acceptance for the full Linux
+runtime or all of its dependencies.
+
+The corrected create-only native smoke manifest SHA-256 is
+`57744f25ad68edfd87e0acbf0b1940e7d30275ca1f9e344587d74a81e59d0602`.
+Its P2Rank top-level executable identity is the launcher hash above and its
+Java probe hash is recorded separately. Raw commands, outputs, version probe,
+fixture and output hashes remain in ignored local evidence. The earlier smoke
+with Java incorrectly attributed as P2Rank is retained rather than overwritten.
+
+The complete matrix reports **9/10 passed and overall failed** because Linux
+AutoDock-GPU acceptance remains open. Linux P2Rank adapter/service-focused tests
+passed (35); the Windows adapter/bundled checks passed (22, six Linux-only skips).
+The subsequent evidence-identity tests passed separately on Linux and Windows.

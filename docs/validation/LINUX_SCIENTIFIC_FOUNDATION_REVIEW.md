@@ -125,3 +125,27 @@ bounded CPU docking/redocking campaign through the real application services.
 Only after that proceed to independent GPU acceptance, a complete Linux bundle
 and final native-workstation validation. Existing Windows installers, UI and
 scientific projects remain unchanged by this unit.
+
+## Follow-up verification — Linux P2Rank and Windows CI
+
+Native P2Rank execution and Java probing were added and tested, followed by a
+separate correction to preserve each executable identity and partial timeout
+evidence. See [the native P2Rank record](LINUX_P2RANK_EXECUTION.md) and
+[the smoke identity record](P2RANK_SMOKE_IDENTITY.md). A real P2Rank prediction
+on the fixed upstream receptor and the existing preparation checks passed;
+the full scientific smoke remains **9/10 and overall failed**, with Linux
+AutoDock-GPU still unavailable.
+
+The earlier web legal-inventory failure occurred before the new worktree had
+its web and Rust prerequisites. After `npm ci` and with `cargo` available, the
+unchanged static inventory check passed with 206 matching web identities. The
+Windows installer path tests and outdated guide assertion were reconciled and
+exercised on native Windows. A separate isolated Windows wheel environment
+matched 80 locked distributions and passed the 11 focused CI failure-case
+tests; a hosted CI run of the new workflow remains required.
+
+After these changes, the Linux backend suite reported **1032 passed, 6 failed,
+4 skipped**. The six failures all concern strict bitwise comparison of the
+historical metrics/sensitivity records described above. The four skips are
+Windows-only path/process tests that passed separately on Windows. Frozen
+artifacts and their existing strict verification were not changed.
