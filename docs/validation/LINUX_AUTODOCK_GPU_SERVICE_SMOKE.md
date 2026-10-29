@@ -41,3 +41,23 @@ original before testing, the original remains unchanged, successful poses
 match their recorded hashes, device report and probe are distinguished, and
 resource reservations are released. Record failure without changing parameters
 or silently retrying. No score or RMSD is a scientific acceptance criterion.
+
+## First execution and parser correction
+
+The predeclared `run-01` was performed once. AutoGrid succeeded, and the GPU
+executable reported success on the RTX 5050, but Ankora rejected the DLG as
+`AUTODOCK4_OUTPUT_INVALID`. The raw DLG contains two complete conformations;
+the second binding energy is written as `+0.70` in the pose, ranking and
+histogram. The parser accepted negative and unsigned numbers, but not this
+valid explicit positive sign. The isolated run's `evidence.json` SHA-256 is
+`013669bd5ce7835e4886ed2948b078f61433204e76f9a9f2d942683ee67c9efc`;
+the source project was verified unchanged. This failed application result is
+retained as-is, including the original DLG and tool output.
+
+The parser was corrected to accept explicit `+` in those three energy fields;
+it still rejects missing and non-finite energies. The regression excerpt is
+derived from the actual preserved records and intentionally omits coordinates.
+After this fix, a second isolated execution is predeclared using exactly the
+inputs and parameters above, with a new output directory. This is an
+engineering regression check after observing a failure, not an independent
+scientific validation or a replacement for the first execution.
