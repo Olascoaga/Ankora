@@ -194,3 +194,12 @@ tests. Synthetic fixtures carry no scientific meaning. They cover:
 - The result is only as trustworthy as the independently chosen SHA-256
   anchor.
 - No Windows run of the diagnostic is recorded here.
+
+## Independent Windows regression — 2026-10-28
+
+The 65 diagnostic tests and three unchanged strict metric unit tests also
+passed together on native Windows 11 with Python 3.12.13 from the existing
+scientific environment. These tests ran against the integrated Linux-port
+source, with an isolated test directory. This establishes that this focused
+test set passes on both hosts; it does not imply bitwise parity of every
+scientific calculation or a green hosted CI run.
