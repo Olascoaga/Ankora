@@ -69,3 +69,21 @@ The Vina source must have the historical SHA-256
 `e13e32f5b6c401966debe80fe0049f4ae87f1cc3c8eb31f4566c57c1acc50993`.
 The first output remains preserved; neither settings nor score thresholds are
 changed. The result is recorded separately below after execution.
+
+### Integrated-branch repeat — observed
+
+The independently predeclared repeat completed with exit code 0 on WSL2 using
+the restored, hash-verified Vina source and the same pinned development
+fixtures and settings. It produced two sequential poses; their persisted
+files matched recorded hashes and sizes. The work lease was released and the
+resource arbiter reported zero active allocations. Both saved streams matched
+the execution record, and the job record remained available.
+
+- Evidence JSON SHA-256: `532ffea7b4ba5f8b97d40ee8ac2ef84c5ba012f377a07f3d966463259c2caea1`.
+- Raw pose file SHA-256: `35e1a021702efcfe01d1b5000981c70451d7d6d1e07cbc2779df80ced0b5fd22`.
+- stdout SHA-256: `83bfa07d75621fd78fe51d1dda54874280a6a17a2775f12842f25f3912d4b292`; stderr was empty with SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+
+The first and repeated raw pose files have the same digest for these two
+bounded development runs; this does not prove general reproducibility or
+scientific equivalence. The frontend, HTTP API, upstream preparation services,
+redocking, GPU and native workstation acceptance remain outside this smoke.
