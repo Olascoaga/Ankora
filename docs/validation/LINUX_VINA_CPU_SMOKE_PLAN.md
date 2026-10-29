@@ -1,8 +1,7 @@
 # Linux CPU AutoDock Vina engineering smoke — plan (2026-10-28)
 
-**Status: predeclared; not yet executed.** The coordinator runs it after this
-plan is committed and appends the observed outcome. This record must not be
-edited to fit a result.
+**Status: protocol predeclared and subsequently executed.** The observed
+outcome is appended below; the protocol remains unchanged after execution.
 
 ## Purpose and limits
 
