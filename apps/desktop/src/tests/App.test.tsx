@@ -386,6 +386,8 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   fireEvent.click(screen.getByRole("button", { name: "Mark 1 affected residue for removal" }));
   expect(screen.getByRole("combobox", { name: "Decision for ALA 1" })).toHaveValue("remove");
   expect(screen.getByRole("button", { name: "1 affected residue marked for removal", hidden: true })).toBeDisabled();
+  expect(screen.getByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Clear terminal oxygen authorizations" }));
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await waitFor(() => expect(apply).not.toBeDisabled());
   fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIE" } });
@@ -408,13 +410,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
     generate_pdbqt: true,
     protonation: expect.objectContaining({
       enabled: true,
-      authorized_terminal_heavy_atom_additions: [{
-        chain_id: "A",
-        residue_name: "ALA",
-        sequence_number: 1,
-        insertion_code: "",
-        atom_name: "OXT",
-      }],
+      authorized_terminal_heavy_atom_additions: [],
       overrides: [{
         residue: { chain_id: "A", residue_name: "HIS", sequence_number: 5, insertion_code: "" },
         state: "HIE",
