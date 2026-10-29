@@ -192,6 +192,14 @@ export function ReceptorWorkspace({
   const removableProtonationBlockers = protonationBlockingIssues.filter((issue) => issue.allowed_actions.includes("remove"));
   const affectedResidues = meekoAffectedResidues(error);
   const proposedTerminalAdditions = terminalHeavyAtomAdditions(error);
+  const terminalCandidates = (report?.terminal_oxygen_candidates ?? []).filter(
+    (item) => selectedChains.includes(item.chain_id),
+  );
+  const terminalAuthorizationsValid = authorizedTerminalAdditions.every((item) => (
+    selectedChains.includes(item.chain_id)
+    && !selectedIssues.some((issue) => sameResidue(issue.residue, item)
+      && issueDecisions[issue.issue_id]?.action === "remove")
+  ));
   const meekoAffectedIssues = selectedIssues.filter((issue) => (
     issue.allowed_actions.includes("remove")
     && affectedResidues.some((residue) => sameResidue(issue.residue, residue))
@@ -213,7 +221,7 @@ export function ReceptorWorkspace({
     && Number.isInteger(repairSeed) && repairSeed >= 1 && repairSeed <= 2147483647
     && Number.isFinite(restraintForceConstant) && restraintForceConstant > 0
     && Number.isInteger(relaxationMaxIterations) && relaxationMaxIterations >= 1 && relaxationMaxIterations <= 5000;
-  const structuralPlanComplete = numericParametersValid && selectedChains.length > 0
+  const structuralPlanComplete = numericParametersValid && terminalAuthorizationsValid && selectedChains.length > 0
     && waterAction !== null
     && selectedComponents.every((item) => componentActions[item.component_id] !== undefined)
     && selectedIssues.every((issue) => {
@@ -296,6 +304,7 @@ export function ReceptorWorkspace({
     ...(incompleteAltlocs.length ? [`Choose a conformation for ${incompleteAltlocs.length} alternate-location issue(s).`] : []),
     ...(protonationBlockingIssues.length ? [`Repair or remove ${protonationBlockingIssues.length} incomplete/ambiguous residue issue(s), or disable protonation.`] : []),
     ...(relax && !plannedRepairCount ? ["Disable relaxation or explicitly mark missing atoms for repair."] : []),
+    ...(!terminalAuthorizationsValid ? ["Clear terminal oxygen authorizations for deselected chains or removed residues."] : []),
   ];
   // Capture attempted decisions even when later edits make the plan incomplete.
   const decisionSignature = JSON.stringify({
@@ -651,10 +660,28 @@ export function ReceptorWorkspace({
             }} /><span><strong>Prepare for docking</strong><small>Add hydrogens at the selected pH and create the receptor docking file.</small></span></label> : null}
             <label className="check-row" hidden={uiMode === "guided"}><input type="checkbox" checked={protonate} onChange={(event) => { setProtonate(event.target.checked); if (!event.target.checked) { setGeneratePdbqt(false); setAuthorizedTerminalAdditions([]); } }} /><span><strong>Run PDB2PQR + PROPKA</strong><small>{toolLabel(tools?.pdb2pqr)} · {toolLabel(tools?.propka)}</small></span></label>
             {protonate ? <label className="numeric-field">Target pH<input type="number" min="0" max="14" step="0.1" value={ph} onChange={(event) => setPh(Number(event.target.value))} /></label> : null}
+            {protonate && terminalCandidates.length ? <div className="protonation-blocker terminal-oxygen-candidates" role="region" aria-label="Terminal oxygen review">
+              <strong>Review possible terminal oxygen completion</strong>
+              <p>These observed chain ends have no OXT atom. This does not establish a biological terminus or guarantee that PDB2PQR will add one. Decide individually whether to permit completion; nothing is added now.</p>
+              {terminalCandidates.map((item) => {
+                const identity = terminalAdditionIdentity(item);
+                const authorized = authorizedTerminalAdditions.some((value) => terminalAdditionIdentity(value) === identity);
+                const removed = selectedIssues.some((issue) => sameResidue(issue.residue, item)
+                  && issueDecisions[issue.issue_id]?.action === "remove");
+                return <label className="check-row" key={identity}>
+                  <input type="checkbox" checked={authorized} disabled={removed && !authorized} onChange={(event) => setAuthorizedTerminalAdditions((current) => event.target.checked
+                    ? [...current.filter((value) => terminalAdditionIdentity(value) !== identity), item]
+                    : current.filter((value) => terminalAdditionIdentity(value) !== identity))} />
+                  <span><strong>Allow OXT · {item.residue_name} {item.chain_id}:{item.sequence_number}{item.insertion_code}</strong><small>{removed ? "This residue is marked for removal; clear its authorization." : "Optional; the final prepared chain is checked again."}</small></span>
+                </label>;
+              })}
+              <small>Removing residues or changing chains can change the final chain end. Ankora rejects all unapproved heavy-atom changes.</small>
+            </div> : null}
             {authorizedTerminalAdditions.length ? <div className="protonation-blocker authorized-terminal-additions" role="status">
               <strong>{authorizedTerminalAdditions.length} exact terminal heavy-atom addition{authorizedTerminalAdditions.length === 1 ? "" : "s"} authorized.</strong>
               <ul>{authorizedTerminalAdditions.map((item) => <li key={terminalAdditionIdentity(item)}>{item.atom_name} · {item.residue_name} {item.chain_id}:{item.sequence_number}{item.insertion_code}</li>)}</ul>
               <small>Only these identities may be added by PDB2PQR; every other heavy-atom change remains a hard failure.</small>
+              <button type="button" onClick={() => setAuthorizedTerminalAdditions([])}>Clear terminal oxygen authorizations</button>
             </div> : null}
             <label className="check-row" hidden={uiMode === "guided"}><input type="checkbox" checked={generatePdbqt} disabled={!protonate} onChange={(event) => setGeneratePdbqt(event.target.checked)} /><span><strong>Generate receptor PDBQT with Meeko</strong><small>{toolLabel(tools?.meeko)}</small></span></label>
             <p className="field-note">PDBFixer is invoked only for residues explicitly marked Repair. {toolLabel(tools?.pdbfixer)}</p>

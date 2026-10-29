@@ -151,6 +151,7 @@ export interface ReceptorInspectionReport {
   components: ReceptorComponent[];
   water_count: number;
   issues: ReceptorIssue[];
+  terminal_oxygen_candidates?: TerminalHeavyAtomAddition[];
   reference_component_id: string | null;
   near_reference_cutoff_angstrom: number;
   warnings: StructuredWarning[];
