@@ -15,6 +15,7 @@ code is zero either way, and every record carries the backend, the device, and
 an explicit warning that a seed alone does not establish repeatability.
 """
 
+import logging
 import os
 import shutil
 import threading
@@ -88,6 +89,7 @@ from ankora_backend.services.resource_arbiter import (
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock_gpu_docking"
+_LOGGER = logging.getLogger(__name__)
 _CODE_PREFIX = "AUTODOCK_GPU"
 _FILELIST_NAME = "campaign.lst"
 
@@ -270,73 +272,59 @@ class AutoDockGpuDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
-        record = self._job_store.load_job(job_id)
-        if self._resources is not None:
-            try:
+        record: AutoDockGpuDockingJobRecord | None = None
+        try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
+            record = self._job_store.load_job(job_id)
+            if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     autodock_gpu_claim(job_id, ligand_count=1),
                     cancel_event=cancel_event,
                 )
-            except ResourceRequestCanceled:
+            if cancel_event.is_set():
                 self._finish(record, status=AutoDockJobStatus.CANCELED)
-                self._forget(job_id)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
                 return
-            except AnkoraDomainError as error:
-                self._finish(
-                    record,
-                    status=AutoDockJobStatus.FAILED,
-                    failure=AutoDockFailure(
-                        code=error.code,
-                        message=error.message,
-                        details=dict(error.details),
-                    ),
-                )
-                self._forget(job_id)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
-                return
-        if cancel_event.is_set():
-            self._finish(record, status=AutoDockJobStatus.CANCELED)
-            self._forget(job_id)
-            if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
-            return
-        running = record.model_copy(
-            update={
-                "status": AutoDockJobStatus.RUNNING,
-                "phase": AutoDockJobPhase.DOCKING,
-                "started_at": datetime.now(UTC),
-            }
-        )
-        self._job_store.update_job(running)
-        try:
+            running = record.model_copy(
+                update={
+                    "status": AutoDockJobStatus.RUNNING,
+                    "phase": AutoDockJobPhase.DOCKING,
+                    "started_at": datetime.now(UTC),
+                }
+            )
+            self._job_store.update_job(running)
             self._execute(running, prepared, cancel_event)
+        except ResourceRequestCanceled:
+            if record is not None:
+                self._finish(record, status=AutoDockJobStatus.CANCELED)
         except _JobCanceled as canceled:
-            self._finish(
-                running,
-                status=AutoDockJobStatus.CANCELED,
-                execution=canceled.execution,
-            )
+            if record is not None:
+                self._finish(
+                    record, status=AutoDockJobStatus.CANCELED, execution=canceled.execution
+                )
         except AnkoraDomainError as error:
-            self._finish(
-                running,
-                status=AutoDockJobStatus.FAILED,
-                failure=AutoDockFailure(
-                    code=error.code, message=error.message, details=dict(error.details)
-                ),
-            )
+            if record is None:
+                record = self._job_store.load_job(job_id)
+            self._finish(record, status=AutoDockJobStatus.FAILED, failure=AutoDockFailure(
+                code=error.code, message=error.message, details=dict(error.details)
+            ))
+        except Exception as error:
+            _LOGGER.exception("Unexpected AutoDock-GPU job error for %s", job_id)
+            if record is None:
+                record = self._job_store.load_job(job_id)
+            self._finish(record, status=AutoDockJobStatus.FAILED, failure=AutoDockFailure(
+                code=f"{_CODE_PREFIX}_JOB_INTERNAL_ERROR",
+                message="An unexpected error interrupted this AutoDock-GPU job.",
+                details={"exception_type": type(error).__name__},
+            ))
         finally:
-            if resource_lease is not None:
-                resource_lease.release()
-            self._forget(job_id)
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
+            try:
+                if resource_lease is not None:
+                    resource_lease.release()
+            finally:
+                self._forget(job_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
 
     def _execute(
         self,
@@ -890,9 +878,9 @@ class AutoDockGpuDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
         try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
             if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     autodock_gpu_claim(batch_id, ligand_count=len(prepared.molecules)),
@@ -936,14 +924,33 @@ class AutoDockGpuDockingService:
                 ),
                 changed_entries=[],
             )
+        except Exception as error:
+            _LOGGER.exception("Unexpected AutoDock-GPU batch error for %s", batch_id)
+            current = self._job_store.load_batch_overview(batch_id)
+            self._job_store.update_batch(
+                current.model_copy(update={
+                    "status": AutoDockJobStatus.FAILED,
+                    "phase": AutoDockJobPhase.COMPLETE,
+                    "completed_at": datetime.now(UTC),
+                    "failure": AutoDockFailure(
+                        code=f"{_CODE_PREFIX}_BATCH_INTERNAL_ERROR",
+                        message="An unexpected error interrupted this AutoDock-GPU batch.",
+                        details={"exception_type": type(error).__name__},
+                    ),
+                    "revision": current.revision + 1,
+                }),
+                changed_entries=[],
+            )
         finally:
-            if resource_lease is not None:
-                resource_lease.release()
-            with self._batch_lock:
-                self._active_batch_id = None
-            self._forget(batch_id)
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
+            try:
+                if resource_lease is not None:
+                    resource_lease.release()
+            finally:
+                with self._batch_lock:
+                    self._active_batch_id = None
+                self._forget(batch_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
 
     def _execute_batch(
         self,

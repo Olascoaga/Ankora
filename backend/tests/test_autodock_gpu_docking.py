@@ -38,6 +38,7 @@ from ankora_backend.schemas.autodock_gpu import (
 from ankora_backend.schemas.warnings import WarningCode
 from ankora_backend.services import autodock_gpu_docking as gpu_module
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
+from ankora_backend.services.resource_arbiter import ResourceArbiter
 
 REAL_LOG = (
     Path(__file__).parent / "fixtures" / "autodock_gpu_real_compound252.dlg"
@@ -141,6 +142,63 @@ def _wait(service: AutoDockGpuDockingService, job_id: str) -> object:
             return record
         time.sleep(0.01)
     raise AssertionError("the synthetic AutoDock-GPU job did not terminate")
+
+
+@pytest.mark.parametrize("failure_point", ["running_update", "execution"])
+def test_unexpected_job_errors_release_gpu_and_record_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_point: str
+) -> None:
+    """Synthetic store/tool failures must not hold the shared GPU slot."""
+    service, request = _fixture(tmp_path, monkeypatch)
+    capacity = 8 * 1024**3
+    arbiter = ResourceArbiter(
+        cpu_threads=2, gpu_slots=1, memory_total_bytes=capacity,
+        memory_reserve_bytes=0, disk_path=tmp_path, disk_total_bytes=capacity,
+        disk_reserve_bytes=0, memory_available=lambda: capacity, disk_free=lambda: capacity,
+    )
+    monkeypatch.setattr(service, "_resources", arbiter)
+    original_update = service._job_store.update_job
+
+    def update(record: object) -> object:
+        if failure_point == "running_update" and record.status == AutoDockJobStatus.RUNNING:
+            raise OSError("synthetic running update failure")
+        return original_update(record)
+
+    def execute(**kwargs: object) -> CancellableToolExecution:
+        raise OSError("synthetic execution failure")
+
+    monkeypatch.setattr(service._job_store, "update_job", update)
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", execute)
+    started = service.start(request)
+    record = _wait(service, started.job_id)
+    service.shutdown()
+
+    assert record.status == AutoDockJobStatus.FAILED
+    assert record.failure.code == "AUTODOCK_GPU_JOB_INTERNAL_ERROR"
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    assert arbiter.snapshot().queued_requests == 0
+    assert not service.has_active_work()
+
+
+def test_failure_to_acquire_work_lease_does_not_leave_job_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _fixture(tmp_path, monkeypatch)
+
+    class BrokenLeases:
+        def acquire(self, *args: object) -> None:
+            raise OSError("synthetic lease failure")
+
+        def release(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(service, "_leases", BrokenLeases())
+    started = service.start(request)
+    record = _wait(service, started.job_id)
+    service.shutdown()
+    assert record.status == AutoDockJobStatus.FAILED
+    assert record.failure.code == "AUTODOCK_GPU_JOB_INTERNAL_ERROR"
+    assert not service.has_active_work()
 
 
 def test_a_completed_job_reports_clusters_and_names_its_backend(
@@ -392,6 +450,34 @@ def _wait_batch(service: AutoDockGpuDockingService, batch_id: str) -> object:
             return record
         time.sleep(0.02)
     raise AssertionError("the synthetic AutoDock-GPU campaign did not terminate")
+
+
+def test_campaign_lease_failure_does_not_block_next_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+
+    class BrokenLeases:
+        def acquire(self, *args: object) -> None:
+            raise OSError("synthetic lease failure")
+
+        def release(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(service, "_leases", BrokenLeases())
+    first = service.start_batch(request)
+    first_result = _wait_batch(service, first.batch_id)
+    deadline = time.monotonic() + 10
+    while service.has_active_work() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    second = service.start_batch(request)
+    second_result = _wait_batch(service, second.batch_id)
+    service.shutdown()
+
+    assert first_result.status == AutoDockJobStatus.FAILED
+    assert first_result.failure.code == "AUTODOCK_GPU_BATCH_INTERNAL_ERROR"
+    assert second_result.status == AutoDockJobStatus.FAILED
+    assert not service.has_active_work()
 
 
 def test_a_campaign_is_one_invocation_over_a_file_list(

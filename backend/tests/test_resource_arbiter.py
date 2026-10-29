@@ -91,6 +91,25 @@ def test_a_waiting_claim_can_be_canceled_without_leaking_capacity(
     assert arbiter.snapshot().gpu_slots_allocated == 0
 
 
+def test_a_capacity_read_failure_does_not_block_the_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arbiter = _arbiter(tmp_path)
+    original_fits = arbiter._fits
+
+    def broken_capacity(claim: ResourceClaim) -> bool:
+        raise OSError("synthetic capacity failure")
+
+    monkeypatch.setattr(arbiter, "_fits", broken_capacity)
+    with pytest.raises(OSError, match="synthetic capacity failure"):
+        arbiter.acquire(_claim("failed"))
+    assert arbiter.snapshot().queued_requests == 0
+    monkeypatch.setattr(arbiter, "_fits", original_fits)
+    lease = arbiter.acquire(_claim("next"))
+    lease.release()
+    assert arbiter.snapshot().cpu_threads_allocated == 0
+
+
 def test_fifo_prevents_a_smaller_later_job_from_cutting_the_queue(
     tmp_path: Path,
 ) -> None:

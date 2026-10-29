@@ -211,18 +211,21 @@ class ResourceArbiter:
         waiter = _Waiter(ticket_id=str(uuid4()), claim=claim, queued_at=monotonic())
         with self._condition:
             self._waiters.append(waiter)
-            while True:
-                if cancel_event is not None and cancel_event.is_set():
-                    self._remove_waiter(waiter.ticket_id)
-                    self._condition.notify_all()
-                    raise ResourceRequestCanceled()
-                if self._waiters[0] is waiter and self._fits(claim):
-                    self._waiters.popleft()
-                    lease_id = str(uuid4())
-                    self._active[lease_id] = claim
-                    self._condition.notify_all()
-                    return ResourceLease(self, lease_id, claim)
-                self._condition.wait(timeout=_WAIT_POLL_SECONDS)
+            try:
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise ResourceRequestCanceled()
+                    if self._waiters[0] is waiter and self._fits(claim):
+                        self._waiters.popleft()
+                        lease_id = str(uuid4())
+                        self._active[lease_id] = claim
+                        self._condition.notify_all()
+                        return ResourceLease(self, lease_id, claim)
+                    self._condition.wait(timeout=_WAIT_POLL_SECONDS)
+            except BaseException:
+                self._remove_waiter(waiter.ticket_id)
+                self._condition.notify_all()
+                raise
 
     def release(self, lease_id: str) -> None:
         with self._condition:
