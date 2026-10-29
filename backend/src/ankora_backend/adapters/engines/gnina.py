@@ -77,6 +77,19 @@ def _linux_host() -> bool:
     return sys.platform.startswith("linux")
 
 
+def _sha256_executable(path: Path) -> str:
+    digest = sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise _error(
+            "GNINA_IDENTITY_UNVERIFIED", "Ankora could not hash the GNINA executable."
+        ) from error
+    return digest.hexdigest()
+
+
 def probe_gnina() -> GninaInstallation:
     """Find and verify a Linux ELF and its reported version; never run on Windows."""
     if not _linux_host():
@@ -89,15 +102,7 @@ def probe_gnina() -> GninaInstallation:
         raise _error(
             "GNINA_EXECUTABLE_INVALID", "GNINA requires a native Linux x86-64 ELF executable."
         )
-    digest = sha256()
-    try:
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError as error:
-        raise _error(
-            "GNINA_IDENTITY_UNVERIFIED", "Ankora could not hash the GNINA executable."
-        ) from error
+    digest = _sha256_executable(path)
     execution = run_tool(
         executable=str(path),
         arguments=["--version"],
@@ -123,7 +128,7 @@ def probe_gnina() -> GninaInstallation:
             detected_version=version,
             required_version=_SUPPORTED_VERSION,
         )
-    return GninaInstallation(str(path), version, digest.hexdigest(), "x86_64")
+    return GninaInstallation(str(path), version, digest, "x86_64")
 
 
 def build_gnina_arguments(
@@ -212,6 +217,12 @@ def execute_gnina(
     This boundary does not itself verify GPU execution or publish results; the
     future service must do both and use an exclusive, create-only directory.
     """
+    if not _linux_host():
+        raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition of Ankora.")
+    if _sha256_executable(Path(installation.executable)) != installation.sha256:
+        raise _error(
+            "GNINA_IDENTITY_CHANGED", "The GNINA executable changed after it was inspected."
+        )
     if output_path.exists():
         raise _error(
             "GNINA_OUTPUT_EXISTS", "The GNINA output already exists; it cannot be overwritten."
@@ -396,6 +407,13 @@ def require_matching_topology(pose: GninaPdbqtPose, conformer_sdf: bytes) -> Non
         template = next(supplier, None)
         if template is None or next(supplier, None) is not None or len(ligands) != 1:
             raise ValueError("Expected one reconstructable ligand and one prepared conformer.")
+        if not ligands[0].GetNumConformers():
+            raise ValueError("The reconstructed ligand has no pose coordinates.")
+        coordinates = ligands[0].GetConformer()
+        for atom in range(ligands[0].GetNumAtoms()):
+            position = coordinates.GetAtomPosition(atom)
+            if not all(math.isfinite(value) for value in (position.x, position.y, position.z)):
+                raise ValueError("The reconstructed ligand has non-finite coordinates.")
         ligand_smiles = Chem.MolToSmiles(Chem.RemoveHs(ligands[0]), isomericSmiles=True)
         expected_smiles = Chem.MolToSmiles(Chem.RemoveHs(template), isomericSmiles=True)
     except Exception as error:  # noqa: BLE001 - normalize third-party parsing failures

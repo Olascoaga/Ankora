@@ -75,3 +75,16 @@ Observe the executable PID on the GPU, retain command/stdout/stderr and output
 hashes, parse each PDBQT score, verify every pose against the exact conformer
 using the same isomeric topology guard, and check the original input hashes.
 This is not an API, GUI, campaign, redocking, or scientific acceptance test.
+
+The declared `adapter-01` check completed with GNINA 1.3.3, an observed CUDA
+process and two PDBQT poses. Ankora's adapter parsed the three score fields in
+the reported order, and each pose passed the isomeric topology check against
+the independently prepared conformer. The generated PDBQT SHA-256 was
+`aa2800f741e15eb5a53c99a66108d72f3c4f20f17fadcae9fba0f5eb57714530`;
+the retained machine evidence SHA-256 was
+`588b17a73ec9f9d8b0efd60737945698d774249df8d246e26cf1c448256608ac`.
+The inputs stayed byte-identical. The adapter supports explicit CPU/CUDA,
+`rescore`, the built-in `dense_1_3` model and `--addH 0 --stripH 0`; it does
+not itself establish actual GPU execution or publish a result. A future
+service must independently verify the requested device, reserve resources,
+persist raw evidence and integrate recovery before exposing GNINA in the UI.

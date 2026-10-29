@@ -92,3 +92,25 @@ CUDA/OpenCL builds or drivers, cancellation of an uninterruptible process,
 the packaged runtime, or a native Linux workstation. Linux distribution and
 native workstation acceptance remain open; no existing Windows binary is used
 as a Linux engine.
+
+## GNINA development — Linux only
+
+The scientist authorized GNINA as a Linux-only engine; see
+[ADR-027](architecture/ADR/ADR-027-linux-gnina.md). The official 1.3.3 CUDA
+12.8 binary was checksum-verified and exercised on the WSL RTX 5050. A backend
+engine boundary now probes Linux executable version and hash, builds explicit
+`rescore` commands using `dense_1_3` and prepared PDBQT inputs, and parses
+ranked SDF/PDBQT poses and separate CNN/empirical scores. PDBQT poses can be
+checked against the prepared conformer using Meeko. See the
+[initial run](validation/LINUX_GNINA_INITIAL_SMOKE.md) and
+[topology and adapter checks](validation/LINUX_GNINA_TOPOLOGY_SMOKE.md).
+
+This is **not yet an application-level GNINA feature**: no GNINA job API,
+durable service, result catalog or docking UI is wired. The backend adapter
+alone does not verify that a requested CUDA run used the GPU. Next integrate
+resource arbitration, observed device evidence, cancellation, work recovery,
+project-scoped persistence and a single-ligand API before enabling the UI;
+library screening and cross-platform result review follow separately.
+GNINA is not enabled on native Windows. The 2 GB executable used for
+development is local and ignored by Git, not part of a distributable bundle.
+Native workstation, driver/library identity and licensing checks remain open.

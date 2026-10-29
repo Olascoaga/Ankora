@@ -5,7 +5,9 @@ is the accepted second scoring family under ADR-015: AutoGrid4 produces an
 immutable map set, AutoDock4 CPU is the reproducible reference execution path,
 and AutoDock-GPU 1.6 is an implemented optional accelerator with its own
 explicit search protocol and non-bitwise-reproducibility warning. GNINA remains
-deferred until an official native-Windows path exists.
+deferred on native Windows. The scientist authorized a separate Linux-only
+GNINA implementation under ADR-027; its adapter is in development and is not
+yet a user-facing engine.
 
 The scientist chooses the engine, execution backend, input artifacts, search
 space, random seed, search controls, and resource budget explicitly. Every run

@@ -1,5 +1,6 @@
 """GNINA engine contracts anchored to a real synthetic-ethanol CUDA run."""
 
+import threading
 from hashlib import sha256
 from pathlib import Path
 
@@ -60,6 +61,15 @@ def test_gnina_pdbqt_topology_mismatch_is_not_silently_accepted() -> None:
     assert error.value.code == "GNINA_POSE_TOPOLOGY_MISMATCH"
 
 
+def test_gnina_pdbqt_nonfinite_coordinates_are_not_accepted() -> None:
+    corrupted = PDBQT.replace(b"  18.048", b"     nan", 1)
+    assert corrupted != PDBQT
+    pose = gnina.parse_gnina_pdbqt(corrupted)[0]
+    with pytest.raises(AnkoraDomainError) as error:
+        gnina.require_matching_topology(pose, CONFORMER)
+    assert error.value.code == "GNINA_POSE_TOPOLOGY_UNVERIFIED"
+
+
 @pytest.mark.parametrize(
     "corrupted",
     [
@@ -102,6 +112,28 @@ def test_gnina_cannot_be_probed_on_windows(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(AnkoraDomainError) as error:
         gnina.probe_gnina()
     assert error.value.code == "GNINA_LINUX_ONLY"
+
+
+@pytest.mark.parametrize("linux", [False, True])
+def test_execution_refuses_windows_and_a_changed_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linux: bool
+) -> None:
+    binary = tmp_path / "synthetic-gnina"
+    binary.write_bytes(b"modified after probe")
+    installation = gnina.GninaInstallation(str(binary), "1.3.3", "0" * 64, "x86_64")
+    monkeypatch.setattr(gnina, "_linux_host", lambda: linux)
+    monkeypatch.setattr(gnina, "run_cancellable_tool", lambda **_kw: pytest.fail("must not launch"))
+    with pytest.raises(AnkoraDomainError) as error:
+        gnina.execute_gnina(
+            installation=installation,
+            receptor_path=tmp_path / "rec.pdbqt",
+            ligand_path=tmp_path / "lig.pdbqt",
+            output_path=tmp_path / "pose.pdbqt",
+            box=BindingBox(center_x=0, center_y=0, center_z=0, size_x=20, size_y=20, size_z=20),
+            parameters=GninaDockingParameters(compute="cuda"),
+            cancel_event=threading.Event(),
+        )
+    assert error.value.code == ("GNINA_IDENTITY_CHANGED" if linux else "GNINA_LINUX_ONLY")
 
 
 def test_linux_probe_verifies_exact_version_and_hash(
