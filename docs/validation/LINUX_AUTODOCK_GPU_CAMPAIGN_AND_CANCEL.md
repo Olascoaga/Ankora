@@ -40,3 +40,14 @@ discovery override used in the earlier smoke. If successful, Linux development
 discovery may be enabled for explicitly configured native executables; that
 does not certify arbitrary CUDA/OpenCL builds or hardware. A separate
 predeclared run will exercise product discovery without the override.
+
+## First attempt and declared continuation
+
+`campaign-cancel-01` failed during initialization before importing the library
+or launching AutoGrid or the GPU. The runner incorrectly assumed every earlier
+evidence event contained a `body`; pose-content events do not. The original
+project was unchanged. Its retained evidence SHA-256 is
+`a93231ece1b8261cd0b6f4a0d92f918e3d640312549299d83f0048d85f772325`.
+After correcting that evidence lookup, run once in the new create-only
+`campaign-cancel-02` directory with precisely the same settings above. Do not
+alter or replace the first attempt.

@@ -34,6 +34,18 @@ SYNTHETIC_LIBRARY = b"CCO ethanol\nCCN ethylamine\n"
 TERMINAL = {"completed", "failed", "canceled"}
 
 
+def reference_ids(events: list[dict[str, Any]]) -> tuple[str, str]:
+    """Read only the two reference events, ignoring payload-free artifact checks."""
+    source = {
+        item["stage"]: item["body"]
+        for item in events
+        if item["stage"] in {"receptor_preparation", "binding_site"}
+    }
+    return source["receptor_preparation"]["receptor_id"], source["binding_site"][
+        "binding_site_id"
+    ]
+
+
 def run(output_path: Path) -> dict[str, Any]:
     output = require_output_path(output_path)
     output.mkdir(parents=True, exist_ok=False)
@@ -66,9 +78,7 @@ def run(output_path: Path) -> dict[str, Any]:
         shutil.copytree(PRIOR / "data", output / "data", symlinks=False)
         if snapshot(output / "data") != source_snapshot:
             raise SmokeFailure("The source copy differs from the original.")
-        source = {item["stage"]: item["body"] for item in old["events"]}
-        receptor_id = source["receptor_preparation"]["receptor_id"]
-        site_id = source["binding_site"]["binding_site_id"]
+        receptor_id, site_id = reference_ids(old["events"])
         os.environ.update(
             {
                 "ANKORA_DATA_DIR": str(output / "data"),
