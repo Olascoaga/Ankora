@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -322,6 +323,42 @@ def run(output_path: Path) -> dict[str, Any]:
                     )
                     raise SmokeFailure(
                         "Cancellation inconclusive: job process was not observed."
+                    )
+                stage = "observe_gpu_context"
+                observed_gpu = False
+                while time.monotonic() < deadline and target.is_running():
+                    query = subprocess.run(
+                        [
+                            "nvidia-smi",
+                            "--query-compute-apps=pid",
+                            "--format=csv,noheader,nounits",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                        check=False,
+                    )
+                    evidence["gpu_process_query"] = {
+                        "exit_code": query.returncode,
+                        "stdout": query.stdout,
+                        "stderr": query.stderr,
+                    }
+                    if (
+                        query.returncode == 0
+                        and str(target.pid) in query.stdout.split()
+                    ):
+                        observed_gpu = True
+                        break
+                    time.sleep(0.05)
+                if not observed_gpu:
+                    call(
+                        "unobserved_gpu_cancel",
+                        "POST",
+                        f"/docking/autodock-gpu/jobs/{job_id}/cancel",
+                        200,
+                    )
+                    raise SmokeFailure(
+                        "Cancellation inconclusive: GPU context was not observed."
                     )
                 stage = "cancel_request"
                 call(stage, "POST", f"/docking/autodock-gpu/jobs/{job_id}/cancel", 200)

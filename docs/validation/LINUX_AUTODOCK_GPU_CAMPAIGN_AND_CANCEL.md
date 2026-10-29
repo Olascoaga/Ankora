@@ -51,3 +51,21 @@ project was unchanged. Its retained evidence SHA-256 is
 After correcting that evidence lookup, run once in the new create-only
 `campaign-cancel-02` directory with precisely the same settings above. Do not
 alter or replace the first attempt.
+
+## Campaign completed; stricter cancellation check
+
+`campaign-cancel-02` completed both actual file-list ligands and preserved
+their pose hashes and raw CUDA output. A separate job was canceled after its
+executable was observed, the process exited with `-15`, no pose was published,
+and the GPU reservation was released. The original project stayed unchanged.
+Evidence SHA-256:
+`2825ab92afcbc1811d4a7fb2d73b19f06bc0bd26dfe306f65c6eb9c1def2b271`.
+The canceled execution had no device stdout and lasted 0.065 s; this proves
+process cancellation, not that the process had initialized the GPU.
+
+Predeclare `campaign-cancel-03` with the same inputs and parameters. In this
+run, wait until `nvidia-smi` reports the exact observed process PID as a GPU
+compute process before requesting cancellation. If the process or GPU context
+cannot be observed, cancel any live job, retain the evidence, and report the
+leg as inconclusive. The test is still WSL-specific and is not a native Linux
+workstation or hung-driver validation.
