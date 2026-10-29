@@ -52,3 +52,18 @@ Scientific Linux parity and lock, CPU engines and cancellation, independent GPU
 acceptance, then complete offline packaging and native workstation validation.
 Each bounded completed unit gets relevant tests, tracked evidence and a small
 commit. Private coordination logs and memory stay ignored.
+
+## Scientific foundation update — 2026-10-28
+
+The second bounded unit now has native discovery, a Linux scientific environment
+lock/verifier and owned-session process cancellation, integrated from isolated
+Claude/Gemini branches after coordinator review. Public PR lineage begins at
+`e705ff6`; the unrelated unpublished manual commit from the original local source
+snapshot is excluded. Windows development files remain preserved.
+
+See [the coordinator's scientific review](validation/LINUX_SCIENTIFIC_FOUNDATION_REVIEW.md)
+for exact accepted checks, raw-evidence manifest identity and known failures.
+Environment identity and preparation smoke are accepted for this bounded unit;
+the complete Linux parity/release gate remains open. Native P2Rank execution,
+the recorded portability failures, real CPU docking/redocking, independent GPU
+acceptance and complete Linux packaging still require their own evidence.
