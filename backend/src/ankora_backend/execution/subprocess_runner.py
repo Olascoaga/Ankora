@@ -319,7 +319,7 @@ def _signal_posix_targets(
 
     for pgid in sorted(verified_pgids):
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-            os.killpg(pgid, sig)
+            getattr(os, "killpg")(pgid, sig)  # noqa: B009 - POSIX-only; absent from Windows stubs.
 
     for pid in sorted(pid_starttimes):
         if pid <= 1 or pid == self_pid:
@@ -389,7 +389,7 @@ def _terminate_posix_session(
         _signal_posix_targets(
             kill_targets,
             target_pgids,
-            signal.SIGKILL,
+            getattr(signal, "SIGKILL"),  # noqa: B009 - POSIX-only; absent from Windows stubs.
             root_pid=process.pid,
             self_pid=self_pid,
             self_pgrp=self_pgrp,

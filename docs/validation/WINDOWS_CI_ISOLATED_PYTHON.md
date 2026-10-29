@@ -135,3 +135,17 @@ Ruff on two import-spacing issues in the Vina tests, so subsequent checks were
 not executed. The import spacing was corrected using the exact CI command
 `python -m ruff check backend`; it passed locally. A subsequent hosted run is
 required before claiming the full CI green.
+
+## Windows type-check follow-up
+
+Hosted run `40822501992` on `8ecc298` passed 987 backend tests (153 skipped)
+and Ruff, then Windows mypy reported that the platform stubs do not expose
+`os.killpg` or `signal.SIGKILL`. Those APIs are used only by the existing POSIX
+termination path. Resolving the same attributes dynamically preserves the
+runtime calls while allowing both platforms' stubs to be checked; no signal,
+process selection or cancellation policy changed.
+
+After the correction, mypy passed over 142 source files on native Windows and
+Linux. Linux subprocess tests passed 20 with two Windows-specific skips;
+native Windows passed seven with 15 POSIX-only skips. A new hosted CI run is
+required; this local evidence is not a claim that the full CI is green.
