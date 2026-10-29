@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -47,7 +48,7 @@ def reference_ids(events: list[dict[str, Any]]) -> tuple[str, str]:
     ]
 
 
-def run(output_path: Path) -> dict[str, Any]:
+def run(output_path: Path, *, product_discovery: bool = False) -> dict[str, Any]:
     output = require_output_path(output_path)
     output.mkdir(parents=True, exist_ok=False)
     events: list[dict[str, Any]] = []
@@ -68,12 +69,20 @@ def run(output_path: Path) -> dict[str, Any]:
     source_snapshot: dict[str, str] | None = None
     stage = "initialization"
     try:
+        gpu_binary = (
+            Path.home() / "tools" / "autodock-gpu-1.6" / "bin" / "autodock_gpu_128wi"
+            if product_discovery
+            else GPU
+        ).resolve()
+        evidence["discovery_mode"] = (
+            "product" if product_discovery else "pinned test override"
+        )
         if sys.platform != "linux":
             raise SmokeFailure("This protocol requires Linux.")
         old = json.loads(require_input(PRIOR / "evidence.json", PRIOR_EVIDENCE_SHA))
         if old["status"] != "completed":
             raise SmokeFailure("The prior exploratory project did not complete.")
-        require_input(GPU, GPU_SHA)
+        require_input(gpu_binary, GPU_SHA)
         require_input(AUTOGRID, AUTOGRID_SHA)
         source_snapshot = snapshot(PRIOR / "data")
         shutil.copytree(PRIOR / "data", output / "data", symlinks=False)
@@ -85,24 +94,35 @@ def run(output_path: Path) -> dict[str, Any]:
                 "ANKORA_DATA_DIR": str(output / "data"),
                 "ANKORA_RESOURCE_CPU_THREADS": "2",
                 "ANKORA_RESOURCE_GPU_SLOTS": "1",
-                "ANKORA_AUTODOCK_GPU_PATH": str(GPU),
                 "ANKORA_AUTOGRID4_PATH": str(AUTOGRID),
                 "PATH": str(Path(sys.executable).parent)
                 + os.pathsep
                 + os.environ.get("PATH", ""),
             }
         )
+        if product_discovery:
+            os.environ.pop("ANKORA_AUTODOCK_GPU_PATH", None)
+        else:
+            os.environ["ANKORA_AUTODOCK_GPU_PATH"] = str(gpu_binary)
 
         def explicit_discovery(configured: str | Path | None) -> DiscoveredTool:
-            if configured is None or Path(configured).resolve() != GPU.resolve():
+            if configured is None or Path(configured).resolve() != gpu_binary:
                 return DiscoveredTool(available=False, path=None)
-            require_input(GPU, GPU_SHA)
+            require_input(gpu_binary, GPU_SHA)
             return DiscoveredTool(
-                available=True, path=str(GPU), architecture="x86_64", sha256=GPU_SHA
+                available=True,
+                path=str(gpu_binary),
+                architecture="x86_64",
+                sha256=GPU_SHA,
             )
 
         app = create_app()
-        with patch.object(gpu_adapter, "discover_autodock_gpu", explicit_discovery):  # noqa: SIM117
+        discovery_context = (
+            nullcontext()
+            if product_discovery
+            else patch.object(gpu_adapter, "discover_autodock_gpu", explicit_discovery)
+        )
+        with discovery_context:  # noqa: SIM117
             with TestClient(app, headers={"Origin": "http://127.0.0.1:1420"}) as client:
 
                 def call(
@@ -129,6 +149,18 @@ def run(output_path: Path) -> dict[str, Any]:
                         )
                     return body
 
+                if product_discovery:
+                    stage = "product_discovery"
+                    tools = call(stage, "GET", "/tools", 200)
+                    gpu_tool = tools["autodock_gpu"]
+                    if not gpu_tool["available"] or gpu_tool["sha256"] != GPU_SHA:
+                        raise SmokeFailure(
+                            "Product discovery did not identify the pinned GPU binary."
+                        )
+                    if Path(gpu_tool["path"]).resolve() != gpu_binary:
+                        raise SmokeFailure(
+                            "Product discovery selected a different GPU binary."
+                        )
                 stage = "import_library"
                 library = call(
                     stage,
@@ -304,7 +336,9 @@ def run(output_path: Path) -> dict[str, Any]:
                         ["pid", "exe", "cwd", "create_time"]
                     ):
                         info = proc.info
-                        if info["exe"] == str(GPU) and info["cwd"] == str(job_dir):
+                        if info["exe"] == str(gpu_binary) and info["cwd"] == str(
+                            job_dir
+                        ):
                             target = proc
                             evidence["cancel_process"] = {
                                 "pid": info["pid"],
@@ -395,7 +429,7 @@ def run(output_path: Path) -> dict[str, Any]:
                     if time.monotonic() >= deadline:
                         raise SmokeFailure("Canceled GPU reservation was not released.")
                     time.sleep(0.05)
-                require_input(GPU, GPU_SHA)
+                require_input(gpu_binary, GPU_SHA)
                 evidence.update(
                     {
                         "status": "completed",
@@ -433,8 +467,9 @@ def run(output_path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--product-discovery", action="store_true")
     args = parser.parse_args()
-    result = run(args.output)
+    result = run(args.output, product_discovery=args.product_discovery)
     print(f"GPU campaign/cancellation: {result['status']}")
     if "failure" in result:
         print(json.dumps(result["failure"]))

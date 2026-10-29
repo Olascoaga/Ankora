@@ -69,3 +69,21 @@ compute process before requesting cancellation. If the process or GPU context
 cannot be observed, cancel any live job, retain the evidence, and report the
 leg as inconclusive. The test is still WSL-specific and is not a native Linux
 workstation or hung-driver validation.
+
+## GPU-context cancellation completed; product-discovery check declared
+
+`campaign-cancel-03` completed the real two-ligand campaign and canceled a
+separate job after `nvidia-smi` reported the same Linux PID as a compute
+process. The owned process exited, no pose was published, the GPU reservation
+was released and the original project remained unchanged. Evidence SHA-256:
+`499f92e67284d35f22469427ab26047137513bd01d02710fbd435507c9bac46f`.
+This is one WSL CUDA device, not evidence about an uninterruptible driver hang.
+
+With native Linux discovery implemented, install a create-only copy of the
+previously hashed binary in the versioned per-user tools directory. Predeclare
+`campaign-cancel-product-01`: use the same input, output safeguards and fixed
+campaign/cancellation parameters, but run with Ankora's real product
+discovery (no override or configured GPU environment variable). Require the
+`/tools` endpoint to report the expected binary SHA-256 and path, then verify
+the real campaign, GPU-context cancellation, process exit and resource release.
+This check is not a general compatibility or installer claim.

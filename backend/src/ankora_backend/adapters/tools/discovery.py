@@ -310,13 +310,29 @@ def discover_autodock_gpu(
     path_lookup: Callable[[str], str | None] = shutil.which,
     candidate_directories: Iterable[Path] | None = None,
 ) -> DiscoveredTool:
-    """Discover official-style AutoDock-GPU Windows executables side-effect-free."""
+    """Discover an AutoDock-GPU executable without launching it."""
     if getattr(sys, "frozen", False):
         return _bundled_discovery("autodock_gpu")
     if not _windows_host():
-        # Each GPU engine/runtime needs its own native acceptance (ADR-026); none
-        # exists for Linux yet, and a Windows build reached through WSL never counts.
-        return DiscoveredTool(available=False, path=None)
+        if not sys.platform.startswith("linux"):
+            return DiscoveredTool(available=False, path=None)
+        directories = candidate_directories
+        if configured_path is None and directories is None:
+            directories = (
+                *_runtime_candidate_directories(),
+                *_portable_autodock_gpu_candidate_directories(Path.home()),
+            )
+        candidate = _native_candidate(
+            ("autodock_gpu_128wi", "autodock_gpu_64wi", "autodock_gpu"),
+            configured_path,
+            path_lookup=path_lookup,
+            candidate_directories=directories or (),
+        )
+        # A native x86-64 ELF is only an identity, not evidence of a usable
+        # GPU/runtime. The docking adapter must still probe and verify v1.6.
+        if candidate is None or _read_elf_architecture(candidate.resolve()) != "x86_64":
+            return DiscoveredTool(available=False, path=None)
+        return _native_engine_result(candidate, None)
     directories = candidate_directories
     if configured_path is None and directories is None:
         directories = (

@@ -147,7 +147,7 @@ def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
         raise AnkoraDomainError(
             code="SCIENTIFIC_TOOL_UNAVAILABLE",
             stage=_STAGE,
-            message="AutoDock-GPU is not configured on this Windows system.",
+            message="AutoDock-GPU is not configured on this system.",
             status_code=422,
             details={
                 "tool": "AutoDock-GPU",
@@ -250,7 +250,7 @@ def require_device(installation: AutoDockGpuInstallation) -> str:
             code="AUTODOCK_GPU_NO_DEVICE",
             stage=_STAGE,
             message=(
-                "AutoDock-GPU is installed but selected no OpenCL device, so it "
+                "AutoDock-GPU is installed but selected no CUDA or OpenCL device, so it "
                 "cannot dock on this machine."
             ),
             status_code=422,

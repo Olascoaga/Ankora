@@ -283,11 +283,38 @@ def test_autodock_on_path_in_unversioned_location_has_no_version(tmp_path: Path)
     assert discovered.sha256 is not None
 
 
-def test_autodock_gpu_is_not_linux_supported_even_when_present(tmp_path: Path) -> None:
+def test_autodock_gpu_discovers_linux_elf_without_claiming_a_verified_version(
+    tmp_path: Path,
+) -> None:
     binary = _elf(tmp_path / "autodock-gpu-1.6" / "autodock_gpu_128wi")
+    configured = discover_autodock_gpu(binary)
+    from_path = discover_autodock_gpu(path_lookup=lambda _: str(binary), candidate_directories=())
+    assert configured.available and from_path.available
+    assert configured.path == str(binary.resolve())
+    assert configured.architecture == "x86_64"
+    assert configured.version is None
+    assert configured.sha256 == hashlib.sha256(binary.read_bytes()).hexdigest()
 
-    assert discover_autodock_gpu(binary).available is False
-    assert discover_autodock_gpu(path_lookup=lambda _: str(binary)).available is False
+
+def test_autodock_gpu_rejects_windows_scripts_and_wrong_architecture(tmp_path: Path) -> None:
+    assert not discover_autodock_gpu(_pe(tmp_path / "renamed_gpu")).available
+    assert not discover_autodock_gpu(_script(tmp_path / "script")).available
+    assert not discover_autodock_gpu(_elf(tmp_path / "arm", ARM64)).available
+    assert not discover_autodock_gpu(_elf(tmp_path / "not_executable", mode=0o644)).available
+
+
+def test_autodock_gpu_configured_path_remains_authoritative(tmp_path: Path) -> None:
+    fallback = _elf(tmp_path / "fallback")
+    assert not discover_autodock_gpu(
+        tmp_path / "missing", path_lookup=lambda _: str(fallback), candidate_directories=()
+    ).available
+
+
+def test_autodock_gpu_discovers_versioned_tools_directory(tmp_path: Path) -> None:
+    binary = _elf(tmp_path / "tools" / "autodock-gpu-1.6" / "bin" / "autodock_gpu_128wi")
+    directories = discovery._portable_autodock_gpu_candidate_directories(tmp_path)
+    found = discover_autodock_gpu(path_lookup=_no_path, candidate_directories=directories)
+    assert found.path == str(binary.resolve())
 
 
 # --- P2Rank and Java ------------------------------------------------------------------
