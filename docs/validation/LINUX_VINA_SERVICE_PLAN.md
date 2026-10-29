@@ -42,3 +42,19 @@ evidence are retained locally; score is a computational estimate, not affinity.
 
 The fixed settings above are not tuned after seeing a result. The observed
 outcome is appended after execution without modifying this protocol.
+
+## Observed result — 2026-10-29
+
+On Ubuntu 24.04 WSL2, the preregistered service job completed with the
+identified Vina 1.2.7 executable, exit code 0, and two sequential poses. The
+resource arbiter had zero active allocations after shutdown and the work
+lease was released. Pose files matched their stored SHA-256 and size. The
+original input hashes were checked again and remained the predeclared values.
+
+- Evidence JSON SHA-256: `e1ae29771f7f037b26233869d4bcc1c6247a573dd427bae28f437fd027a63a37`.
+- Raw Vina PDBQT SHA-256: `35e1a021702efcfe01d1b5000981c70451d7d6d1e07cbc2779df80ced0b5fd22`.
+- Persisted stdout SHA-256: `75ed2951bcf995e6ff313a8dad92eb0f0d93743c2e927b7cb04932944fa3d8cd`; stderr was empty (SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`). Both streams were compared with the saved job record.
+- Synthetic smoke-contract and existing Vina service tests: 12 passed; Ruff
+  and focused mypy passed. The complete raw output and isolated project are
+  retained locally. The service was seeded with labeled fixture records;
+  import, preparation, GUI and API flows were not exercised in this run.
