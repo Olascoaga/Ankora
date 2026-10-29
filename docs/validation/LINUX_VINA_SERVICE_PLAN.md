@@ -58,3 +58,14 @@ original input hashes were checked again and remained the predeclared values.
   and focused mypy passed. The complete raw output and isolated project are
   retained locally. The service was seeded with labeled fixture records;
   import, preparation, GUI and API flows were not exercised in this run.
+
+## Predeclared integration-branch repeat
+
+The first job above used the service worktree before restoration of the frozen
+Vina source. To check the integrated branch after that restoration, run one
+additional isolated job under the same pinned fixture identities, parameters,
+acceptance criteria and scope, with a new create-only evidence directory.
+The Vina source must have the historical SHA-256
+`e13e32f5b6c401966debe80fe0049f4ae87f1cc3c8eb31f4566c57c1acc50993`.
+The first output remains preserved; neither settings nor score thresholds are
+changed. The result is recorded separately below after execution.
