@@ -16,6 +16,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+
 from ankora_backend.adapters.engines.vina import VinaInstallation, build_vina_arguments
 from ankora_backend.execution.cancellable_subprocess import CancellableToolExecution
 from ankora_backend.schemas.binding_sites import BindingBox

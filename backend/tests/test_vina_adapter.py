@@ -7,6 +7,7 @@ to represent a real docking calculation.
 from pathlib import Path
 
 import pytest
+
 from ankora_backend.adapters.engines import vina
 from ankora_backend.adapters.engines.vina import (
     VinaInstallation,

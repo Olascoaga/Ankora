@@ -125,3 +125,13 @@ an `ensurepip` error without a detailed cause; the subsequent independent
 PowerShell probe outside that restriction passed. Neither run downloaded or
 changed the locked project dependencies. The separately recorded full-lock
 Windows environment check remains the evidence for those packages.
+
+## Hosted run after fixture and parser repair
+
+GitHub Windows CI run `40821572436` on `116ba9e` successfully created the
+isolated environment, installed and verified the locked dependencies, and ran
+the backend suite: **987 passed, 153 skipped, one warning**. It then failed
+Ruff on two import-spacing issues in the Vina tests, so subsequent checks were
+not executed. The import spacing was corrected using the exact CI command
+`python -m ruff check backend`; it passed locally. A subsequent hosted run is
+required before claiming the full CI green.
