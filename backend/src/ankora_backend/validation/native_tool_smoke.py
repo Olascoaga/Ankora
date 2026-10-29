@@ -88,11 +88,19 @@ class FileEvidence:
 @dataclass(frozen=True, slots=True)
 class ExecutionEvidence:
     command: list[str]
-    exit_code: int
+    exit_code: int | None
     stdout_path: str
     stdout_sha256: str
     stderr_path: str
     stderr_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PartialExecution:
+    command: list[str]
+    exit_code: int | None
+    stdout: str
+    stderr: str
 
 
 @dataclass(slots=True)
@@ -130,7 +138,7 @@ class EvidenceWriter:
         self,
         *,
         result: AdapterResult,
-        execution: ToolExecution,
+        execution: ToolExecution | _PartialExecution,
         sequence: int | None = None,
     ) -> None:
         executable_index = 0
@@ -232,6 +240,69 @@ def _require_success(execution: ToolExecution, output: Path | None = None) -> No
         raise RuntimeError(f"tool did not create required output {output.name}")
 
 
+def record_p2rank_java_probe(
+    writer: EvidenceWriter,
+    result: AdapterResult,
+    java_execution: ToolExecution,
+) -> None:
+    writer.execution(result=result, execution=java_execution, sequence=1)
+    result.details = {
+        **result.details,
+        "java_executable_sha256": result.executable_sha256,
+        "java_version_output": java_execution.stderr.strip(),
+    }
+    result.executable_sha256 = None
+
+
+def record_p2rank_execution(
+    writer: EvidenceWriter,
+    result: AdapterResult,
+    p2rank_execution: ToolExecution,
+    *,
+    version: str,
+) -> None:
+    writer.execution(result=result, execution=p2rank_execution, sequence=2)
+    result.version = version
+
+
+def _run_p2rank_smoke(
+    writer: EvidenceWriter,
+    p2rank: AdapterResult,
+    p2rank_dir: Path,
+    *,
+    source_receptor: Path | None,
+    source_receptor_error: str | None = None,
+) -> None:
+    if source_receptor is None:
+        raise RuntimeError(
+            f"fixed receptor fixture is unavailable: {source_receptor_error}"
+        )
+    fixture = _copy_fixture(source_receptor, p2rank_dir / "source_receptor.pdb")
+    p2rank.fixtures.append(writer.file(path=fixture, role="upstream_receptor"))
+    java_home = discover_java_home(os.getenv("JAVA_HOME"))
+    if java_home is None:
+        raise RuntimeError("compatible Java runtime was not found")
+    java_execution = run_tool(
+        executable=str(java_executable(java_home)),
+        arguments=["-version"],
+        cwd=p2rank_dir,
+        stage="native_tool_smoke",
+        timeout_seconds=30,
+    )
+    record_p2rank_java_probe(writer, p2rank, java_execution)
+    _require_success(java_execution)
+    output = p2rank_dir / "prediction"
+    output.mkdir()
+    execution, version = execute_p2rank(
+        receptor_pdb_path=fixture, output_dir=output
+    )
+    record_p2rank_execution(writer, p2rank, execution, version=version)
+    _require_success(execution)
+    if not any(output.rglob("*_predictions.csv")):
+        raise RuntimeError("P2Rank created no structured predictions CSV")
+    _outputs(writer, p2rank, p2rank_dir, excluded={fixture})
+
+
 def _record_domain_failure(
     writer: EvidenceWriter, result: AdapterResult, error: AnkoraDomainError
 ) -> None:
@@ -243,17 +314,29 @@ def _record_domain_failure(
     if (
         isinstance(command, list)
         and all(isinstance(item, str) for item in command)
-        and isinstance(exit_code, int)
+        and (
+            exit_code is None
+            or (isinstance(exit_code, int) and not isinstance(exit_code, bool))
+        )
         and isinstance(stdout, str)
         and isinstance(stderr, str)
     ):
         writer.execution(
             result=result,
-            execution=ToolExecution(
-                command=command,
-                exit_code=exit_code,
-                stdout=stdout,
-                stderr=stderr,
+            execution=(
+                ToolExecution(
+                    command=command,
+                    exit_code=exit_code,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                if exit_code is not None
+                else _PartialExecution(
+                    command=command,
+                    exit_code=None,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
             ),
         )
     result.status = "failed"
@@ -524,40 +607,17 @@ def run_native_tool_smoke(
     )
     results.append(p2rank)
     p2rank_dir = writer.adapter_directory(p2rank.adapter_id)
-
-    def run_p2rank_smoke() -> None:
-        if source_receptor is None:
-            raise RuntimeError(
-                f"fixed receptor fixture is unavailable: {source_receptor_error}"
-            )
-        fixture = _copy_fixture(source_receptor, p2rank_dir / "source_receptor.pdb")
-        p2rank.fixtures.append(writer.file(path=fixture, role="upstream_receptor"))
-        java_home = discover_java_home(os.getenv("JAVA_HOME"))
-        if java_home is None:
-            raise RuntimeError("compatible Java runtime was not found")
-        java_execution = run_tool(
-            executable=str(java_executable(java_home)),
-            arguments=["-version"],
-            cwd=p2rank_dir,
-            stage="native_tool_smoke",
-            timeout_seconds=30,
-        )
-        writer.execution(result=p2rank, execution=java_execution, sequence=1)
-        _require_success(java_execution)
-        output = p2rank_dir / "prediction"
-        output.mkdir()
-        execution, version = execute_p2rank(
-            receptor_pdb_path=fixture, output_dir=output
-        )
-        writer.execution(result=p2rank, execution=execution, sequence=2)
-        p2rank.version = version
-        p2rank.details = {"java_version_output": java_execution.stderr.strip()}
-        _require_success(execution)
-        if not any(output.rglob("*_predictions.csv")):
-            raise RuntimeError("P2Rank created no structured predictions CSV")
-        _outputs(writer, p2rank, p2rank_dir, excluded={fixture})
-
-    _run_adapter(writer, p2rank, run_p2rank_smoke)
+    _run_adapter(
+        writer,
+        p2rank,
+        lambda: _run_p2rank_smoke(
+            writer,
+            p2rank,
+            p2rank_dir,
+            source_receptor=source_receptor,
+            source_receptor_error=source_receptor_error,
+        ),
+    )
 
     def engine_result(adapter_id: str, adapter: str, scope: str) -> AdapterResult:
         result = AdapterResult(adapter_id=adapter_id, adapter=adapter, scope=scope)
