@@ -67,3 +67,28 @@ Environment identity and preparation smoke are accepted for this bounded unit;
 the complete Linux parity/release gate remains open. Native P2Rank execution,
 the recorded portability failures, real CPU docking/redocking, independent GPU
 acceptance and complete Linux packaging still require their own evidence.
+
+## AutoDock-GPU development — WSL2
+
+Linux development now discovers executable x86-64 ELF AutoDock-GPU binaries
+named `autodock_gpu_128wi`, `autodock_gpu_64wi` or `autodock_gpu` on PATH,
+in a versioned `~/tools/autodock-gpu-1.6/bin` directory, or at an explicit
+`ANKORA_AUTODOCK_GPU_PATH`. An explicit path is authoritative; an invalid
+one is not silently replaced by a different installation. Discovery only
+reads the executable's identity; a docking request separately probes the
+engine version and device. A compatible GPU driver and the binary's native
+runtime libraries must already be available to the backend.
+
+The locally compiled AutoDock-GPU 1.6 CUDA binary was tested on WSL2 with an
+RTX 5050 through the actual API, including a two-molecule campaign and
+cancellation after the process was observed in GPU compute. See
+[the recorded engineering checks](validation/LINUX_AUTODOCK_GPU_CAMPAIGN_AND_CANCEL.md).
+Restart a running development session after changing its executable or
+environment. If the scheduler is busy, device preflight returns an explicit
+busy message; retry when active or queued work has finished.
+
+These checks do not establish compatibility for other GPU architectures,
+CUDA/OpenCL builds or drivers, cancellation of an uninterruptible process,
+the packaged runtime, or a native Linux workstation. Linux distribution and
+native workstation acceptance remain open; no existing Windows binary is used
+as a Linux engine.

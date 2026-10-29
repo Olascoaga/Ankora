@@ -87,3 +87,20 @@ discovery (no override or configured GPU environment variable). Require the
 `/tools` endpoint to report the expected binary SHA-256 and path, then verify
 the real campaign, GPU-context cancellation, process exit and resource release.
 This check is not a general compatibility or installer claim.
+
+`campaign-cancel-product-01` completed with native product discovery and no
+GPU-path override: `/tools` found the expected SHA-256, the two-ligand CUDA
+campaign completed, and a separate job was canceled after its PID was observed
+in `nvidia-smi`. The process exited, no canceled poses were published, GPU
+capacity was released, and the original project remained unchanged. Retained
+evidence SHA-256:
+`ace4d1dd31ba05a8571d9cb5fd898709fa7771b98a41d47912e8c625f13285f4`.
+The native discovery and GPU service selection passed 87 WSL tests and the
+Windows engine, discovery and resource selection passed 69 tests. Ruff and
+backend mypy (142 files) passed. Product discovery identifies a native binary;
+the version and device are checked when launching a job, and a successful
+test on this WSL device does not certify other GPU builds or platforms.
+An additional direct native probe in the same WSL environment, with both
+`LD_LIBRARY_PATH` and `ANKORA_AUTODOCK_GPU_PATH` unset, reported version 1.6,
+the same executable SHA-256 and the RTX 5050. This is local runtime evidence,
+not a bundled or relocatable Linux installation.
