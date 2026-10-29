@@ -15,9 +15,9 @@ import sys
 import threading
 from dataclasses import dataclass
 from hashlib import sha256
+from importlib import import_module
 from pathlib import Path
-
-from rdkit import Chem
+from typing import Any
 
 from ankora_backend.adapters.tools.discovery import _read_elf_architecture, discover_tool
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -29,6 +29,7 @@ from ankora_backend.execution.subprocess_runner import run_tool
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.gnina import GninaDockingParameters
 
+Chem: Any = import_module("rdkit.Chem")
 _STAGE = "gnina_docking"
 _VERSION_PATTERN = re.compile(r"\bgnina\s+v?(\d+(?:\.\d+)+)\b", re.IGNORECASE)
 _SUPPORTED_VERSION = "1.3.3"
@@ -243,7 +244,7 @@ def execute_gnina(
     )
 
 
-def _value(mol: Chem.Mol, name: str, *, optional: bool = False) -> float | None:
+def _value(mol: Any, name: str, *, optional: bool = False) -> float | None:
     if not mol.HasProp(name):
         if optional:
             return None
