@@ -7,15 +7,18 @@ a successful run and a failed one.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from ankora_backend.adapters.engines import autodock_gpu as gpu_module
 from ankora_backend.adapters.engines.autodock4_job import (
     log_reports_success,
     parse_autodock4_log,
 )
 from ankora_backend.adapters.engines.autodock_gpu import (
     AutoDockGpuInstallation,
+    _version_identity,
     build_arguments,
     require_device,
     run_reports_success,
@@ -48,6 +51,35 @@ def _value_after(arguments: list[str], flag: str) -> str:
 
 
 # --- the verdict, which the exit code cannot give -------------------------
+
+
+def test_version_identity_preserves_windows_contract_and_linux_unreported_fields() -> None:
+    # These two header forms were observed from Windows and Linux v1.6 builds.
+    windows = "AutoDock-GPU version: v1.6|Release|x64\n"
+    linux = "AutoDock-GPU version: v1.6\n"
+    assert _version_identity(windows, linux=False) == ("1.6", "Release", "x64")
+    assert _version_identity(linux, linux=False) is None
+    assert _version_identity(linux, linux=True) == ("1.6", "unreported", None)
+    assert _version_identity("AutoDock-GPU version: v1.6 unexpected", linux=True) is None
+
+
+def test_probe_records_linux_version_without_inventing_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Synthetic discovery and process results; no scientific executable is run.
+    monkeypatch.setattr(gpu_module, "_linux_host", lambda: True)
+    monkeypatch.setattr(gpu_module, "discover_autodock_gpu", lambda _: SimpleNamespace(
+        available=True, path=str(tmp_path / "synthetic"), sha256="a" * 64, architecture="x86_64",
+    ))
+    monkeypatch.setattr(gpu_module, "run_tool", lambda **_: SimpleNamespace(
+        exit_code=0, stdout="AutoDock-GPU version: v1.6\n", stderr="", command=["synthetic"],
+    ))
+    monkeypatch.setattr(gpu_module, "_probe_device", lambda **_: "synthetic CUDA device")
+    installation = gpu_module.probe_autodock_gpu()
+    assert installation.version == "1.6"
+    assert installation.build == "unreported"
+    assert installation.architecture == "x86_64"
+    assert installation.device_name == "synthetic CUDA device"
 
 
 def test_the_tools_own_words_decide_whether_a_run_worked() -> None:
