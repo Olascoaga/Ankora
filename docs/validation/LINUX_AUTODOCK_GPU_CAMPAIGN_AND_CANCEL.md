@@ -1,0 +1,42 @@
+# Linux AutoDock-GPU campaign and cancellation: declared engineering test
+
+This WSL2 development check is isolated and is not a scientific benchmark,
+native Linux workstation acceptance, or installer validation. It follows the
+earlier single-job service smoke. The CUDA binary, AutoGrid, prior project and
+their SHA-256 identities remain exactly those recorded in
+`LINUX_AUTODOCK_GPU_SERVICE_SMOKE.md`. The original project is copied into a
+new create-only directory and verified unchanged; existing scientific records
+and frozen validation evidence are never modified.
+
+## Campaign
+
+Import a deliberately synthetic two-entry library (`CCO ethanol` and `CCN
+ethylamine`). Apply the default advisory filters with explicit confirmation;
+generate independent conformers with RDKit/MMFF94s and prepare their docking
+files using the real installed Meeko. Generate fresh AutoGrid maps for that
+selection against the prior isolated 1HSG receptor and box. Run one actual
+AutoDock-GPU file-list campaign, two independent runs per molecule, population
+150, 5,000 evaluations, heuristics and autostop off, ADADELTA, 2 Å cluster
+threshold and seeds 20261029/20261030/20261031. Assert two successful entries,
+saved pose hashes, recorded CUDA device, raw output, and resource release.
+These deliberately short settings are not a docking-quality protocol.
+
+## Cancellation
+
+After the campaign terminates and the GPU is free, start a separate single
+job against one prepared library ligand and the same maps. Use two runs,
+population 150 and 100,000,000 maximum evaluations; disable heuristics and
+autostop. Do not wait for the calculation to finish. When the actual pinned GPU
+binary is observed as a live process belonging to this isolated job, send the
+real API cancellation request. Record PID and process start identity, final
+state and raw tool output; verify the owned GPU process is gone, no poses were
+published and the reservation was released. If the process finishes before
+cancellation or cannot be observed, mark the cancellation leg inconclusive,
+do not adjust parameters or silently retry. Enforce bounded waits and retain
+failures. Run only when no unrelated GPU compute process is active.
+
+The first campaign/cancellation run uses only the predeclared hash-pinned
+discovery override used in the earlier smoke. If successful, Linux development
+discovery may be enabled for explicitly configured native executables; that
+does not certify arbitrary CUDA/OpenCL builds or hardware. A separate
+predeclared run will exercise product discovery without the override.
