@@ -451,7 +451,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   // Docking models one pH, so the default enumeration asks for one pH.
   expect(fetchSpy.mock.calls.some(([url]) =>
     String(url).includes("protonation-options?ph_min=7.4&ph_max=7.4"))).toBe(true);
-});
+}, 15000); // This end-to-end interaction spans receptor and ligand workflows on Windows CI.
 
 it("reopens the latest receptor without rerunning scientific tools", async () => {
   const sourceId = "00000000-0000-0000-0000-000000000003";

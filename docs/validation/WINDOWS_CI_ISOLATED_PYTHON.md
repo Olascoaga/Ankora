@@ -158,3 +158,13 @@ the developer's local timezone while the runner uses UTC. The test now checks
 the recorded UTC instant formatted in the environment's local timezone, matching
 the existing UI contract. Five focused tests passed independently under both
 `TZ=UTC` and `TZ=America/Mexico_City`; application date behavior was not changed.
+
+## Windows CI timeout follow-up
+
+GitHub Actions run 40887492813 for `0a2103b` passed backend tests, backend lint
+and type checking, then timed out after five seconds in the long end-to-end M2
+and ligand interface test. The remaining 337 frontend tests passed. The same
+test previously passed locally; this failure reported a timeout, not a failed
+assertion. Its per-test limit is now 15 seconds; assertions and product behavior
+are unchanged. The focused seven-test App suite passed on WSL2. The new commit's
+own hosted CI result must be checked independently.
