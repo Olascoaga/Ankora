@@ -78,11 +78,26 @@ still disabled; workstation and packaged-runtime validation remain necessary.
 An independent read-only review identified potential queue and GPU reservation
 leaks on exceptional paths. Separate synthetic regression tests cover a
 capacity check raising, single-job update/execution failures, and a campaign
-lease acquisition failure. The preflight device probe still executes before
-GPU admission; its scheduling and long-running cancellation need further work
-before enabling discovery in the product.
+lease acquisition failure. The preflight device probe is now admitted through
+the shared resource arbiter. Because preflight runs on the request thread, an
+occupied reservation or existing FIFO waiter returns
+`AUTODOCK_GPU_PROBE_RESOURCES_BUSY` (HTTP 409) without launching the tool or
+creating a job. The scientist can retry after active or queued work finishes.
+This explicit busy response is a limitation of synchronous preflight, not an
+automatically queued request. Long-running cancellation and process termination
+still require further work before enabling discovery in the product.
 
 The parser, AutoDock services and scheduler regression selection passed 81
 tests in WSL and 78 tests on Windows, after the scheduler changes. Backend
 type checking passed on 142 source files. These tests do not replace a real
 GPU cancellation or native Linux workstation acceptance test.
+
+## Predeclared check of the coordinated probe
+
+After the resource-admission change, perform one additional isolated `run-03`
+using the same pinned inputs, executable, API service, CUDA device and fixed
+parameters described above. The purpose is to ensure the newly reserved probe
+still permits the actual computation and releases its reservation; it is an
+engineering regression check, not an independent scientific benchmark. Do not
+replace either earlier run. If it fails, retain the evidence and stop rather
+than adjust parameters silently.

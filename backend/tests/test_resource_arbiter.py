@@ -141,6 +141,34 @@ def test_fifo_prevents_a_smaller_later_job_from_cutting_the_queue(
     assert order == ["large", "small"]
 
 
+def test_nonblocking_claim_respects_capacity_and_fifo(tmp_path: Path) -> None:
+    arbiter = _arbiter(tmp_path, cpu=2, gpu=1)
+    blocker = arbiter.acquire(_claim("blocker", cpu=1, gpu=1))
+    assert arbiter.try_acquire(_claim("busy", gpu=1)) is None
+    granted = threading.Event()
+    release_waiter = threading.Event()
+
+    def wait_for_gpu() -> None:
+        lease = arbiter.acquire(_claim("queued", gpu=1))
+        granted.set()
+        release_waiter.wait(timeout=2)
+        lease.release()
+
+    thread = threading.Thread(target=wait_for_gpu)
+    thread.start()
+    assert _wait_until(lambda: arbiter.snapshot().queued_requests == 1)
+    # CPU remains free, but nonblocking requests must not jump the queue.
+    assert arbiter.try_acquire(_claim("later", cpu=1)) is None
+    blocker.release()
+    assert granted.wait(timeout=1)
+    release_waiter.set()
+    thread.join(timeout=1)
+    lease = arbiter.try_acquire(_claim("available", gpu=1))
+    assert lease is not None
+    lease.release()
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+
+
 def test_an_impossible_claim_fails_instead_of_waiting_forever(tmp_path: Path) -> None:
     arbiter = _arbiter(tmp_path, cpu=2)
 

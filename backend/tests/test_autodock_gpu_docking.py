@@ -38,7 +38,7 @@ from ankora_backend.schemas.autodock_gpu import (
 from ankora_backend.schemas.warnings import WarningCode
 from ankora_backend.services import autodock_gpu_docking as gpu_module
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
-from ankora_backend.services.resource_arbiter import ResourceArbiter
+from ankora_backend.services.resource_arbiter import ResourceArbiter, autodock_gpu_claim
 
 REAL_LOG = (
     Path(__file__).parent / "fixtures" / "autodock_gpu_real_compound252.dlg"
@@ -142,6 +142,58 @@ def _wait(service: AutoDockGpuDockingService, job_id: str) -> object:
             return record
         time.sleep(0.01)
     raise AssertionError("the synthetic AutoDock-GPU job did not terminate")
+
+
+def _probe_test_arbiter(tmp_path: Path) -> ResourceArbiter:
+    capacity = 8 * 1024**3
+    return ResourceArbiter(
+        cpu_threads=2, gpu_slots=1, memory_total_bytes=capacity,
+        memory_reserve_bytes=0, disk_path=tmp_path, disk_total_bytes=capacity,
+        disk_reserve_bytes=0, memory_available=lambda: capacity, disk_free=lambda: capacity,
+    )
+
+
+def test_device_probe_holds_shared_gpu_reservation_and_releases_it_on_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _ = _fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+
+    def fail_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        assert arbiter.snapshot().gpu_slots_allocated == 1
+        raise OSError("synthetic device probe error")
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", fail_probe)
+    with pytest.raises(OSError, match="synthetic device probe error"):
+        service._probe_installation(1)
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    service.shutdown()
+
+
+def test_busy_gpu_refuses_single_probe_without_launching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+    blocker = arbiter.acquire(autodock_gpu_claim("running-job", ligand_count=1))
+    calls: list[bool] = []
+
+    def unexpected_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        calls.append(True)
+        return _installation()
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", unexpected_probe)
+    with pytest.raises(AnkoraDomainError) as failure:
+        service.start(request)
+    assert failure.value.code == "AUTODOCK_GPU_PROBE_RESOURCES_BUSY"
+    assert failure.value.status_code == 409
+    assert not calls
+    assert arbiter.snapshot().gpu_slots_allocated == 1
+    blocker.release()
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    service.shutdown()
 
 
 @pytest.mark.parametrize("failure_point", ["running_update", "execution"])
@@ -450,6 +502,30 @@ def _wait_batch(service: AutoDockGpuDockingService, batch_id: str) -> object:
             return record
         time.sleep(0.02)
     raise AssertionError("the synthetic AutoDock-GPU campaign did not terminate")
+
+
+def test_busy_gpu_refuses_campaign_probe_without_launching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+    blocker = arbiter.acquire(autodock_gpu_claim("running-job", ligand_count=1))
+    calls: list[bool] = []
+
+    def unexpected_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        calls.append(True)
+        return _installation()
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", unexpected_probe)
+    with pytest.raises(AnkoraDomainError) as failure:
+        service.start_batch(request)
+    assert failure.value.code == "AUTODOCK_GPU_PROBE_RESOURCES_BUSY"
+    assert failure.value.status_code == 409
+    assert not calls
+    assert service._active_batch_id is None
+    blocker.release()
+    service.shutdown()
 
 
 def test_campaign_lease_failure_does_not_block_next_campaign(

@@ -227,6 +227,21 @@ class ResourceArbiter:
                 self._condition.notify_all()
                 raise
 
+    def try_acquire(self, claim: ResourceClaim) -> ResourceLease | None:
+        """Admit immediately only when capacity is free and no waiter is ahead.
+
+        Callers that cannot wait synchronously can give an explicit busy
+        response without starting work outside the global scheduler.
+        """
+        self.validate(claim)
+        with self._condition:
+            if self._waiters or not self._fits(claim):
+                return None
+            lease_id = str(uuid4())
+            self._active[lease_id] = claim
+            self._condition.notify_all()
+            return ResourceLease(self, lease_id, claim)
+
     def release(self, lease_id: str) -> None:
         with self._condition:
             self._active.pop(lease_id, None)

@@ -502,11 +502,40 @@ class AutoDockGpuDockingService:
 
     # --- inputs ------------------------------------------------------------
 
+    def _probe_installation(self, device_number: int) -> AutoDockGpuInstallation:
+        """Reserve shared resources before the device probe launches GPU code.
+
+        Preflight happens on the request thread, so it cannot wait for a
+        potentially hours-long campaign. Report busy rather than overlapping
+        another workload or silently jumping ahead of queued work.
+        """
+        lease: ResourceLease | None = None
+        if self._resources is not None:
+            lease = self._resources.try_acquire(
+                autodock_gpu_claim(f"device-probe-{uuid4()}", ligand_count=1)
+            )
+            if lease is None:
+                raise AnkoraDomainError(
+                    code=f"{_CODE_PREFIX}_PROBE_RESOURCES_BUSY",
+                    stage=_STAGE,
+                    message=(
+                        "The resources needed to check the GPU are currently in use. "
+                        "Wait for active or queued scientific work to finish, then try again."
+                    ),
+                    status_code=409,
+                    details={"device_number": device_number},
+                )
+        try:
+            return probe_autodock_gpu(device_number=device_number)
+        finally:
+            if lease is not None:
+                lease.release()
+
     def _prepare(self, request: AutoDockGpuDockingRequest) -> _PreparedDocking:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
+        installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
@@ -772,7 +801,7 @@ class AutoDockGpuDockingService:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
+        installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
