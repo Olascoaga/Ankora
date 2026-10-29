@@ -94,7 +94,11 @@ class GninaDockingService:
 
     @classmethod
     def from_environment(
-        cls, *, leases: WorkLeaseManager, resources: ResourceArbiter
+        cls,
+        *,
+        leases: WorkLeaseManager,
+        resources: ResourceArbiter,
+        enable_experimental_cuda: bool = False,
     ) -> GninaDockingService:
         return cls(
             store=GninaJobStore.from_environment(),
@@ -103,6 +107,7 @@ class GninaDockingService:
             ligands=LigandArtifactStore.from_environment(),
             leases=leases,
             resources=resources,
+            enable_experimental_cuda=enable_experimental_cuda,
         )
 
     def start(self, request: GninaDockingRequest) -> GninaJobRecord:
