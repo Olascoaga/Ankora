@@ -61,3 +61,28 @@ After this fix, a second isolated execution is predeclared using exactly the
 inputs and parameters above, with a new output directory. This is an
 engineering regression check after observing a failure, not an independent
 scientific validation or a replacement for the first execution.
+
+## Second execution
+
+The predeclared `run-02` completed through the real API, AutoGrid and the
+hash-pinned AutoDock-GPU executable. The run reported CUDA on the RTX 5050,
+matching the separately probed device name. The returned pose artifact hashes
+matched their files; the original input project was unchanged and the GPU
+reservation was released after completion. The retained evidence SHA-256 is
+`3cc06cb41a630364bda33e58d92a2ed99a0210731d107a8caeec17a2c731f128`.
+The result tests one WSL environment and one device only. It does not establish
+general Linux compatibility, reproducibility, cancellation under a driver
+hang, or any scientific accuracy claim. Production Linux GPU discovery is
+still disabled; workstation and packaged-runtime validation remain necessary.
+
+An independent read-only review identified potential queue and GPU reservation
+leaks on exceptional paths. Separate synthetic regression tests cover a
+capacity check raising, single-job update/execution failures, and a campaign
+lease acquisition failure. The preflight device probe still executes before
+GPU admission; its scheduling and long-running cancellation need further work
+before enabling discovery in the product.
+
+The parser, AutoDock services and scheduler regression selection passed 81
+tests in WSL and 78 tests on Windows, after the scheduler changes. Backend
+type checking passed on 142 source files. These tests do not replace a real
+GPU cancellation or native Linux workstation acceptance test.
