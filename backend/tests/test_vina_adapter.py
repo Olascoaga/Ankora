@@ -7,9 +7,17 @@ to represent a real docking calculation.
 from pathlib import Path
 
 import pytest
-
-from ankora_backend.adapters.engines.vina import build_vina_arguments, parse_vina_poses
+from ankora_backend.adapters.engines import vina
+from ankora_backend.adapters.engines.vina import (
+    VinaInstallation,
+    build_vina_arguments,
+    parse_vina_poses,
+    probe_vina,
+)
+from ankora_backend.adapters.tools import discovery
+from ankora_backend.adapters.tools.discovery import DiscoveredTool, discover_vina
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.execution.subprocess_runner import ToolExecution
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import VinaDockingParameters
 
@@ -105,3 +113,186 @@ def test_parse_vina_poses_rejects_output_without_structured_result() -> None:
         parse_vina_poses(b"MODEL 1\nREMARK human prose only\nENDMDL\n")
 
     assert captured.value.code == "VINA_OUTPUT_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("simulated_system", "expected_message"),
+    [
+        ("Windows", "AutoDock Vina is not configured on this Windows system."),
+        ("Linux", "AutoDock Vina is not configured on this Linux system."),
+        ("Darwin", "AutoDock Vina is not configured on this system."),
+        ("", "AutoDock Vina is not configured on this system."),
+    ],
+)
+@pytest.mark.parametrize(
+    "discovered_state",
+    [
+        DiscoveredTool(available=False, path=None, version=None),
+        DiscoveredTool(available=True, path=None, version=None),
+        DiscoveredTool(available=False, path="/synthetic/vina", version="1.2.7"),
+    ],
+)
+def test_probe_vina_unavailable_reports_platform_message_and_preserves_error_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    simulated_system: str,
+    expected_message: str,
+    discovered_state: DiscoveredTool,
+) -> None:
+    monkeypatch.setenv("ANKORA_VINA_PATH", "/synthetic/configured/vina")
+    observed_configured_paths: list[str | Path | None] = []
+
+    def fake_discover_vina(configured_path: str | Path | None = None) -> DiscoveredTool:
+        observed_configured_paths.append(configured_path)
+        return discovered_state
+
+    def forbid_run_tool(**_: object) -> ToolExecution:
+        raise AssertionError("run_tool must not be called when Vina is unavailable")
+
+    monkeypatch.setattr(vina, "discover_vina", fake_discover_vina)
+    monkeypatch.setattr(vina, "_host_system", lambda: simulated_system)
+    monkeypatch.setattr(vina, "run_tool", forbid_run_tool)
+
+    with pytest.raises(AnkoraDomainError) as captured:
+        probe_vina()
+
+    assert observed_configured_paths == ["/synthetic/configured/vina"]
+    assert captured.value.code == "SCIENTIFIC_TOOL_UNAVAILABLE"
+    assert captured.value.stage == "docking_configuration"
+    assert captured.value.message == expected_message
+    assert captured.value.status_code == 422
+    assert captured.value.details == {
+        "tool": "AutoDock Vina",
+        "expected_version": "1.2.7",
+    }
+    assert captured.value.recoverable is True
+
+
+@pytest.mark.parametrize(
+    ("windows_rules", "simulated_system", "expected_message"),
+    [
+        (True, "Windows", "AutoDock Vina is not configured on this Windows system."),
+        (False, "Linux", "AutoDock Vina is not configured on this Linux system."),
+        (False, "FreeBSD", "AutoDock Vina is not configured on this system."),
+    ],
+)
+def test_probe_vina_preserves_original_discovery_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_rules: bool,
+    simulated_system: str,
+    expected_message: str,
+) -> None:
+    missing_path = tmp_path / "missing" / ("vina.exe" if windows_rules else "vina")
+    non_executable_file = tmp_path / "plain-file"
+    non_executable_file.write_bytes(b"synthetic non-executable data")
+    non_executable_file.chmod(0o644)
+
+    monkeypatch.setattr(discovery, "_windows_host", lambda: windows_rules)
+    monkeypatch.setattr(vina, "_host_system", lambda: simulated_system)
+
+    def forbid_run_tool(**_: object) -> ToolExecution:
+        raise AssertionError("run_tool must not be called when discovery fails")
+
+    monkeypatch.setattr(vina, "run_tool", forbid_run_tool)
+
+    candidates = [missing_path]
+    if not windows_rules:
+        candidates.append(non_executable_file)
+
+    for configured in candidates:
+        monkeypatch.setenv("ANKORA_VINA_PATH", str(configured))
+        direct = discover_vina(str(configured))
+        assert direct == DiscoveredTool(available=False, path=None, version=None)
+
+        with pytest.raises(AnkoraDomainError) as captured:
+            probe_vina()
+
+        assert captured.value.code == "SCIENTIFIC_TOOL_UNAVAILABLE"
+        assert captured.value.stage == "docking_configuration"
+        assert captured.value.message == expected_message
+        assert captured.value.status_code == 422
+        assert captured.value.details == {
+            "tool": "AutoDock Vina",
+            "expected_version": "1.2.7",
+        }
+
+
+def test_probe_vina_verifies_version_and_preserves_probe_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "bin" / "vina"
+    monkeypatch.setattr(
+        vina,
+        "discover_vina",
+        lambda _configured: DiscoveredTool(available=True, path=str(executable), version="1.2.7"),
+    )
+    recorded_calls: list[dict[str, object]] = []
+
+    def fake_run_tool(**kwargs: object) -> ToolExecution:
+        recorded_calls.append(kwargs)
+        return ToolExecution(
+            command=[str(executable), "--version"],
+            exit_code=0,
+            stdout="AutoDock Vina v1.2.7\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(vina, "run_tool", fake_run_tool)
+    installation = probe_vina()
+
+    assert installation == VinaInstallation(executable=str(executable), version="1.2.7")
+    assert recorded_calls == [
+        {
+            "executable": str(executable),
+            "arguments": ["--version"],
+            "cwd": executable.parent,
+            "stage": "docking_configuration",
+            "timeout_seconds": 30,
+        }
+    ]
+
+    monkeypatch.setattr(
+        vina,
+        "run_tool",
+        lambda **_kwargs: ToolExecution(
+            command=[str(executable), "--version"],
+            exit_code=1,
+            stdout="",
+            stderr="synthetic probe failure",
+        ),
+    )
+    with pytest.raises(AnkoraDomainError) as unverified:
+        probe_vina()
+    assert unverified.value.code == "VINA_VERSION_UNVERIFIED"
+    assert unverified.value.stage == "docking_configuration"
+    assert (
+        unverified.value.message == "Ankora found Vina but could not verify its executable version."
+    )
+    assert unverified.value.status_code == 422
+    assert unverified.value.details == {
+        "command": [str(executable), "--version"],
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "synthetic probe failure",
+    }
+
+    monkeypatch.setattr(
+        vina,
+        "run_tool",
+        lambda **_kwargs: ToolExecution(
+            command=[str(executable), "--version"],
+            exit_code=0,
+            stdout="AutoDock Vina v1.2.5\n",
+            stderr="",
+        ),
+    )
+    with pytest.raises(AnkoraDomainError) as unsupported:
+        probe_vina()
+    assert unsupported.value.code == "VINA_VERSION_UNSUPPORTED"
+    assert unsupported.value.stage == "docking_configuration"
+    assert unsupported.value.message == "This M5 implementation requires AutoDock Vina 1.2.7."
+    assert unsupported.value.status_code == 422
+    assert unsupported.value.details == {
+        "detected_version": "1.2.5",
+        "required_version": "1.2.7",
+    }

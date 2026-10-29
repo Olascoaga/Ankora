@@ -1,6 +1,7 @@
 """AutoDock Vina 1.2.x command construction, execution, and pose parsing."""
 
 import os
+import platform
 import re
 import threading
 from dataclasses import dataclass
@@ -38,13 +39,26 @@ class ParsedVinaPose:
     content: bytes
 
 
+def _host_system() -> str:
+    return platform.system()
+
+
+def _unavailable_vina_message() -> str:
+    system = _host_system().strip().lower()
+    if system in {"windows", "win32", "nt"}:
+        return "AutoDock Vina is not configured on this Windows system."
+    if system.startswith("linux"):
+        return "AutoDock Vina is not configured on this Linux system."
+    return "AutoDock Vina is not configured on this system."
+
+
 def probe_vina() -> VinaInstallation:
     discovered = discover_vina(os.getenv("ANKORA_VINA_PATH"))
     if not discovered.available or discovered.path is None:
         raise AnkoraDomainError(
             code="SCIENTIFIC_TOOL_UNAVAILABLE",
             stage="docking_configuration",
-            message="AutoDock Vina is not configured on this Windows system.",
+            message=_unavailable_vina_message(),
             status_code=422,
             details={"tool": "AutoDock Vina", "expected_version": "1.2.7"},
         )
