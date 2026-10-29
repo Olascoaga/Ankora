@@ -101,3 +101,12 @@ still permits the actual computation and releases its reservation; it is an
 engineering regression check, not an independent scientific benchmark. Do not
 replace either earlier run. If it fails, retain the evidence and stop rather
 than adjust parameters silently.
+
+`run-03` completed through the actual service, with the newly coordinated
+device probe, AutoGrid and CUDA execution. Its retained `evidence.json` SHA-256
+is `8eadbf59429ac049a6e0c1986a4df5c9a9554bca04491a0855fd31ce9cb8316a`.
+The original copied project remained unchanged, the reported device matched
+the probe and the GPU reservation was released. The focused GPU, parser and
+scheduler selection passed 69 tests in WSL and 69 on Windows; Ruff and backend
+type checking (142 files) passed. This is one development device, not proof of
+general hardware compatibility, reliable cancellation or native packaging.
