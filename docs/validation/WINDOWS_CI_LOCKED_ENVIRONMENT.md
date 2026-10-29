@@ -118,3 +118,24 @@ A native Windows CI run of this workflow must show:
 
 Until then, the fix is unproven. The stale manual assertion is outside this
 change.
+
+## Coordinator verification on native Windows
+
+An isolated Windows Python 3.12.13 environment installed both existing wheel
+locks with hash verification and installed the backend without dependency
+resolution. `pip check` passed, and the exact inline workflow version check
+reported **80 locked distributions at their expected versions**.
+
+The version-sensitive protonation tests, frozen sensitivity reproduction and
+updated guide assertion passed together: **11 passed**, with one dependency
+deprecation warning. The original development environment was not changed.
+These checks cover the four failures observed in CI run 40803611622; they do
+not prove the whole hosted workflow is green.
+
+The hosted runner previously selected CPython 3.12.10. The
+[setup-python version manifest](https://github.com/actions/python-versions/blob/main/versions-manifest.json)
+lists Linux builds but no Windows build for CPython 3.12.13 at this review.
+The workflow therefore continues to request the 64-bit CPython 3.12 family and
+logs its exact patch version. Windows Conda remains the separately accepted
+full scientific runtime; OpenMM/PDBFixer and hosted-runner verification are
+still outside this local wheel-only check.
