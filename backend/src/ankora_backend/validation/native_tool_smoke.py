@@ -1,4 +1,7 @@
-"""Bounded Windows smoke matrix for every supported process-launching adapter.
+"""Bounded native smoke matrix for every supported process-launching adapter.
+
+The matrix and its scope are the accepted Windows ones; on Linux it runs the same
+ten adapters and records unavailable tools (such as AutoDock-GPU) as failures.
 
 The matrix writes create-only local evidence below ``.ankora-data``.  It is a
 runtime compatibility check, not a scientific benchmark: receptor and ligand
@@ -28,7 +31,7 @@ from ankora_backend.adapters.engines.autogrid import probe_autogrid4
 from ankora_backend.adapters.engines.vina import probe_vina
 from ankora_backend.adapters.tools.discovery import discover_java_home, python_worker_arguments
 from ankora_backend.adapters.tools.ligand_preparation import execute_meeko_ligand
-from ankora_backend.adapters.tools.pocket_detection import execute_p2rank
+from ankora_backend.adapters.tools.pocket_detection import execute_p2rank, java_executable
 from ankora_backend.adapters.tools.receptor_preparation import (
     run_meeko_receptor,
     run_pdb2pqr_propka,
@@ -43,6 +46,9 @@ from ankora_backend.services.ligand_import import import_local_ligand
 from ankora_backend.services.ligand_minimization import generate_ligand_conformer
 
 SCHEMA_VERSION = 1
+# The package-probe worker imports this module by name; `__name__` is
+# "__main__" when the matrix itself is started with `python -m`.
+MODULE_NAME = "ankora_backend.validation.native_tool_smoke"
 SUPPORTED_ADAPTER_IDS = (
     "python_scientific_runtime",
     "pdbfixer_repair",
@@ -278,6 +284,12 @@ def _package_probe_payload() -> dict[str, str]:
     return versions
 
 
+def package_probe_arguments() -> list[str]:
+    return python_worker_arguments(
+        worker="native-smoke", module=MODULE_NAME, arguments=["--package-probe"]
+    )
+
+
 def _default_receptor_fixture() -> Path:
     module = importlib.import_module("pdbfixer")
     origin = getattr(module, "__file__", None)
@@ -336,9 +348,7 @@ def run_native_tool_smoke(
     def run_runtime() -> None:
         execution = run_tool(
             executable=sys.executable,
-            arguments=python_worker_arguments(
-                worker="native-smoke", module=__name__, arguments=["--package-probe"]
-            ),
+            arguments=package_probe_arguments(),
             cwd=repository_root,
             stage="native_tool_smoke",
             timeout_seconds=120,
@@ -526,7 +536,7 @@ def run_native_tool_smoke(
         if java_home is None:
             raise RuntimeError("compatible Java runtime was not found")
         java_execution = run_tool(
-            executable=str(java_home / "bin" / "java.exe"),
+            executable=str(java_executable(java_home)),
             arguments=["-version"],
             cwd=p2rank_dir,
             stage="native_tool_smoke",
@@ -695,7 +705,7 @@ def _default_output_root(repository_root: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run Ankora's bounded Windows native-tool smoke matrix."
+        description="Run Ankora's bounded native-tool smoke matrix."
     )
     parser.add_argument(
         "--root",

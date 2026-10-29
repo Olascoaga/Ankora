@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from ankora_backend.adapters.tools import pocket_detection
 from ankora_backend.execution.subprocess_runner import ToolExecution
+from ankora_backend.validation import native_tool_smoke
 from ankora_backend.validation.native_tool_smoke import (
     DEFERRED_TOOLS,
     SUPPORTED_ADAPTER_IDS,
@@ -88,6 +90,24 @@ def test_evidence_writer_preserves_raw_output_commands_and_fixture_hashes(
     assert fixtures["fixture-lf.txt"]["sha256"] != HISTORICAL_CRLF_SHA256
     assert (directory / "execution.stdout.txt").read_bytes() == b"synthetic stdout\n"
     assert (directory / "execution.stderr.txt").read_bytes() == b"synthetic stderr\n"
+
+
+def test_package_probe_worker_names_this_module_even_when_run_as_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert native_tool_smoke.__spec__ is not None
+    assert native_tool_smoke.__spec__.name == native_tool_smoke.MODULE_NAME
+    monkeypatch.setattr(native_tool_smoke, "__name__", "__main__")
+
+    assert native_tool_smoke.package_probe_arguments() == [
+        "-m",
+        "ankora_backend.validation.native_tool_smoke",
+        "--package-probe",
+    ]
+
+
+def test_java_probe_uses_the_adapter_host_rules() -> None:
+    assert native_tool_smoke.java_executable is pocket_detection.java_executable
 
 
 def test_evidence_writer_refuses_to_overwrite_an_existing_run(tmp_path: Path) -> None:
