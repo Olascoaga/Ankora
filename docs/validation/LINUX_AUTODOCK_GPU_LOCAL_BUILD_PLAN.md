@@ -19,3 +19,18 @@ alone is not GPU docking acceptance and may not be portable to another host.
 If the build succeeds, a separate immutable test protocol will be recorded
 before any docking execution. No installer, external CUDA library redistribution,
 or enabling of Linux GPU discovery is implied by this experiment.
+
+## Observed first build
+
+The CUDA 13.3 compiler produced kernels for `sm_120`, but the final link failed
+because the chosen WSL driver directory contained `libcuda` and did not contain
+the CUDA toolkit's `libcurand` or `libcudart`. Exit code was 2; no executable
+was produced. Build stdout SHA-256:
+`3a0ebad4d642dc5ee78d253da7dbd8ef427719bb1d5e821bc2463494ef177638`;
+stderr SHA-256:
+`da989dd661b52e0a20b49202e35865add6217b270f709ed6e1e9811efbe3f50a`.
+
+The upstream version helper also accidentally discovered the containing Ankora
+Git checkout and embedded its commit as the AutoDock-GPU version in the failed
+link command. That is not the upstream source identity and must not be used.
+The failed build and its logs remain preserved; the protocol was not changed.
