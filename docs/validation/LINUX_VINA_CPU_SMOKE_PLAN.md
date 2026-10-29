@@ -150,3 +150,21 @@ Observed results (Ubuntu 24.04 WSL2, locked `ankora-dev` Python 3.12.13):
 
 Pending coordinator execution. Append the command outcome, the evidence SHA-256
 and the observed facts below this line without editing the plan above.
+
+### Observed run — 2026-10-28
+
+The coordinator executed this previously committed plan once on Ubuntu 24.04
+under WSL2 with Python 3.12.13. The host was Linux x86_64; the pinned Vina
+1.2.7 binary, receptor, synthetic ethanol ligand, and P2Rank CSV matched the
+declared identities. Vina exited 0 with neither timeout nor cancellation.
+The existing adapter parsed two sequential poses (modes 1 and 2), satisfying
+the predeclared 1–3-pose engineering criterion. The 21 focused tests passed.
+
+- Evidence JSON SHA-256: `88c0f80d2009961a67767de07c77fab0a52df7d680e9a4a2f0b052b395540cf5`.
+- Unmodified Vina PDBQT SHA-256: `35e1a021702efcfe01d1b5000981c70451d7d6d1e07cbc2779df80ced0b5fd22`.
+- stdout SHA-256: `047bfe1011e85e14d9d604322f36eccc8dc4c34c9a6cc302f29cd203cce6882c`.
+- stderr was empty (SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+
+The exact command, input copies, streams, raw output, and pose identities are
+retained as local create-only evidence. This is not application-level or
+scientific acceptance, a redocking result, or a Linux workstation test.
