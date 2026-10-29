@@ -68,3 +68,13 @@ Interrupted GNINA records are reconciled on backend startup as failed, keeping
 any partial raw output without publishing it as a pose. Their leases are
 reconciled with the existing recovery mechanism. Automatic retry is explicitly
 unavailable until the single-job execution service can create a new attempt.
+
+An internal, CPU-only single-job service now copies and verifies prepared input
+artifacts, reserves resources, retains raw tool output, checks each returned
+pose against the prepared conformer, and records terminal status. Its tests use
+synthetic lifecycle behavior and a previously recorded real-engine pose fixture;
+they are not a fresh service execution. CUDA requests are explicitly rejected
+until independent per-process GPU observation is integrated and tested. The
+service is not yet connected to API routes or the project runtime. Real CPU and
+CUDA service executions, cancellation, integration and native Linux acceptance
+remain required before presenting this feature as available.
