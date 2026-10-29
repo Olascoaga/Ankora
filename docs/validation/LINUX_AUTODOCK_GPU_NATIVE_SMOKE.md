@@ -48,3 +48,28 @@ message and parseability of the DLG. An exit code of zero is not sufficient.
 Record any failure and do not tune the test after seeing an outcome. Do not
 enable Linux GPU discovery until separate adapter and end-to-end checks establish
 its behavior; preserve the Windows contract.
+
+## Observed official-binary attempt
+
+The Linux CUDA 12 binary identified itself as `AutoDock-GPU version: v1.6`;
+unlike the Windows build, this line contained no build or architecture fields.
+With nonexistent input paths the device probe named an NVIDIA GeForce RTX 5050
+Laptop GPU. That probe returned exit code 0 despite reporting a failed job;
+it did not perform docking.
+
+The predeclared calculation on WSL2 selected the same GPU (compute capability
+12.0, driver 610.88) but aborted with exit code 134 during CUDA kernel setup.
+No DLG or docking result was produced. The saved output reported an assertion
+in `SetKernelsGpuData` after attempting a CUDA symbol copy. This evidence does
+not identify the CUDA error code, so it does not prove the cause of the abort.
+
+Locally observed output hashes:
+
+- stdout `9492105a5c8b83d3bf127227310df5c7c78fcfd9033fbf7aaa389ffe8da73a75`.
+- stderr `874db9b02ebf6e8fdaa3037d0d6ec82b6d3d91abc6aa2627995e6a596f4ef091`.
+- recorded exit code `e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b`.
+
+The tagged source's CUDA makefile lists code targets 52, 60, 61, 70 and 80 by
+default; this is relevant context, but the actual failing CUDA error was not
+captured and no root cause is established. The downloaded inputs, executable
+and logs remain isolated. Linux GPU discovery remains disabled.
