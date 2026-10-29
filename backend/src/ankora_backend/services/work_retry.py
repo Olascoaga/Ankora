@@ -179,6 +179,14 @@ class WorkRetryService:
                 created_autodock_gpu_batch.status.value,
                 created_autodock_gpu_batch.created_at,
             )
+        if work_kind is WorkKind.GNINA_JOB:
+            raise AnkoraDomainError(
+                code="WORK_RETRY_UNAVAILABLE",
+                stage="work_recovery",
+                message="Retry for interrupted GNINA jobs is not available yet.",
+                status_code=409,
+                details={"work_kind": work_kind.value, "work_id": work_id},
+            )
         assert_never(work_kind)
 
     @staticmethod

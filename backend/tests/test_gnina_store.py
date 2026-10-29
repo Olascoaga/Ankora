@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.gnina_store import GninaJobStore
+from ankora_backend.persistence.work_lease_store import WorkLeaseStore
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import DockingJobPhase, DockingJobStatus
 from ankora_backend.schemas.gnina import (
@@ -19,6 +20,8 @@ from ankora_backend.schemas.gnina import (
     GninaPoseResult,
     GninaToolIdentity,
 )
+from ankora_backend.schemas.work_recovery import WorkKind, WorkLeaseRecord, WorkLeaseState
+from ankora_backend.services.work_recovery import InterruptedWorkRecovery
 
 
 def _record(job_id: str) -> GninaJobRecord:
@@ -120,3 +123,34 @@ def test_rejects_cross_project_symlink(tmp_path: Path) -> None:
         pytest.skip("Creating symlinks is unavailable on this host")
     with pytest.raises(AnkoraDomainError):
         first.load_job(job.job_id)
+
+
+def test_recovery_marks_interrupted_job_without_publishing_partial_pose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    store = GninaJobStore.from_environment()
+    job = _record(store.new_job_id()).model_copy(update={
+        "status": DockingJobStatus.RUNNING, "phase": DockingJobPhase.DOCKING,
+    })
+    store.create_job(job)
+    store.write_artifact(job.job_id, "raw.pdbqt", b"partial synthetic output")
+    now = datetime.now(UTC)
+    leases = WorkLeaseStore.from_environment()
+    lease = WorkLeaseRecord(
+        lease_id=store.new_job_id(), work_kind=WorkKind.GNINA_JOB, work_id=job.job_id,
+        owner_instance_id=store.new_job_id(), acquired_at=now, heartbeat_at=now,
+    )
+    leases.write(lease)
+    recovery = InterruptedWorkRecovery.from_environment(leases=leases)
+    summary = recovery.reconcile()
+    assert len(summary.items) == 1
+    assert summary.items[0].work_kind is WorkKind.GNINA_JOB
+    result = store.load_job(job.job_id)
+    assert result.status is DockingJobStatus.FAILED
+    assert result.failure is not None and result.failure.code == "GNINA_EXECUTION_INTERRUPTED"
+    assert result.poses == []
+    assert store.output_path(job.job_id, "raw.pdbqt").read_bytes() == b"partial synthetic output"
+    restored_lease = leases.load(WorkKind.GNINA_JOB, job.job_id)
+    assert restored_lease is not None and restored_lease.state is WorkLeaseState.RECONCILED
+    assert recovery.reconcile().items == []

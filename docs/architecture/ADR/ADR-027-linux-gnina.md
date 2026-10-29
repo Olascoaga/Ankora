@@ -63,3 +63,8 @@ requires evidence that the process was observed on a GPU. Such observation
 confirms a GPU process was reported, not independently that every neural-network
 operation used the GPU. Failure and cancellation do not publish poses. This
 foundation alone does not execute jobs or expose an API or UI.
+
+Interrupted GNINA records are reconciled on backend startup as failed, keeping
+any partial raw output without publishing it as a pose. Their leases are
+reconciled with the existing recovery mechanism. Automatic retry is explicitly
+unavailable until the single-job execution service can create a new attempt.
