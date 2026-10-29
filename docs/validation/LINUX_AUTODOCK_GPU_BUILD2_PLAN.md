@@ -18,3 +18,19 @@ Record the exact build command, exit status, raw output and resulting binary
 and library identities. Stop and report any failure. Successful compilation does
 not establish docking functionality. Before any docking, define a separate
 bounded test plan; do not enable the Linux GPU adapter on this basis alone.
+
+## Observed build
+
+The second isolated build completed with exit code 0. The actual compile used
+`-gencode arch=compute_120,code=sm_120`, and the linker reported version
+`v1.6`, supplied explicitly. The resulting Linux x86-64 ELF had SHA-256
+`3e1bba7691983c97e1d64fef6cc45dd8306d54d10e5f81f50185694f06e8be78`.
+`--help` returned `AutoDock-GPU version: v1.6`.
+
+The linked runtime includes `libcudart.so.13` supplied by the local CUDA 13.3
+toolkit and normal C++/OpenMP/system libraries. Driver resolution and these
+paths are specific to this WSL host; no redistribution decision is made.
+Build stdout SHA-256 `cafe78dbc7273f74481633a84a5a1646a8577a56141b409f45c977ad39b5a3f3`;
+stderr SHA-256 `a5c416dcfbbc2b69d86011b580f9d8ed4b0be482907210d31d9b01b8f05582fe`.
+The raw outputs and locally built binary remain in the isolated workspace.
+This confirms a build, not a completed GPU docking.
