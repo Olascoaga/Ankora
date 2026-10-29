@@ -108,3 +108,20 @@ version was upgraded or downgraded.
 - **Scope:** the scope boundary of `WINDOWS_CI_LOCKED_ENVIRONMENT.md` still
   applies. This is the wheel-compatible locked stack, not the Conda release
   environment, so OpenMM and PDBFixer tests still skip.
+
+## Coordinator follow-up on native Windows
+
+The five focused workflow tests also passed on native Windows 11, using
+Python 3.12.13 and isolated test directories. With PowerShell 7 on native
+Windows, the coordinator additionally exercised the equivalent create-only
+venv setup and GitHub environment/path file writes, then verified that the
+venv interpreter resolved on PATH, the user site was disabled, and
+`pip check` succeeded in the clean environment. The tested bootstrap Python
+was a local Anaconda interpreter; hosted `setup-python` remains a separate
+environment and its outcome must be observed in GitHub Actions.
+
+An earlier attempt inside a restricted local execution environment returned
+an `ensurepip` error without a detailed cause; the subsequent independent
+PowerShell probe outside that restriction passed. Neither run downloaded or
+changed the locked project dependencies. The separately recorded full-lock
+Windows environment check remains the evidence for those packages.

@@ -167,3 +167,13 @@ the predeclared 1–3-pose engineering criterion. The 21 focused tests passed.
 The exact command, input copies, streams, raw output, and pose identities are
 retained as local create-only evidence. This is not application-level or
 scientific acceptance, a redocking result, or a Linux workstation test.
+
+## Follow-up: Vina discovery message
+
+The native Vina adapter now identifies Linux when Vina is unavailable, while
+preserving the original Windows wording, error code, stage, details, and
+discovery behavior. Simulated Windows, Linux, and other platforms are covered
+by adapter tests. On the reviewed branch, 28 Vina adapter and docking tests
+passed on Linux, and 19 adapter tests passed on native Windows; Ruff and
+focused mypy checks passed. This is an error-message portability correction,
+not additional docking or scientific validation.
