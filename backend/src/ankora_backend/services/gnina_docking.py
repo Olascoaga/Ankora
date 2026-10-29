@@ -39,6 +39,7 @@ from ankora_backend.schemas.gnina import (
 from ankora_backend.schemas.receptors import ReceptorOutputStage, ReceptorPreparationStatus
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.execution_freshness import require_current_inputs
+from ankora_backend.services.gnina_gpu_observer import GninaGpuObserver
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceClaim,
@@ -78,6 +79,7 @@ class GninaDockingService:
         ligands: LigandArtifactStore,
         leases: WorkLeaseManager,
         resources: ResourceArbiter,
+        enable_experimental_cuda: bool = False,
     ) -> None:
         self._store = store
         self._receptors = receptors
@@ -85,6 +87,7 @@ class GninaDockingService:
         self._ligands = ligands
         self._leases = leases
         self._resources = resources
+        self._enable_experimental_cuda = enable_experimental_cuda
         self._lock = threading.RLock()
         self._events: dict[str, threading.Event] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-gnina")
@@ -104,7 +107,7 @@ class GninaDockingService:
 
     def start(self, request: GninaDockingRequest) -> GninaJobRecord:
         # CUDA remains gated until independent, process-specific GPU observation is wired in.
-        if request.parameters.compute == "cuda":
+        if request.parameters.compute == "cuda" and not self._enable_experimental_cuda:
             raise _failure(
                 "GNINA_CUDA_VERIFICATION_UNAVAILABLE",
                 "GNINA CUDA execution is not enabled until GPU evidence is verified.",
@@ -300,15 +303,23 @@ class GninaDockingService:
                 directory / "conformer.sdf", record.conformer_sha256, "conformer"
             )
             output_path = directory / "raw_poses.pdbqt"
-            execution = execute_gnina(
-                installation=installation,
-                receptor_path=receptor_path,
-                ligand_path=ligand_path,
-                output_path=output_path,
-                box=record.box,
-                parameters=record.request.parameters,
-                cancel_event=event,
-            )
+            observer = None
+            if record.request.parameters.compute == "cuda":
+                observer = GninaGpuObserver(Path(installation.executable), directory)
+                observer.start()
+            try:
+                execution = execute_gnina(
+                    installation=installation,
+                    receptor_path=receptor_path,
+                    ligand_path=ligand_path,
+                    output_path=output_path,
+                    box=record.box,
+                    parameters=record.request.parameters,
+                    cancel_event=event,
+                )
+            finally:
+                if observer is not None:
+                    observer.stop()
             evidence = GninaExecutionEvidence(
                 command=execution.command,
                 exit_code=execution.exit_code,
@@ -316,6 +327,8 @@ class GninaDockingService:
                 stderr=execution.stderr,
                 timed_out=execution.timed_out,
                 canceled=execution.canceled,
+                gpu_process_observed=observer is not None and observer.observation is not None,
+                gpu_observation=observer.observation if observer is not None else None,
             )
             self._store.write_artifact(job_id, "stdout.log", execution.stdout.encode("utf-8"))
             self._store.write_artifact(job_id, "stderr.log", execution.stderr.encode("utf-8"))
@@ -328,6 +341,11 @@ class GninaDockingService:
                     "GNINA did not complete successfully.",
                     exit_code=execution.exit_code,
                     timed_out=execution.timed_out,
+                )
+            if record.request.parameters.compute == "cuda" and not evidence.gpu_process_observed:
+                raise _failure(
+                    "GNINA_GPU_EXECUTION_UNVERIFIED",
+                    "GNINA completed, but its process was not observed on a GPU.",
                 )
             _verified_bytes(receptor_path, record.receptor_sha256, "receptor")
             _verified_bytes(ligand_path, record.ligand_sha256, "ligand")

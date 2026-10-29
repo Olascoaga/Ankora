@@ -72,9 +72,18 @@ unavailable until the single-job execution service can create a new attempt.
 An internal, CPU-only single-job service now copies and verifies prepared input
 artifacts, reserves resources, retains raw tool output, checks each returned
 pose against the prepared conformer, and records terminal status. Its tests use
-synthetic lifecycle behavior and a previously recorded real-engine pose fixture;
-they are not a fresh service execution. CUDA requests are explicitly rejected
+synthetic lifecycle behavior and a previously recorded real-engine pose fixture.
+A separate predeclared isolated WSL CPU service run completed and retained
+evidence; see `docs/validation/LINUX_GNINA_SERVICE_CPU.md`. CUDA requests are explicitly rejected
 until independent per-process GPU observation is integrated and tested. The
 service is not yet connected to API routes or the project runtime. Real CPU and
-CUDA service executions, cancellation, integration and native Linux acceptance
+CUDA cancellation, service integration and native Linux acceptance
 remain required before presenting this feature as available.
+
+An experimental service-only CUDA gate requires `nvidia-smi` to report a
+process whose executable and unique job working directory match the run.
+Missing observation fails the job without publishing poses; raw output is kept.
+The observed PID and GPU UUID do not prove that every network operation ran on
+that device or that a requested logical CUDA index maps to a particular physical
+GPU. This experimental path stays disabled by default pending real execution,
+cancellation and device-mapping evidence.
