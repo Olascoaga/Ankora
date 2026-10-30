@@ -166,6 +166,7 @@ def test_cuda_without_process_observation_never_publishes_poses(tmp_path, monkey
 
     class Observer:
         observation = None
+        gpu_uuid = None
 
         def __init__(self, *_args):
             pass
@@ -181,12 +182,50 @@ def test_cuda_without_process_observation_never_publishes_poses(tmp_path, monkey
         return CancellableToolExecution(["gnina"], 0, "", "", False, False)
 
     monkeypatch.setattr("ankora_backend.services.gnina_docking.GninaGpuObserver", Observer)
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_docking.single_gpu_identity", lambda _x: "GPU-test"
+    )
     monkeypatch.setattr("ankora_backend.services.gnina_docking.execute_gnina", execute)
     service._run(job.job_id, installation, threading.Event())
     result = store.load_job(job.job_id)
     assert result.status is DockingJobStatus.FAILED and result.poses == []
     assert result.failure is not None and result.failure.code == "GNINA_GPU_EXECUTION_UNVERIFIED"
     assert result.execution is not None and not result.execution.gpu_process_observed
+    assert not arbiter.snapshot().active_allocations
+    leases.shutdown()
+    service.shutdown()
+
+
+def test_cuda_mismatched_gpu_does_not_publish_poses(tmp_path, monkeypatch):
+    service, store, arbiter, leases, job, installation = _setup(tmp_path, monkeypatch)
+    request = job.request.model_copy(update={"parameters": GninaDockingParameters(compute="cuda")})
+    store.update_job(job.model_copy(update={"request": request}))
+
+    class Observer:
+        observation = "synthetic observed process"
+        gpu_uuid = "GPU-other"
+
+        def __init__(self, *_args):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr("ankora_backend.services.gnina_docking.GninaGpuObserver", Observer)
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_docking.single_gpu_identity", lambda _x: "GPU-expected"
+    )
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_docking.execute_gnina",
+        lambda **_kwargs: CancellableToolExecution(["gnina"], 0, "", "", False, False),
+    )
+    service._run(job.job_id, installation, threading.Event())
+    result = store.load_job(job.job_id)
+    assert result.status is DockingJobStatus.FAILED and result.poses == []
+    assert result.failure is not None and result.failure.code == "GNINA_GPU_DEVICE_MISMATCH"
     assert not arbiter.snapshot().active_allocations
     leases.shutdown()
     service.shutdown()

@@ -83,6 +83,8 @@ class GninaExecutionEvidence(BaseModel):
     canceled: bool = False
     gpu_process_observed: bool = False
     gpu_observation: str | None = None
+    requested_gpu_uuid: str | None = None
+    observed_gpu_uuid: str | None = None
 
 
 class GninaJobRecord(BaseModel):

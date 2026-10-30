@@ -3,7 +3,10 @@
 import threading
 from types import SimpleNamespace
 
-from ankora_backend.services.gnina_gpu_observer import GninaGpuObserver
+import pytest
+
+from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.services.gnina_gpu_observer import GninaGpuObserver, single_gpu_identity
 
 
 def test_observer_matches_pid_executable_and_unique_job_directory(tmp_path, monkeypatch):
@@ -40,6 +43,7 @@ def test_observer_matches_pid_executable_and_unique_job_directory(tmp_path, monk
     assert observed.wait(timeout=2)
     monitor.stop()
     assert monitor.observation == "PID 17; GPU UUID GPU-expected"
+    assert monitor.gpu_uuid == "GPU-expected"
 
 
 def test_unavailable_nvidia_smi_is_not_reported_as_gpu_use(tmp_path, monkeypatch):
@@ -55,3 +59,29 @@ def test_unavailable_nvidia_smi_is_not_reported_as_gpu_use(tmp_path, monkeypatch
     assert observed.wait(timeout=2)
     monitor.stop()
     assert monitor.observation is None
+
+
+def test_single_gpu_identity_rejects_ambiguous_and_remapped_devices(monkeypatch):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("NVIDIA_VISIBLE_DEVICES", raising=False)
+    for key in list(__import__("os").environ):
+        if key.startswith("CUDA_MPS_"):
+            monkeypatch.delenv(key)
+    gpu = "GPU-4fec5c6f-e22d-45ac-5898-743b25fe83b6"
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_gpu_observer.subprocess.run",
+        lambda *_a, **_k: SimpleNamespace(stdout=f"{gpu}, [N/A]\n"),
+    )
+    assert single_gpu_identity(0) == gpu
+    with pytest.raises(AnkoraDomainError):
+        single_gpu_identity(1)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    with pytest.raises(AnkoraDomainError):
+        single_gpu_identity(0)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_gpu_observer.subprocess.run",
+        lambda *_a, **_k: SimpleNamespace(stdout=f"{gpu}, Disabled\n{gpu}, Disabled\n"),
+    )
+    with pytest.raises(AnkoraDomainError):
+        single_gpu_identity(0)

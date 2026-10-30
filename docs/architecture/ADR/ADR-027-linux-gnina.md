@@ -85,5 +85,10 @@ Missing observation fails the job without publishing poses; raw output is kept.
 The observed PID and GPU UUID do not prove that every network operation ran on
 that device or that a requested logical CUDA index maps to a particular physical
 GPU. Predeclared real execution and cancellation succeeded in WSL; see the
-corresponding validation records. The path stays disabled by default pending
-device-mapping evidence.
+corresponding validation records. For the first supported device policy, CUDA
+is restricted to logical device 0, exactly one NVIDIA GPU, no MIG and no CUDA
+visibility or MPS remapping. The requested physical UUID is recorded and must
+match the UUID observed for the process, otherwise no pose is published.
+Multi-GPU selection requires a separately validated mapping contract. This path
+remains disabled by default until its real run and API integration are checked.
+See [NVIDIA's CUDA environment variables](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html).
