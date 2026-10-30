@@ -143,6 +143,7 @@ class ProjectRuntime:
             gnina = GninaDockingService.from_environment(
                 leases=lease_manager,
                 resources=self.resources,
+                enable_experimental_cuda=True,
             )
             retry = WorkRetryService.from_environment(
                 vina=vina,

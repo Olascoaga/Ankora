@@ -76,7 +76,7 @@ synthetic lifecycle behavior and a previously recorded real-engine pose fixture.
 A separate predeclared isolated WSL CPU service run completed and retained
 evidence; see `docs/validation/LINUX_GNINA_SERVICE_CPU.md`. The service is now
 connected to project lifecycle and typed localhost API routes. CUDA requests
-remain rejected by default until device identity is verified. The UI, result
+are subject to the single-device identity policy below. The UI, result
 catalog and native Linux acceptance remain separate work.
 
 An experimental service-only CUDA gate requires `nvidia-smi` to report a
@@ -89,6 +89,7 @@ corresponding validation records. For the first supported device policy, CUDA
 is restricted to logical device 0, exactly one NVIDIA GPU, no MIG and no CUDA
 visibility or MPS remapping. The requested physical UUID is recorded and must
 match the UUID observed for the process, otherwise no pose is published.
-Multi-GPU selection requires a separately validated mapping contract. This path
-remains disabled by default until its real run and API integration are checked.
+Multi-GPU selection requires a separately validated mapping contract. The
+project runtime enables this guarded path, while standalone services retain an
+explicit opt-in. API-level and native workstation checks remain necessary.
 See [NVIDIA's CUDA environment variables](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html).
