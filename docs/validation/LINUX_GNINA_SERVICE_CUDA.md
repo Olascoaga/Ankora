@@ -18,3 +18,14 @@ nor proof of logical-to-physical device mapping. This is an engineering check,
 not a blind benchmark, general scientific validation, cancellation test,
 interface acceptance, or native workstation test. CUDA stays disabled by
 default pending those checks.
+
+## Observed run: service-cuda-01
+
+The predeclared isolated WSL service run completed. The service verified the
+pose topology and retained the engine output, observed its process on a GPU,
+confirmed the original project files were unchanged, and released its resource
+reservation. The recorded evidence SHA-256 is
+`4a1588773f4b5ca674854a30746061b8bd3edd25e04f62f0a66dc53a2ee87a73`.
+The evidence remains in the ignored local investigation directory. The scope
+and limitations above still apply; in particular, CUDA is not enabled in the
+application and no claim about inference for every operation is made.
