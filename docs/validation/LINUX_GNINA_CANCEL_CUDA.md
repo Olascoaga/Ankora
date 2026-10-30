@@ -15,3 +15,13 @@ canceled status, recorded cancellation, no published poses, observed process
 exit, released resources, and unchanged original project. Preserve raw output
 and evidence even on failure. This is an isolated WSL engineering check, not a
 native workstation test, GUI test, or scientific benchmark.
+
+## Observed run: service-cancel-cuda-01
+
+The predeclared WSL run observed the GNINA process on a GPU before requesting
+cancellation. The job ended canceled without publishing poses; the observed
+process exited, resource reservations were released, and the original project
+remained unchanged. Evidence SHA-256:
+`8326f27ab6337dc290629bc9106f429a665123f601e6e72a5b739610fcb60b6f`.
+The observation establishes the process was reported on a GPU, not that every
+CNN operation used it or that logical and physical device indices coincide.
