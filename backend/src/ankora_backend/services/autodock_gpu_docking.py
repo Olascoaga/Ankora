@@ -12,9 +12,10 @@ validation, drawn from `autodock_inputs` so the two cannot drift; the same
 create-only pose artifacts; the same cancellation contract. What differs is
 what the tool itself forced - the verdict comes from stdout because the exit
 code is zero either way, and every record carries the backend, the device, and
-the statement that a repeat will not reproduce it.
+an explicit warning that a seed alone does not establish repeatability.
 """
 
+import logging
 import os
 import shutil
 import threading
@@ -37,6 +38,7 @@ from ankora_backend.adapters.engines.autodock_gpu import (
     AutoDockGpuInstallation,
     build_arguments,
     execute_autodock_gpu_cancellable,
+    execution_device_report,
     probe_autodock_gpu,
     require_device,
     run_reports_success,
@@ -87,24 +89,37 @@ from ankora_backend.services.resource_arbiter import (
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 _STAGE = "autodock_gpu_docking"
+_LOGGER = logging.getLogger(__name__)
 _CODE_PREFIX = "AUTODOCK_GPU"
 _FILELIST_NAME = "campaign.lst"
 
-# Stated on every job rather than left in a docstring: six repeats of one seed
-# on one machine produced six different ranking tables, spanning 0.13 kcal/mol.
-_NOT_REPRODUCIBLE = StructuredWarning(
-    code=WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE,
+# A historical Windows/OpenCL example is not a measurement of this job.
+_GPU_REPRODUCIBILITY_UNVERIFIED = StructuredWarning(
+    code=WarningCode.DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED,
     message=(
-        "AutoDock-GPU does not reproduce a run from its seed. Repeating this "
-        "job with these exact inputs will give slightly different energies and "
-        "a different cluster structure. The AutoDock4 CPU backend is "
-        "bit-identical across repeats if an exactly reproducible result is "
-        "required."
+        "A seed alone does not establish reproducibility for this GPU job. "
+        "An earlier Windows/OpenCL case produced different rankings across six "
+        "repeats; that observation is not a measurement of this execution. "
+        "Assess repeatability for the exact inputs and device."
     ),
     stage=_STAGE,
-    details={"measured_spread_kcal_mol": 0.13, "repeats": 6},
+    details={"current_execution_repeatability": "not_assessed"},
     recoverable=True,
 )
+
+
+def _execution_device_warning(report: dict[str, object]) -> list[StructuredWarning]:
+    if report["status"] == "reported" and report["matches_probe"] is True:
+        return []
+    return [StructuredWarning(
+        code=WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED,
+        message=("The execution output did not unambiguously confirm the device identified "
+                 "by the earlier probe. Review the retained tool output before interpreting "
+                 "the device identity."),
+        stage=_STAGE,
+        details={"execution_device_report": report},
+        recoverable=True,
+    )]
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,73 +272,59 @@ class AutoDockGpuDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
-        record = self._job_store.load_job(job_id)
-        if self._resources is not None:
-            try:
+        record: AutoDockGpuDockingJobRecord | None = None
+        try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK_GPU_JOB, job_id)
+            record = self._job_store.load_job(job_id)
+            if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     autodock_gpu_claim(job_id, ligand_count=1),
                     cancel_event=cancel_event,
                 )
-            except ResourceRequestCanceled:
+            if cancel_event.is_set():
                 self._finish(record, status=AutoDockJobStatus.CANCELED)
-                self._forget(job_id)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
                 return
-            except AnkoraDomainError as error:
-                self._finish(
-                    record,
-                    status=AutoDockJobStatus.FAILED,
-                    failure=AutoDockFailure(
-                        code=error.code,
-                        message=error.message,
-                        details=dict(error.details),
-                    ),
-                )
-                self._forget(job_id)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
-                return
-        if cancel_event.is_set():
-            self._finish(record, status=AutoDockJobStatus.CANCELED)
-            self._forget(job_id)
-            if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
-            return
-        running = record.model_copy(
-            update={
-                "status": AutoDockJobStatus.RUNNING,
-                "phase": AutoDockJobPhase.DOCKING,
-                "started_at": datetime.now(UTC),
-            }
-        )
-        self._job_store.update_job(running)
-        try:
+            running = record.model_copy(
+                update={
+                    "status": AutoDockJobStatus.RUNNING,
+                    "phase": AutoDockJobPhase.DOCKING,
+                    "started_at": datetime.now(UTC),
+                }
+            )
+            self._job_store.update_job(running)
             self._execute(running, prepared, cancel_event)
+        except ResourceRequestCanceled:
+            if record is not None:
+                self._finish(record, status=AutoDockJobStatus.CANCELED)
         except _JobCanceled as canceled:
-            self._finish(
-                running,
-                status=AutoDockJobStatus.CANCELED,
-                execution=canceled.execution,
-            )
+            if record is not None:
+                self._finish(
+                    record, status=AutoDockJobStatus.CANCELED, execution=canceled.execution
+                )
         except AnkoraDomainError as error:
-            self._finish(
-                running,
-                status=AutoDockJobStatus.FAILED,
-                failure=AutoDockFailure(
-                    code=error.code, message=error.message, details=dict(error.details)
-                ),
-            )
+            if record is None:
+                record = self._job_store.load_job(job_id)
+            self._finish(record, status=AutoDockJobStatus.FAILED, failure=AutoDockFailure(
+                code=error.code, message=error.message, details=dict(error.details)
+            ))
+        except Exception as error:
+            _LOGGER.exception("Unexpected AutoDock-GPU job error for %s", job_id)
+            if record is None:
+                record = self._job_store.load_job(job_id)
+            self._finish(record, status=AutoDockJobStatus.FAILED, failure=AutoDockFailure(
+                code=f"{_CODE_PREFIX}_JOB_INTERNAL_ERROR",
+                message="An unexpected error interrupted this AutoDock-GPU job.",
+                details={"exception_type": type(error).__name__},
+            ))
         finally:
-            if resource_lease is not None:
-                resource_lease.release()
-            self._forget(job_id)
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
+            try:
+                if resource_lease is not None:
+                    resource_lease.release()
+            finally:
+                self._forget(job_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_JOB, job_id)
 
     def _execute(
         self,
@@ -410,6 +411,9 @@ class AutoDockGpuDockingService:
         parsed = parse_autodock4_log(log_path.read_text(encoding="utf-8", errors="replace"))
         runs, clusters = self._persist_results(job_id, parsed)
         completed_at = datetime.now(UTC)
+        device_report = execution_device_report(
+            execution.stdout, execution.stderr, probed_device=prepared.device_name
+        )
         self._job_store.update_job(
             record.model_copy(
                 update={
@@ -420,6 +424,7 @@ class AutoDockGpuDockingService:
                     "execution": evidence,
                     "runs": runs,
                     "clusters": clusters,
+                    "warnings": [*record.warnings, *_execution_device_warning(device_report)],
                     "provenance": ProvenanceEvent(
                         event_id=f"autodock-gpu-docking-{job_id}",
                         event_type="autodock_gpu_docking_completed",
@@ -439,6 +444,7 @@ class AutoDockGpuDockingService:
                             "ligand_atom_types": list(prepared.ligand_atom_types),
                             "autodock_gpu_sha256": prepared.installation.sha256,
                             "device_name": prepared.device_name,
+                            "execution_device_report": device_report,
                             "bitwise_reproducible": False,
                         },
                         command=execution.command,
@@ -496,11 +502,40 @@ class AutoDockGpuDockingService:
 
     # --- inputs ------------------------------------------------------------
 
+    def _probe_installation(self, device_number: int) -> AutoDockGpuInstallation:
+        """Reserve shared resources before the device probe launches GPU code.
+
+        Preflight happens on the request thread, so it cannot wait for a
+        potentially hours-long campaign. Report busy rather than overlapping
+        another workload or silently jumping ahead of queued work.
+        """
+        lease: ResourceLease | None = None
+        if self._resources is not None:
+            lease = self._resources.try_acquire(
+                autodock_gpu_claim(f"device-probe-{uuid4()}", ligand_count=1)
+            )
+            if lease is None:
+                raise AnkoraDomainError(
+                    code=f"{_CODE_PREFIX}_PROBE_RESOURCES_BUSY",
+                    stage=_STAGE,
+                    message=(
+                        "The resources needed to check the GPU are currently in use. "
+                        "Wait for active or queued scientific work to finish, then try again."
+                    ),
+                    status_code=409,
+                    details={"device_number": device_number},
+                )
+        try:
+            return probe_autodock_gpu(device_number=device_number)
+        finally:
+            if lease is not None:
+                lease.release()
+
     def _prepare(self, request: AutoDockGpuDockingRequest) -> _PreparedDocking:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
+        installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
@@ -519,7 +554,7 @@ class AutoDockGpuDockingService:
             code_prefix=_CODE_PREFIX,
         )
         # Every GPU job carries the reproducibility statement, always.
-        warnings = [*warnings, _NOT_REPRODUCIBLE]
+        warnings = [*warnings, _GPU_REPRODUCIBILITY_UNVERIFIED]
 
         pdbqt = self._ligand_store.load_pdbqt_record(
             request.ligand_id, request.ligand_preparation_id
@@ -766,7 +801,7 @@ class AutoDockGpuDockingService:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        installation = probe_autodock_gpu(device_number=request.parameters.device_number)
+        installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
         receptor_output, binding_site = resolve_receptor_and_site(
@@ -784,7 +819,7 @@ class AutoDockGpuDockingService:
             stage=_STAGE,
             code_prefix=_CODE_PREFIX,
         )
-        warnings = [*warnings, _NOT_REPRODUCIBLE]
+        warnings = [*warnings, _GPU_REPRODUCIBILITY_UNVERIFIED]
         selection = resolve_selection(
             library_id=request.library_id,
             filter_run_id=request.filter_run_id,
@@ -872,9 +907,9 @@ class AutoDockGpuDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
         try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
             if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     autodock_gpu_claim(batch_id, ligand_count=len(prepared.molecules)),
@@ -918,14 +953,33 @@ class AutoDockGpuDockingService:
                 ),
                 changed_entries=[],
             )
+        except Exception as error:
+            _LOGGER.exception("Unexpected AutoDock-GPU batch error for %s", batch_id)
+            current = self._job_store.load_batch_overview(batch_id)
+            self._job_store.update_batch(
+                current.model_copy(update={
+                    "status": AutoDockJobStatus.FAILED,
+                    "phase": AutoDockJobPhase.COMPLETE,
+                    "completed_at": datetime.now(UTC),
+                    "failure": AutoDockFailure(
+                        code=f"{_CODE_PREFIX}_BATCH_INTERNAL_ERROR",
+                        message="An unexpected error interrupted this AutoDock-GPU batch.",
+                        details={"exception_type": type(error).__name__},
+                    ),
+                    "revision": current.revision + 1,
+                }),
+                changed_entries=[],
+            )
         finally:
-            if resource_lease is not None:
-                resource_lease.release()
-            with self._batch_lock:
-                self._active_batch_id = None
-            self._forget(batch_id)
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
+            try:
+                if resource_lease is not None:
+                    resource_lease.release()
+            finally:
+                with self._batch_lock:
+                    self._active_batch_id = None
+                self._forget(batch_id)
+                if self._leases is not None:
+                    self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
 
     def _execute_batch(
         self,
@@ -1184,6 +1238,9 @@ class AutoDockGpuDockingService:
         else:
             status = AutoDockJobStatus.COMPLETED
         current = self._job_store.load_batch_overview(batch_id)
+        device_report = execution_device_report(
+            evidence.stdout, evidence.stderr, probed_device=record.autodock_gpu.device_name
+        )
         self._job_store.update_batch(
             record.model_copy(
                 update={
@@ -1192,6 +1249,7 @@ class AutoDockGpuDockingService:
                     "completed_at": completed_at,
                     "execution": evidence,
                     "failure": failure,
+                    "warnings": [*record.warnings, *_execution_device_warning(device_report)],
                     "entries": entries,
                     "completed_count": len(entries),
                     "succeeded_count": succeeded,
@@ -1212,6 +1270,7 @@ class AutoDockGpuDockingService:
                             **record.request.parameters.model_dump(mode="json"),
                             "map_set_identity_key": record.map_set_identity_key,
                             "device_name": record.autodock_gpu.device_name,
+                            "execution_device_report": device_report,
                             "bitwise_reproducible": False,
                             "invocations": 1,
                         },

@@ -94,6 +94,18 @@ class ReceptorComponent(BaseModel):
     kind: HeterogenKind
 
 
+class TerminalHeavyAtomAddition(BaseModel):
+    """One exact terminal atom the scientist permits PDB2PQR to complete."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chain_id: str = Field(min_length=1)
+    residue_name: str = Field(min_length=1)
+    sequence_number: int
+    insertion_code: str = ""
+    atom_name: Literal["OXT"] = "OXT"
+
+
 class ReceptorInspectionReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -103,6 +115,7 @@ class ReceptorInspectionReport(BaseModel):
     components: list[ReceptorComponent]
     water_count: int = Field(ge=0)
     issues: list[ReceptorIssue]
+    terminal_oxygen_candidates: list[TerminalHeavyAtomAddition] = Field(default_factory=list)
     reference_component_id: str | None = None
     near_reference_cutoff_angstrom: float = Field(gt=0)
     warnings: list[StructuredWarning]
@@ -128,18 +141,6 @@ class IssueDecision(BaseModel):
         if self.selected_altloc is not None and len(self.selected_altloc) != 1:
             raise ValueError("selected_altloc must contain exactly one alternate-location label")
         return self
-
-
-class TerminalHeavyAtomAddition(BaseModel):
-    """One exact terminal atom the scientist permits PDB2PQR to complete."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    chain_id: str = Field(min_length=1)
-    residue_name: str = Field(min_length=1)
-    sequence_number: int
-    insertion_code: str = ""
-    atom_name: Literal["OXT"] = "OXT"
 
 
 class ProtonationDecisionSource(StrEnum):

@@ -211,18 +211,36 @@ class ResourceArbiter:
         waiter = _Waiter(ticket_id=str(uuid4()), claim=claim, queued_at=monotonic())
         with self._condition:
             self._waiters.append(waiter)
-            while True:
-                if cancel_event is not None and cancel_event.is_set():
-                    self._remove_waiter(waiter.ticket_id)
-                    self._condition.notify_all()
-                    raise ResourceRequestCanceled()
-                if self._waiters[0] is waiter and self._fits(claim):
-                    self._waiters.popleft()
-                    lease_id = str(uuid4())
-                    self._active[lease_id] = claim
-                    self._condition.notify_all()
-                    return ResourceLease(self, lease_id, claim)
-                self._condition.wait(timeout=_WAIT_POLL_SECONDS)
+            try:
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise ResourceRequestCanceled()
+                    if self._waiters[0] is waiter and self._fits(claim):
+                        self._waiters.popleft()
+                        lease_id = str(uuid4())
+                        self._active[lease_id] = claim
+                        self._condition.notify_all()
+                        return ResourceLease(self, lease_id, claim)
+                    self._condition.wait(timeout=_WAIT_POLL_SECONDS)
+            except BaseException:
+                self._remove_waiter(waiter.ticket_id)
+                self._condition.notify_all()
+                raise
+
+    def try_acquire(self, claim: ResourceClaim) -> ResourceLease | None:
+        """Admit immediately only when capacity is free and no waiter is ahead.
+
+        Callers that cannot wait synchronously can give an explicit busy
+        response without starting work outside the global scheduler.
+        """
+        self.validate(claim)
+        with self._condition:
+            if self._waiters or not self._fits(claim):
+                return None
+            lease_id = str(uuid4())
+            self._active[lease_id] = claim
+            self._condition.notify_all()
+            return ResourceLease(self, lease_id, claim)
 
     def release(self, lease_id: str) -> None:
         with self._condition:

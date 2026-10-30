@@ -9,8 +9,12 @@
     "test": "vitest run --configLoader runner",
     "typecheck": "tsc -b --pretty false",
     "dev:tauri-prereq": "powershell -ExecutionPolicy Bypass -File ../../scripts/dev.ps1",
+    "dev:linux": "python3 ../../scripts/dev_linux.py",
+    "dev:tauri-prereq:linux": "python3 ../../scripts/dev_linux.py",
     "tauri:dev": "tauri dev",
+    "tauri:dev:linux": "tauri dev --config src-tauri/tauri.linux.conf.json",
     "tauri:build": "tauri build --no-bundle",
+    "tauri:build:linux": "tauri build --no-bundle --config src-tauri/tauri.linux.conf.json",
     "tauri:installer": "powershell -ExecutionPolicy Bypass -File ../../scripts/build_windows_installer.ps1"
   },
   "dependencies": {

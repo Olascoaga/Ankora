@@ -65,6 +65,42 @@ async function guidedToPreparation() {
   fireEvent.click(screen.getByRole("button", { name: "Next · hydrogens and preparation" }));
 }
 
+it("offers observed terminal oxygens for individual explicit review before protonation", async () => {
+  const candidate = { ...residue, atom_name: "OXT" as const };
+  const second = { ...candidate, chain_id: "B", sequence_number: 2 };
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation").mockResolvedValue(analysis);
+  await openWorkspace({ ...report, candidate_chains: ["A", "B"], terminal_oxygen_candidates: [candidate, second] });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Run PDB2PQR/ }));
+  const option = screen.getByRole("checkbox", { name: /Allow OXT · ALA A:1/ });
+  expect(option).not.toBeChecked();
+  expect(screen.queryByRole("checkbox", { name: /Allow OXT · ALA B:2/ })).not.toBeInTheDocument();
+  expect(preview).not.toHaveBeenCalled();
+  fireEvent.click(option);
+  expect(option).toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
+  await waitFor(() => expect(preview).toHaveBeenCalledWith("source-1", expect.objectContaining({
+    protonation: expect.objectContaining({ authorized_terminal_heavy_atom_additions: [candidate] }),
+  })));
+  fireEvent.click(screen.getByRole("button", { name: "Chain A" }));
+  expect(screen.getByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Clear terminal oxygen authorizations" }));
+  expect(screen.queryByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).not.toBeInTheDocument();
+});
+
+it("blocks a terminal authorization when its residue is marked for removal", async () => {
+  const candidate = { ...residue, atom_name: "OXT" as const };
+  const preview = vi.spyOn(ankoraApi, "previewReceptorProtonation");
+  await openWorkspace({ ...report, terminal_oxygen_candidates: [candidate] });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Run PDB2PQR/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Allow OXT · ALA A:1/ }));
+  fireEvent.change(screen.getByLabelText("Decision for ALA 1"), { target: { value: "remove" } });
+  expect(screen.getByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Analyze pKa proposals" })).not.toBeInTheDocument();
+  expect(preview).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Allow OXT · ALA A:1/ }));
+  expect(screen.queryByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).not.toBeInTheDocument();
+});
+
 it("starts with three guided steps and no scientific defaults applied", async () => {
   vi.spyOn(ankoraApi, "inspectReceptor").mockResolvedValue(report);
   const prepare = vi.spyOn(ankoraApi, "prepareReceptor");

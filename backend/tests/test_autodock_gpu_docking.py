@@ -38,6 +38,7 @@ from ankora_backend.schemas.autodock_gpu import (
 from ankora_backend.schemas.warnings import WarningCode
 from ankora_backend.services import autodock_gpu_docking as gpu_module
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
+from ankora_backend.services.resource_arbiter import ResourceArbiter, autodock_gpu_claim
 
 REAL_LOG = (
     Path(__file__).parent / "fixtures" / "autodock_gpu_real_compound252.dlg"
@@ -143,6 +144,115 @@ def _wait(service: AutoDockGpuDockingService, job_id: str) -> object:
     raise AssertionError("the synthetic AutoDock-GPU job did not terminate")
 
 
+def _probe_test_arbiter(tmp_path: Path) -> ResourceArbiter:
+    capacity = 8 * 1024**3
+    return ResourceArbiter(
+        cpu_threads=2, gpu_slots=1, memory_total_bytes=capacity,
+        memory_reserve_bytes=0, disk_path=tmp_path, disk_total_bytes=capacity,
+        disk_reserve_bytes=0, memory_available=lambda: capacity, disk_free=lambda: capacity,
+    )
+
+
+def test_device_probe_holds_shared_gpu_reservation_and_releases_it_on_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _ = _fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+
+    def fail_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        assert arbiter.snapshot().gpu_slots_allocated == 1
+        raise OSError("synthetic device probe error")
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", fail_probe)
+    with pytest.raises(OSError, match="synthetic device probe error"):
+        service._probe_installation(1)
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    service.shutdown()
+
+
+def test_busy_gpu_refuses_single_probe_without_launching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+    blocker = arbiter.acquire(autodock_gpu_claim("running-job", ligand_count=1))
+    calls: list[bool] = []
+
+    def unexpected_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        calls.append(True)
+        return _installation()
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", unexpected_probe)
+    with pytest.raises(AnkoraDomainError) as failure:
+        service.start(request)
+    assert failure.value.code == "AUTODOCK_GPU_PROBE_RESOURCES_BUSY"
+    assert failure.value.status_code == 409
+    assert not calls
+    assert arbiter.snapshot().gpu_slots_allocated == 1
+    blocker.release()
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    service.shutdown()
+
+
+@pytest.mark.parametrize("failure_point", ["running_update", "execution"])
+def test_unexpected_job_errors_release_gpu_and_record_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_point: str
+) -> None:
+    """Synthetic store/tool failures must not hold the shared GPU slot."""
+    service, request = _fixture(tmp_path, monkeypatch)
+    capacity = 8 * 1024**3
+    arbiter = ResourceArbiter(
+        cpu_threads=2, gpu_slots=1, memory_total_bytes=capacity,
+        memory_reserve_bytes=0, disk_path=tmp_path, disk_total_bytes=capacity,
+        disk_reserve_bytes=0, memory_available=lambda: capacity, disk_free=lambda: capacity,
+    )
+    monkeypatch.setattr(service, "_resources", arbiter)
+    original_update = service._job_store.update_job
+
+    def update(record: object) -> object:
+        if failure_point == "running_update" and record.status == AutoDockJobStatus.RUNNING:
+            raise OSError("synthetic running update failure")
+        return original_update(record)
+
+    def execute(**kwargs: object) -> CancellableToolExecution:
+        raise OSError("synthetic execution failure")
+
+    monkeypatch.setattr(service._job_store, "update_job", update)
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", execute)
+    started = service.start(request)
+    record = _wait(service, started.job_id)
+    service.shutdown()
+
+    assert record.status == AutoDockJobStatus.FAILED
+    assert record.failure.code == "AUTODOCK_GPU_JOB_INTERNAL_ERROR"
+    assert arbiter.snapshot().gpu_slots_allocated == 0
+    assert arbiter.snapshot().queued_requests == 0
+    assert not service.has_active_work()
+
+
+def test_failure_to_acquire_work_lease_does_not_leave_job_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _fixture(tmp_path, monkeypatch)
+
+    class BrokenLeases:
+        def acquire(self, *args: object) -> None:
+            raise OSError("synthetic lease failure")
+
+        def release(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(service, "_leases", BrokenLeases())
+    started = service.start(request)
+    record = _wait(service, started.job_id)
+    service.shutdown()
+    assert record.status == AutoDockJobStatus.FAILED
+    assert record.failure.code == "AUTODOCK_GPU_JOB_INTERNAL_ERROR"
+    assert not service.has_active_work()
+
+
 def test_a_completed_job_reports_clusters_and_names_its_backend(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -157,6 +267,13 @@ def test_a_completed_job_reports_clusters_and_names_its_backend(
     assert record.status is AutoDockJobStatus.COMPLETED  # type: ignore[attr-defined]
     assert record.backend is AutoDockBackend.GPU  # type: ignore[attr-defined]
     assert record.clusters and record.runs  # type: ignore[attr-defined]
+    assert record.provenance.parameters["execution_device_report"] == {  # type: ignore[attr-defined]
+        "status": "reported", "runtime": "OpenCL", "device_name": "synthetic",
+        "matches_probe": False,
+    }
+    assert WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED in {  # type: ignore[attr-defined]
+        warning.code for warning in record.warnings  # type: ignore[attr-defined]
+    }
     # Every ranked run got its own create-only pose file.
     for run in record.runs:  # type: ignore[attr-defined]
         path = service.pose_content_path(started.job_id, run.artifact.artifact_id)
@@ -164,23 +281,19 @@ def test_a_completed_job_reports_clusters_and_names_its_backend(
     service.shutdown()
 
 
-def test_every_job_states_that_it_cannot_be_reproduced(
+def test_every_job_states_that_repeatability_is_unverified(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Six repeats of one seed gave six different rankings on real hardware.
-
-    Ankora's provenance model promises recorded inputs reproduce a result. This
-    backend cannot keep that promise, so it says so on the record itself rather
-    than leaving a scientist to infer determinism from the presence of a seed.
-    """
+    """A historical result must not be presented as a measurement of this job."""
     service, request = _fixture(tmp_path, monkeypatch)
 
     record = service.start(request)
 
     assert record.bitwise_reproducible is False
-    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {
+    assert WarningCode.DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED in {
         warning.code for warning in record.warnings
     }
+    assert all("measured_spread_kcal_mol" not in warning.details for warning in record.warnings)
     service.shutdown()
 
 
@@ -194,6 +307,21 @@ def test_the_device_is_recorded_because_hardware_changes_the_result(
     assert record.autodock_gpu.device_name == DEVICE
     assert record.autodock_gpu.build == "Release"
     service.shutdown()
+
+
+def test_execution_device_warning_does_not_infer_missing_or_conflicting_identity() -> None:
+    matching = {"status": "reported", "runtime": "CUDA", "device_name": "GPU",
+                "matches_probe": True}
+    assert gpu_module._execution_device_warning(matching) == []
+    for report in (
+        {"status": "missing", "runtime": None, "device_name": None, "matches_probe": None},
+        {"status": "ambiguous", "runtime": None, "device_name": None, "matches_probe": None},
+        {**matching, "matches_probe": False},
+    ):
+        warnings = gpu_module._execution_device_warning(report)
+        assert len(warnings) == 1
+        assert warnings[0].code == WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED
+        assert warnings[0].details["execution_device_report"] == report
 
 
 def test_a_machine_with_no_opencl_device_is_refused_before_any_record_exists(
@@ -376,6 +504,58 @@ def _wait_batch(service: AutoDockGpuDockingService, batch_id: str) -> object:
     raise AssertionError("the synthetic AutoDock-GPU campaign did not terminate")
 
 
+def test_busy_gpu_refuses_campaign_probe_without_launching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+    arbiter = _probe_test_arbiter(tmp_path)
+    monkeypatch.setattr(service, "_resources", arbiter)
+    blocker = arbiter.acquire(autodock_gpu_claim("running-job", ligand_count=1))
+    calls: list[bool] = []
+
+    def unexpected_probe(**kwargs: object) -> AutoDockGpuInstallation:
+        calls.append(True)
+        return _installation()
+
+    monkeypatch.setattr(gpu_module, "probe_autodock_gpu", unexpected_probe)
+    with pytest.raises(AnkoraDomainError) as failure:
+        service.start_batch(request)
+    assert failure.value.code == "AUTODOCK_GPU_PROBE_RESOURCES_BUSY"
+    assert failure.value.status_code == 409
+    assert not calls
+    assert service._active_batch_id is None
+    blocker.release()
+    service.shutdown()
+
+
+def test_campaign_lease_failure_does_not_block_next_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, request = _batch_fixture(tmp_path, monkeypatch)
+
+    class BrokenLeases:
+        def acquire(self, *args: object) -> None:
+            raise OSError("synthetic lease failure")
+
+        def release(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(service, "_leases", BrokenLeases())
+    first = service.start_batch(request)
+    first_result = _wait_batch(service, first.batch_id)
+    deadline = time.monotonic() + 10
+    while service.has_active_work() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    second = service.start_batch(request)
+    second_result = _wait_batch(service, second.batch_id)
+    service.shutdown()
+
+    assert first_result.status == AutoDockJobStatus.FAILED
+    assert first_result.failure.code == "AUTODOCK_GPU_BATCH_INTERNAL_ERROR"
+    assert second_result.status == AutoDockJobStatus.FAILED
+    assert not service.has_active_work()
+
+
 def test_a_campaign_is_one_invocation_over_a_file_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -394,6 +574,13 @@ def test_a_campaign_is_one_invocation_over_a_file_list(
     assert "--lfile" not in record.command
     assert "--resnam" not in record.command
     assert record.provenance.parameters["invocations"] == 1
+    assert record.provenance.parameters["execution_device_report"] == {
+        "status": "reported", "runtime": "OpenCL", "device_name": "synthetic",
+        "matches_probe": False,
+    }
+    assert WarningCode.DOCKING_GPU_DEVICE_UNVERIFIED in {
+        warning.code for warning in record.warnings
+    }
     service.shutdown()
 
 
@@ -531,7 +718,7 @@ def test_a_campaign_states_the_backend_and_its_irreproducibility(
 
     assert record.backend is AutoDockBackend.GPU
     assert record.bitwise_reproducible is False
-    assert WarningCode.DOCKING_BACKEND_NOT_REPRODUCIBLE in {w.code for w in record.warnings}
+    assert WarningCode.DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED in {w.code for w in record.warnings}
     service.cancel_batch(record.batch_id)
     service.shutdown()
 

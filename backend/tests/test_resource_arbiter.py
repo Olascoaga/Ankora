@@ -91,6 +91,25 @@ def test_a_waiting_claim_can_be_canceled_without_leaking_capacity(
     assert arbiter.snapshot().gpu_slots_allocated == 0
 
 
+def test_a_capacity_read_failure_does_not_block_the_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arbiter = _arbiter(tmp_path)
+    original_fits = arbiter._fits
+
+    def broken_capacity(claim: ResourceClaim) -> bool:
+        raise OSError("synthetic capacity failure")
+
+    monkeypatch.setattr(arbiter, "_fits", broken_capacity)
+    with pytest.raises(OSError, match="synthetic capacity failure"):
+        arbiter.acquire(_claim("failed"))
+    assert arbiter.snapshot().queued_requests == 0
+    monkeypatch.setattr(arbiter, "_fits", original_fits)
+    lease = arbiter.acquire(_claim("next"))
+    lease.release()
+    assert arbiter.snapshot().cpu_threads_allocated == 0
+
+
 def test_fifo_prevents_a_smaller_later_job_from_cutting_the_queue(
     tmp_path: Path,
 ) -> None:
@@ -120,6 +139,34 @@ def test_fifo_prevents_a_smaller_later_job_from_cutting_the_queue(
     large.join(timeout=1)
     small.join(timeout=1)
     assert order == ["large", "small"]
+
+
+def test_nonblocking_claim_respects_capacity_and_fifo(tmp_path: Path) -> None:
+    arbiter = _arbiter(tmp_path, cpu=2, gpu=1)
+    blocker = arbiter.acquire(_claim("blocker", cpu=1, gpu=1))
+    assert arbiter.try_acquire(_claim("busy", gpu=1)) is None
+    granted = threading.Event()
+    release_waiter = threading.Event()
+
+    def wait_for_gpu() -> None:
+        lease = arbiter.acquire(_claim("queued", gpu=1))
+        granted.set()
+        release_waiter.wait(timeout=2)
+        lease.release()
+
+    thread = threading.Thread(target=wait_for_gpu)
+    thread.start()
+    assert _wait_until(lambda: arbiter.snapshot().queued_requests == 1)
+    # CPU remains free, but nonblocking requests must not jump the queue.
+    assert arbiter.try_acquire(_claim("later", cpu=1)) is None
+    blocker.release()
+    assert granted.wait(timeout=1)
+    release_waiter.set()
+    thread.join(timeout=1)
+    lease = arbiter.try_acquire(_claim("available", gpu=1))
+    assert lease is not None
+    lease.release()
+    assert arbiter.snapshot().gpu_slots_allocated == 0
 
 
 def test_an_impossible_claim_fails_instead_of_waiting_forever(tmp_path: Path) -> None:

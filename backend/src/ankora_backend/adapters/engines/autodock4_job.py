@@ -21,16 +21,16 @@ _DOCKED_PREFIX = "DOCKED: "
 # decorative histogram bars.
 _RANKING_PATTERN = re.compile(
     r"^\s*(\d+)\s+(\d+)\s+(\d+)\s+"
-    r"(-?\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+RANKING\s*$"
+    r"([+-]?\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+RANKING\s*$"
 )
 # `Clus | Lowest Binding Energy | Run | Mean Binding Energy | Num in Clus | bars`
 _HISTOGRAM_PATTERN = re.compile(
-    r"^\s*(\d+)\s*\|\s*(-?\d+(?:\.\d+)?)\s*\|\s*(\d+)\s*\|\s*"
-    r"(-?\d+(?:\.\d+)?)\s*\|\s*(\d+)\s*\|"
+    r"^\s*(\d+)\s*\|\s*([+-]?\d+(?:\.\d+)?)\s*\|\s*(\d+)\s*\|\s*"
+    r"([+-]?\d+(?:\.\d+)?)\s*\|\s*(\d+)\s*\|"
 )
 _RUN_PATTERN = re.compile(r"^USER\s+Run\s+=\s+(\d+)\s*$")
 _FREE_ENERGY_PATTERN = re.compile(
-    r"^USER\s+Estimated Free Energy of Binding\s+=\s+(-?\d+(?:\.\d+)?)\s+kcal/mol"
+    r"^USER\s+Estimated Free Energy of Binding\s+=\s+([+-]?\d+(?:\.\d+)?)\s+kcal/mol"
 )
 _MODEL_PATTERN = re.compile(r"^MODEL\s+(\d+)\s*$")
 

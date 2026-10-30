@@ -17,6 +17,9 @@ def installation(tmp_path, monkeypatch):
     root = executable.parent / "tools"
     root.mkdir(parents=True)
     executable.write_bytes(b"synthetic backend")
+    # This payload is the Windows installed mode; pin Windows rules on every host.
+    # Other hosts never report it (test_linux_tool_discovery.py).
+    monkeypatch.setattr(discovery, "_windows_host", lambda: True)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(executable))
     bundled._inventory.cache_clear()

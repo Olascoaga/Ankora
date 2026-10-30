@@ -7,6 +7,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.work_lease_store import WorkLeaseStore
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchLigandResult,
@@ -46,12 +47,14 @@ class InterruptedWorkRecovery:
         autodock4: AutoDock4JobStore,
         autodock_gpu: AutoDockGpuJobStore,
         leases: WorkLeaseStore,
+        gnina: GninaJobStore | None = None,
     ) -> None:
         self._docking = docking
         self._autogrid = autogrid
         self._autodock4 = autodock4
         self._autodock_gpu = autodock_gpu
         self._leases = leases
+        self._gnina = gnina
 
     @classmethod
     def from_environment(
@@ -63,6 +66,7 @@ class InterruptedWorkRecovery:
             autodock4=AutoDock4JobStore.from_environment(),
             autodock_gpu=AutoDockGpuJobStore.from_environment(),
             leases=leases or WorkLeaseStore.from_environment(),
+            gnina=GninaJobStore.from_environment(),
         )
 
     def reconcile(self) -> WorkRecoverySummary:
@@ -76,6 +80,7 @@ class InterruptedWorkRecovery:
             *self._reconcile_autogrid(reconciled_at, lease_index),
             *self._reconcile_autodock4(reconciled_at, lease_index),
             *self._reconcile_autodock_gpu(reconciled_at, lease_index),
+            *self._reconcile_gnina(reconciled_at, lease_index),
         ]
         for item in items:
             lease = lease_index.get((item.work_kind, item.work_id))
@@ -89,6 +94,31 @@ class InterruptedWorkRecovery:
                     )
                 )
         return WorkRecoverySummary(reconciled_at=reconciled_at, items=items)
+
+    def _reconcile_gnina(
+        self,
+        now: datetime,
+        leases: dict[tuple[WorkKind, str], WorkLeaseRecord],
+    ) -> list[RecoveredWorkItem]:
+        if self._gnina is None:
+            return []
+        items: list[RecoveredWorkItem] = []
+        for record in self._gnina.list_jobs():
+            if record.status.value not in _ACTIVE:
+                continue
+            lease = leases.get((WorkKind.GNINA_JOB, record.job_id))
+            self._gnina.update_job(record.model_copy(update={
+                "status": DockingJobStatus.FAILED,
+                "phase": DockingJobPhase.COMPLETE,
+                "completed_at": now,
+                "failure": DockingFailure(
+                    code="GNINA_EXECUTION_INTERRUPTED",
+                    message=_INTERRUPTED_MESSAGE,
+                    details=_failure_details(record.status.value, lease, now),
+                ),
+            }))
+            items.append(_item(WorkKind.GNINA_JOB, record.job_id, record.status.value, lease))
+        return items
 
     def _reconcile_vina(
         self,
