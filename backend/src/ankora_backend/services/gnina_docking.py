@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from ankora_backend.adapters.engines.gnina import (
     GninaInstallation,
+    _linux_host,
     build_gnina_arguments,
     execute_gnina,
     parse_gnina_pdbqt,
@@ -111,6 +112,8 @@ class GninaDockingService:
         )
 
     def start(self, request: GninaDockingRequest) -> GninaJobRecord:
+        if not _linux_host():
+            raise _failure("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition.")
         # CUDA remains gated until independent, process-specific GPU observation is wired in.
         if request.parameters.compute == "cuda" and not self._enable_experimental_cuda:
             raise _failure(

@@ -63,6 +63,7 @@ from ankora_backend.schemas.docking import (
 from ankora_backend.schemas.engine_comparison import EngineComparison
 from ankora_backend.schemas.exports import ExportKind, ExportPage
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
+from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord
 from ankora_backend.schemas.ligand_library_preparation import LigandLibraryPreparationRecord
 from ankora_backend.schemas.ligands import (
     ApplyLigandLibraryFilterRequest,
@@ -158,6 +159,7 @@ from ankora_backend.services.campaign_history import CampaignHistoryService
 from ankora_backend.services.engine_comparison import EngineComparisonService
 from ankora_backend.services.export_catalog import ExportCatalogService
 from ankora_backend.services.figure_export import FigureExportService
+from ankora_backend.services.gnina_docking import GninaDockingService
 from ankora_backend.services.ligand_extraction import extract_crystallographic_ligand
 from ankora_backend.services.ligand_filtering import (
     apply_library_filters,
@@ -229,6 +231,10 @@ def _project_runtime(request: Request) -> ProjectRuntime:
 
 def _vina_docking_service(request: Request) -> VinaDockingService:
     return cast(VinaDockingService, request.app.state.vina_docking)
+
+
+def _gnina_docking_service(request: Request) -> GninaDockingService:
+    return cast(GninaDockingService, request.app.state.gnina_docking)
 
 
 def _autogrid_map_service(request: Request) -> AutoGridMapService:
@@ -1008,6 +1014,35 @@ def get_pocket_detection(report_id: str) -> PocketDetectionReport:
     return PocketDetectionArtifactStore.from_environment().load_record(report_id)
 
 
+@router.post("/docking/gnina/jobs", response_model=GninaJobRecord, status_code=202)
+def create_gnina_docking_job(
+    request: GninaDockingRequest,
+    http_request: Request,
+) -> GninaJobRecord:
+    return _gnina_docking_service(http_request).start(request)
+
+
+@router.get("/docking/gnina/jobs/{job_id}", response_model=GninaJobRecord)
+def get_gnina_docking_job(job_id: str, request: Request) -> GninaJobRecord:
+    return _gnina_docking_service(request).get(job_id)
+
+
+@router.post("/docking/gnina/jobs/{job_id}/cancel", response_model=DockingCancelResponse)
+def cancel_gnina_docking_job(job_id: str, request: Request) -> DockingCancelResponse:
+    return _gnina_docking_service(request).cancel(job_id)
+
+
+@router.get("/docking/gnina/jobs/{job_id}/poses/{artifact_id}/content", response_class=FileResponse)
+def get_gnina_pose_content(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    path = _gnina_docking_service(request).pose_content_path(job_id, artifact_id)
+    return FileResponse(
+        path,
+        media_type="text/plain; charset=utf-8",
+        filename=path.name,
+        content_disposition_type="inline",
+    )
+
+
 @router.post(
     "/docking/vina/jobs",
     response_model=VinaDockingJobRecord,
@@ -1501,7 +1536,10 @@ def redocking_references(
     limit: int = Query(default=100, ge=1, le=100),
 ) -> RedockingReferencePage:
     return RedockingValidationService.from_environment().references(
-        source_kind, source_id, offset=offset, limit=limit,
+        source_kind,
+        source_id,
+        offset=offset,
+        limit=limit,
     )
 
 

@@ -1,6 +1,7 @@
 """Synthetic persistence tests; no scientific result is inferred from these fixtures."""
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -70,32 +71,52 @@ def test_pose_is_visible_only_after_publication(tmp_path: Path) -> None:
     with pytest.raises(AnkoraDomainError):
         store.pose_content_path(job.job_id, "pose-id")
     result = GninaPoseResult(
-        mode=1, minimized_affinity_kcal_mol=-1, cnn_score=0.7, cnn_affinity=5,
+        mode=1,
+        minimized_affinity_kcal_mol=-1,
+        cnn_score=0.7,
+        cnn_affinity=5,
         artifact=GninaPoseArtifact(
-            artifact_id="pose-id", mode=1, filename="pose_1.pdbqt", sha256="e" * 64,
+            artifact_id="pose-id",
+            mode=1,
+            filename="pose_1.pdbqt",
+            sha256=sha256(b"synthetic pose").hexdigest(),
             size_bytes=14,
         ),
     )
     with pytest.raises(ValidationError):
         store.update_job(job.model_copy(update={"poses": [result]}))
     with pytest.raises(ValidationError):
-        store.update_job(job.model_copy(update={
+        store.update_job(
+            job.model_copy(
+                update={
+                    "status": DockingJobStatus.COMPLETED,
+                    "poses": [result],
+                    "execution": GninaExecutionEvidence(
+                        command=["gnina"], exit_code=0, stdout="", stderr=""
+                    ),
+                }
+            )
+        )
+    updated = job.model_copy(
+        update={
             "status": DockingJobStatus.COMPLETED,
             "poses": [result],
             "execution": GninaExecutionEvidence(
-                command=["gnina"], exit_code=0, stdout="", stderr=""
+                command=["gnina"],
+                exit_code=0,
+                stdout="",
+                stderr="",
+                gpu_process_observed=True,
             ),
-        }))
-    updated = job.model_copy(update={
-        "status": DockingJobStatus.COMPLETED,
-        "poses": [result],
-        "execution": GninaExecutionEvidence(
-            command=["gnina"], exit_code=0, stdout="", stderr="", gpu_process_observed=True,
-        ),
-    })
+        }
+    )
     store.update_job(updated)
     assert store.pose_content_path(job.job_id, "pose-id").read_bytes() == b"synthetic pose"
     assert store.load_job(job.job_id).poses[0].cnn_score == 0.7
+    store.output_path(job.job_id, "pose_1.pdbqt").write_bytes(b"tampered")
+    with pytest.raises(AnkoraDomainError) as caught:
+        store.pose_content_path(job.job_id, "pose-id")
+    assert caught.value.code == "GNINA_POSE_INTEGRITY_FAILED"
 
 
 def test_rejects_path_traversal_and_requires_acknowledgement(tmp_path: Path) -> None:
@@ -130,16 +151,23 @@ def test_recovery_marks_interrupted_job_without_publishing_partial_pose(
 ) -> None:
     monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
     store = GninaJobStore.from_environment()
-    job = _record(store.new_job_id()).model_copy(update={
-        "status": DockingJobStatus.RUNNING, "phase": DockingJobPhase.DOCKING,
-    })
+    job = _record(store.new_job_id()).model_copy(
+        update={
+            "status": DockingJobStatus.RUNNING,
+            "phase": DockingJobPhase.DOCKING,
+        }
+    )
     store.create_job(job)
     store.write_artifact(job.job_id, "raw.pdbqt", b"partial synthetic output")
     now = datetime.now(UTC)
     leases = WorkLeaseStore.from_environment()
     lease = WorkLeaseRecord(
-        lease_id=store.new_job_id(), work_kind=WorkKind.GNINA_JOB, work_id=job.job_id,
-        owner_instance_id=store.new_job_id(), acquired_at=now, heartbeat_at=now,
+        lease_id=store.new_job_id(),
+        work_kind=WorkKind.GNINA_JOB,
+        work_id=job.job_id,
+        owner_instance_id=store.new_job_id(),
+        acquired_at=now,
+        heartbeat_at=now,
     )
     leases.write(lease)
     recovery = InterruptedWorkRecovery.from_environment(leases=leases)

@@ -15,6 +15,7 @@ from ankora_backend.schemas.work_recovery import WorkRecoverySummary
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
+from ankora_backend.services.gnina_docking import GninaDockingService
 from ankora_backend.services.resource_arbiter import ResourceArbiter
 from ankora_backend.services.vina_docking import VinaDockingService
 from ankora_backend.services.work_leases import WorkLeaseManager
@@ -31,12 +32,13 @@ class ProjectServiceBundle:
     autogrid: AutoGridMapService
     autodock4: AutoDock4DockingService
     autodock_gpu: AutoDockGpuDockingService
+    gnina: GninaDockingService
     work_retry: WorkRetryService
 
     def has_active_work(self) -> bool:
         return any(
             service.has_active_work()
-            for service in (self.vina, self.autogrid, self.autodock4, self.autodock_gpu)
+            for service in (self.vina, self.autogrid, self.autodock4, self.autodock_gpu, self.gnina)
         )
 
     def shutdown(self) -> None:
@@ -44,6 +46,7 @@ class ProjectServiceBundle:
         self.autogrid.shutdown()
         self.autodock4.shutdown()
         self.autodock_gpu.shutdown()
+        self.gnina.shutdown()
         self.work_leases.shutdown()
 
 
@@ -71,6 +74,7 @@ class ProjectRuntime:
             state.autogrid_maps = bundle.autogrid
             state.autodock4_docking = bundle.autodock4
             state.autodock_gpu_docking = bundle.autodock_gpu
+            state.gnina_docking = bundle.gnina
             state.work_retry = bundle.work_retry
 
     def activate(self, project_id: str, state: Any) -> ProjectRecord:
@@ -136,11 +140,16 @@ class ProjectRuntime:
                 lease_manager=lease_manager,
                 resource_arbiter=self.resources,
             )
+            gnina = GninaDockingService.from_environment(
+                leases=lease_manager,
+                resources=self.resources,
+            )
             retry = WorkRetryService.from_environment(
                 vina=vina,
                 autogrid=autogrid,
                 autodock4=autodock4,
                 autodock_gpu=autodock_gpu,
+                gnina=gnina,
             )
         return ProjectServiceBundle(
             project_id=project_id,
@@ -150,5 +159,6 @@ class ProjectRuntime:
             autogrid=autogrid,
             autodock4=autodock4,
             autodock_gpu=autodock_gpu,
+            gnina=gnina,
             work_retry=retry,
         )

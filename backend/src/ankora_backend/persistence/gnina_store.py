@@ -3,6 +3,7 @@
 import json
 import os
 import threading
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -105,6 +106,14 @@ class GninaJobStore:
         path = self.output_path(job_id, pose.artifact.filename)
         if not path.is_file():
             raise self._not_found(job_id)
+        if sha256(path.read_bytes()).hexdigest() != pose.artifact.sha256:
+            raise AnkoraDomainError(
+                code="GNINA_POSE_INTEGRITY_FAILED",
+                stage="gnina_storage",
+                message="The stored GNINA pose no longer matches its recorded hash.",
+                status_code=409,
+                details={"job_id": job_id, "artifact_id": artifact_id},
+            )
         return path
 
     @staticmethod

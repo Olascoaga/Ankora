@@ -66,24 +66,24 @@ foundation alone does not execute jobs or expose an API or UI.
 
 Interrupted GNINA records are reconciled on backend startup as failed, keeping
 any partial raw output without publishing it as a pose. Their leases are
-reconciled with the existing recovery mechanism. Automatic retry is explicitly
-unavailable until the single-job execution service can create a new attempt.
+reconciled with the existing recovery mechanism. Retrying creates a new attempt
+only after explicit acknowledgement and input revalidation.
 
 An internal, CPU-only single-job service now copies and verifies prepared input
 artifacts, reserves resources, retains raw tool output, checks each returned
 pose against the prepared conformer, and records terminal status. Its tests use
 synthetic lifecycle behavior and a previously recorded real-engine pose fixture.
 A separate predeclared isolated WSL CPU service run completed and retained
-evidence; see `docs/validation/LINUX_GNINA_SERVICE_CPU.md`. CUDA requests are explicitly rejected
-until independent per-process GPU observation is integrated and tested. The
-service is not yet connected to API routes or the project runtime. Real CPU and
-CUDA cancellation, service integration and native Linux acceptance
-remain required before presenting this feature as available.
+evidence; see `docs/validation/LINUX_GNINA_SERVICE_CPU.md`. The service is now
+connected to project lifecycle and typed localhost API routes. CUDA requests
+remain rejected by default until device identity is verified. The UI, result
+catalog and native Linux acceptance remain separate work.
 
 An experimental service-only CUDA gate requires `nvidia-smi` to report a
 process whose executable and unique job working directory match the run.
 Missing observation fails the job without publishing poses; raw output is kept.
 The observed PID and GPU UUID do not prove that every network operation ran on
 that device or that a requested logical CUDA index maps to a particular physical
-GPU. This experimental path stays disabled by default pending real execution,
-cancellation and device-mapping evidence.
+GPU. Predeclared real execution and cancellation succeeded in WSL; see the
+corresponding validation records. The path stays disabled by default pending
+device-mapping evidence.

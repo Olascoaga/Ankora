@@ -8,6 +8,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.schemas.work_recovery import (
     WorkKind,
     WorkRetryRequest,
@@ -16,6 +17,7 @@ from ankora_backend.schemas.work_recovery import (
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
+from ankora_backend.services.gnina_docking import GninaDockingService
 from ankora_backend.services.vina_docking import VinaDockingService
 
 _INTERRUPTED_CODES = {
@@ -26,6 +28,7 @@ _INTERRUPTED_CODES = {
     WorkKind.AUTODOCK4_BATCH: "AUTODOCK4_CAMPAIGN_INTERRUPTED",
     WorkKind.AUTODOCK_GPU_JOB: "AUTODOCK_GPU_EXECUTION_INTERRUPTED",
     WorkKind.AUTODOCK_GPU_BATCH: "AUTODOCK_GPU_CAMPAIGN_INTERRUPTED",
+    WorkKind.GNINA_JOB: "GNINA_EXECUTION_INTERRUPTED",
 }
 
 
@@ -51,6 +54,8 @@ class WorkRetryService:
         autogrid: AutoGridMapService,
         autodock4: AutoDock4DockingService,
         autodock_gpu: AutoDockGpuDockingService,
+        gnina: GninaDockingService | None = None,
+        gnina_store: GninaJobStore | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._autogrid_store = autogrid_store
@@ -60,6 +65,8 @@ class WorkRetryService:
         self._autogrid = autogrid
         self._autodock4 = autodock4
         self._autodock_gpu = autodock_gpu
+        self._gnina = gnina
+        self._gnina_store = gnina_store
 
     @classmethod
     def from_environment(
@@ -69,6 +76,7 @@ class WorkRetryService:
         autogrid: AutoGridMapService,
         autodock4: AutoDock4DockingService,
         autodock_gpu: AutoDockGpuDockingService,
+        gnina: GninaDockingService,
     ) -> "WorkRetryService":
         return cls(
             docking_store=DockingArtifactStore.from_environment(),
@@ -79,6 +87,8 @@ class WorkRetryService:
             autogrid=autogrid,
             autodock4=autodock4,
             autodock_gpu=autodock_gpu,
+            gnina=gnina,
+            gnina_store=GninaJobStore.from_environment(),
         )
 
     def retry(
@@ -169,9 +179,7 @@ class WorkRetryService:
         if work_kind is WorkKind.AUTODOCK_GPU_BATCH:
             autodock_gpu_batch = self._autodock_gpu_store.load_batch(work_id)
             self._require_interrupted(work_kind, work_id, autodock_gpu_batch.failure)
-            created_autodock_gpu_batch = self._autodock_gpu.start_batch(
-                autodock_gpu_batch.request
-            )
+            created_autodock_gpu_batch = self._autodock_gpu.start_batch(autodock_gpu_batch.request)
             return self._response(
                 work_kind,
                 work_id,
@@ -180,12 +188,19 @@ class WorkRetryService:
                 created_autodock_gpu_batch.created_at,
             )
         if work_kind is WorkKind.GNINA_JOB:
-            raise AnkoraDomainError(
-                code="WORK_RETRY_UNAVAILABLE",
-                stage="work_recovery",
-                message="Retry for interrupted GNINA jobs is not available yet.",
-                status_code=409,
-                details={"work_kind": work_kind.value, "work_id": work_id},
+            if self._gnina is None or self._gnina_store is None:
+                raise AnkoraDomainError(
+                    code="WORK_RETRY_UNAVAILABLE",
+                    stage="work_recovery",
+                    message="GNINA retry service is not available.",
+                    status_code=409,
+                    details={"work_kind": work_kind.value, "work_id": work_id},
+                )
+            interrupted = self._gnina_store.load_job(work_id)
+            self._require_interrupted(work_kind, work_id, interrupted.failure)
+            created = self._gnina.start(interrupted.request)
+            return self._response(
+                work_kind, work_id, created.job_id, created.status.value, created.created_at
             )
         assert_never(work_kind)
 

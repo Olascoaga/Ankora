@@ -138,11 +138,22 @@ def test_prelaunch_cancellation_releases_resources(tmp_path, monkeypatch):
 
 def test_unverified_cuda_is_rejected_before_launch(tmp_path, monkeypatch):
     service, _store, arbiter, leases, job, _installation = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr("ankora_backend.services.gnina_docking._linux_host", lambda: True)
     request = job.request.model_copy(update={"parameters": GninaDockingParameters(compute="cuda")})
     with pytest.raises(AnkoraDomainError) as caught:
         service.start(request)
     assert caught.value.code == "GNINA_CUDA_VERIFICATION_UNAVAILABLE"
     assert not arbiter.snapshot().active_allocations
+    leases.shutdown()
+    service.shutdown()
+
+
+def test_non_linux_is_rejected_before_input_access(tmp_path, monkeypatch):
+    service, _store, _arbiter, leases, job, _installation = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr("ankora_backend.services.gnina_docking._linux_host", lambda: False)
+    with pytest.raises(AnkoraDomainError) as caught:
+        service.start(job.request)
+    assert caught.value.code == "GNINA_LINUX_ONLY"
     leases.shutdown()
     service.shutdown()
 
