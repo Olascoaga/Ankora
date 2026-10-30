@@ -23,7 +23,10 @@ function noSavedReceptor(): Response {
   return new Response(JSON.stringify({ code: "RECEPTOR_HISTORY_EMPTY", stage: "receptor_storage", message: "No saved receptor derivative is available in this project yet.", details: {}, recoverable: false }), { status: 404, headers: { "Content-Type": "application/json" } });
 }
 
-it("shows startup interruptions and retries only after explicit acknowledgement", async () => {
+it.each([
+  ["vina_batch", "AutoDock Vina screening"],
+  ["gnina_job", "GNINA job"],
+])("shows and explicitly retries interrupted %s", async (kind, label) => {
   const interruptedId = "00000000-0000-0000-0000-000000000091";
   const newId = "00000000-0000-0000-0000-000000000092";
   const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -35,19 +38,19 @@ it("shows startup interruptions and retries only after explicit acknowledgement"
       return new Response(JSON.stringify({
         reconciled_at: "2026-09-05T12:00:00Z",
         items: [{
-          work_kind: "vina_batch",
+          work_kind: kind,
           work_id: interruptedId,
           previous_status: "running",
-          interrupted_entry_count: 3,
-          completed_entry_count: 7,
+          interrupted_entry_count: kind === "vina_batch" ? 3 : 0,
+          completed_entry_count: kind === "vina_batch" ? 7 : 0,
           last_heartbeat_at: "2026-09-05T11:59:00Z",
           previous_owner_instance_id: "backend-instance",
         }],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    if (url.includes(`/work/recovery/vina_batch/${interruptedId}/retry`)) {
+    if (url.includes(`/work/recovery/${kind}/${interruptedId}/retry`)) {
       return new Response(JSON.stringify({
-        work_kind: "vina_batch",
+        work_kind: kind,
         interrupted_work_id: interruptedId,
         new_work_id: newId,
         status: "queued",
@@ -68,7 +71,8 @@ it("shows startup interruptions and retries only after explicit acknowledgement"
   render(<App />);
 
   expect(await screen.findByText("1 interrupted operation recovered")).toBeInTheDocument();
-  expect(screen.getByText("7 completed molecules preserved · 3 interrupted")).toBeInTheDocument();
+  expect(screen.getByText(label)).toBeInTheDocument();
+  if (kind === "vina_batch") expect(screen.getByText("7 completed molecules preserved · 3 interrupted")).toBeInTheDocument();
   const retry = screen.getByRole("button", { name: "Retry as new" });
   expect(retry).toBeDisabled();
   fireEvent.click(screen.getByLabelText(/I understand this creates a new immutable attempt/));

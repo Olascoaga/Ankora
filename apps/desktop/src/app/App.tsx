@@ -865,6 +865,7 @@ function recoveredWorkLabel(item: RecoveredWorkItem): string {
     autodock4_batch: "AutoDock4 screening",
     autodock_gpu_job: "AutoDock-GPU job",
     autodock_gpu_batch: "AutoDock-GPU screening",
+    gnina_job: "GNINA job",
   };
   return labels[item.work_kind];
 }

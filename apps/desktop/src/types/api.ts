@@ -2216,7 +2216,8 @@ export type WorkKind =
   | "autodock4_job"
   | "autodock4_batch"
   | "autodock_gpu_job"
-  | "autodock_gpu_batch";
+  | "autodock_gpu_batch"
+  | "gnina_job";
 
 export interface RecoveredWorkItem {
   work_kind: WorkKind;
