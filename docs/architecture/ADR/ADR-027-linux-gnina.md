@@ -69,7 +69,7 @@ any partial raw output without publishing it as a pose. Their leases are
 reconciled with the existing recovery mechanism. Retrying creates a new attempt
 only after explicit acknowledgement and input revalidation.
 
-An internal, CPU-only single-job service now copies and verifies prepared input
+An internal single-job service now copies and verifies prepared input
 artifacts, reserves resources, retains raw tool output, checks each returned
 pose against the prepared conformer, and records terminal status. Its tests use
 synthetic lifecycle behavior and a previously recorded real-engine pose fixture.
@@ -91,5 +91,6 @@ visibility or MPS remapping. The requested physical UUID is recorded and must
 match the UUID observed for the process, otherwise no pose is published.
 Multi-GPU selection requires a separately validated mapping contract. The
 project runtime enables this guarded path, while standalone services retain an
-explicit opt-in. API-level and native workstation checks remain necessary.
+explicit opt-in. Predeclared WSL CPU and CUDA API checks completed; native
+workstation and UI acceptance remain necessary.
 See [NVIDIA's CUDA environment variables](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html).
