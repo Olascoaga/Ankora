@@ -94,7 +94,7 @@ it("opens GNINA history without labeling CNN scores as energy", async () => {
   const gnina: CatalogEntry = {
     ...baseEntry, catalog_id: "gnina_job:gnina-1", engine_key: "gnina_job", record_id: "gnina-1",
     engine_label: "GNINA 1.3.3", engine_version: "1.3.3", scoring_family: "gnina", mode: "single_ligand",
-    ligand_id: "ligand-1", selected_count: 1, succeeded_count: 1, failed_count: 0,
+    ligand_id: "ligand-1", receptor_id: "receptor-1", binding_site_id: "site-1", selected_count: 1, succeeded_count: 1, failed_count: 0,
     best_result_kcal_mol: null, primary_cnn_score: 0.9, cnn_affinity_pk: 8,
     minimized_affinity_kcal_mol: -4, best_molecule: "Synthetic GNINA ligand",
   };
@@ -111,7 +111,7 @@ it("opens GNINA history without labeling CNN scores as energy", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.includes("/docking/gnina/jobs/gnina-1")) return json({
-      engine: "gnina", status: "completed", request: { ligand_id: "ligand-1", receptor_id: "receptor-1" },
+      engine: "gnina", status: "completed", request: { ligand_id: "ligand-1", receptor_id: "receptor-1", binding_site_id: "site-1" },
       receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64), box: baseEntry.box,
       job_id: "gnina-1", poses: [pose(1, 0.9, -4), pose(2, 0.7, -9)],
     });

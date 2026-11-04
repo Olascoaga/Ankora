@@ -18,10 +18,11 @@ export function GninaResultPanel({ entry, molecule, onClose }: { entry: CatalogE
     setJob(null); setReceptor(null); setSelected(null); setError(null); setReceptorError(null);
     void ankoraApi.getGninaDockingJob(entry.record_id).then((result) => {
       if (disposed) return;
-      if (result.engine !== "gnina" || result.request.ligand_id !== molecule.ligand_id || result.status !== "completed") throw new Error("The saved GNINA job does not match this molecule or is not complete.");
+      if (result.engine !== "gnina" || result.job_id !== entry.record_id || result.request.ligand_id !== molecule.ligand_id || result.request.receptor_id !== entry.receptor_id || result.request.binding_site_id !== entry.binding_site_id || result.status !== "completed") throw new Error("The saved GNINA job does not match this result or is not complete.");
       setJob(result); setSelected(result.poses[0]?.mode ?? null);
       void ankoraApi.getReceptor(result.request.receptor_id).then((context) => {
         if (disposed) return;
+        if (context.receptor_id !== result.request.receptor_id) throw new Error("The receptor identity does not match this GNINA job.");
         const docking = context.outputs.find((output) => output.artifact_id === result.receptor_output_artifact_id);
         if (!docking || docking.sha256 !== result.receptor_sha256) throw new Error("The receptor record does not match this GNINA job.");
         const display = context.outputs.find((output) => output.artifact_id === context.display_output_artifact_id);
@@ -30,7 +31,7 @@ export function GninaResultPanel({ entry, molecule, onClose }: { entry: CatalogE
       }).catch((reason: unknown) => { if (!disposed) setReceptorError(reason instanceof Error ? reason.message : "Receptor context unavailable."); });
     }).catch((reason: unknown) => { if (!disposed) setError(reason instanceof Error ? reason.message : "GNINA poses could not be loaded."); });
     return () => { disposed = true; };
-  }, [entry.record_id, molecule.ligand_id]);
+  }, [entry.record_id, entry.receptor_id, entry.binding_site_id, molecule.ligand_id]);
 
   const sources = useMemo<ViewerSource[]>(() => {
     const result: ViewerSource[] = [];
