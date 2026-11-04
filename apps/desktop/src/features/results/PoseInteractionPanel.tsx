@@ -238,7 +238,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
             >
               {inventory.poses.map((item) => (
                 <option key={item.artifact_id} value={item.artifact_id}>
-                  {item.label} · {formatScientificNumber(item.result_kcal_mol, 3)} kcal/mol
+                  {item.label} · {item.kind === "gnina_mode" ? `CNN score ${formatScientificNumber(item.cnn_score ?? null, 4)} · CNN affinity ${formatScientificNumber(item.cnn_affinity_pk ?? null, 3)} pK · minimized affinity ` : ""}{formatScientificNumber(item.result_kcal_mol, 3)} kcal/mol
                 </option>
               ))}
             </select>

@@ -13,6 +13,7 @@ from ankora_backend.schemas.warnings import StructuredWarning
 class PoseKind(StrEnum):
     VINA_MODE = "vina_mode"
     AUTODOCK_RUN = "autodock_run"
+    GNINA_MODE = "gnina_mode"
 
 
 class PoseReference(BaseModel):
@@ -26,6 +27,8 @@ class PoseReference(BaseModel):
     label: str = Field(min_length=1)
     result_kcal_mol: float
     value_label: str = Field(min_length=1)
+    cnn_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    cnn_affinity_pk: float | None = Field(default=None, allow_inf_nan=False)
     cluster_rank: int | None = Field(default=None, ge=1)
     sub_rank: int | None = Field(default=None, ge=1)
     rmsd_lower_bound_angstrom: float | None = Field(default=None, ge=0)

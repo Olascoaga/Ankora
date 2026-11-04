@@ -27,7 +27,9 @@ selection, input validation, cancellation, and matching-job restoration.
 CPU/CUDA backend and API engineering evidence is recorded separately in
 `LINUX_GNINA_API_CPU.md` and `LINUX_GNINA_API_CUDA.md`. This workspace is
 single-ligand only. GNINA single-job results and their exact poses can also be
-reopened from the project Results catalog. Multi-ligand screening, GNINA pose
-interactions, redocking, exports, Methods and native Linux workstation acceptance
-are not yet implemented. Browser storage may be cleared independently of the
+reopened from the project Results catalog. Exact GNINA poses can be analyzed with
+ProLIF after checking the docking receptor, prepared ligand, conformer and pose
+identities; CNN scores remain distinct from minimized affinity. Multi-ligand
+screening, redocking, campaign exports and Methods are not yet implemented;
+native Linux workstation acceptance remains pending. Browser storage may be cleared independently of the
 durable backend job record.

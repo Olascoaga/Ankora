@@ -7,7 +7,6 @@ import { MethodsPanel } from "../export/MethodsPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
-import { GninaResultPanel } from "./GninaResultPanel";
 import { reproducibilityDetail, reproducibilityTitle } from "./reproducibility";
 
 /**
@@ -239,7 +238,7 @@ export function ResultsWorkspace() {
             <span className="eyebrow">06 / Results</span>
             <h2>
               {inspectedMolecule
-                ? `${selected?.scoring_family === "gnina" ? "GNINA poses" : "Pose interactions"} · ${inspectedMolecule.name}`
+                ? `Pose interactions · ${inspectedMolecule.name}`
                 : showingCampaignDetail
                   ? "Molecules in this result"
                   : "Every result this project holds"}
@@ -248,7 +247,7 @@ export function ResultsWorkspace() {
           <div className="workspace-actions">
             <span className="read-only-badge">
               {inspectedMolecule
-                ? selected?.scoring_family === "gnina" ? "GNINA · recorded poses" : "M9 · pose interactions"
+                ? "M9 · pose interactions"
                 : showingCampaignDetail
                   ? "M6 · campaign detail"
                   : "M6 · result catalog"}
@@ -436,9 +435,7 @@ export function ResultsWorkspace() {
           </div>
         ) : null}
 
-        {selected && inspectedMolecule && selected.scoring_family === "gnina" ? (
-          <GninaResultPanel entry={selected} molecule={inspectedMolecule} onClose={() => setInspectedMolecule(null)} />
-        ) : selected && inspectedMolecule ? (
+        {selected && inspectedMolecule ? (
           <PoseInteractionPanel
             entry={selected}
             molecule={inspectedMolecule}
@@ -764,7 +761,7 @@ function CompoundTable({ entry, onInspect }: {
         onOffset={setOffset}
       />
       <p className="field-note results-pose-hint">
-        {gnina ? "Select the molecule to inspect its preserved GNINA poses. Interaction analysis is not yet available for GNINA." : "Select a completed molecule to inspect every preserved pose or run and calculate its 2D contacts."}
+        Select a completed molecule to inspect every preserved pose or run and calculate its 2D contacts.
       </p>
     </section>
   );

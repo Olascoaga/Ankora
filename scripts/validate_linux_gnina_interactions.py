@@ -5,9 +5,10 @@ import os
 import shutil
 from typing import Any
 
-from ankora_backend.api.app import create_app
 from fastapi.testclient import TestClient
 from validate_linux_gnina_binary import LOGS, sha
+
+from ankora_backend.api.app import create_app
 
 SOURCE = LOGS / "api-cuda-01" / "data"
 SOURCE_EVIDENCE = LOGS / "api-cuda-01" / "evidence.json"
@@ -37,7 +38,10 @@ def main() -> int:
         shutil.copytree(SOURCE, TARGET / "data")
         os.environ["ANKORA_DATA_DIR"] = str(TARGET / "data")
         pose = job["poses"][0]
-        root = f"/api/v1/results/campaigns/gnina_job/{job['job_id']}/compounds/{job['request']['ligand_id']}/poses"
+        root = (
+            f"/api/v1/results/campaigns/gnina_job/{job['job_id']}"
+            f"/compounds/{job['request']['ligand_id']}/poses"
+        )
         with TestClient(create_app()) as client:
             response = client.get(root)
             response.raise_for_status()

@@ -105,17 +105,16 @@ it("opens GNINA history without labeling CNN scores as energy", async () => {
     pose_count: 2, cluster_count: null, top_cluster_runs: null,
   };
   const pose = (mode: number, score: number, energy: number) => ({
-    mode, cnn_score: score, cnn_affinity: 8, minimized_affinity_kcal_mol: energy,
-    artifact: { artifact_id: `pose-${mode}`, mode, filename: `pose_${mode}.pdbqt`, sha256: "a".repeat(64), size_bytes: 20 },
+    artifact_id: `pose-${mode}`, kind: "gnina_mode", ordinal: mode, label: `Mode ${mode}`,
+    cnn_score: score, cnn_affinity_pk: 8, result_kcal_mol: energy,
+    value_label: "GNINA minimized affinity", sha256: "a".repeat(64), content_url: `/synthetic/pose-${mode}`,
   });
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
-    if (url.includes("/docking/gnina/jobs/gnina-1")) return json({
-      engine: "gnina", status: "completed", request: { ligand_id: "ligand-1", receptor_id: "receptor-1", binding_site_id: "site-1" },
-      receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64), box: baseEntry.box,
-      job_id: "gnina-1", poses: [pose(1, 0.9, -4), pose(2, 0.7, -9)],
-    });
-    if (url.endsWith("/receptors/receptor-1")) return json({ message: "Missing synthetic receptor" }, 404);
+    if (url.endsWith("/interactions")) return json([]);
+    if (url.endsWith("/poses")) return json({ catalog_id: gnina.catalog_id, ligand_id: "ligand-1",
+      engine_label: "GNINA 1.3.3", receptor_artifact_id: null, receptor_content_url: null,
+      poses: [pose(1, 0.9, -4), pose(2, 0.7, -9)] });
     if (url.includes("/compounds")) return json({ catalog_id: gnina.catalog_id, engine_label: gnina.engine_label,
       value_label: "CNN score (higher ranks first)", rows: [compound], total: 1, offset: 0, limit: 100 });
     return json({ entries: [gnina], total: 1, offset: 0, limit: 25 });
@@ -128,12 +127,9 @@ it("opens GNINA history without labeling CNN scores as energy", async () => {
   expect(await screen.findByText("CNN affinity (pK)")).toBeInTheDocument();
   expect(screen.queryByText("Write the Methods section")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Synthetic GNINA ligand", { selector: "td" }));
-  expect(await screen.findByRole("button", { name: "Pose 2" })).toBeInTheDocument();
-  const panel = screen.getByRole("region", { name: "GNINA recorded poses" });
-  const rows = within(panel).getAllByRole("row");
-  expect(within(rows[1]).getByText("-4.000")).toBeInTheDocument();
-  expect(within(rows[2]).getByText("-9.000")).toBeInTheDocument();
-  expect(within(panel).getByText(/Interaction analysis is not yet available/)).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Analyze this pose with ProLIF" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /Mode 1.*CNN score 0.9000.*-4.000 kcal\/mol/ })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /Mode 2.*CNN score 0.7000.*-9.000 kcal\/mol/ })).toBeInTheDocument();
 });
 
 const vinaCompounds: CompoundPage = {

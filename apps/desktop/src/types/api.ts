@@ -1992,7 +1992,7 @@ export interface CompoundPage {
   limit: number;
 }
 
-export type PoseKind = "vina_mode" | "autodock_run";
+export type PoseKind = "vina_mode" | "autodock_run" | "gnina_mode";
 
 export interface PoseReference {
   artifact_id: string;
@@ -2001,6 +2001,8 @@ export interface PoseReference {
   label: string;
   result_kcal_mol: number;
   value_label: string;
+  cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
   cluster_rank: number | null;
   sub_rank: number | null;
   rmsd_lower_bound_angstrom: number | null;

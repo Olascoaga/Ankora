@@ -107,6 +107,9 @@ Its persisted box is used as recorded, and reproducibility remains not assessed
 until GNINA-specific repeat evidence is implemented. Existing score fields and
 the order of Vina and AutoDock results remain unchanged. A GNINA job may be
 moved to project Trash through the same all-or-nothing result removal operation.
-The catalog can reopen the saved poses. GNINA-specific Methods, interaction
-analysis, redocking and exports remain unavailable until separately implemented
-and verified; their routes must not fabricate another engine's procedure.
+The catalog can reopen the saved poses and calculate ProLIF interactions for an
+exact GNINA pose after checking the recorded input identities. GNINA-specific
+Methods, redocking and campaign exports remain unavailable until separately
+implemented and verified; their routes must not fabricate another engine's
+procedure. The isolated WSL CUDA pose interaction engineering check is recorded
+in `docs/validation/LINUX_GNINA_INTERACTIONS.md`.

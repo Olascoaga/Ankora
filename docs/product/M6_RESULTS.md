@@ -12,8 +12,9 @@ The Linux GNINA single-job projection extends this catalog with a separate
 dimensionless CNNscore family. Its top pose is the first recorded CNN-ranked
 pose, with CNNaffinity (pK) and minimized affinity (kcal/mol) shown separately.
 Scores from different engines are not compared. GNINA single-job poses may be
-reopened; GNINA interactions, Methods, redocking and export are not yet part of
-this catalog contract. See ADR-027 for the evidence and device restrictions.
+reopened and analyzed with ProLIF against the recorded inputs. GNINA Methods,
+redocking and campaign exports remain unavailable. See ADR-027 for the evidence
+and device restrictions.
 
 M5 already displays results while a docking job is being configured or
 monitored. M6 is not another docking screen. It is the durable project-level
