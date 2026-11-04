@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { DockingWorkspace } from "../features/docking/DockingWorkspace";
 import type {
   BindingSiteRecord,
+  GninaDockingJobRecord,
   LigandDockingInput,
   LigandLibraryDockingInput,
   LigandRecord,
@@ -76,6 +77,123 @@ const tools = {
   propka: { available: true, path: "synthetic", version: "1" }, meeko: { available: true, path: "synthetic", version: "1" },
   meeko_ligand: { available: true, path: "synthetic", version: "1" }, p2rank: { available: true, path: "synthetic", version: "1" },
 } satisfies ToolsResponse;
+
+const gninaTools: ToolsResponse = { ...tools, gnina: { available: true, path: "synthetic-gnina", version: null } };
+const gninaParameters = { compute: "cuda", device_index: 0, cpu_threads: 2, seed: 20261029, exhaustiveness: 8, num_modes: 9, min_rmsd_filter_angstrom: 1, timeout_minutes: 360, cnn_scoring: "rescore", cnn_model: "dense_1_3", hydrogen_handling: "prepared_pdbqt_no_add_no_strip", pose_sort_order: "cnn_score_descending" } as const;
+function gninaJob(status: GninaDockingJobRecord["status"]): GninaDockingJobRecord {
+  const completed = status === "completed";
+  return {
+    job_id: "gnina-synthetic", engine: "gnina", status, phase: completed ? "complete" : "docking", created_at: "2026-08-23T00:00:00Z", started_at: null, completed_at: null,
+    request: { receptor_id: receptor.receptor_id, binding_site_id: bindingSite.binding_site_id, ligand_id: ligand.artifact.ligand_id, ligand_preparation_id: "preparation-synthetic", parameters: gninaParameters, acknowledge_inputs_and_scoring: true },
+    tool: { version: "1.3.3", sha256: "a".repeat(64), architecture: "x86_64" }, box: bindingSite.box,
+    receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64), ligand_sha256: "d".repeat(64), conformer_sha256: "c".repeat(64), command: ["gnina", "--cnn", "dense_1_3"],
+    execution: completed ? { command: ["gnina"], exit_code: 0, stdout: "synthetic", stderr: "", timed_out: false, canceled: false, gpu_process_observed: true, gpu_observation: "synthetic", requested_gpu_uuid: "GPU-synthetic", observed_gpu_uuid: "GPU-synthetic" } : null,
+    poses: completed ? [
+      { mode: 1, cnn_score: 0.9, cnn_affinity: 6, minimized_affinity_kcal_mol: -4, artifact: { artifact_id: "pose-1", mode: 1, filename: "pose_1.pdbqt", sha256: "e".repeat(64), size_bytes: 100 } },
+      { mode: 2, cnn_score: 0.7, cnn_affinity: 7, minimized_affinity_kcal_mol: -9, artifact: { artifact_id: "pose-2", mode: 2, filename: "pose_2.pdbqt", sha256: "f".repeat(64), size_bytes: 100 } },
+    ] : [], failure: null,
+  };
+}
+
+it("offers GNINA only on Linux", () => {
+  const { rerender } = render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="windows" />);
+  expect(screen.queryByRole("button", { name: "GNINA · single" })).not.toBeInTheDocument();
+  rerender(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  expect(screen.getByRole("button", { name: "GNINA · single" })).toBeInTheDocument();
+});
+
+it("runs CUDA GNINA with explicit settings and preserves CNN pose order", async () => {
+  window.localStorage.clear();
+  let submitted: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/jobs")) { submitted = JSON.parse(String(init?.body)); return json(gninaJob("running"), 202); }
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json(gninaJob("completed"));
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+  fireEvent.change(screen.getByLabelText("Compute"), { target: { value: "cuda" } });
+  expect(screen.getByText(/requires one identifiable NVIDIA GPU/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run GNINA" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run GNINA" }));
+  const pose2 = await screen.findByRole("button", { name: "Pose 2" }, { timeout: 3000 });
+  expect(submitted).toMatchObject({ parameters: { compute: "cuda", cnn_model: "dense_1_3", cnn_scoring: "rescore", pose_sort_order: "cnn_score_descending" }, acknowledge_inputs_and_scoring: true });
+  const rows = within(screen.getByRole("table")).getAllByRole("row");
+  expect(within(rows[1]).getByText("-4.000")).toBeInTheDocument();
+  expect(within(rows[2]).getByText("-9.000")).toBeInTheDocument();
+  fireEvent.click(pose2);
+  expect(pose2).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText(/Neither is measured affinity/)).toBeInTheDocument();
+  expect(screen.getByText("CNN affinity (pK)")).toBeInTheDocument();
+  window.localStorage.clear();
+});
+
+it("restores the last matching GNINA job when returning to the workspace", async () => {
+  window.localStorage.clear();
+  const key = `ankora:gnina:${receptor.receptor_id}:${bindingSite.binding_site_id}:${ligand.artifact.ligand_id}:preparation-synthetic`;
+  window.localStorage.setItem(key, "gnina-synthetic");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/docking/gnina/jobs/gnina-synthetic") ? json(gninaJob("completed")) : new Response("", { status: 200 }));
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+  expect(await screen.findByRole("button", { name: "Pose 1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText("Compute")).toHaveValue("cuda");
+  window.localStorage.clear();
+});
+
+it("blocks unavailable GNINA and invalid parameters, and requests cancellation", async () => {
+  window.localStorage.clear();
+  const paths: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input); paths.push(`${init?.method ?? "GET"} ${path}`);
+    if (path.endsWith("/docking/gnina/jobs")) return json(gninaJob("running"), 202);
+    if (path.endsWith("/cancel")) return json({ job_id: "gnina-synthetic", status: "cancel_requested" });
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json(gninaJob("running"));
+    return new Response("", { status: 200 });
+  });
+  const view = render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={tools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  expect(screen.getByRole("button", { name: "Run GNINA" })).toBeDisabled();
+  view.rerender(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  fireEvent.change(screen.getByLabelText("Exhaustiveness"), { target: { value: "" } });
+  expect(screen.getByLabelText("Exhaustiveness")).toHaveValue(null);
+  fireEvent.change(screen.getByLabelText("Exhaustiveness"), { target: { value: "0" } });
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  expect(screen.getByRole("button", { name: "Run GNINA" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Exhaustiveness"), { target: { value: "8" } });
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run GNINA" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run GNINA" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel docking" }));
+  await waitFor(() => expect(paths).toContain("POST http://127.0.0.1:8765/api/v1/docking/gnina/jobs/gnina-synthetic/cancel"));
+  window.localStorage.clear();
+});
+
+it("does not cancel the previous result while a new GNINA launch is pending", async () => {
+  window.localStorage.clear();
+  const key = `ankora:gnina:${receptor.receptor_id}:${bindingSite.binding_site_id}:${ligand.artifact.ligand_id}:preparation-synthetic`;
+  window.localStorage.setItem(key, "gnina-synthetic");
+  let failLaunch: (reason: Error) => void = () => {};
+  const pending = new Promise<Response>((_resolve, reject) => { failLaunch = reject; });
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/jobs") && init?.method === "POST") return pending;
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json(gninaJob("completed"));
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+  await screen.findByRole("button", { name: "Pose 1" });
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  fireEvent.click(screen.getByRole("button", { name: "Run GNINA" }));
+  expect(screen.getByRole("button", { name: "Cancel docking" })).toBeDisabled();
+  failLaunch(new Error("synthetic launch failure"));
+  expect(await screen.findByText(/Could not start a new GNINA job/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Pose 1" })).toHaveAttribute("aria-pressed", "true");
+  window.localStorage.clear();
+});
 
 function job(status: VinaDockingJobRecord["status"]): VinaDockingJobRecord {
   return {

@@ -3,11 +3,13 @@ export type DockingMode =
   | "screening"
   | "autodock4"
   | "autodock4-screening"
+  | "gnina"
   | "comparison";
 
 interface DockingModeSwitchProps {
   mode: DockingMode;
   hasLibrary: boolean;
+  showGnina?: boolean;
   onChange: (mode: DockingMode) => void;
 }
 
@@ -24,7 +26,7 @@ interface DockingModeSwitchProps {
  * Labels are kept terse deliberately: the workspace heading is only ~492px wide
  * at a 1280px window, and longer wording pushed this control onto a second row.
  */
-export function DockingModeSwitch({ mode, hasLibrary, onChange }: DockingModeSwitchProps) {
+export function DockingModeSwitch({ mode, hasLibrary, showGnina = false, onChange }: DockingModeSwitchProps) {
   return (
     <div className="workspace-mode-switch docking-mode-switch" aria-label="Docking experiment">
       <button
@@ -35,6 +37,7 @@ export function DockingModeSwitch({ mode, hasLibrary, onChange }: DockingModeSwi
       >
         Vina · single
       </button>
+      {showGnina ? <button type="button" className={mode === "gnina" ? "selected" : ""} aria-pressed={mode === "gnina"} onClick={() => onChange("gnina")}>GNINA · single</button> : null}
       {hasLibrary ? (
         <button
           type="button"

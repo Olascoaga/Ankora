@@ -23,6 +23,7 @@ import { AutoDock4Workspace } from "./AutoDock4Workspace";
 import { DockingModeSwitch } from "./DockingModeSwitch";
 import type { DockingMode } from "./DockingModeSwitch";
 import { LibraryDockingWorkspace } from "./LibraryDockingWorkspace";
+import { GninaWorkspace } from "./GninaWorkspace";
 import { VinaSamplingGuidance } from "./VinaSamplingGuidance";
 import {
   applyVinaSamplingProtocol,
@@ -39,6 +40,7 @@ interface DockingWorkspaceProps {
   ligandInput: LigandDockingInput | null;
   libraryInput?: LigandLibraryDockingInput | null;
   tools: ToolsResponse | null;
+  platform?: string | null;
   onActivityChange?: (activity: WorkspaceActivity | null) => void;
 }
 
@@ -66,9 +68,13 @@ export function DockingWorkspace(props: DockingWorkspaceProps) {
     <DockingModeSwitch
       mode={mode}
       hasLibrary={Boolean(props.libraryInput)}
+      showGnina={props.platform === "linux"}
       onChange={setMode}
     />
   );
+  if (mode === "gnina" && props.platform === "linux") {
+    return <GninaWorkspace {...props} modeSwitch={modeSwitch} />;
+  }
   if (mode === "screening" && props.libraryInput) {
     return (
       <LibraryDockingWorkspace

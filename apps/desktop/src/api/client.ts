@@ -18,6 +18,8 @@ import type {
   PocketDetectionReport,
   GenerateLigandConformerRequest,
   HealthResponse,
+  GninaDockingJobRecord,
+  GninaDockingRequest,
   LigandConformerRecord,
   LigandChemicalStateRecord,
   LigandLocator,
@@ -388,6 +390,17 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     getJson<LigandConformerRecord>(`/ligands/${ligandId}/conformers/${conformerId}`),
   getLigandPdbqt: (ligandId: string, preparationId: string): Promise<LigandPdbqtRecord> =>
     getJson<LigandPdbqtRecord>(`/ligands/${ligandId}/preparations/${preparationId}`),
+  startGninaDocking: (request: GninaDockingRequest): Promise<GninaDockingJobRecord> =>
+    requestJson<GninaDockingJobRecord>("/docking/gnina/jobs", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+  getGninaDockingJob: (jobId: string): Promise<GninaDockingJobRecord> =>
+    getJson<GninaDockingJobRecord>(`/docking/gnina/jobs/${encodeURIComponent(jobId)}`),
+  cancelGninaDockingJob: (jobId: string): Promise<DockingCancelResponse> =>
+    requestJson<DockingCancelResponse>(`/docking/gnina/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
+  gninaPoseUrl: (jobId: string, artifactId: string): string =>
+    `${API_BASE_URL}/docking/gnina/jobs/${encodeURIComponent(jobId)}/poses/${encodeURIComponent(artifactId)}/content`,
   startVinaDocking: (request: VinaDockingRequest): Promise<VinaDockingJobRecord> =>
     requestJson<VinaDockingJobRecord>("/docking/vina/jobs", {
       method: "POST",

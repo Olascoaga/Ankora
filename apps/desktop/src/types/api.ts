@@ -1002,6 +1002,64 @@ export interface VinaBatchDockingRequest {
 export type DockingJobStatus = "queued" | "running" | "cancel_requested" | "canceled" | "completed" | "failed";
 export type DockingJobPhase = "queued" | "validating" | "docking" | "parsing_poses" | "complete";
 
+export interface GninaDockingParameters {
+  compute: "cpu" | "cuda";
+  device_index: number;
+  cpu_threads: number;
+  seed: number;
+  exhaustiveness: number;
+  num_modes: number;
+  min_rmsd_filter_angstrom: number;
+  timeout_minutes: number;
+  cnn_scoring: "rescore";
+  cnn_model: "dense_1_3";
+  hydrogen_handling: "prepared_pdbqt_no_add_no_strip";
+  pose_sort_order: "cnn_score_descending";
+}
+
+export interface GninaDockingRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  parameters: GninaDockingParameters;
+  acknowledge_inputs_and_scoring: boolean;
+}
+
+export interface GninaPoseResult {
+  mode: number;
+  minimized_affinity_kcal_mol: number;
+  cnn_score: number;
+  cnn_affinity: number;
+  artifact: { artifact_id: string; mode: number; filename: string; sha256: string; size_bytes: number };
+}
+
+export interface GninaDockingJobRecord {
+  job_id: string;
+  engine: "gnina";
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  request: GninaDockingRequest;
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  box: BindingBox;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  ligand_sha256: string;
+  conformer_sha256: string;
+  command: string[];
+  execution: (DockingExecutionEvidence & {
+    gpu_process_observed: boolean;
+    gpu_observation: string | null;
+    requested_gpu_uuid: string | null;
+    observed_gpu_uuid: string | null;
+  }) | null;
+  poses: GninaPoseResult[];
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+}
+
 export interface DockingPoseArtifact {
   artifact_id: string;
   mode: number;

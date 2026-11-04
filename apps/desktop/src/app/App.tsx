@@ -661,7 +661,7 @@ export function App() {
         ? <ResultsWorkspace />
         : activeStep === "Validation"
         ? <RedockingWorkspace key={activeProject.project_id} />
-        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} onActivityChange={setWorkspaceActivity} /> : <>
+        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} platform={state.system?.platform} onActivityChange={setWorkspaceActivity} /> : <>
       <section className="workspace" aria-label="Structure workspace">
         <div className="workspace-heading">
           <div><span className="eyebrow">01 / Structure</span><h2>{structure?.metadata.title ?? "Inspect before transforming"}</h2></div>
@@ -789,7 +789,7 @@ export function App() {
             {activityTab === "provenance" ? <div className="activity-provenance"><div><small>Current artifact</small><strong>{provenanceLabel}</strong></div><div><small>Latest generated command</small><code>{generatedCommand}</code></div></div> : null}
             {activityTab === "tools" ? <div className="tools-activity-view">
               <div className="tools-activity-toolbar"><div><strong>Backend scientific environment</strong><span>Python {state.system?.python_version ?? "—"} · {state.system?.python_environment ?? "unknown environment"}</span></div><button type="button" disabled={toolsRefreshing} onClick={() => void refreshTools()}><AppIcon name="tools" />{toolsRefreshing ? "Scanning…" : "Rescan tools"}</button></div>
-              <div className="activity-tools"><ToolSummary name="PDBFixer" status={state.tools?.pdbfixer} /><ToolSummary name="PDB2PQR" status={state.tools?.pdb2pqr} /><ToolSummary name="PROPKA" status={state.tools?.propka} /><ToolSummary name="Meeko receptor" status={state.tools?.meeko} /><ToolSummary name="Meeko ligand" status={state.tools?.meeko_ligand} /><ToolSummary name="AutoDock Vina" status={state.tools?.vina} /><ToolSummary name="AutoGrid4" status={state.tools?.autogrid4} /><ToolSummary name="AutoDock4 CPU" status={state.tools?.autodock4} /><ToolSummary name="AutoDock-GPU" status={state.tools?.autodock_gpu} /><ToolSummary name="GNINA · deferred" status={state.tools?.gnina} /><ToolSummary name="P2Rank" status={state.tools?.p2rank} /></div>
+              <div className="activity-tools"><ToolSummary name="PDBFixer" status={state.tools?.pdbfixer} /><ToolSummary name="PDB2PQR" status={state.tools?.pdb2pqr} /><ToolSummary name="PROPKA" status={state.tools?.propka} /><ToolSummary name="Meeko receptor" status={state.tools?.meeko} /><ToolSummary name="Meeko ligand" status={state.tools?.meeko_ligand} /><ToolSummary name="AutoDock Vina" status={state.tools?.vina} /><ToolSummary name="AutoGrid4" status={state.tools?.autogrid4} /><ToolSummary name="AutoDock4 CPU" status={state.tools?.autodock4} /><ToolSummary name="AutoDock-GPU" status={state.tools?.autodock_gpu} /><ToolSummary name={state.system?.platform === "linux" ? "GNINA · single" : "GNINA · deferred"} status={state.tools?.gnina} /><ToolSummary name="P2Rank" status={state.tools?.p2rank} /></div>
             </div> : null}
             {activityTab === "about" ? <div className="activity-about"><div className="brand-mark"><AppIcon name="molecule" /></div><div><strong>Ankora 0.1.0</strong><p>Native Windows workbench for explicit, inspectable, and reproducible molecular docking.</p></div></div> : null}
           </div>
@@ -1031,7 +1031,7 @@ function InspectorGroup({ title, count, children, initiallyOpen = true }: { titl
 
 function SystemInspector({ state, onOpenTools }: { state: ApplicationState; onOpenTools: () => void }) {
   const toolEntries = state.tools ? [
-    ["PDBFixer", state.tools.pdbfixer], ["PDB2PQR", state.tools.pdb2pqr], ["PROPKA", state.tools.propka], ["Meeko receptor", state.tools.meeko], ["Meeko ligand", state.tools.meeko_ligand], ["AutoDock Vina", state.tools.vina], ["AutoGrid4", state.tools.autogrid4], ["AutoDock4 CPU", state.tools.autodock4], ["AutoDock-GPU", state.tools.autodock_gpu], ["GNINA · deferred", state.tools.gnina], ["P2Rank", state.tools.p2rank],
+    ["PDBFixer", state.tools.pdbfixer], ["PDB2PQR", state.tools.pdb2pqr], ["PROPKA", state.tools.propka], ["Meeko receptor", state.tools.meeko], ["Meeko ligand", state.tools.meeko_ligand], ["AutoDock Vina", state.tools.vina], ["AutoGrid4", state.tools.autogrid4], ["AutoDock4 CPU", state.tools.autodock4], ["AutoDock-GPU", state.tools.autodock_gpu], [state.system?.platform === "linux" ? "GNINA · single" : "GNINA · deferred", state.tools.gnina], ["P2Rank", state.tools.p2rank],
   ] as const : [];
   const availableCount = toolEntries.filter(([, tool]) => tool.available).length;
   return (
