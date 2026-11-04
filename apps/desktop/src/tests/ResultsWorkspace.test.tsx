@@ -90,6 +90,52 @@ const gpuEntry: CatalogEntry = {
 
 const page: CatalogPage = { entries: [gpuEntry, baseEntry], total: 2, offset: 0, limit: 25 };
 
+it("opens GNINA history without labeling CNN scores as energy", async () => {
+  const gnina: CatalogEntry = {
+    ...baseEntry, catalog_id: "gnina_job:gnina-1", engine_key: "gnina_job", record_id: "gnina-1",
+    engine_label: "GNINA 1.3.3", engine_version: "1.3.3", scoring_family: "gnina", mode: "single_ligand",
+    ligand_id: "ligand-1", selected_count: 1, succeeded_count: 1, failed_count: 0,
+    best_result_kcal_mol: null, primary_cnn_score: 0.9, cnn_affinity_pk: 8,
+    minimized_affinity_kcal_mol: -4, best_molecule: "Synthetic GNINA ligand",
+  };
+  const compound = {
+    ligand_id: "ligand-1", source_index: 0, name: "Synthetic GNINA ligand", canonical_smiles: "CC",
+    molecular_weight_g_mol: 30, status: "completed", failure_code: null, best_result_kcal_mol: null,
+    primary_cnn_score: 0.9, cnn_affinity_pk: 8, minimized_affinity_kcal_mol: -4,
+    pose_count: 2, cluster_count: null, top_cluster_runs: null,
+  };
+  const pose = (mode: number, score: number, energy: number) => ({
+    mode, cnn_score: score, cnn_affinity: 8, minimized_affinity_kcal_mol: energy,
+    artifact: { artifact_id: `pose-${mode}`, mode, filename: `pose_${mode}.pdbqt`, sha256: "a".repeat(64), size_bytes: 20 },
+  });
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/docking/gnina/jobs/gnina-1")) return json({
+      engine: "gnina", status: "completed", request: { ligand_id: "ligand-1", receptor_id: "receptor-1" },
+      receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64), box: baseEntry.box,
+      job_id: "gnina-1", poses: [pose(1, 0.9, -4), pose(2, 0.7, -9)],
+    });
+    if (url.endsWith("/receptors/receptor-1")) return json({ message: "Missing synthetic receptor" }, 404);
+    if (url.includes("/compounds")) return json({ catalog_id: gnina.catalog_id, engine_label: gnina.engine_label,
+      value_label: "CNN score (higher ranks first)", rows: [compound], total: 1, offset: 0, limit: 100 });
+    return json({ entries: [gnina], total: 1, offset: 0, limit: 25 });
+  });
+  render(<ResultsWorkspace />);
+  const card = (await screen.findByRole("list", { name: "Recorded results" })).querySelector('[role="listitem"]')!;
+  expect(card).toHaveTextContent("0.9000");
+  expect(card).not.toHaveTextContent("kcal/mol");
+  fireEvent.click(card);
+  expect(await screen.findByText("CNN affinity (pK)")).toBeInTheDocument();
+  expect(screen.queryByText("Write the Methods section")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("Synthetic GNINA ligand", { selector: "td" }));
+  expect(await screen.findByRole("button", { name: "Pose 2" })).toBeInTheDocument();
+  const panel = screen.getByRole("region", { name: "GNINA recorded poses" });
+  const rows = within(panel).getAllByRole("row");
+  expect(within(rows[1]).getByText("-4.000")).toBeInTheDocument();
+  expect(within(rows[2]).getByText("-9.000")).toBeInTheDocument();
+  expect(within(panel).getByText(/Interaction analysis is not yet available/)).toBeInTheDocument();
+});
+
 const vinaCompounds: CompoundPage = {
   catalog_id: "vina_batch:vina-1",
   engine_label: "AutoDock Vina 1.2.7",

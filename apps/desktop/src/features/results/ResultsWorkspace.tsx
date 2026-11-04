@@ -7,6 +7,7 @@ import { MethodsPanel } from "../export/MethodsPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
+import { GninaResultPanel } from "./GninaResultPanel";
 import { reproducibilityDetail, reproducibilityTitle } from "./reproducibility";
 
 /**
@@ -32,7 +33,7 @@ const MAX_TRASH_SELECTION = 100;
 const TERMINAL_RESULTS = new Set(["completed", "failed", "canceled"]);
 
 type ModeFilter = "all" | "screening" | "single_ligand";
-type FamilyFilter = "all" | "vina" | "autodock4";
+type FamilyFilter = "all" | "vina" | "autodock4" | "gnina";
 
 const EXPORTABLE = new Set([
   "vina_batch",
@@ -238,7 +239,7 @@ export function ResultsWorkspace() {
             <span className="eyebrow">06 / Results</span>
             <h2>
               {inspectedMolecule
-                ? `Pose interactions · ${inspectedMolecule.name}`
+                ? `${selected?.scoring_family === "gnina" ? "GNINA poses" : "Pose interactions"} · ${inspectedMolecule.name}`
                 : showingCampaignDetail
                   ? "Molecules in this result"
                   : "Every result this project holds"}
@@ -247,7 +248,7 @@ export function ResultsWorkspace() {
           <div className="workspace-actions">
             <span className="read-only-badge">
               {inspectedMolecule
-                ? "M9 · pose interactions"
+                ? selected?.scoring_family === "gnina" ? "GNINA · recorded poses" : "M9 · pose interactions"
                 : showingCampaignDetail
                   ? "M6 · campaign detail"
                   : "M6 · result catalog"}
@@ -297,13 +298,13 @@ export function ResultsWorkspace() {
                 ["all", "All"],
                 ["vina", "Vina score"],
                 ["autodock4", "AutoDock4 energy"],
+                ["gnina", "GNINA CNN score"],
               ]}
               onChange={(value) => changeFilter(() => setFamily(value as FamilyFilter))}
             />
             <p className="field-note results-order-note">
-              Newest first. Results are never ordered against each other: a Vina score and an
-              AutoDock4 binding energy come from different scoring functions and are not on a
-              shared scale.
+              Newest first. Vina, AutoDock4 and GNINA use different scoring functions;
+              their numbers are not on a shared scale and are not ranked against one another.
             </p>
           </div>
 
@@ -435,7 +436,9 @@ export function ResultsWorkspace() {
           </div>
         ) : null}
 
-        {selected && inspectedMolecule ? (
+        {selected && inspectedMolecule && selected.scoring_family === "gnina" ? (
+          <GninaResultPanel entry={selected} molecule={inspectedMolecule} onClose={() => setInspectedMolecule(null)} />
+        ) : selected && inspectedMolecule ? (
           <PoseInteractionPanel
             entry={selected}
             molecule={inspectedMolecule}
@@ -578,7 +581,9 @@ function CampaignBrowser({
                 {entry.failed_count > 0 ? ` · ${entry.failed_count} failed` : ""}
               </span>
             </div>
-            {entry.best_result_kcal_mol === null ? (
+            {entry.scoring_family === "gnina" && entry.primary_cnn_score != null ? (
+              <p className="results-card-best"><strong>{formatScientificNumber(entry.primary_cnn_score, 4)}</strong><small>top GNINA CNN score{entry.best_molecule ? ` · ${entry.best_molecule}` : ""}</small></p>
+            ) : entry.best_result_kcal_mol === null ? (
               <p className="results-card-best muted">No result was produced.</p>
             ) : (
               <p className="results-card-best">
@@ -648,6 +653,7 @@ function CompoundTable({ entry, onInspect }: {
   }, [entry.catalog_id]);
 
   const clusterNative = entry.scoring_family === "autodock4";
+  const gnina = entry.scoring_family === "gnina";
 
   return (
     <section
@@ -706,6 +712,7 @@ function CompoundTable({ entry, onInspect }: {
               <th>Chemical state</th>
               {/* The engine's own column name, so it is never just "score". */}
               <th>{page?.value_label ?? "Result (kcal/mol)"}</th>
+              {gnina ? <><th>CNN affinity (pK)</th><th>Minimized affinity (kcal/mol)</th></> : null}
               {clusterNative ? <th>Clusters</th> : <th>Poses</th>}
               {clusterNative ? <th>Top cluster runs</th> : null}
               <th>MW (g/mol)</th>
@@ -728,12 +735,13 @@ function CompoundTable({ entry, onInspect }: {
                   }
                 }}
               >
-                <td>{row.best_result_kcal_mol === null ? "—" : offset + index + 1}</td>
+                <td>{(gnina ? row.primary_cnn_score == null : row.best_result_kcal_mol === null) ? "—" : offset + index + 1}</td>
                 {/* Manifest order, kept beside the ranking that reordered it. */}
                 <td>{row.source_index + 1}</td>
                 <td>{row.name}</td>
                 <td>{row.chemical_state_id ? <><code>{row.chemical_state_id.slice(0, 10)}…</code><small>charge {row.chemical_state_formal_charge !== null && row.chemical_state_formal_charge !== undefined ? `${row.chemical_state_formal_charge >= 0 ? "+" : ""}${row.chemical_state_formal_charge}` : "not recorded"}</small></> : "Historical · not recorded"}</td>
-                <td>{formatScientificNumber(row.best_result_kcal_mol, 2)}</td>
+                <td>{formatScientificNumber(gnina ? row.primary_cnn_score ?? null : row.best_result_kcal_mol, gnina ? 4 : 2)}</td>
+                {gnina ? <><td>{formatScientificNumber(row.cnn_affinity_pk ?? null, 3)}</td><td>{formatScientificNumber(row.minimized_affinity_kcal_mol ?? null, 3)}</td></> : null}
                 <td>{(clusterNative ? row.cluster_count : row.pose_count) ?? "—"}</td>
                 {clusterNative ? <td>{row.top_cluster_runs ?? "—"}</td> : null}
                 <td>{formatScientificNumber(row.molecular_weight_g_mol, 1)}</td>
@@ -756,7 +764,7 @@ function CompoundTable({ entry, onInspect }: {
         onOffset={setOffset}
       />
       <p className="field-note results-pose-hint">
-        Select a completed molecule to inspect every preserved pose or run and calculate its 2D contacts.
+        {gnina ? "Select the molecule to inspect its preserved GNINA poses. Interaction analysis is not yet available for GNINA." : "Select a completed molecule to inspect every preserved pose or run and calculate its 2D contacts."}
       </p>
     </section>
   );
@@ -844,7 +852,7 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
           says whether two results searched the same space.
         </p>
       </section>
-      <MethodsPanel catalogId={entry.catalog_id} />
+      {entry.scoring_family !== "gnina" ? <MethodsPanel catalogId={entry.catalog_id} /> : null}
       {EXPORTABLE.has(entry.engine_key) ? (
         <CampaignExportPanel
           sourceKind={entry.engine_key as "vina_batch" | "autodock4_batch" | "autodock_gpu_batch"}
@@ -861,8 +869,8 @@ function CatalogNote() {
     <section className="receptor-section">
       <div className="filter-heading"><span>Why results are not ranked together</span></div>
       <p className="field-note">
-        Vina reports an empirical score and AutoDock4 a semi-empirical binding energy. They
-        come from different scoring functions on different scales, so a single "best result"
+        Vina reports an empirical score, AutoDock4 a semi-empirical binding energy, and GNINA
+        a CNN score. They come from different scoring functions, so a single "best result"
         column across the catalog would invent a comparison the science does not support.
         Each result carries its own number beside the name of the engine that produced it,
         and the catalog itself is ordered only by time.

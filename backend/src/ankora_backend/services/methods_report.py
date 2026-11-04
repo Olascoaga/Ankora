@@ -191,6 +191,12 @@ class MethodsReportService:
 
     def render(self, catalog_id: str) -> MethodsReport:
         entry = self._catalog.get_campaign(catalog_id)
+        if entry.engine_key == "gnina_job":
+            raise AnkoraDomainError(
+                code="GNINA_METHODS_UNAVAILABLE", stage="methods_report", status_code=409,
+                message="Methods generation for GNINA is not available yet.",
+                details={"catalog_id": catalog_id},
+            )
         draft = _Draft()
 
         self._protein(draft, entry)

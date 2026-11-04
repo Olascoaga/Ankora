@@ -25,9 +25,9 @@ Frontend tests use explicitly synthetic jobs: Linux-only availability, exact
 CPU/CUDA request semantics, engine order even when energy order differs, pose
 selection, input validation, cancellation, and matching-job restoration.
 CPU/CUDA backend and API engineering evidence is recorded separately in
-`LINUX_GNINA_API_CPU.md` and `LINUX_GNINA_API_CUDA.md`. This first workspace is
-single-ligand only. GNINA's project Results catalog, multi-ligand screening,
-interactions, redocking, exports, and native Linux workstation acceptance are
-not yet implemented. The remembered last job is a convenience, not a complete
-campaign history; local browser storage may be cleared independently of the
+`LINUX_GNINA_API_CPU.md` and `LINUX_GNINA_API_CUDA.md`. This workspace is
+single-ligand only. GNINA single-job results and their exact poses can also be
+reopened from the project Results catalog. Multi-ligand screening, GNINA pose
+interactions, redocking, exports, Methods and native Linux workstation acceptance
+are not yet implemented. Browser storage may be cleared independently of the
 durable backend job record.

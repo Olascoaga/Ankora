@@ -1896,7 +1896,7 @@ export interface CampaignExport {
 export type ResultMode = "single_ligand" | "screening";
 
 /** What produced the number, which is what may never be merged. */
-export type ScoringFamily = "vina" | "autodock4";
+export type ScoringFamily = "vina" | "autodock4" | "gnina";
 
 export interface CatalogEntry {
   /** `{engine_key}:{record_id}` - stable, and it names its own source. */
@@ -1930,6 +1930,9 @@ export interface CatalogEntry {
   canceled_count: number;
   /** This engine's own best number, only meaningful beside `engine_label`. */
   best_result_kcal_mol: number | null;
+  primary_cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
+  minimized_affinity_kcal_mol?: number | null;
   best_molecule: string | null;
 }
 
@@ -1969,6 +1972,9 @@ export interface CompoundRow {
   status: string;
   failure_code: string | null;
   best_result_kcal_mol: number | null;
+  primary_cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
+  minimized_affinity_kcal_mol?: number | null;
   /** Vina counts poses; AutoDock counts clusters. Neither is fabricated. */
   pose_count: number | null;
   cluster_count: number | null;

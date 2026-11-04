@@ -37,6 +37,7 @@ _RESULT_DIRECTORIES = {
     "autodock4_batch": "autodock4_batches",
     "autodock_gpu_job": "autodock_gpu_jobs",
     "autodock_gpu_batch": "autodock_gpu_batches",
+    "gnina_job": "gnina_jobs",
 }
 
 

@@ -54,8 +54,10 @@ Linux port unit in ADR-026; it does not alter the Windows release contract.
 
 ### Single-job persistence foundation
 
-GNINA jobs have a distinct project-scoped store and score-bearing schema; they
-are not inserted into the existing Vina or AutoDock result catalog. Pose files
+GNINA jobs have a distinct project-scoped store and score-bearing schema. The
+project Results catalog may project them under a separate GNINA scoring family;
+CNNscore is dimensionless and must never populate the kcal/mol field or be
+ranked across engines. Pose files
 are create-only and cannot be served until a completed record publishes them.
 The record requires the engine's descending CNN-score order, exact input hashes,
 the executable hash and successful execution evidence. A CUDA record also
@@ -94,3 +96,17 @@ project runtime enables this guarded path, while standalone services retain an
 explicit opt-in. Predeclared WSL CPU and CUDA API checks completed; native
 workstation and UI acceptance remain necessary.
 See [NVIDIA's CUDA environment variables](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html).
+
+## GNINA catalog projection
+
+The single-job catalog shows the engine's top CNNscore, CNNaffinity in pK and
+the same pose's minimized affinity in kcal/mol as separate quantities. The
+primary ordering is descending CNNscore; it is not the minimum energy. A
+completed GNINA job counts as succeeded when it has validated published poses.
+Its persisted box is used as recorded, and reproducibility remains not assessed
+until GNINA-specific repeat evidence is implemented. Existing score fields and
+the order of Vina and AutoDock results remain unchanged. A GNINA job may be
+moved to project Trash through the same all-or-nothing result removal operation.
+The catalog can reopen the saved poses. GNINA-specific Methods, interaction
+analysis, redocking and exports remain unavailable until separately implemented
+and verified; their routes must not fabricate another engine's procedure.

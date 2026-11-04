@@ -790,6 +790,8 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
   ),
 
   structureContentUrl: (record: StructureRecord): string => `${API_BASE_URL}${record.content_url}`,
+  getReceptor: (receptorId: string): Promise<ReceptorPreparationRecord> =>
+    getJson<ReceptorPreparationRecord>(`/receptors/${encodeURIComponent(receptorId)}`),
   receptorOutputUrl: (contentUrl: string): string => `${API_BASE_URL}${contentUrl}`,
   ligandContentUrl: (contentUrl: string): string => `${API_BASE_URL}${contentUrl}`,
 };
