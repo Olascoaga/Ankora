@@ -26,10 +26,10 @@ describe("Linux desktop development configuration", () => {
       "python3 ../../scripts/dev_linux.py",
     );
     expect(desktopPackage.scripts["tauri:dev:linux"]).toBe(
-      "tauri dev --config src-tauri/tauri.linux.conf.json",
+      "sh ../../scripts/tauri_linux.sh dev --config src-tauri/tauri.linux.conf.json",
     );
     expect(desktopPackage.scripts["tauri:build:linux"]).toBe(
-      "tauri build --no-bundle --config src-tauri/tauri.linux.conf.json",
+      "sh ../../scripts/tauri_linux.sh build --no-bundle --config src-tauri/tauri.linux.conf.json",
     );
   });
 

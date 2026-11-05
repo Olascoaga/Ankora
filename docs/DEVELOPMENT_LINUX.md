@@ -1,5 +1,15 @@
 # Linux port work plan
 
+For WSL or native Linux development, activate the project environment and run
+`npm run tauri:dev:linux`. The Linux Tauri launcher respects Cargo on `PATH` and,
+if it is absent there, checks the Rust installation in `${CARGO_HOME:-$HOME/.cargo}/bin`.
+It does not install Rust or change the user's shell configuration. In an existing
+checkout without this launcher, run `source "$HOME/.cargo/env"` before starting.
+In WSL Ubuntu, the fallback was checked with a PATH lacking Cargo: the real
+`cargo metadata --no-deps --format-version 1` succeeded through the launcher.
+Synthetic launcher tests cover an existing PATH entry, a custom Cargo home,
+missing Cargo, and argument forwarding. This check does not test WSLg display.
+
 The scientist authorized the Linux port on 2026-10-28. See ADR-026.
 
 ## Source baseline
