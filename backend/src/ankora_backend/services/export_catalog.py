@@ -99,19 +99,13 @@ class ExportCatalogService:
                     kind=ExportKind.CAMPAIGN,
                     exported_at=_moment(manifest.get("exported_at"), directory),
                     title=display_name or _engine_label(engine),
-                    subtitle=(
-                        f"{counts.get('succeeded', 0)}/{counts.get('selected', 0)} molecules docked"
-                    ),
+                    subtitle=_campaign_subtitle(counts),
                     catalog_id=catalog_id,
                     source_kind=source_kind,
                     source_id=source_id,
                     display_name=display_name,
-                    input_identity_sha256=_sha256_value(
-                        bundle.get("input_identity_sha256")
-                    ),
-                    bundle_identity_sha256=_sha256_value(
-                        bundle.get("bundle_identity_sha256")
-                    ),
+                    input_identity_sha256=_sha256_value(bundle.get("input_identity_sha256")),
+                    bundle_identity_sha256=_sha256_value(bundle.get("bundle_identity_sha256")),
                     archive_filename=archive_filename,
                     reproducibility=assessment,
                     bitwise_reproducible=reproducibility.get("bitwise_reproducible"),
@@ -279,6 +273,19 @@ def _files(directory: Path, *, served: set[str] | None, url_prefix: str | None) 
         )
         for item in found
     ]
+
+
+def _campaign_subtitle(counts: dict[str, Any]) -> str:
+    """What this bundle counted, in the units it actually counted in.
+
+    A single job's bundle counts poses of one ligand. Describing it as
+    "0/0 molecules docked" would read as a screening campaign that produced
+    nothing, which is a different result from the one that was exported.
+    """
+    if "poses" in counts:
+        poses = counts.get("poses") or 0
+        return f"1 ligand · {poses} pose{'s' if poses != 1 else ''}"
+    return f"{counts.get('succeeded', 0)}/{counts.get('selected', 0)} molecules docked"
 
 
 def _engine_label(engine: dict[str, Any]) -> str:

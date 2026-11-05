@@ -96,7 +96,9 @@ and **not** a redocking verdict about anything.
 - A one-case WSL CUDA integration check against an original crystallographic
   reference is recorded in `LINUX_GNINA_REDOCKING.md`; it does not establish
   general predictive performance.
-- No GNINA reference case is frozen and GNINA campaign export is not implemented.
+- No GNINA reference case is frozen. Single-job export preserves matching
+  recorded validations and available verified crystallographic references;
+  see `GNINA_EXPORT.md`.
 - Repeat behavior remains unassessed, consistent with the Results catalog.
 - Native Linux workstation acceptance remains pending, as for the rest of the
   GNINA port. Windows behavior is unchanged: no GNINA records exist there.
