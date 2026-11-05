@@ -35,6 +35,11 @@ packaging are separate work.
 
 ## Delivery and acceptance
 
+Preparatory regression: a synthetic queued GNINA job canceled behind an active
+job never launches its own process or publishes poses, and releases its
+resource reservation. The existing single-job service tests pass in Linux and
+Windows. This test does not implement a campaign or test a real GPU process.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.

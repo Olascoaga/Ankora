@@ -136,6 +136,56 @@ def test_prelaunch_cancellation_releases_resources(tmp_path, monkeypatch):
     service.shutdown()
 
 
+def test_cancel_queued_job_never_launches_or_publishes_poses(tmp_path, monkeypatch):
+    """A future screening queue must not execute an already canceled entry."""
+    service, store, arbiter, leases, first, installation = _setup(tmp_path, monkeypatch)
+    second = first.model_copy(update={"job_id": store.new_job_id()})
+    store.create_job(second)
+    for name in ("receptor.pdbqt", "ligand.pdbqt", "conformer.sdf"):
+        store.write_artifact(
+            second.job_id, name, store.output_path(first.job_id, name).read_bytes()
+        )
+
+    entered = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+
+    def execute(**kwargs):
+        calls.append(str(kwargs["output_path"]))
+        entered.set()
+        if not release.wait(10):
+            raise TimeoutError("The test did not release the first synthetic job")
+        return CancellableToolExecution(["gnina"], 1, "", "synthetic failure", False, False)
+
+    monkeypatch.setattr("ankora_backend.services.gnina_docking.execute_gnina", execute)
+    first_event, second_event = threading.Event(), threading.Event()
+    with service._lock:
+        service._events[first.job_id] = first_event
+        service._events[second.job_id] = second_event
+        first_future = service._executor.submit(
+            service._run, first.job_id, installation, first_event
+        )
+        second_future = service._executor.submit(
+            service._run, second.job_id, installation, second_event
+        )
+    try:
+        assert entered.wait(10), "The first synthetic job did not start"
+        assert service.cancel(second.job_id).status is DockingJobStatus.CANCEL_REQUESTED
+    finally:
+        release.set()
+        first_future.result(timeout=10)
+        second_future.result(timeout=10)
+        service.shutdown()
+        leases.shutdown()
+
+    assert len(calls) == 1
+    assert store.load_job(first.job_id).status is DockingJobStatus.FAILED
+    canceled = store.load_job(second.job_id)
+    assert canceled.status is DockingJobStatus.CANCELED
+    assert canceled.poses == []
+    assert not arbiter.snapshot().active_allocations
+
+
 def test_unverified_cuda_is_rejected_before_launch(tmp_path, monkeypatch):
     service, _store, arbiter, leases, job, _installation = _setup(tmp_path, monkeypatch)
     monkeypatch.setattr("ankora_backend.services.gnina_docking._linux_host", lambda: True)
