@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
-import { CampaignExportPanel } from "../docking/CampaignExportPanel";
+import {
+  CampaignExportPanel,
+  type CampaignExportSourceKind,
+  isExportableCampaignKind,
+} from "../docking/CampaignExportPanel";
 import { MethodsPanel } from "./MethodsPanel";
 import type { CatalogEntry, ExportEntry, ExportKind } from "../../types/api";
 import {
@@ -36,10 +40,11 @@ const KINDS: { value: ExportKind | "all"; label: string }[] = [
   { value: "pose_complex", label: "Complexes" },
 ];
 
-const EXPORTABLE_ENGINES = new Set([
+const EXPORTABLE_ENGINES = new Set<CampaignExportSourceKind>([
   "vina_batch",
   "autodock4_batch",
   "autodock_gpu_batch",
+  "gnina_job",
 ]);
 
 export function ExportWorkspace() {
@@ -75,13 +80,20 @@ export function ExportWorkspace() {
     return () => { disposed = true; };
   }, [offset, kind, revision]);
 
-  // Only finished campaigns can be bundled, so only those are offered.
+  // Only finished campaigns and completed individual GNINA jobs can be bundled.
   useEffect(() => {
     let disposed = false;
     void ankoraApi.listResultCampaigns({ limit: 200, status: "completed" })
       .then((page) => {
         if (disposed) return;
-        setCampaigns(page.entries.filter((item) => EXPORTABLE_ENGINES.has(item.engine_key)));
+        setCampaigns(
+          page.entries.filter(
+            (item) =>
+              item.status === "completed"
+              && isExportableCampaignKind(item.engine_key)
+              && EXPORTABLE_ENGINES.has(item.engine_key),
+          ),
+        );
       })
       .catch(() => { if (!disposed) setCampaigns([]); });
     return () => { disposed = true; };
@@ -181,13 +193,15 @@ export function ExportWorkspace() {
               <option value="">Choose a campaign…</option>
               {campaigns.map((item) => (
                 <option key={item.catalog_id} value={item.catalog_id}>
-                  {item.engine_label} · {item.succeeded_count}/{item.selected_count} · {
-                    formatApplicationDate(item.created_at)
-                  }
+                  {exportOptionLabel(item)}
                 </option>
               ))}
             </select>
           </label>
+          <p className="field-note">
+            Completed screening batches and individual single-ligand GNINA results can be
+            bundled here.
+          </p>
           {campaigns.length === 0 ? (
             <p className="field-note">
               No completed campaign is recorded yet. Figures and complexes are exported
@@ -195,13 +209,13 @@ export function ExportWorkspace() {
             </p>
           ) : null}
         </section>
-        {selected ? (
+        {selected && isExportableCampaignKind(selected.engine_key) ? (
           <>
             <CampaignExportPanel
               key={selected.catalog_id}
-              sourceKind={selected.engine_key as "vina_batch" | "autodock4_batch" | "autodock_gpu_batch"}
+              sourceKind={selected.engine_key}
               sourceId={selected.record_id}
-              ready
+              ready={selected.status === "completed"}
               onExported={() => setRevision((value) => value + 1)}
             />
             <MethodsPanel key={`methods-${selected.catalog_id}`} catalogId={selected.catalog_id} />
@@ -219,7 +233,7 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
       <div className="export-card-heading">
         <strong>{entry.title}</strong>
         <span className={`docking-status ${entry.kind === "campaign" ? "completed" : ""}`}>
-          {label(entry.kind)}
+          {label(entry)}
         </span>
       </div>
       <div className="export-card-meta">
@@ -233,7 +247,7 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
       {entry.kind === "campaign" ? (
         <div className="export-identity" aria-label="Export identity">
           <span>
-            Campaign <code title={entry.catalog_id ?? undefined}>{shortIdentity(entry.source_id)}</code>
+            {entry.source_kind === "gnina_job" ? "GNINA job" : "Campaign"} <code title={entry.catalog_id ?? undefined}>{shortIdentity(entry.source_id)}</code>
           </span>
           <span>
             Inputs <code title={entry.input_identity_sha256 ?? undefined}>{shortIdentity(entry.input_identity_sha256)}</code>
@@ -272,9 +286,20 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
   );
 }
 
-function label(kind: ExportKind): string {
-  if (kind === "campaign") return "Campaign bundle";
-  if (kind === "figure") return "Figure";
+function exportOptionLabel(item: CatalogEntry): string {
+  const date = formatApplicationDate(item.created_at);
+  if (item.engine_key === "gnina_job") {
+    const molecule = item.best_molecule ? ` (${item.best_molecule})` : "";
+    return `${item.engine_label} · Single ligand${molecule} · ${item.succeeded_count}/${item.selected_count} · ${date}`;
+  }
+  return `${item.engine_label} · ${item.succeeded_count}/${item.selected_count} · ${date}`;
+}
+
+function label(entry: ExportEntry): string {
+  if (entry.kind === "campaign") {
+    return entry.source_kind === "gnina_job" ? "GNINA result bundle" : "Campaign bundle";
+  }
+  if (entry.kind === "figure") return "Figure";
   return "Complex";
 }
 

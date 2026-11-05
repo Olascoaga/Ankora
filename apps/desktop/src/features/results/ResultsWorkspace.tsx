@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ankoraApi, ApiError } from "../../api/client";
 import { Dialog } from "../../components/Dialog";
-import { CampaignExportPanel } from "../docking/CampaignExportPanel";
+import {
+  CampaignExportPanel,
+  type CampaignExportSourceKind,
+  isExportableCampaignKind,
+} from "../docking/CampaignExportPanel";
 import { MethodsPanel } from "../export/MethodsPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
@@ -34,10 +38,11 @@ const TERMINAL_RESULTS = new Set(["completed", "failed", "canceled"]);
 type ModeFilter = "all" | "screening" | "single_ligand";
 type FamilyFilter = "all" | "vina" | "autodock4" | "gnina";
 
-const EXPORTABLE = new Set([
+const EXPORTABLE = new Set<CampaignExportSourceKind>([
   "vina_batch",
   "autodock4_batch",
   "autodock_gpu_batch",
+  "gnina_job",
 ]);
 
 export function ResultsWorkspace() {
@@ -850,9 +855,9 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
         </p>
       </section>
       <MethodsPanel catalogId={entry.catalog_id} />
-      {EXPORTABLE.has(entry.engine_key) ? (
+      {isExportableCampaignKind(entry.engine_key) && EXPORTABLE.has(entry.engine_key) ? (
         <CampaignExportPanel
-          sourceKind={entry.engine_key as "vina_batch" | "autodock4_batch" | "autodock_gpu_batch"}
+          sourceKind={entry.engine_key}
           sourceId={entry.record_id}
           ready={entry.status === "completed"}
         />
