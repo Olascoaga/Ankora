@@ -40,6 +40,12 @@ job never launches its own process or publishes poses, and releases its
 resource reservation. The existing single-job service tests pass in Linux and
 Windows. This test does not implement a campaign or test a real GPU process.
 
+The independent screening-evidence verifier projects the first recorded
+CNN-ranked pose only after checking the single-job request, tool and receptor
+identities, preserved input hashes and the published pose hash. It is not yet
+wired into a campaign; the future caller must also validate the applied filter
+selection and prepared-ligand identities. The verifier does not run GNINA.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
