@@ -58,6 +58,13 @@ def main() -> int:
             ):
                 if term.lower() not in lower:
                     raise ValueError(f"Required recorded term missing: {term}")
+            box = job["box"]
+            center = f"({box['center_x']}, {box['center_y']}, {box['center_z']})"
+            dimensions = f"{box['size_x']} × {box['size_y']} × {box['size_z']}"
+            if center not in markdown or dimensions not in markdown:
+                raise ValueError(
+                    "The report did not preserve exact GNINA box coordinates"
+                )
             if "lamarckian" in lower or "autogrid" in lower:
                 raise ValueError("Report attributed another engine's procedure")
             if not any(
