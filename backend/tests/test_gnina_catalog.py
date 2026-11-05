@@ -67,7 +67,7 @@ def _completed(store: GninaJobStore) -> GninaJobRecord:
     )
 
 
-def test_catalog_keeps_gnina_score_axes_and_fails_closed_for_methods(tmp_path, monkeypatch):
+def test_catalog_keeps_gnina_score_axes_and_renders_methods(tmp_path, monkeypatch):
     monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
     store = GninaJobStore.from_environment()
     job = _completed(store)
@@ -92,8 +92,16 @@ def test_catalog_keeps_gnina_score_axes_and_fails_closed_for_methods(tmp_path, m
         assert compounds["value_label"].startswith("CNN score")
         assert compounds["rows"][0]["primary_cnn_score"] == 0.9
         assert compounds["rows"][0]["best_result_kcal_mol"] is None
+        # Methods used to fail closed here; it now renders GNINA's own protocol.
+        # The axes must stay apart in the prose exactly as they do in the catalog.
         methods = client.get(f"/api/v1/results/campaigns/gnina_job/{job.job_id}/methods")
-        assert methods.status_code == 409 and methods.json()["code"] == "GNINA_METHODS_UNAVAILABLE"
+        assert methods.status_code == 200
+        markdown = methods.json()["markdown"]
+        assert "descending CNN pose score" in markdown
+        assert "not an energy and has no kcal/mol interpretation" in markdown
+        assert "CNN pose score of 0.9" in markdown
+        assert "minimized affinity of -4 kcal mol⁻¹" in markdown
+        assert "Lamarckian" not in markdown and "AutoGrid" not in markdown
         assert (
             client.get(f"/api/v1/docking/gnina/jobs/{job.job_id}").json()["poses"][0]["mode"] == 1
         )

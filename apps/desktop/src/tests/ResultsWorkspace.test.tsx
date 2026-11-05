@@ -125,7 +125,8 @@ it("opens GNINA history without labeling CNN scores as energy", async () => {
   expect(card).not.toHaveTextContent("kcal/mol");
   fireEvent.click(card);
   expect(await screen.findByText("CNN affinity (pK)")).toBeInTheDocument();
-  expect(screen.queryByText("Write the Methods section")).not.toBeInTheDocument();
+  // GNINA campaigns now offer Methods, written from the job's own record.
+  expect(screen.getByRole("button", { name: "Write the Methods section" })).toBeInTheDocument();
   fireEvent.click(screen.getByText("Synthetic GNINA ligand", { selector: "td" }));
   expect(await screen.findByRole("button", { name: "Analyze this pose with ProLIF" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: /Mode 1.*CNN score 0.9000.*-4.000 kcal\/mol/ })).toBeInTheDocument();

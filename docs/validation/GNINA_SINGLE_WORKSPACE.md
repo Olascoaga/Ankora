@@ -29,7 +29,8 @@ CPU/CUDA backend and API engineering evidence is recorded separately in
 single-ligand only. GNINA single-job results and their exact poses can also be
 reopened from the project Results catalog. Exact GNINA poses can be analyzed with
 ProLIF after checking the docking receptor, prepared ligand, conformer and pose
-identities; CNN scores remain distinct from minimized affinity. Multi-ligand
-screening, redocking, campaign exports and Methods are not yet implemented;
-native Linux workstation acceptance remains pending. Browser storage may be cleared independently of the
-durable backend job record.
+identities; CNN scores remain distinct from minimized affinity. A GNINA result
+can also write the Methods section its own record supports; see
+`GNINA_METHODS.md`. Multi-ligand screening, redocking and campaign exports are
+not yet implemented; native Linux workstation acceptance remains pending.
+Browser storage may be cleared independently of the durable backend job record.

@@ -2,6 +2,33 @@
 
 All notable project changes are recorded here.
 
+## GNINA Methods report - 2026-11-04
+
+- Write the Methods section a GNINA single job's own record supports, through the
+  existing Results interface and route. This supersedes the earlier fail-closed
+  `GNINA_METHODS_UNAVAILABLE` behavior; the engineering checks that recorded it,
+  including `catalog-cuda-01`, are unchanged.
+- Render GNINA by its own path, never the Vina or AutoDock4 renderer. Report the
+  engine version, executable SHA-256 and architecture, the seed, exhaustiveness,
+  maximum modes and minimum inter-mode RMSD filter, the CNN scoring mode with the
+  built-in model named specifically, the prepared-PDBQT hydrogen policy with
+  addition and stripping both disabled, and the compute policy with no device
+  fallback. Take the search box from the docking record rather than the
+  binding-site artifact, which can be superseded after a run.
+- Keep the dimensionless descending CNN pose score, the predicted CNN affinity in
+  pK and the minimized empirical affinity in kcal/mol as three quantities with
+  their units and directions, and state that the ranking did not use the
+  minimized affinity. No measurement, biological-activity or cross-engine-scale
+  claim is made, and a GPU observation is reported as confirming the engine's
+  process on the device rather than every network operation.
+- Describe a receptor or ligand preparation only while its stored artifact still
+  hashes to the value GNINA recorded. A mismatch, missing artifact, foreign
+  ligand, superseded site or removed record is an explicit gap naming the failed
+  check. An unfinished job publishes no score, affinity prediction or pose.
+- Vina and AutoDock4 prose is unchanged. See
+  `docs/validation/GNINA_METHODS.md`; recorded real-data integration validation
+  and a DOI-verified GNINA citation remain outstanding.
+
 ## Slim installer with Anchoring - 2026-10-20
 
 - Rebuild the ~400 MB Option A private-beta installer (427 MB, SHA-256

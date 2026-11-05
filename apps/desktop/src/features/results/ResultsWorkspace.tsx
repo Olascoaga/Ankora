@@ -849,7 +849,7 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
           says whether two results searched the same space.
         </p>
       </section>
-      {entry.scoring_family !== "gnina" ? <MethodsPanel catalogId={entry.catalog_id} /> : null}
+      <MethodsPanel catalogId={entry.catalog_id} />
       {EXPORTABLE.has(entry.engine_key) ? (
         <CampaignExportPanel
           sourceKind={entry.engine_key as "vina_batch" | "autodock4_batch" | "autodock_gpu_batch"}

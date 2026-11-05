@@ -109,7 +109,46 @@ the order of Vina and AutoDock results remain unchanged. A GNINA job may be
 moved to project Trash through the same all-or-nothing result removal operation.
 The catalog can reopen the saved poses and calculate ProLIF interactions for an
 exact GNINA pose after checking the recorded input identities. GNINA-specific
-Methods, redocking and campaign exports remain unavailable until separately
-implemented and verified; their routes must not fabricate another engine's
-procedure. The isolated WSL CUDA pose interaction engineering check is recorded
-in `docs/validation/LINUX_GNINA_INTERACTIONS.md`.
+redocking and campaign exports remain unavailable until separately implemented
+and verified; their routes must not fabricate another engine's procedure. The
+isolated WSL CUDA pose interaction engineering check is recorded in
+`docs/validation/LINUX_GNINA_INTERACTIONS.md`.
+
+## GNINA Methods report
+
+Accepted by the scientist, 2026-11-04. This supersedes the earlier position that
+the Methods route fails closed for GNINA. The recorded engineering checks that
+observed that fail-closed behavior, including `catalog-cuda-01`, remain valid
+evidence of what was true when they ran and are not revised.
+
+A GNINA single job renders its own Methods section, written only from that job's
+record. It must never be produced by the Vina or AutoDock4 renderer: no
+Lamarckian genetic algorithm, no AutoGrid maps, no Vina energy range, no
+AutoDock clustering, and no pooled or cross-engine ranking.
+
+The section reports the engine version, executable hash and architecture, the
+seed, exhaustiveness, maximum modes and minimum inter-mode RMSD filter, the CNN
+scoring mode with the built-in model named specifically, the prepared-PDBQT
+hydrogen policy with addition and stripping both disabled, and the compute
+policy including the absence of device fallback. The search box is taken from the
+docking record rather than the binding-site artifact, because a site can be
+superseded after a run; the site record contributes the box's derivation only
+while it still names the same receptor and the same box.
+
+The dimensionless descending CNN pose score, the predicted CNN affinity in pK
+and the minimized empirical affinity in kcal/mol are reported as three distinct
+quantities with their units and directions, and the section states that the
+ranking did not use the minimized affinity. All three are engine predictions;
+none is a measured affinity, evidence of biological activity, or comparable with
+another engine's score. A CUDA observation is reported as confirming that the
+engine's process was seen on the device, not that every network operation ran
+there.
+
+Receptor and ligand preparations are described only while the stored artifacts
+still hash to the values GNINA recorded. A mismatch, a missing artifact, a
+preparation belonging to another ligand, or a removed record is an explicit gap
+naming the failed check. An unfinished job reports its status and recorded
+failure and publishes no score, affinity prediction or pose. Repeat behavior
+stays not assessed until GNINA-specific repeat evidence exists, and GNINA is
+reported as having no verified published reference until one is resolved against
+registered DOI metadata.
