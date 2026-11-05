@@ -120,6 +120,79 @@ it("carries whether the validated run could be repeated at all", async () => {
     .toHaveTextContent("Not from its seed");
 });
 
+it("displays GNINA native pose order, separate CNN score and pK columns, minimized affinity label, and unassessed repeatability", async () => {
+  // Synthetic GNINA UI fixture: pose 1 has higher CNN score and less negative
+  // minimized affinity than pose 2, verifying native order and score semantics.
+  mock([run({
+    engine: "GNINA",
+    engine_version: "1.3.3",
+    source_kind: "gnina_job",
+    bitwise_reproducible: null,
+    poses: [
+      {
+        run: 1,
+        rank: 1,
+        binding_energy_kcal_mol: -4.12,
+        cnn_score: 0.9123,
+        cnn_affinity_pk: 6.45,
+        rmsd_angstrom: 1.054,
+        recovered: true,
+      },
+      {
+        run: 2,
+        rank: 2,
+        binding_energy_kcal_mol: -8.95,
+        cnn_score: 0.7012,
+        cnn_affinity_pk: 7.2,
+        rmsd_angstrom: 2.84,
+        recovered: false,
+      },
+    ],
+  })]);
+  render(<RedockingWorkspace />);
+
+  const results = await screen.findByRole("region", { name: "Redocking validation results" });
+  expect(within(results).getByText("Repeatable").parentElement)
+    .toHaveTextContent("Not assessed");
+
+  const table = within(results).getByRole("table");
+  expect(within(table).getByRole("columnheader", { name: "Minimized affinity (kcal/mol)" })).toBeInTheDocument();
+  expect(within(table).getByRole("columnheader", { name: "CNN score" })).toBeInTheDocument();
+  expect(within(table).getByRole("columnheader", { name: "CNN affinity (pK)" })).toBeInTheDocument();
+  expect(within(table).queryByRole("columnheader", { name: /AutoDock4 binding energy/ })).not.toBeInTheDocument();
+  expect(within(table).queryByRole("columnheader", { name: /Vina score/ })).not.toBeInTheDocument();
+
+  const rows = within(table).getAllByRole("row");
+  expect(rows[1]).toHaveTextContent("Mode 1");
+  expect(rows[1]).toHaveTextContent("-4.12");
+  expect(rows[1]).toHaveTextContent("0.9123");
+  expect(rows[1]).toHaveTextContent("6.450");
+  expect(rows[2]).toHaveTextContent("Mode 2");
+  expect(rows[2]).toHaveTextContent("-8.95");
+  expect(rows[2]).toHaveTextContent("0.7012");
+  expect(rows[2]).toHaveTextContent("7.200");
+});
+
+it("preserves Vina and AutoDock4 table headers and repeatability without GNINA columns", async () => {
+  mock([
+    run({ validation_id: "ad4-1", source_kind: "autodock4_job", bitwise_reproducible: true }),
+    run({ validation_id: "vina-1", engine: "AutoDock Vina", engine_version: "1.2.7", source_kind: "vina_job", bitwise_reproducible: true }),
+  ]);
+  render(<RedockingWorkspace />);
+
+  const results = await screen.findByRole("region", { name: "Redocking validation results" });
+  expect(within(results).getByText("Repeatable").parentElement)
+    .toHaveTextContent("Bit-identical on a repeat");
+  expect(within(results).getByRole("columnheader", { name: "AutoDock4 binding energy (kcal/mol)" })).toBeInTheDocument();
+  expect(within(results).queryByRole("columnheader", { name: "CNN score" })).not.toBeInTheDocument();
+  expect(within(results).queryByRole("columnheader", { name: "CNN affinity (pK)" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /AutoDock Vina 1\.2\.7/ }));
+  expect(within(results).getByRole("columnheader", { name: "Vina score (kcal/mol)" })).toBeInTheDocument();
+  expect(within(results).queryByRole("columnheader", { name: "CNN score" })).not.toBeInTheDocument();
+  expect(within(results).queryByRole("columnheader", { name: "CNN affinity (pK)" })).not.toBeInTheDocument();
+});
+
 it("says plainly when nothing has been validated yet", async () => {
   mock([]);
   render(<RedockingWorkspace />);
@@ -158,7 +231,7 @@ async function chooseInputs(kind = "vina_job") {
   fireEvent.change(screen.getByLabelText("Crystallographic reference"), { target: { value: "crystal" } });
 }
 
-it.each(["vina_job", "autodock4_job", "autodock_gpu_job"])("creates and displays a %s validation only after explicit confirmation", async (kind) => {
+it.each(["vina_job", "autodock4_job", "autodock_gpu_job", "gnina_job"])("creates and displays a %s validation only after explicit confirmation", async (kind) => {
   const fetch = mockCreation(kind);
   render(<RedockingWorkspace />);
   await chooseInputs(kind);

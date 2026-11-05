@@ -1781,6 +1781,8 @@ export interface RedockingPose {
   run: number;
   rank: number;
   binding_energy_kcal_mol: number;
+  cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
   rmsd_angstrom: number;
   recovered: boolean;
 }
@@ -1807,11 +1809,11 @@ export interface RedockingRunRecord {
   reference_case: string | null;
   receptor_id: string;
   binding_site_id: string;
-  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job";
+  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job" | "gnina_job";
   source_id: string;
   engine: string;
   engine_version: string;
-  bitwise_reproducible: boolean;
+  bitwise_reproducible: boolean | null;
   reference_ligand_id: string;
   reference_sha256: string;
   reference_heavy_atom_count: number;
@@ -1822,7 +1824,7 @@ export interface RedockingRunRecord {
 }
 
 export interface RedockingValidationRequest {
-  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job";
+  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job" | "gnina_job";
   source_id: string;
   reference_ligand_id: string;
   threshold_angstrom?: number;
