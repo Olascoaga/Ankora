@@ -109,8 +109,9 @@ the order of Vina and AutoDock results remain unchanged. A GNINA job may be
 moved to project Trash through the same all-or-nothing result removal operation.
 The catalog can reopen the saved poses and calculate ProLIF interactions for an
 exact GNINA pose after checking the recorded input identities. GNINA-specific
-redocking and campaign exports remain unavailable until separately implemented
-and verified; their routes must not fabricate another engine's procedure. The
+campaign exports remain unavailable until separately implemented and verified;
+their routes must not fabricate another engine's procedure. Single-job redocking
+validation is implemented as described below. The
 isolated WSL CUDA pose interaction engineering check is recorded in
 `docs/validation/LINUX_GNINA_INTERACTIONS.md`.
 
@@ -152,3 +153,46 @@ failure and publishes no score, affinity prediction or pose. Repeat behavior
 stays not assessed until GNINA-specific repeat evidence exists, and GNINA is
 reported as having no verified published reference until one is resolved against
 registered DOI metadata.
+
+## GNINA single-job redocking validation
+
+Accepted by the scientist, 2026-11-04. This supersedes only the position that
+GNINA-specific redocking is unavailable. The backend measurement exists; no UI
+entry point, frozen GNINA reference case or native-workstation acceptance
+follows from it.
+
+A completed GNINA single job is admitted as a source of the existing M7
+measurement, unchanged: symmetry-aware heavy-atom RMSD computed in place against
+an immutable crystallographic extraction from the receptor's own original
+structure, or a byte-identical reimport identified by source SHA-256 rather than
+by PDB or ligand name. Reference and pose bytes must match their recorded
+SHA-256 and size, and the pose must be the reference molecule. Nothing is
+docked, minimized or re-oriented by the measurement.
+
+The poses are measured in GNINA's own mode order, which is its descending CNN
+pose score. They are never re-sorted by the minimized affinity, so
+`ranking_success` remains a statement about the ranking GNINA actually produced.
+`source_kind` gains `gnina_job`, and a validated pose may carry the
+dimensionless `cnn_score` and the predicted `cnn_affinity_pk` as separate
+optional fields. `binding_energy_kcal_mol` remains the engine's minimized
+empirical affinity in kcal/mol for every engine, including GNINA, which did not
+rank by it. No field pools or compares scores across engines; presentation
+labels them.
+
+`bitwise_reproducible` becomes nullable. A GNINA verdict records null, meaning
+repeat behavior has not been assessed for this engine, which is a different
+statement from `false`. Verdicts recorded earlier keep the boolean they were
+written with and stay readable without rewriting.
+
+The verdict's provenance retains the identities the source job recorded for
+itself — executable, docking receptor, prepared ligand and conformer SHA-256,
+the CNN scoring mode and model, the compute selection and the pose ordering — so
+it names the exact run it judged. A job that is not completed is refused rather
+than measured, as are a changed pose or reference and a pose that is not the
+reference molecule, and no verdict is written in those cases. Sources are
+project-scoped: another project's GNINA job is not a validation input. Moving a
+GNINA result to project Trash moves its dependent verdicts with it, through the
+same all-or-nothing operation.
+
+A verdict concerns one configuration on one reference system. It is not
+validation of GNINA, of the CNN model, or of any other target.

@@ -6,7 +6,7 @@ to a specific configuration rather than to a program in the abstract.
 """
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
@@ -24,6 +24,7 @@ from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.persistence.redocking_store import RedockingValidationStore
@@ -113,6 +114,8 @@ def summarize(
             binding_energy_kcal_mol=pose.binding_energy_kcal_mol,
             rmsd_angstrom=pose.rmsd_angstrom,
             recovered=pose.recovered(threshold_angstrom),
+            cnn_score=pose.cnn_score,
+            cnn_affinity_pk=pose.cnn_affinity_pk,
         )
         for pose in ordered
     ]
@@ -128,9 +131,74 @@ class _ValidatedSource:
     binding_site_id: str
     engine_name: str
     engine_version: str
-    bitwise_reproducible: bool
+    # `None` where the engine's repeat behavior has not been assessed. Reporting
+    # `False` instead would be a measurement nobody made.
+    bitwise_reproducible: bool | None
     warnings: list[Any]
     status: str
+    # Identities the source result already recorded for its own inputs, carried
+    # into the verdict's provenance so it names the exact run it judged.
+    source_identity: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class _RankedPose:
+    """One pose of a source result, in the order its own engine ranked it."""
+
+    run: int
+    binding_energy_kcal_mol: float
+    filename: str
+    sha256: str
+    size_bytes: int
+    cnn_score: float | None = None
+    cnn_affinity_pk: float | None = None
+
+
+def _ranked_poses(source_kind: str, runs: list[Any]) -> list[_RankedPose]:
+    """Put a source result's poses in the engine's own ranking order.
+
+    Nothing here sorts by a score. A Vina mode number and a GNINA mode number
+    are already the engine's ranking - GNINA's being descending CNN pose score,
+    which its own record enforces - and AutoDock4/AutoDock-GPU rank by cluster
+    and then sub-rank. Re-sorting GNINA by the minimized affinity would quietly
+    replace the engine's ranking with a different one and make
+    `ranking_success` a statement about a ranking GNINA never produced.
+    """
+    if source_kind == "vina_job":
+        return [
+            _RankedPose(
+                run=pose.mode,
+                binding_energy_kcal_mol=pose.affinity_kcal_mol,
+                filename=pose.artifact.filename,
+                sha256=pose.artifact.sha256,
+                size_bytes=pose.artifact.size_bytes,
+            )
+            for pose in sorted(runs, key=lambda pose: pose.mode)
+        ]
+    if source_kind == "gnina_job":
+        return [
+            _RankedPose(
+                run=pose.mode,
+                # The minimized empirical affinity, which GNINA did not rank by.
+                binding_energy_kcal_mol=pose.minimized_affinity_kcal_mol,
+                filename=pose.artifact.filename,
+                sha256=pose.artifact.sha256,
+                size_bytes=pose.artifact.size_bytes,
+                cnn_score=pose.cnn_score,
+                cnn_affinity_pk=pose.cnn_affinity,
+            )
+            for pose in sorted(runs, key=lambda pose: pose.mode)
+        ]
+    return [
+        _RankedPose(
+            run=run.run,
+            binding_energy_kcal_mol=run.binding_energy_kcal_mol,
+            filename=run.artifact.filename,
+            sha256=run.artifact.sha256,
+            size_bytes=run.artifact.size_bytes,
+        )
+        for run in sorted(runs, key=lambda run: (run.cluster_rank, run.sub_rank))
+    ]
 
 
 class RedockingValidationService:
@@ -146,6 +214,7 @@ class RedockingValidationService:
         autodock_gpu_store: AutoDockGpuJobStore,
         receptor_store: ReceptorArtifactStore,
         structure_store: StructureArtifactStore,
+        gnina_store: GninaJobStore | None = None,
     ) -> None:
         self._store = store
         self._ligand_store = ligand_store
@@ -154,6 +223,7 @@ class RedockingValidationService:
         self._autodock_gpu_store = autodock_gpu_store
         self._receptor_store = receptor_store
         self._structure_store = structure_store
+        self._gnina_store = gnina_store
 
     @classmethod
     def from_environment(cls) -> "RedockingValidationService":
@@ -165,6 +235,7 @@ class RedockingValidationService:
             autodock_gpu_store=AutoDockGpuJobStore.from_environment(),
             receptor_store=ReceptorArtifactStore.from_environment(),
             structure_store=StructureArtifactStore.from_environment(),
+            gnina_store=GninaJobStore.from_environment(),
         )
 
     def references(
@@ -285,36 +356,43 @@ class RedockingValidationService:
         reference = load_reference(self._ligand_store.content_path(request.reference_ligand_id))
 
         # The engine's own order is the only order `ranking_success` can mean.
-        ranked = (
-            sorted(source.runs, key=lambda pose: pose.mode)
-            if request.source_kind == "vina_job"
-            else sorted(source.runs, key=lambda run: (run.cluster_rank, run.sub_rank))
-        )
+        ranked = _ranked_poses(request.source_kind, source.runs)
         measured: list[PoseRmsd] = []
         for rank, result in enumerate(ranked, start=1):
-            path = self._pose_path(request, result.artifact.filename)
+            path = self._pose_path(request, result.filename)
             document = self._verified_bytes(
                 path,
-                result.artifact.sha256,
-                result.artifact.size_bytes,
+                result.sha256,
+                result.size_bytes,
             ).decode("utf-8", errors="replace")
             pose = load_pose(document, reference)
             measured.append(
                 PoseRmsd(
-                    run=(result.mode if request.source_kind == "vina_job" else result.run),
+                    run=result.run,
                     rank=rank,
-                    binding_energy_kcal_mol=(
-                        result.affinity_kcal_mol
-                        if request.source_kind == "vina_job"
-                        else result.binding_energy_kcal_mol
-                    ),
+                    binding_energy_kcal_mol=result.binding_energy_kcal_mol,
                     rmsd_angstrom=in_place_rmsd(pose, reference),
+                    cnn_score=result.cnn_score,
+                    cnn_affinity_pk=result.cnn_affinity_pk,
                 )
             )
 
         metrics, poses = summarize(measured, threshold_angstrom=request.threshold_angstrom)
         created_at = datetime.now(UTC)
         validation_id = self._store.new_validation_id()
+        parameters: dict[str, object] = {
+            "threshold_angstrom": request.threshold_angstrom,
+            "rmsd": "symmetry-aware heavy-atom, computed in place",
+            "engine": source.engine_name,
+            "engine_version": source.engine_version,
+            "bitwise_reproducible": source.bitwise_reproducible,
+            "pose_sha256": [result.sha256 for result in ranked],
+            "reference_frame": "same immutable source structure (or byte-identical import)",
+        }
+        if source.source_identity:
+            # The identities the source run recorded for its own inputs, so the
+            # verdict names the exact executable and inputs it judged.
+            parameters["source_identity"] = source.source_identity
         record = RedockingRunRecord(
             validation_id=validation_id,
             created_at=created_at,
@@ -339,15 +417,7 @@ class RedockingValidationService:
                 input_artifacts=[request.source_id, request.reference_ligand_id],
                 output_artifacts=[validation_id],
                 tool=ToolIdentity(name="RDKit", version=_rdkit_version()),
-                parameters={
-                    "threshold_angstrom": request.threshold_angstrom,
-                    "rmsd": "symmetry-aware heavy-atom, computed in place",
-                    "engine": source.engine_name,
-                    "engine_version": source.engine_version,
-                    "bitwise_reproducible": source.bitwise_reproducible,
-                    "pose_sha256": [result.artifact.sha256 for result in ranked],
-                    "reference_frame": "same immutable source structure (or byte-identical import)",
-                },
+                parameters=parameters,
                 command=[],
             ),
         )
@@ -385,12 +455,17 @@ class RedockingValidationService:
                 warnings=list(gpu_job.warnings),
                 status=gpu_job.status,
             )
+        if source_kind == "gnina_job":
+            return self._gnina_source(source_id)
         if source_kind != "autodock4_job":
             raise AnkoraDomainError(
                 code="REDOCKING_SOURCE_UNSUPPORTED",
                 stage=_STAGE,
                 status_code=422,
-                message="Validation accepts individual Vina, AutoDock4 CPU or GPU results.",
+                message=(
+                    "Validation accepts individual Vina, AutoDock4 CPU, AutoDock-GPU "
+                    "or GNINA results."
+                ),
                 details={"source_kind": source_kind},
             )
         cpu_job = self._autodock4_store.load_job(source_id)
@@ -406,9 +481,49 @@ class RedockingValidationService:
             status=cpu_job.status,
         )
 
+    def _gnina_source(self, source_id: str) -> _ValidatedSource:
+        """A GNINA single job, with its own identities and no invented repeatability."""
+        job = self._require_gnina_store().load_job(source_id)
+        return _ValidatedSource(
+            runs=list(job.poses),
+            receptor_id=job.request.receptor_id,
+            binding_site_id=job.request.binding_site_id,
+            engine_name="GNINA",
+            engine_version=job.tool.version,
+            # Not assessed rather than false: GNINA repeat evidence does not
+            # exist yet, so neither answer has been measured for this engine.
+            bitwise_reproducible=None,
+            # A GNINA record carries structured failures, not warnings.
+            warnings=[],
+            status=job.status.value,
+            source_identity={
+                "executable_sha256": job.tool.sha256,
+                "receptor_sha256": job.receptor_sha256,
+                "ligand_sha256": job.ligand_sha256,
+                "conformer_sha256": job.conformer_sha256,
+                "pose_order": job.request.parameters.pose_sort_order,
+                "cnn_scoring": job.request.parameters.cnn_scoring,
+                "cnn_model": job.request.parameters.cnn_model,
+                "compute": job.request.parameters.compute,
+            },
+        )
+
+    def _require_gnina_store(self) -> GninaJobStore:
+        if self._gnina_store is None:
+            raise AnkoraDomainError(
+                code="REDOCKING_SOURCE_UNSUPPORTED",
+                stage=_STAGE,
+                status_code=422,
+                message="GNINA result storage is unavailable in this installation.",
+                details={"source_kind": "gnina_job"},
+            )
+        return self._gnina_store
+
     def _pose_path(self, request: RedockingValidationRequest, filename: str) -> Path:
         if request.source_kind == "vina_job":
             return self._docking_store.output_path(request.source_id, filename)
+        if request.source_kind == "gnina_job":
+            return self._require_gnina_store().output_path(request.source_id, filename)
         store: AutoDock4JobStore | AutoDockGpuJobStore = (
             self._autodock_gpu_store
             if request.source_kind == "autodock_gpu_job"

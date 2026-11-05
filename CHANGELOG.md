@@ -2,6 +2,36 @@
 
 All notable project changes are recorded here.
 
+## GNINA single-job redocking validation (backend) - 2026-11-04
+
+- Admit a completed GNINA single job as a source of the existing redocking
+  measurement: `source_kind=gnina_job` on the reference listing and the
+  validation route. The in-place symmetry-aware heavy-atom RMSD, the configured
+  threshold, the two verdicts and the immutable crystallographic reference frame
+  are unchanged, and nothing is docked, minimized or re-oriented.
+- Measure GNINA's poses in the engine's own mode order, which is its descending
+  CNN pose score, and never re-sort them by the minimized affinity, so
+  `ranking_success` stays a statement about the ranking GNINA produced.
+- Carry the dimensionless CNN pose score and the predicted CNN affinity in pK as
+  separate optional fields on a validated pose. The kcal/mol field remains the
+  minimized empirical affinity for every engine; no field pools scores across
+  engines, and presentation supplies the labels.
+- Record repeatability as not assessed rather than false for a GNINA source:
+  `bitwise_reproducible` is now nullable, and verdicts written earlier keep the
+  boolean they were recorded with and stay readable.
+- Retain in the verdict's provenance the identities the job recorded for its own
+  executable, docking receptor, prepared ligand and conformer, with its CNN
+  scoring mode, CNN model, compute selection and pose ordering, so the verdict
+  names the exact run it judged.
+- Refuse, with no verdict written, an unfinished job, a changed pose or
+  reference, a pose that is not the reference molecule, a reference from another
+  original structure, and another project's job. Moving a GNINA result to
+  project Trash moves its dependent verdicts with it.
+- Backend only. See `docs/validation/GNINA_REDOCKING.md`; no GNINA redocking
+  against a crystallographic reference has been executed, there is no Validation
+  UI entry point or campaign export for GNINA, and native Linux workstation
+  acceptance remains pending.
+
 ## GNINA Methods report - 2026-11-04
 
 - Write the Methods section a GNINA single job's own record supports, through the

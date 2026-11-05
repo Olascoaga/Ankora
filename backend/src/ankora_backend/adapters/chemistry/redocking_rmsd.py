@@ -59,12 +59,20 @@ DEFAULT_RMSD_THRESHOLD_ANGSTROM = 2.0
 
 @dataclass(frozen=True, slots=True)
 class PoseRmsd:
-    """One docked pose measured against the reference."""
+    """One docked pose measured against the reference.
+
+    `rank` is the position the engine itself gave the pose, never a position
+    derived from any score here. The CNN fields are carried only by engines that
+    produce them and are not energies, so they never substitute for
+    `binding_energy_kcal_mol`.
+    """
 
     run: int
     rank: int
     binding_energy_kcal_mol: float
     rmsd_angstrom: float
+    cnn_score: float | None = None
+    cnn_affinity_pk: float | None = None
 
     def recovered(self, threshold: float) -> bool:
         return self.rmsd_angstrom <= threshold

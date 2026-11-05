@@ -24,3 +24,30 @@ The new paginated reference listing is project-scoped. Historical validation
 records remain readable without rewriting them or rerunning any benchmark.
 The RMSD itself does not establish repeatability; the historical repeatability
 field is source metadata, not a conclusion of this measurement.
+
+## GNINA single jobs (2026-11-04, backend only)
+
+Validation also accepts a completed GNINA single job as a source, on Linux,
+through the same measurement and the same admission rules. The RMSD definition,
+threshold, two verdicts and immutable reference frame are unchanged.
+
+GNINA's poses are measured in the engine's own mode order, which is its
+descending CNN pose score. They are never re-sorted by the minimized affinity,
+because `ranking_success` has to be about the ranking the engine produced. A
+validated pose may therefore carry the dimensionless CNN pose score and the
+predicted CNN affinity in pK beside — never inside — the minimized empirical
+affinity in kcal/mol. All three are predictions of that engine for that pose,
+none is a measured affinity, and none shares a scale with a Vina score or an
+AutoDock4 binding energy.
+
+Repeatability is recorded as not assessed for a GNINA source rather than as
+`false`: no GNINA repeat evidence exists yet, so neither answer has been
+measured. The verdict's provenance keeps the identities the GNINA job recorded
+for its own executable, docking receptor, prepared ligand and conformer, with
+its CNN configuration and compute selection, so the verdict names the exact run
+it judged. Removing the GNINA result moves its verdicts with it.
+
+Recovering one reference pose with GNINA would validate that configuration on
+that system only. No GNINA reference case is frozen, there is no UI entry point
+yet, and native Linux workstation acceptance remains pending. See
+`docs/validation/GNINA_REDOCKING.md` and ADR-027.

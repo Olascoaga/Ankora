@@ -13,8 +13,10 @@ dimensionless CNNscore family. Its top pose is the first recorded CNN-ranked
 pose, with CNNaffinity (pK) and minimized affinity (kcal/mol) shown separately.
 Scores from different engines are not compared. GNINA single-job poses may be
 reopened and analyzed with ProLIF against the recorded inputs. A GNINA-specific
-Methods report is available. Redocking and campaign exports remain unavailable.
-See ADR-027 for the evidence and device restrictions.
+Methods report is available, and the backend redocking measurement accepts a
+completed GNINA single job in the engine's own CNN order, with repeatability
+recorded as not assessed; its Validation UI entry point and campaign exports
+remain unavailable. See ADR-027 for the evidence and device restrictions.
 
 M5 already displays results while a docking job is being configured or
 monitored. M6 is not another docking screen. It is the durable project-level

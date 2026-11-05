@@ -31,6 +31,8 @@ reopened from the project Results catalog. Exact GNINA poses can be analyzed wit
 ProLIF after checking the docking receptor, prepared ligand, conformer and pose
 identities; CNN scores remain distinct from minimized affinity. A GNINA result
 can also write the Methods section its own record supports; see
-`GNINA_METHODS.md`. Multi-ligand screening, redocking and campaign exports are
-not yet implemented; native Linux workstation acceptance remains pending.
+`GNINA_METHODS.md`. A completed GNINA job is accepted by the backend redocking
+measurement; see `GNINA_REDOCKING.md`. Multi-ligand screening, campaign exports
+and a Validation UI entry point for GNINA are not yet implemented; native Linux
+workstation acceptance remains pending.
 Browser storage may be cleared independently of the durable backend job record.

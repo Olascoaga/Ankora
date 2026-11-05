@@ -1530,7 +1530,7 @@ def list_redocking_validations() -> list[RedockingRunRecord]:
 
 @router.get("/validation/redocking/references", response_model=RedockingReferencePage)
 def redocking_references(
-    source_kind: Literal["vina_job", "autodock4_job", "autodock_gpu_job"],
+    source_kind: Literal["vina_job", "autodock4_job", "autodock_gpu_job", "gnina_job"],
     source_id: str = Query(min_length=1),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
