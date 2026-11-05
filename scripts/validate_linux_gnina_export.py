@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import zipfile
 from hashlib import sha256
@@ -90,6 +91,8 @@ def main() -> int:
                 if any(
                     PurePosixPath(name).is_absolute()
                     or ".." in PurePosixPath(name).parts
+                    or "\\" in name
+                    or re.match(r"^[a-zA-Z]:", name)
                     for name in names
                 ):
                     raise ValueError("Unsafe ZIP member path")
