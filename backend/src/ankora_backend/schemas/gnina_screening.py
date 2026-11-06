@@ -158,6 +158,8 @@ class GninaScreeningEntry(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     ligand_preparation_id: str | None = Field(default=None, min_length=1)
     ligand_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    conformer_id: str | None = Field(default=None, min_length=1)
+    conformer_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     status: DockingJobStatus
     phase: DockingJobPhase
     # The GNINA single job claimed as this molecule's attempt. Recorded, not
@@ -192,9 +194,16 @@ class GninaScreeningEntry(BaseModel):
             # prepared state it never resolved.
             if self.source_index is None:
                 raise ValueError("a completed screening entry requires its library 'source_index'")
-            if self.ligand_preparation_id is None or self.ligand_sha256 is None:
+            if (
+                self.chemical_state_id is None
+                or self.ligand_preparation_id is None
+                or self.ligand_sha256 is None
+                or self.conformer_id is None
+                or self.conformer_sha256 is None
+            ):
                 raise ValueError(
-                    "a completed screening entry requires its prepared-ligand identity and hash"
+                    "a completed screening entry requires its chemical state, preparation "
+                    "and conformer identities and hashes"
                 )
         elif self.phase is DockingJobPhase.COMPLETE and not self.is_terminal:
             raise ValueError("only a terminal screening entry may be in the 'complete' phase")

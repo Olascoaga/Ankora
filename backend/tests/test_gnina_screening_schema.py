@@ -79,6 +79,9 @@ def _completed(ligand_id: str, source_index: int = 0, **overrides: object) -> Gn
         "name": f"synthetic-{ligand_id}",
         "ligand_preparation_id": f"prep-{ligand_id}",
         "ligand_sha256": _LIGAND_SHA,
+        "chemical_state_id": f"state-{ligand_id}",
+        "conformer_id": f"conformer-{ligand_id}",
+        "conformer_sha256": "c" * 64,
         "status": DockingJobStatus.COMPLETED,
         "phase": DockingJobPhase.COMPLETE,
         "gnina_job_id": f"job-{ligand_id}",
@@ -305,7 +308,15 @@ def test_a_molecule_with_no_library_record_cannot_be_the_one_docking() -> None:
 
 @pytest.mark.parametrize(
     "missing",
-    ["source_index", "ligand_preparation_id", "ligand_sha256", "gnina_job_id"],
+    [
+        "source_index",
+        "chemical_state_id",
+        "ligand_preparation_id",
+        "ligand_sha256",
+        "conformer_id",
+        "conformer_sha256",
+        "gnina_job_id",
+    ],
 )
 def test_a_completed_entry_cannot_omit_what_it_docked_or_where(missing: str) -> None:
     with pytest.raises(ValidationError, match="completed screening entry"):

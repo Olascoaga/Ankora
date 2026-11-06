@@ -57,7 +57,9 @@ The typed campaign contract records selected entries in selection order and
 links each attempted entry to an individual GNINA job without copying scores
 or asserting that the link has been verified. Terminal counts, status and
 progress are checked for internal consistency; the compact progress header
-does not contain the library. This model is not persistence or execution.
+does not contain the library. A completed entry names the selected chemical
+state and pins both its PDBQT and conformer identities and hashes. This model
+is not persistence or execution.
 
 An independent preparation verifier checks that a prepared entry, PDBQT and
 conformer name the selected ligand and chemical state, point to one another,
