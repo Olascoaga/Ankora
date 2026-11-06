@@ -67,6 +67,16 @@ and still match their recorded sizes and hashes. It reports a failure without
 modifying artifacts. The future orchestrator must obtain the state from the
 verified selection and the preparation entry from the matching project/library.
 
+Project-scoped campaign storage now retains the verified applied selection as a
+create-only snapshot and updates individual entries and counters transactionally
+in SQLite. Compact progress and revision-based entry reads do not load the
+entire library. Publishing a successful entry requires the matching single GNINA
+job, exact prepared inputs and preserved pose; terminal outcomes remain frozen.
+Synthetic tests cover isolation, ordering, concurrency, failure, cancellation,
+tampering and a small applied filter selection on Linux and Windows. The
+synthetic engine fixture does not validate scientific docking performance.
+The store is not wired to orchestration, recovery, an API or the interface.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
