@@ -77,6 +77,14 @@ tampering and a small applied filter selection on Linux and Windows. The
 synthetic engine fixture does not validate scientific docking performance.
 The store is not wired to orchestration, recovery, an API or the interface.
 
+The storage layer provides an atomic interruption transition for an abandoned
+campaign. It preserves completed entries, checks linked completed jobs before
+recovering their poses, marks unverifiable or unfinished entries explicitly and
+does not retry them. The campaign remains failed after interruption even if it
+retains successful entries. Calling this transition requires the runtime to have
+established that the previous owner is no longer active; it is not yet wired to
+startup recovery.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.

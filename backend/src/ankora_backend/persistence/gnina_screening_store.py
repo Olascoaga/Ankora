@@ -41,10 +41,12 @@ recorded as completed.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -54,7 +56,7 @@ from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.binding_sites import BindingBox
-from ankora_backend.schemas.docking import DockingJobPhase, DockingJobStatus
+from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, DockingJobStatus
 from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord, GninaToolIdentity
 from ankora_backend.schemas.gnina_screening import (
     TERMINAL_CAMPAIGN_STATES,
@@ -158,6 +160,11 @@ class GninaScreeningStore:
         # a campaign may only ever verify jobs belonging to its own project.
         self._jobs = GninaJobStore(root, project_id)
         self._ligands = LigandArtifactStore(root, project_id)
+
+    @classmethod
+    def from_environment(cls, project_id: str | None = None) -> GninaScreeningStore:
+        configured = os.getenv("ANKORA_DATA_DIR")
+        return cls(Path(configured) if configured else Path.cwd() / ".ankora-data", project_id)
 
     @property
     def jobs(self) -> GninaJobStore:
@@ -418,6 +425,122 @@ class GninaScreeningStore:
                 database.rollback()
                 raise
         return self.load_progress(campaign_id)
+
+    def recover_interrupted_campaign(
+        self, campaign_id: str, *, interrupted_at: datetime
+    ) -> GninaScreeningProgress:
+        """Mark an abandoned campaign interrupted without retrying or hiding work.
+
+        Call only after the runtime has established that the prior owner is no
+        longer active. Existing terminal entries remain untouched. Job IDs are
+        retained even when the corresponding job is missing; this operation does
+        not claim those jobs were verified or change their scientific artifacts.
+        The complete transition is one SQLite transaction and can be retried
+        after a crash. A terminal campaign is returned unchanged.
+        """
+        if interrupted_at.utcoffset() is None:
+            raise ValueError("interrupted_at must include a timezone")
+        directory = self.campaign_directory(campaign_id)
+        with _state_lock(directory), self._connect(campaign_id, directory) as database:
+            try:
+                database.execute("BEGIN IMMEDIATE")
+                summary = self._summary(campaign_id, database)
+                if summary["status"] not in {state.value for state in TERMINAL_CAMPAIGN_STATES}:
+                    rows = database.execute(
+                        "SELECT selection_order, payload_json FROM entries ORDER BY selection_order"
+                    ).fetchall()
+                    revision = int(summary["revision"])
+                    interrupted = 0
+                    for order, payload in rows:
+                        entry = GninaScreeningEntry.model_validate_json(str(payload))
+                        if entry.status in TERMINAL_ENTRY_STATES:
+                            continue
+                        interrupted += 1
+                        revision += 1
+                        updated = self._interrupted_entry(
+                            campaign_id, summary, entry, interrupted_at, revision
+                        )
+                        self._write_entry(database, selection_order=int(order), entry=updated)
+                    summary["status"] = DockingJobStatus.FAILED.value
+                    summary["phase"] = DockingJobPhase.COMPLETE.value
+                    summary["completed_at"] = interrupted_at.isoformat()
+                    summary["revision"] = revision + 1
+                    summary["failure"] = DockingFailure(
+                        code="GNINA_SCREENING_CAMPAIGN_INTERRUPTED",
+                        message="The campaign was interrupted; no automatic retry was started.",
+                        details={"interrupted_entry_count": interrupted},
+                    ).model_dump(mode="json")
+                    self._apply_exact_counters(database, summary)
+                    self._write_summary(database, summary)
+                database.commit()
+            except BaseException:
+                database.rollback()
+                raise
+        return self.load_progress(campaign_id)
+
+    def _interrupted_entry(
+        self,
+        campaign_id: str,
+        summary: dict[str, Any],
+        entry: GninaScreeningEntry,
+        interrupted_at: datetime,
+        revision: int,
+    ) -> GninaScreeningEntry:
+        """Keep a verified terminal job or preserve an explicitly interrupted link."""
+        updates: dict[str, Any] = {
+            "status": DockingJobStatus.FAILED,
+            "phase": DockingJobPhase.COMPLETE,
+            "completed_at": interrupted_at,
+            "failure": DockingFailure(
+                code="GNINA_SCREENING_ENTRY_INTERRUPTED",
+                message="The campaign was interrupted; no automatic retry was started.",
+                details={"previous_status": entry.status.value, "gnina_job_id": entry.gnina_job_id},
+            ),
+            "revision": revision,
+        }
+        if entry.gnina_job_id is not None:
+            try:
+                job = self._matching_job(campaign_id, summary, entry)
+                if job.status is DockingJobStatus.COMPLETED and job.completed_at is not None:
+                    self._verify_completed_job(campaign_id, summary, entry)
+                    updates.update(
+                        {
+                            "status": DockingJobStatus.COMPLETED,
+                            "started_at": entry.started_at or job.started_at,
+                            "completed_at": job.completed_at,
+                            "failure": None,
+                        }
+                    )
+                elif job.status is DockingJobStatus.FAILED:
+                    updates.update(
+                        {
+                            "started_at": entry.started_at or job.started_at,
+                            "completed_at": job.completed_at or interrupted_at,
+                            "failure": job.failure or updates["failure"],
+                        }
+                    )
+                elif job.status is DockingJobStatus.CANCELED:
+                    updates.update(
+                        {
+                            "status": DockingJobStatus.CANCELED,
+                            "started_at": entry.started_at or job.started_at,
+                            "completed_at": job.completed_at or interrupted_at,
+                            "failure": None,
+                        }
+                    )
+                elif job.status is DockingJobStatus.COMPLETED:
+                    raise ValueError("completed job has no recorded completion time")
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                # Preserve the claimed ID and show why it was not published.
+                reason = (
+                    error.code if isinstance(error, AnkoraDomainError) else type(error).__name__
+                )
+                updates["failure"] = DockingFailure(
+                    code="GNINA_SCREENING_RECOVERY_UNVERIFIED",
+                    message="The linked job could not be verified; no pose was published.",
+                    details={"gnina_job_id": entry.gnina_job_id, "reason_code": reason},
+                )
+        return GninaScreeningEntry.model_validate(entry.model_copy(update=updates).model_dump())
 
     # --- guards -------------------------------------------------------------
 

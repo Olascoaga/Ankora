@@ -253,7 +253,7 @@ def synthetic_completed_prepared_job(prepared, tmp_path, monkeypatch):
     assert not arbiter.snapshot().active_allocations
 
 
-def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch):
+def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch, *, extra=False):
     _ligands, _prepared_entry, pdbqt, conformer, job = synthetic_completed_prepared_job
     store = GninaScreeningStore(tmp_path)
     entry = _queued(
@@ -273,8 +273,11 @@ def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch
         parameters=job.request.parameters,
         acknowledge_inputs_and_scoring=True,
     )
+    entries = [entry]
+    if extra:
+        entries.append(_queued("later", 3, chemical_state_id="state-later"))
     campaign = _record(
-        [entry],
+        entries,
         campaign_id=str(uuid4()),
         status=DockingJobStatus.QUEUED,
         phase=DockingJobPhase.QUEUED,
@@ -297,6 +300,118 @@ def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch
         ),
     )
     return store, campaign, running
+
+
+def test_recovery_preserves_success_and_marks_unfinished_campaign_failed(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, running = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, extra=True
+    )
+    done = running.model_copy(
+        update={
+            "status": DockingJobStatus.COMPLETED,
+            "phase": DockingJobPhase.COMPLETE,
+            "completed_at": datetime.now(UTC),
+        }
+    )
+    store.update_entry(campaign.campaign_id, done)
+    original = store.original_selection(campaign.campaign_id)
+    original_bytes = (store.campaign_directory(campaign.campaign_id) / "record.json").read_bytes()
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    assert progress.status is DockingJobStatus.FAILED
+    assert (progress.selected_count, progress.succeeded_count, progress.failed_count) == (2, 1, 1)
+    first, second = store.load_campaign(campaign.campaign_id).entries
+    assert first.status is DockingJobStatus.COMPLETED
+    assert first.gnina_job_id == running.gnina_job_id
+    assert second.status is DockingJobStatus.FAILED
+    assert second.failure.code == "GNINA_SCREENING_ENTRY_INTERRUPTED"
+    assert store.original_selection(campaign.campaign_id) == original
+    assert (
+        store.campaign_directory(campaign.campaign_id) / "record.json"
+    ).read_bytes() == original_bytes
+    assert (
+        store.recover_interrupted_campaign(campaign.campaign_id, interrupted_at=datetime.now(UTC))
+        == progress
+    )
+
+
+def test_recovery_preserves_missing_job_identity(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, running = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    )
+    store.jobs.output_path(running.gnina_job_id, "record.json").unlink()
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, running.ligand_id)
+    assert progress.status is DockingJobStatus.FAILED
+    assert recovered.gnina_job_id == running.gnina_job_id
+    assert recovered.failure.code == "GNINA_SCREENING_RECOVERY_UNVERIFIED"
+
+
+def test_recovery_keeps_a_completed_job_that_finished_before_the_campaign_update(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, running = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    )
+    job = store.jobs.load_job(running.gnina_job_id)
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, running.ligand_id)
+    assert progress.status is DockingJobStatus.FAILED
+    assert (progress.succeeded_count, progress.failed_count) == (1, 0)
+    assert recovered.status is DockingJobStatus.COMPLETED
+    assert recovered.completed_at == job.completed_at
+    assert recovered.gnina_job_id == job.job_id
+
+
+def test_recovery_does_not_publish_a_completed_job_with_altered_pose(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, running = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    )
+    store.jobs.output_path(running.gnina_job_id, "pose_1.pdbqt").write_bytes(
+        b"altered synthetic pose"
+    )
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, running.ligand_id)
+    assert (progress.succeeded_count, progress.failed_count) == (0, 1)
+    assert recovered.status is DockingJobStatus.FAILED
+    assert recovered.gnina_job_id == running.gnina_job_id
+
+
+def test_recovery_rolls_back_every_entry_if_a_write_fails(tmp_path, monkeypatch):
+    store = GninaScreeningStore(tmp_path)
+    campaign = _initial([_queued("alpha", 0), _queued("beta", 1)])
+    _create_synthetic(store, campaign, monkeypatch)
+    write_entry = store._write_entry
+    calls = []
+
+    def failing_write(*args, **kwargs):
+        write_entry(*args, **kwargs)
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("synthetic interruption during recovery")
+
+    monkeypatch.setattr(store, "_write_entry", failing_write)
+    with pytest.raises(OSError, match="synthetic interruption"):
+        store.recover_interrupted_campaign(campaign.campaign_id, interrupted_at=datetime.now(UTC))
+    progress = store.load_progress(campaign.campaign_id)
+    assert progress.revision == 0 and progress.completed_count == 0
+    assert all(
+        entry.status is DockingJobStatus.QUEUED
+        for entry in store.load_campaign(campaign.campaign_id).entries
+    )
 
 
 def test_verified_job_can_finish_and_finalize_a_synthetic_campaign(
