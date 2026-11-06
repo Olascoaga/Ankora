@@ -91,8 +91,11 @@ A single GNINA job may also carry its owning screening campaign's canonical
 UUID, recorded before execution and immutable in the single-job store. A
 campaign accepts only jobs carrying its own identity, and a linked interrupted
 job cannot be retried as a standalone job. The startup activity panel displays
-that restriction. This correlation enables orphan reconciliation but does not
-by itself attach an orphan or run a screening campaign.
+that restriction. At startup, a single job whose campaign and ligand match an
+unlinked entry is reconciled with that entry; a completed job is reported as a
+success only after its prepared inputs and pose verify. Multiple candidate jobs
+are never selected automatically: their identities are recorded for review.
+No work is retried automatically, and this foundation does not start a campaign.
 
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and

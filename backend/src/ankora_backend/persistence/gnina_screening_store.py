@@ -456,18 +456,70 @@ class GninaScreeningStore:
                     rows = database.execute(
                         "SELECT selection_order, payload_json FROM entries ORDER BY selection_order"
                     ).fetchall()
+                    saved_entries = [
+                        (int(order), GninaScreeningEntry.model_validate_json(str(payload)))
+                        for order, payload in rows
+                    ]
+                    campaign_jobs = [
+                        job
+                        for job in self._jobs.list_jobs()
+                        if job.screening_campaign_id == campaign_id
+                    ]
+                    jobs_by_ligand: dict[str, list[GninaJobRecord]] = {}
+                    for job in campaign_jobs:
+                        jobs_by_ligand.setdefault(job.request.ligand_id, []).append(job)
+                    linked_ids = {
+                        entry.gnina_job_id
+                        for _, entry in saved_entries
+                        if entry.gnina_job_id is not None
+                    }
                     revision = int(summary["revision"])
                     interrupted = 0
-                    for order, payload in rows:
-                        entry = GninaScreeningEntry.model_validate_json(str(payload))
+                    for order, entry in saved_entries:
                         if entry.status in TERMINAL_ENTRY_STATES:
                             continue
                         interrupted += 1
                         revision += 1
-                        updated = self._interrupted_entry(
-                            campaign_id, summary, entry, interrupted_at, revision
-                        )
-                        self._write_entry(database, selection_order=int(order), entry=updated)
+                        candidates = [
+                            job
+                            for job in jobs_by_ligand.get(entry.ligand_id, [])
+                            if job.job_id not in linked_ids
+                        ]
+                        if entry.gnina_job_id is None and len(candidates) > 1:
+                            updated = GninaScreeningEntry.model_validate(
+                                entry.model_copy(
+                                    update={
+                                        "status": DockingJobStatus.FAILED,
+                                        "phase": DockingJobPhase.COMPLETE,
+                                        "completed_at": interrupted_at,
+                                        "failure": DockingFailure(
+                                            code="GNINA_SCREENING_ORPHAN_AMBIGUOUS",
+                                            message=(
+                                                "Multiple linked jobs exist; "
+                                                "no attempt was selected automatically."
+                                            ),
+                                            details={
+                                                "candidate_count": len(candidates),
+                                                "candidate_job_ids": [
+                                                    job.job_id for job in candidates[:20]
+                                                ],
+                                            },
+                                        ),
+                                        "revision": revision,
+                                    }
+                                ).model_dump()
+                            )
+                        else:
+                            if entry.gnina_job_id is None and len(candidates) == 1:
+                                entry = entry.model_copy(
+                                    update={"gnina_job_id": candidates[0].job_id}
+                                )
+                                linked_ids.add(candidates[0].job_id)
+                            updated = self._interrupted_entry(
+                                campaign_id, summary, entry, interrupted_at, revision
+                            )
+                        self._write_entry(database, selection_order=order, entry=updated)
+                    unlinked = [job.job_id for job in campaign_jobs if job.job_id not in linked_ids]
                     summary["status"] = DockingJobStatus.FAILED.value
                     summary["phase"] = DockingJobPhase.COMPLETE.value
                     summary["completed_at"] = interrupted_at.isoformat()
@@ -475,7 +527,11 @@ class GninaScreeningStore:
                     summary["failure"] = DockingFailure(
                         code="GNINA_SCREENING_CAMPAIGN_INTERRUPTED",
                         message="The campaign was interrupted; no automatic retry was started.",
-                        details={"interrupted_entry_count": interrupted},
+                        details={
+                            "interrupted_entry_count": interrupted,
+                            "unlinked_job_count": len(unlinked),
+                            "unlinked_job_ids": unlinked[:20],
+                        },
                     ).model_dump(mode="json")
                     self._apply_exact_counters(database, summary)
                     self._write_summary(database, summary)

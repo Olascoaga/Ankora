@@ -256,7 +256,13 @@ def synthetic_completed_prepared_job(prepared, tmp_path, monkeypatch):
 
 
 def _queued_job_campaign(
-    tmp_path, synthetic_completed_prepared_job, monkeypatch, *, extra=False, campaign_id=None
+    tmp_path,
+    synthetic_completed_prepared_job,
+    monkeypatch,
+    *,
+    extra=False,
+    campaign_id=None,
+    link=True,
 ):
     _ligands, _prepared_entry, pdbqt, conformer, job = synthetic_completed_prepared_job
     store = GninaScreeningStore(tmp_path)
@@ -292,6 +298,8 @@ def _queued_job_campaign(
         receptor_output_artifact_id=job.receptor_output_artifact_id,
     )
     _create_synthetic(store, campaign, monkeypatch)
+    if not link:
+        return store, campaign, entry
     running = store.update_entry(
         campaign.campaign_id,
         entry.model_copy(
@@ -304,6 +312,64 @@ def _queued_job_campaign(
         ),
     )
     return store, campaign, running
+
+
+def test_recovery_matches_one_verified_orphan_by_campaign_and_ligand(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, queued = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, link=False
+    )
+    job = synthetic_completed_prepared_job[-1]
+    assert queued.gnina_job_id is None
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, queued.ligand_id)
+    assert (progress.succeeded_count, progress.failed_count) == (1, 0)
+    assert recovered.status is DockingJobStatus.COMPLETED
+    assert recovered.gnina_job_id == job.job_id
+    assert store.load_campaign(campaign.campaign_id).failure.details["unlinked_job_count"] == 0
+
+
+def test_recovery_does_not_guess_between_multiple_orphan_jobs(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, queued = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, link=False
+    )
+    job = store.jobs.load_job(synthetic_completed_prepared_job[-1].job_id)
+    duplicate_id = store.jobs.new_job_id()
+    store.jobs.create_job(job.model_copy(update={"job_id": duplicate_id}))
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, queued.ligand_id)
+    assert (progress.succeeded_count, progress.failed_count) == (0, 1)
+    assert recovered.gnina_job_id is None
+    assert recovered.failure.code == "GNINA_SCREENING_ORPHAN_AMBIGUOUS"
+    details = store.load_campaign(campaign.campaign_id).failure.details
+    assert details["unlinked_job_count"] == 2
+    assert set(details["unlinked_job_ids"]) == {job.job_id, duplicate_id}
+
+
+def test_recovery_does_not_attach_a_job_from_another_campaign(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, queued = _queued_job_campaign(
+        tmp_path,
+        synthetic_completed_prepared_job,
+        monkeypatch,
+        campaign_id=str(uuid4()),
+        link=False,
+    )
+    progress = store.recover_interrupted_campaign(
+        campaign.campaign_id, interrupted_at=datetime.now(UTC)
+    )
+    recovered = store.load_entry(campaign.campaign_id, queued.ligand_id)
+    assert (progress.succeeded_count, progress.failed_count) == (0, 1)
+    assert recovered.gnina_job_id is None
+    assert recovered.failure.code == "GNINA_SCREENING_ENTRY_INTERRUPTED"
 
 
 def test_a_job_cannot_be_attached_to_another_campaign(

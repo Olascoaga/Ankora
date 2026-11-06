@@ -7,6 +7,9 @@ from uuid import uuid4
 import pytest
 from test_gnina_screening_schema import _queued
 from test_gnina_screening_store import _create_synthetic, _failure, _initial, _queued_job_campaign
+from test_gnina_screening_store import (
+    synthetic_completed_prepared_job as synthetic_completed_prepared_job,
+)
 from test_work_retry import _service
 
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -21,7 +24,7 @@ from ankora_backend.schemas.work_recovery import (
 )
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
 
-pytest_plugins = ("test_gnina_screening_store",)
+pytest_plugins = ("test_gnina_screening_preparation",)
 
 
 def test_startup_reconciles_screening_without_rerun_or_changing_another_project(
@@ -84,13 +87,15 @@ def test_retry_is_explicitly_unavailable_for_screening():
 
 
 @pytest.mark.parametrize("job_finished", [False, True])
+@pytest.mark.parametrize("link", [False, True])
 def test_startup_reconciles_linked_job_before_its_campaign(
-    tmp_path, monkeypatch, synthetic_completed_prepared_job, job_finished
+    tmp_path, monkeypatch, request, job_finished, link
 ):
-    store, campaign, running = _queued_job_campaign(
-        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    synthetic_completed_prepared_job = request.getfixturevalue("synthetic_completed_prepared_job")
+    store, campaign, _entry = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, link=link
     )
-    job = store.jobs.load_job(running.gnina_job_id)
+    job = store.jobs.load_job(synthetic_completed_prepared_job[-1].job_id)
     if not job_finished:
         store.jobs.update_job(
             job.model_copy(
