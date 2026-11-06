@@ -97,6 +97,11 @@ success only after its prepared inputs and pose verify. Multiple candidate jobs
 are never selected automatically: their identities are recorded for review.
 No work is retried automatically, and this foundation does not start a campaign.
 
+The store can persist an idempotent cancellation request and refuses to mark a
+still-queued entry running after that request. This is a storage-level guard;
+the future orchestrator must signal the active GNINA job and await its actual
+terminal outcome before finalizing the campaign.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.

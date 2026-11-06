@@ -167,6 +167,39 @@ def test_all_canceled_campaign_is_canceled(tmp_path, monkeypatch):
     assert (progress.canceled_count, progress.succeeded_count) == (1, 0)
 
 
+def test_cancel_intent_is_durable_idempotent_and_prevents_queued_start(tmp_path, monkeypatch):
+    store = GninaScreeningStore(tmp_path)
+    record = _initial([_queued("alpha", 0)])
+    _create_synthetic(store, record, monkeypatch)
+    requested = store.request_cancel(record.campaign_id)
+    assert requested.status is DockingJobStatus.CANCEL_REQUESTED
+    assert requested.revision == 1
+    assert GninaScreeningStore(tmp_path).load_progress(record.campaign_id) == requested
+    assert store.request_cancel(record.campaign_id) == requested
+    attempted_start = record.entries[0].model_copy(
+        update={
+            "status": DockingJobStatus.RUNNING,
+            "phase": DockingJobPhase.DOCKING,
+            "gnina_job_id": str(uuid4()),
+            "started_at": datetime.now(UTC),
+        }
+    )
+    with pytest.raises(AnkoraDomainError) as error:
+        store.update_entry(record.campaign_id, attempted_start)
+    assert error.value.code == "GNINA_SCREENING_CANCEL_PENDING"
+    canceled = record.entries[0].model_copy(
+        update={
+            "status": DockingJobStatus.CANCELED,
+            "phase": DockingJobPhase.COMPLETE,
+            "completed_at": datetime.now(UTC),
+        }
+    )
+    store.update_entry(record.campaign_id, canceled)
+    terminal = store.finalize_campaign(record.campaign_id)
+    assert terminal.status is DockingJobStatus.CANCELED
+    assert store.request_cancel(record.campaign_id) == terminal
+
+
 def test_concurrent_distinct_updates_preserve_both_counters(tmp_path, monkeypatch):
     first = GninaScreeningStore(tmp_path)
     second = GninaScreeningStore(tmp_path)

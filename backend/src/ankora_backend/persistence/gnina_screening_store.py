@@ -358,6 +358,21 @@ class GninaScreeningStore:
                 if located is None:
                     raise self._entry_not_found(campaign_id, entry.ligand_id)
                 selection_order, stored = located
+                if (
+                    summary["status"] == DockingJobStatus.CANCEL_REQUESTED.value
+                    and stored.status is DockingJobStatus.QUEUED
+                    and entry.status is DockingJobStatus.RUNNING
+                ):
+                    raise AnkoraDomainError(
+                        code="GNINA_SCREENING_CANCEL_PENDING",
+                        stage="gnina_screening_storage",
+                        message=(
+                            "A queued molecule cannot start after "
+                            "campaign cancellation was requested."
+                        ),
+                        status_code=409,
+                        details={"campaign_id": campaign_id, "ligand_id": entry.ligand_id},
+                    )
                 self._guard_transition(campaign_id, stored, entry)
                 self._guard_identity(campaign_id, stored, entry)
                 self._guard_job_reference(campaign_id, summary, stored, entry)
@@ -374,6 +389,31 @@ class GninaScreeningStore:
                 database.rollback()
                 raise
         return updated
+
+    def request_cancel(self, campaign_id: str) -> GninaScreeningProgress:
+        """Durably record cancellation intent without modifying running jobs.
+
+        The future orchestrator must separately signal and await its active
+        child job. Repeated requests and requests for terminal campaigns do not
+        alter their revisions or evidence.
+        """
+        directory = self.campaign_directory(campaign_id)
+        with _state_lock(directory), self._connect(campaign_id, directory) as database:
+            try:
+                database.execute("BEGIN IMMEDIATE")
+                summary = self._summary(campaign_id, database)
+                if summary["status"] in {
+                    DockingJobStatus.QUEUED.value,
+                    DockingJobStatus.RUNNING.value,
+                }:
+                    summary["status"] = DockingJobStatus.CANCEL_REQUESTED.value
+                    summary["revision"] = int(summary["revision"]) + 1
+                    self._write_summary(database, summary)
+                database.commit()
+            except BaseException:
+                database.rollback()
+                raise
+        return self.load_progress(campaign_id)
 
     def finalize_campaign(self, campaign_id: str) -> GninaScreeningProgress:
         """Derive the campaign's terminal status from its entries.
