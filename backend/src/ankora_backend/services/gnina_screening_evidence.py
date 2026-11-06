@@ -14,6 +14,8 @@ def verified_screening_pose(
     job_id: str,
     expected_request: GninaDockingRequest,
     expected_receptor_sha256: str,
+    expected_ligand_sha256: str,
+    expected_conformer_sha256: str,
     expected_tool_sha256: str,
 ) -> GninaPoseResult:
     """Return mode 1 only when job identity and preserved input bytes still match.
@@ -28,6 +30,8 @@ def verified_screening_pose(
         or record.job_id != job_id
         or record.request != expected_request
         or record.receptor_sha256 != expected_receptor_sha256
+        or record.ligand_sha256 != expected_ligand_sha256
+        or record.conformer_sha256 != expected_conformer_sha256
         or record.tool.sha256 != expected_tool_sha256
         or not record.poses
     ):

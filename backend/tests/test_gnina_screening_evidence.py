@@ -37,6 +37,8 @@ def _project(store, job, **overrides):
         "job_id": job.job_id,
         "expected_request": job.request,
         "expected_receptor_sha256": job.receptor_sha256,
+        "expected_ligand_sha256": job.ligand_sha256,
+        "expected_conformer_sha256": job.conformer_sha256,
         "expected_tool_sha256": job.tool.sha256,
     }
     return verified_screening_pose(**(args | overrides))
@@ -64,7 +66,15 @@ def test_rejects_altered_or_missing_preserved_input(completed_job, filename, mis
         _project(store, job)
 
 
-@pytest.mark.parametrize("field", ["expected_receptor_sha256", "expected_tool_sha256"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "expected_receptor_sha256",
+        "expected_ligand_sha256",
+        "expected_conformer_sha256",
+        "expected_tool_sha256",
+    ],
+)
 def test_rejects_a_job_from_a_different_campaign_snapshot(completed_job, field):
     store, job = completed_job
     with pytest.raises(AnkoraDomainError, match="do not match"):
