@@ -111,6 +111,17 @@ is not a reservation: the future orchestrator must still serialize launch and
 cancellation and prevent duplicate submissions. Synthetic tests exercise the
 guard; they do not constitute a GNINA campaign execution.
 
+An internal blocking runner now handles a fresh saved campaign serially through
+the existing single-job GNINA service. It records each verified terminal job,
+preserves individual admission failures, signals the active child on explicit
+cancellation, and cancels queued entries. It prevents duplicate ownership in
+the current process and stops active children before interruption reconciliation
+on unexpected failures. A durable campaign lease is acquired and released.
+Synthetic Linux and Windows tests cover cancellation, orphan cleanup, competing
+runners and a failed entry followed by a successful one. This runner is not yet
+attached to the project runtime or API; it is not a user-facing campaign and
+has not been validated with a real GNINA library or multiple backend processes.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.
