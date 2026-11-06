@@ -15,6 +15,7 @@ class WorkKind(StrEnum):
     AUTODOCK_GPU_JOB = "autodock_gpu_job"
     AUTODOCK_GPU_BATCH = "autodock_gpu_batch"
     GNINA_JOB = "gnina_job"
+    GNINA_SCREENING = "gnina_screening"
 
 
 class WorkLeaseState(StrEnum):

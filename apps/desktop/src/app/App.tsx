@@ -866,6 +866,7 @@ function recoveredWorkLabel(item: RecoveredWorkItem): string {
     autodock_gpu_job: "AutoDock-GPU job",
     autodock_gpu_batch: "AutoDock-GPU screening",
     gnina_job: "GNINA job",
+    gnina_screening: "GNINA screening",
   };
   return labels[item.work_kind];
 }
@@ -896,7 +897,7 @@ function RecoveryPanel({
       return <article key={key} className={response ? "retried" : ""}>
         <div className="recovery-item-heading"><div><strong>{recoveredWorkLabel(item)}</strong><code title={item.work_id}>{item.work_id.slice(0, 12)}…</code></div><span>{item.previous_status.replaceAll("_", " ")}</span></div>
         {item.interrupted_entry_count || item.completed_entry_count ? <p className="recovery-counts">{item.completed_entry_count} completed molecule{item.completed_entry_count === 1 ? "" : "s"} preserved · {item.interrupted_entry_count} interrupted</p> : null}
-        {response ? <div className="retry-started"><AppIcon name="success" /><span><strong>New attempt {response.status.replaceAll("_", " ")}</strong><code title={response.new_work_id}>{response.new_work_id.slice(0, 12)}…</code></span></div> : <>
+        {item.work_kind === "gnina_screening" ? <p>Retrying this screening is not available yet. Its recorded work is preserved.</p> : response ? <div className="retry-started"><AppIcon name="success" /><span><strong>New attempt {response.status.replaceAll("_", " ")}</strong><code title={response.new_work_id}>{response.new_work_id.slice(0, 12)}…</code></span></div> : <>
           <label className="retry-acknowledgement"><input type="checkbox" checked={Boolean(acknowledgements[key])} onChange={(event) => onAcknowledge(key, event.target.checked)} /><span>I understand this creates a new immutable attempt; it does not resume or alter the interrupted one.</span></label>
           <button type="button" disabled={!acknowledgements[key] || isRetrying} onClick={() => onRetry(item)}>{isRetrying ? "Starting a new attempt…" : "Retry as new"}</button>
         </>}

@@ -75,15 +75,17 @@ job, exact prepared inputs and preserved pose; terminal outcomes remain frozen.
 Synthetic tests cover isolation, ordering, concurrency, failure, cancellation,
 tampering and a small applied filter selection on Linux and Windows. The
 synthetic engine fixture does not validate scientific docking performance.
-The store is not wired to orchestration, recovery, an API or the interface.
+The store is not wired to campaign orchestration or a campaign API.
 
 The storage layer provides an atomic interruption transition for an abandoned
 campaign. It preserves completed entries, checks linked completed jobs before
 recovering their poses, marks unverifiable or unfinished entries explicitly and
 does not retry them. The campaign remains failed after interruption even if it
 retains successful entries. Calling this transition requires the runtime to have
-established that the previous owner is no longer active; it is not yet wired to
-startup recovery.
+established that the previous owner is no longer active. Project startup now
+reconciles abandoned GNINA screenings after reconciling their GNINA jobs. The
+activity panel shows recovered counts and does not offer a screening retry
+until that operation is implemented.
 
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and

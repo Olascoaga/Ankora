@@ -202,6 +202,14 @@ class WorkRetryService:
             return self._response(
                 work_kind, work_id, created.job_id, created.status.value, created.created_at
             )
+        if work_kind is WorkKind.GNINA_SCREENING:
+            raise AnkoraDomainError(
+                code="WORK_RETRY_UNAVAILABLE",
+                stage="work_recovery",
+                message="Retrying a GNINA screening campaign is not available yet.",
+                status_code=409,
+                details={"work_kind": work_kind.value, "work_id": work_id},
+            )
         assert_never(work_kind)
 
     @staticmethod
