@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { DockingWorkspace } from "../features/docking/DockingWorkspace";
 import type {
   BindingSiteRecord,
   GninaDockingJobRecord,
+  GninaScreeningCampaignRecord,
+  GninaScreeningEntry,
   LigandDockingInput,
   LigandLibraryDockingInput,
   LigandRecord,
@@ -80,6 +82,28 @@ const tools = {
 
 const gninaTools: ToolsResponse = { ...tools, gnina: { available: true, path: "synthetic-gnina", version: null } };
 const gninaParameters = { compute: "cuda", device_index: 0, cpu_threads: 2, seed: 20261029, exhaustiveness: 8, num_modes: 9, min_rmsd_filter_angstrom: 1, timeout_minutes: 360, cnn_scoring: "rescore", cnn_model: "dense_1_3", hydrogen_handling: "prepared_pdbqt_no_add_no_strip", pose_sort_order: "cnn_score_descending" } as const;
+
+function screeningEntry(id: string, index: number): GninaScreeningEntry {
+  return { ligand_id: id, chemical_state_id: `state-${id}`, source_index: index, name: `Molecule ${index + 1}`,
+    ligand_preparation_id: `prep-${id}`, ligand_sha256: "d".repeat(64), conformer_id: `conformer-${id}`,
+    conformer_sha256: "c".repeat(64), status: "queued", phase: "queued", gnina_job_id: null,
+    started_at: null, completed_at: null, failure: null, revision: 0 };
+}
+
+function screeningCampaign(): GninaScreeningCampaignRecord {
+  return { campaign_id: "campaign-synthetic", engine: "gnina", status: "queued", phase: "queued",
+    created_at: "2026-11-06T00:00:00Z", started_at: null, completed_at: null,
+    request: { receptor_id: receptor.receptor_id, binding_site_id: bindingSite.binding_site_id,
+      library_id: libraryInput.library_id, filter_run_id: libraryInput.filter_run_id,
+      parameters: { ...gninaParameters, compute: "cpu" }, acknowledge_inputs_and_scoring: true },
+    tool: { version: "1.3.3", sha256: "a".repeat(64), architecture: "x86_64" },
+    selection: { library_id: libraryInput.library_id, filter_run_id: libraryInput.filter_run_id,
+      manifest_artifact_id: libraryInput.filter_run_id, manifest_sha256: libraryInput.selection_manifest_sha256 },
+    receptor_output_artifact_id: "receptor-pdbqt", receptor_sha256: "b".repeat(64), box: bindingSite.box,
+    worker_count: 1, selected_count: 2, completed_count: 0, succeeded_count: 0, failed_count: 0, canceled_count: 0,
+    entries: [screeningEntry(ligand.artifact.ligand_id, 0), screeningEntry("ligand-second", 1)],
+    warnings: [], failure: null, provenance: null, revision: 0 };
+}
 function gninaJob(status: GninaDockingJobRecord["status"]): GninaDockingJobRecord {
   const completed = status === "completed";
   return {
@@ -100,6 +124,184 @@ it("offers GNINA only on Linux", () => {
   expect(screen.queryByRole("button", { name: "GNINA · single" })).not.toBeInTheDocument();
   rerender(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
   expect(screen.getByRole("button", { name: "GNINA · single" })).toBeInTheDocument();
+});
+
+it("updates GNINA screening progress and automatically reads each completed job", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  const first = { ...initial.entries[0], status: "completed", phase: "complete", gnina_job_id: "gnina-synthetic", revision: 2 };
+  const second = { ...initial.entries[1], status: "failed", phase: "complete", revision: 3,
+    failure: { code: "SYNTHETIC_FAILURE", message: "synthetic preflight failure", details: {} } };
+  const progress = { campaign_id: initial.campaign_id, engine: "gnina", status: "completed", phase: "complete", revision: 4,
+    started_at: "2026-11-06T00:00:01Z", completed_at: "2026-11-06T00:01:00Z", selected_count: 2,
+    completed_count: 2, succeeded_count: 1, failed_count: 1, canceled_count: 0 };
+  let submitted: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") { submitted = JSON.parse(String(init.body)); return json(initial, 202); }
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/progress")) return json(progress);
+    if (path.includes("/entries?after_revision=")) return json([first, second]);
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json({ ...gninaJob("completed"), screening_campaign_id: initial.campaign_id });
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+  expect(await screen.findByText("0.9000", {}, { timeout: 4000 })).toBeInTheDocument();
+  expect(submitted).toMatchObject({ library_id: libraryInput.library_id, filter_run_id: libraryInput.filter_run_id,
+    acknowledge_inputs_and_scoring: true, parameters: { pose_sort_order: "cnn_score_descending" } });
+  expect(screen.getByText("SYNTHETIC_FAILURE")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Molecule 1/ }));
+  expect(await screen.findByRole("button", { name: "Pose 1" })).toBeInTheDocument();
+  window.localStorage.clear();
+});
+
+it("loads terminal entry changes returned with screening cancellation", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  const canceled = initial.entries.map((entry, index) => ({ ...entry, status: "canceled", phase: "complete", revision: index + 2 }));
+  const progress = { campaign_id: initial.campaign_id, engine: "gnina", status: "canceled", phase: "complete", revision: 4,
+    started_at: null, completed_at: "2026-11-06T00:01:00Z", selected_count: 2,
+    completed_count: 2, succeeded_count: 0, failed_count: 0, canceled_count: 2 };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") return json(initial, 202);
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/cancel")) return json(progress);
+    if (path.includes("/entries?after_revision=")) return json(canceled);
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel campaign" }));
+  await waitFor(() => expect(screen.getByLabelText("GNINA campaign progress")).toHaveAttribute("aria-valuenow", "2"));
+  expect(screen.getAllByText("canceled").length).toBeGreaterThanOrEqual(2);
+  window.localStorage.clear();
+});
+
+it("refreshes a job opened while running when its molecule completes", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  initial.entries[0] = { ...initial.entries[0], status: "running", phase: "docking", gnina_job_id: "gnina-synthetic" };
+  initial.status = "running"; initial.phase = "docking";
+  let finished = false;
+  let jobReads = 0;
+  const progress = { campaign_id: initial.campaign_id, engine: "gnina", status: "completed", phase: "complete", revision: 3,
+    started_at: "2026-11-06T00:00:01Z", completed_at: "2026-11-06T00:01:00Z", selected_count: 2,
+    completed_count: 2, succeeded_count: 1, failed_count: 1, canceled_count: 0 };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") return json(initial, 202);
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/progress")) return json(finished ? progress : { ...progress, status: "running", phase: "docking", revision: 0, completed_count: 0, succeeded_count: 0, failed_count: 0, completed_at: null });
+    if (path.includes("/entries?after_revision=")) return json([
+      { ...initial.entries[0], status: "completed", phase: "complete", revision: 1 },
+      { ...initial.entries[1], status: "failed", phase: "complete", revision: 2, failure: { code: "FAIL", message: "synthetic", details: {} } },
+    ]);
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) {
+      jobReads += 1;
+      return json({ ...gninaJob(finished ? "completed" : "running"), screening_campaign_id: initial.campaign_id });
+    }
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Molecule 1/ }));
+  await waitFor(() => expect(jobReads).toBe(1));
+  finished = true;
+  expect((await screen.findAllByText("0.9000", {}, { timeout: 4000 })).length).toBeGreaterThan(0);
+  expect(jobReads).toBeGreaterThanOrEqual(2);
+  window.localStorage.clear();
+});
+
+it("reopens a recorded GNINA screening from the active project", async () => {
+  window.localStorage.clear();
+  const saved = screeningCampaign();
+  const summary = { campaign_id: saved.campaign_id, engine: "gnina", status: "failed", phase: "complete", revision: 1,
+    started_at: null, completed_at: "2026-11-06T00:01:00Z", selected_count: 2,
+    completed_count: 2, succeeded_count: 0, failed_count: 2, canceled_count: 0 };
+  saved.status = "failed"; saved.phase = "complete"; saved.revision = 1;
+  saved.completed_count = 2; saved.failed_count = 2; saved.completed_at = summary.completed_at;
+  saved.entries = saved.entries.map((entry) => ({ ...entry, status: "failed", phase: "complete", failure: { code: "SYNTHETIC", message: "synthetic", details: {} } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings")) return json([summary]);
+    if (path.endsWith(`/docking/gnina/screenings/${saved.campaign_id}`)) return json(saved);
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(await screen.findByRole("button", { name: /campaign · failed · 2\/2/i }));
+  expect(await screen.findByRole("region", { name: "GNINA campaign results" })).toBeInTheDocument();
+  expect(screen.getByLabelText("GNINA campaign progress")).toHaveAttribute("aria-valuenow", "2");
+  window.localStorage.clear();
+});
+
+it("rejects a progress update that invents a molecule outside the selection", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  const progress = { campaign_id: initial.campaign_id, engine: "gnina", status: "running", phase: "docking", revision: 1,
+    started_at: "2026-11-06T00:00:01Z", completed_at: null, selected_count: 2,
+    completed_count: 0, succeeded_count: 0, failed_count: 0, canceled_count: 0 };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") return json(initial, 202);
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/progress")) return json(progress);
+    if (path.includes("/entries?after_revision=")) return json([screeningEntry("unexpected", 5)]);
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+  expect(await screen.findByText("The GNINA campaign returned an inconsistent selection update.", {}, { timeout: 4000 })).toBeInTheDocument();
+  expect(screen.queryByText("Molecule 6")).not.toBeInTheDocument();
+  window.localStorage.clear();
+});
+
+it("does not roll completed progress back when a delayed cancel response arrives", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  let finishCancel!: (response: Response) => void;
+  const pendingCancel = new Promise<Response>((resolve) => { finishCancel = resolve; });
+  const progress = { campaign_id: initial.campaign_id, engine: "gnina", status: "completed", phase: "complete", revision: 4,
+    started_at: "2026-11-06T00:00:01Z", completed_at: "2026-11-06T00:01:00Z", selected_count: 2,
+    completed_count: 2, succeeded_count: 1, failed_count: 1, canceled_count: 0 };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") return json(initial, 202);
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/cancel")) return pendingCancel;
+    if (path.endsWith("/progress")) return json(progress);
+    if (path.includes("/entries?after_revision=")) return json([
+      { ...initial.entries[0], status: "completed", phase: "complete", gnina_job_id: "gnina-synthetic", revision: 2 },
+      { ...initial.entries[1], status: "failed", phase: "complete", revision: 3, failure: { code: "FAIL", message: "synthetic", details: {} } },
+    ]);
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json({ ...gninaJob("completed"), screening_campaign_id: initial.campaign_id });
+    return new Response("", { status: 200 });
+  });
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel campaign" }));
+  await waitFor(() => expect(screen.getByLabelText("GNINA campaign progress")).toHaveAttribute("aria-valuenow", "2"), { timeout: 4000 });
+  await act(async () => { finishCancel(json({ ...progress, status: "cancel_requested", phase: "docking", revision: 1, completed_count: 0, succeeded_count: 0, failed_count: 0, completed_at: null })); });
+  expect(screen.getByLabelText("GNINA campaign progress")).toHaveAttribute("aria-valuenow", "2");
+  expect(screen.queryByRole("button", { name: "Cancel campaign" })).not.toBeInTheDocument();
+  window.localStorage.clear();
 });
 
 it("runs CUDA GNINA with explicit settings and preserves CNN pose order", async () => {

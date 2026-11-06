@@ -20,6 +20,10 @@ import type {
   HealthResponse,
   GninaDockingJobRecord,
   GninaDockingRequest,
+  GninaScreeningCampaignRecord,
+  GninaScreeningEntry,
+  GninaScreeningProgress,
+  GninaScreeningRequest,
   LigandConformerRecord,
   LigandChemicalStateRecord,
   LigandLocator,
@@ -145,6 +149,21 @@ function catalogPath(catalogId: string): string {
   if (separator < 0) throw new Error("A catalog identifier names its engine and its record.");
   return `${encodeURIComponent(catalogId.slice(0, separator))}`
     + `/${encodeURIComponent(catalogId.slice(separator + 1))}`;
+}
+
+/**
+ * The changed-entry route is documented as returning the changed entries in
+ * selection order. It is accepted either as that list or wrapped in an
+ * `entries` envelope, because the route is being implemented alongside this
+ * client and the envelope is the shape every other campaign route here uses.
+ * Anything else is an error rather than a silently empty campaign.
+ */
+function gninaScreeningEntryList(
+  payload: GninaScreeningEntry[] | { entries: GninaScreeningEntry[] },
+): GninaScreeningEntry[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.entries)) return payload.entries;
+  throw new Error("The GNINA screening entries response did not contain entries.");
 }
 
 function campaignHistoryQuery(receptorId: string, bindingSiteId: string): string {
@@ -401,6 +420,38 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     requestJson<DockingCancelResponse>(`/docking/gnina/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
   gninaPoseUrl: (jobId: string, artifactId: string): string =>
     `${API_BASE_URL}/docking/gnina/jobs/${encodeURIComponent(jobId)}/poses/${encodeURIComponent(artifactId)}/content`,
+  startGninaScreening: (
+    request: GninaScreeningRequest,
+  ): Promise<GninaScreeningCampaignRecord> =>
+    requestJson<GninaScreeningCampaignRecord>("/docking/gnina/screenings", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+  listGninaScreenings: (): Promise<GninaScreeningProgress[]> =>
+    getJson<GninaScreeningProgress[]>("/docking/gnina/screenings"),
+  getGninaScreening: (campaignId: string): Promise<GninaScreeningCampaignRecord> =>
+    getJson<GninaScreeningCampaignRecord>(
+      `/docking/gnina/screenings/${encodeURIComponent(campaignId)}`,
+    ),
+  // The campaign header alone. A finished campaign's entries are the expensive
+  // part, so the question "has anything changed" never resends them.
+  getGninaScreeningProgress: (campaignId: string): Promise<GninaScreeningProgress> =>
+    getJson<GninaScreeningProgress>(
+      `/docking/gnina/screenings/${encodeURIComponent(campaignId)}/progress`,
+    ),
+  getGninaScreeningEntries: (
+    campaignId: string,
+    afterRevision: number,
+  ): Promise<GninaScreeningEntry[]> =>
+    getJson<GninaScreeningEntry[] | { entries: GninaScreeningEntry[] }>(
+      `/docking/gnina/screenings/${encodeURIComponent(campaignId)}/entries`
+      + `?after_revision=${afterRevision}`,
+    ).then(gninaScreeningEntryList),
+  cancelGninaScreening: (campaignId: string): Promise<GninaScreeningProgress> =>
+    requestJson<GninaScreeningProgress>(
+      `/docking/gnina/screenings/${encodeURIComponent(campaignId)}/cancel`,
+      { method: "POST" },
+    ),
   startVinaDocking: (request: VinaDockingRequest): Promise<VinaDockingJobRecord> =>
     requestJson<VinaDockingJobRecord>("/docking/vina/jobs", {
       method: "POST",

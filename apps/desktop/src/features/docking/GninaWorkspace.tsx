@@ -7,6 +7,11 @@ import type { BindingSiteRecord, GninaDockingJobRecord, GninaDockingParameters, 
 import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
+import {
+  defaultGninaParameters,
+  GNINA_NUMERIC_FIELDS,
+  gninaParametersValid,
+} from "./gninaParameters";
 
 interface Props {
   receptor: ReceptorPreparationRecord;
@@ -19,24 +24,9 @@ interface Props {
 }
 
 const terminal = new Set(["completed", "failed", "canceled"]);
-const defaults: GninaDockingParameters = {
-  compute: "cpu", device_index: 0, cpu_threads: 2, seed: 20261029, exhaustiveness: 8,
-  num_modes: 9, min_rmsd_filter_angstrom: 1, timeout_minutes: 360,
-  cnn_scoring: "rescore", cnn_model: "dense_1_3",
-  hydrogen_handling: "prepared_pdbqt_no_add_no_strip", pose_sort_order: "cnn_score_descending",
-};
-
-function valid(p: GninaDockingParameters): boolean {
-  return Number.isInteger(p.cpu_threads) && p.cpu_threads >= 1 && p.cpu_threads <= 256
-    && Number.isInteger(p.seed) && p.seed >= 1 && p.seed <= 2147483647
-    && Number.isInteger(p.exhaustiveness) && p.exhaustiveness >= 1 && p.exhaustiveness <= 128
-    && Number.isInteger(p.num_modes) && p.num_modes >= 1 && p.num_modes <= 100
-    && Number.isFinite(p.min_rmsd_filter_angstrom) && p.min_rmsd_filter_angstrom >= 0 && p.min_rmsd_filter_angstrom <= 20
-    && Number.isInteger(p.timeout_minutes) && p.timeout_minutes >= 1 && p.timeout_minutes <= 2880;
-}
 
 export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, tools, modeSwitch, onActivityChange }: Props) {
-  const [parameters, setParameters] = useState<GninaDockingParameters>(defaults);
+  const [parameters, setParameters] = useState<GninaDockingParameters>(defaultGninaParameters);
   const [acknowledged, setAcknowledged] = useState(false);
   const [job, setJob] = useState<GninaDockingJobRecord | null>(null);
   const [selectedMode, setSelectedMode] = useState<number | null>(null);
@@ -47,7 +37,7 @@ export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, too
   const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
   const display = receptor.outputs.find((item) => item.artifact_id === receptor.display_output_artifact_id);
   const ligandPdbqt = ligand && ligandInput?.ligand_id === ligand.artifact.ligand_id ? ligandInput.pdbqt : null;
-  const ready = Boolean(!recovering && tools?.gnina.available && receptorPdbqt && ligand && ligandPdbqt && !bindingSite.stale && valid(parameters));
+  const ready = Boolean(!recovering && tools?.gnina.available && receptorPdbqt && ligand && ligandPdbqt && !bindingSite.stale && gninaParametersValid(parameters));
   const selectedPose = job?.poses.find((pose) => pose.mode === selectedMode);
   const viewerSources = useMemo<ViewerSource[]>(() => {
     const sources: ViewerSource[] = [];
@@ -146,9 +136,7 @@ export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, too
       <section className="receptor-section"><div className="filter-heading"><span>2 · Engine & search</span></div><div className={tools?.gnina.available ? "state-resolved-note" : "protonation-blocker"}><strong>GNINA 1.3.3</strong><small>{tools?.gnina.available ? "Detected; version and executable identity are checked at launch." : "Configure the Linux GNINA executable and rescan tools."}</small></div>
         <label className="numeric-field"><span className="field-label">Compute</span><select aria-label="Compute" value={parameters.compute} disabled={active} onChange={(event) => update("compute", event.target.value as "cpu" | "cuda")}><option value="cpu">CPU</option><option value="cuda">NVIDIA GPU · CUDA</option></select></label>
         {parameters.compute === "cuda" ? <p className="field-note">CUDA currently requires one identifiable NVIDIA GPU, device 0, without MIG or device visibility remapping. Ankora checks the process and device before publishing results.</p> : null}
-        <div className="docking-parameter-grid">{([
-          ["cpu_threads", "CPU threads", 1, 256, 1], ["seed", "Seed", 1, 2147483647, 1], ["exhaustiveness", "Exhaustiveness", 1, 128, 1], ["num_modes", "Maximum poses", 1, 100, 1], ["min_rmsd_filter_angstrom", "Minimum RMSD (Å)", 0, 20, 0.1], ["timeout_minutes", "Timeout (minutes)", 1, 2880, 1],
-        ] as const).map(([key, label, min, max, step]) => <label className="numeric-field" key={key}><span className="field-label">{label}</span><input aria-label={label} type="number" min={min} max={max} step={step} disabled={active} value={Number.isNaN(parameters[key]) ? "" : parameters[key]} onChange={(event) => update(key, event.target.value === "" ? Number.NaN : Number(event.target.value))} /></label>)}</div>
+        <div className="docking-parameter-grid">{GNINA_NUMERIC_FIELDS.map(({ key, label, min, max, step }) => <label className="numeric-field" key={key}><span className="field-label">{label}</span><input aria-label={label} type="number" min={min} max={max} step={step} disabled={active} value={Number.isNaN(parameters[key]) ? "" : parameters[key]} onChange={(event) => update(key, event.target.value === "" ? Number.NaN : Number(event.target.value))} /></label>)}</div>
         <p className="field-note">CNN rescoring · dense_1_3 · prepared PDBQT hydrogens preserved. Poses retain GNINA's CNN-score order.</p>
       </section>
       <section className="receptor-section"><div className="filter-heading"><span>3 · Confirm & run</span>{job ? <small>{job.status.replaceAll("_", " ")}</small> : null}</div><label className="docking-acknowledgement"><input type="checkbox" checked={acknowledged} disabled={active} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>Use these exact inputs and parameters</strong><small>GNINA scores are predictions and are not experimental binding affinities.</small></span></label>{active ? <button type="button" className="danger-action docking-primary-action" onClick={() => void cancel()} disabled={starting || !job || terminal.has(job.status) || job.status === "cancel_requested"}>Cancel docking</button> : <button type="button" className="primary-action docking-primary-action" disabled={!ready || !acknowledged} onClick={() => void start()}>Run GNINA</button>}{!ready ? <p className="field-note">Check the prepared inputs, GNINA availability and parameter ranges above.</p> : null}</section>

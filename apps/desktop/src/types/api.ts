@@ -1061,6 +1061,103 @@ export interface GninaDockingJobRecord {
   failure: { code: string; message: string; details: Record<string, unknown> } | null;
 }
 
+// --- GNINA library screening campaigns (Linux only, ADR-027) ---------------
+
+/**
+ * A campaign entry is a reference, not a result.
+ *
+ * The backend contract deliberately keeps no CNN score, no CNN affinity, no
+ * minimized affinity and no pose on an entry: the individual GNINA job named by
+ * `gnina_job_id` already owns them with its own inputs, command and evidence.
+ * Anything this interface gained would be a second, unverifiable account of a
+ * scientific result, so scores are read from the job instead.
+ *
+ * `source_index` is library provenance only. It is absent when the library
+ * record could not be resolved and must never be used to order entries - the
+ * campaign's own order is selection order.
+ */
+export interface GninaScreeningEntry {
+  ligand_id: string;
+  chemical_state_id: string | null;
+  source_index: number | null;
+  name: string | null;
+  ligand_preparation_id: string | null;
+  ligand_sha256: string | null;
+  conformer_id: string | null;
+  conformer_sha256: string | null;
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  /** Recorded, not verified: the job this campaign claims as the attempt. */
+  gnina_job_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+  revision: number;
+}
+
+/** The immutable identity of the applied filter selection being docked. */
+export interface GninaScreeningSelection {
+  library_id: string;
+  filter_run_id: string;
+  manifest_artifact_id: string;
+  manifest_sha256: string;
+}
+
+export interface GninaScreeningRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  library_id: string;
+  filter_run_id: string;
+  /** The single-job parameters unchanged; GNINA settings stay GNINA-specific. */
+  parameters: GninaDockingParameters;
+  acknowledge_inputs_and_scoring: boolean;
+}
+
+/** The campaign header without its entries, for polling while it runs. */
+export interface GninaScreeningProgress {
+  campaign_id: string;
+  engine: "gnina";
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  revision: number;
+  started_at: string | null;
+  completed_at: string | null;
+  selected_count: number;
+  completed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  canceled_count: number;
+}
+
+export interface GninaScreeningCampaignRecord {
+  campaign_id: string;
+  engine: "gnina";
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  request: GninaScreeningRequest;
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  selection: GninaScreeningSelection;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  box: BindingBox;
+  /** One job at a time: a recorded fact of the run, not a setting. */
+  worker_count: number;
+  selected_count: number;
+  completed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  canceled_count: number;
+  /** The applied selection, in selection order. */
+  entries: GninaScreeningEntry[];
+  warnings: StructuredWarning[];
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+  provenance: ProvenanceEvent | null;
+  revision: number;
+}
+
 export interface DockingPoseArtifact {
   artifact_id: string;
   mode: number;

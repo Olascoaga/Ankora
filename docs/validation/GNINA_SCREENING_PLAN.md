@@ -141,6 +141,16 @@ result and one unprepared entry fails. The synthetic test disables topology
 validation and is not evidence of chemical correctness. These tests do not
 constitute a real GNINA campaign or native Linux workstation acceptance.
 
+The Linux docking workspace exposes the applied-selection campaign with live
+progress, per-molecule failures, exact job scores and pose selection. Finished
+jobs are fetched incrementally, CNN pose scores and predicted affinities remain
+separate from empirical kcal/mol values, and response revisions cannot move
+progress backwards. The workspace can reopen saved project campaigns after
+checking receptor, box and selection identities. The Results catalog, campaign
+export, interaction analysis and redocking are explicitly unavailable for the
+campaign as a whole. UI tests use synthetic records; a real GNINA multi-ligand
+run and a WSLg/native workstation visual check are still required.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.
