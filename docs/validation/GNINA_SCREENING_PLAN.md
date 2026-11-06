@@ -58,6 +58,12 @@ or asserting that the link has been verified. Terminal counts, status and
 progress are checked for internal consistency; the compact progress header
 does not contain the library. This model is not persistence or execution.
 
+An independent preparation verifier checks that a prepared entry, PDBQT and
+conformer name the selected ligand and chemical state, point to one another,
+and still match their recorded sizes and hashes. It reports a failure without
+modifying artifacts. The future orchestrator must obtain the state from the
+verified selection and the preparation entry from the matching project/library.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
