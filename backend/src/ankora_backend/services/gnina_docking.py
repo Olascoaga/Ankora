@@ -20,6 +20,7 @@ from ankora_backend.adapters.engines.gnina import (
 )
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
@@ -82,6 +83,7 @@ class GninaDockingService:
         leases: WorkLeaseManager,
         resources: ResourceArbiter,
         enable_experimental_cuda: bool = False,
+        screening_store: GninaScreeningStore | None = None,
     ) -> None:
         self._store = store
         self._receptors = receptors
@@ -90,6 +92,7 @@ class GninaDockingService:
         self._leases = leases
         self._resources = resources
         self._enable_experimental_cuda = enable_experimental_cuda
+        self._screening_store = screening_store
         self._lock = threading.RLock()
         self._events: dict[str, threading.Event] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-gnina")
@@ -110,6 +113,7 @@ class GninaDockingService:
             leases=leases,
             resources=resources,
             enable_experimental_cuda=enable_experimental_cuda,
+            screening_store=GninaScreeningStore.from_environment(),
         )
 
     def start(
@@ -216,6 +220,13 @@ class GninaDockingService:
             conformer_sha256=conformer.artifact.sha256,
             command=command,
         )
+        if screening_campaign_id is not None:
+            if self._screening_store is None:
+                raise _failure(
+                    "GNINA_SCREENING_STORE_UNAVAILABLE",
+                    "A screening job requires its project campaign store.",
+                )
+            self._screening_store.assert_can_start_job(record)
         self._store.create_job(record)
         try:
             for name, content in zip(

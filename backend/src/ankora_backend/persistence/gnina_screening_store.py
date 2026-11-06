@@ -390,6 +390,37 @@ class GninaScreeningStore:
                 raise
         return updated
 
+    def assert_can_start_job(self, job: GninaJobRecord) -> None:
+        """Check a proposed job against the pinned campaign before submission.
+
+        This is an identity check, not a reservation: the orchestrator must
+        serialize launch with cancellation and prevent duplicate submissions.
+        """
+        campaign_id = job.screening_campaign_id
+        if campaign_id is None:
+            raise ValueError("a screening job must name its campaign")
+        directory = self.campaign_directory(campaign_id)
+        with _state_lock(directory), self._connect(campaign_id, directory) as database:
+            summary = self._summary(campaign_id, database)
+            if summary["status"] not in {
+                DockingJobStatus.QUEUED.value,
+                DockingJobStatus.RUNNING.value,
+            }:
+                raise self._invalid_campaign(campaign_id, "campaign is not accepting new jobs")
+            located = self._stored_entry(database, job.request.ligand_id)
+            if located is None:
+                raise self._entry_not_found(campaign_id, job.request.ligand_id)
+            _, entry = located
+            if (
+                entry.status is not DockingJobStatus.QUEUED
+                or entry.gnina_job_id is not None
+                or job.status is not DockingJobStatus.QUEUED
+            ):
+                raise self._invalid_campaign(campaign_id, "entry is not awaiting a new job")
+            proposed = entry.model_copy(update={"gnina_job_id": job.job_id})
+            self._check_job_identity(campaign_id, summary, proposed, job)
+            self._verify_entry_preparation(campaign_id, summary, proposed)
+
     def request_cancel(self, campaign_id: str) -> GninaScreeningProgress:
         """Durably record cancellation intent without modifying running jobs.
 
@@ -747,6 +778,20 @@ class GninaScreeningStore:
         self, campaign_id: str, summary: dict[str, Any], entry: GninaScreeningEntry
     ) -> GninaJobRecord:
         job_id = entry.gnina_job_id
+        if job_id is None:
+            raise self._job_mismatch(campaign_id, entry, "missing prepared-input identity")
+        job = self._jobs.load_job(job_id)
+        self._check_job_identity(campaign_id, summary, entry, job)
+        return job
+
+    def _check_job_identity(
+        self,
+        campaign_id: str,
+        summary: dict[str, Any],
+        entry: GninaScreeningEntry,
+        job: GninaJobRecord,
+    ) -> None:
+        job_id = entry.gnina_job_id
         if (
             job_id is None
             or entry.ligand_preparation_id is None
@@ -765,7 +810,6 @@ class GninaScreeningStore:
             parameters=request.parameters,
             acknowledge_inputs_and_scoring=True,
         )
-        job = self._jobs.load_job(job_id)
         if (
             job.job_id != job_id
             or job.screening_campaign_id != campaign_id
@@ -778,18 +822,10 @@ class GninaScreeningStore:
             or job.conformer_sha256 != entry.conformer_sha256
         ):
             raise self._job_mismatch(campaign_id, entry, "job inputs differ from the campaign")
-        return job
 
-    def _verify_completed_job(
+    def _verify_entry_preparation(
         self, campaign_id: str, summary: dict[str, Any], entry: GninaScreeningEntry
     ) -> None:
-        """Re-read the referenced job and refuse success unless it still matches.
-
-        The verified pose is a gate, not a payload: it is discarded here, and no
-        score, affinity or pose is written into campaign storage.
-        """
-        job = self._matching_job(campaign_id, summary, entry)
-        job_id = job.job_id
         if (
             entry.ligand_preparation_id is None
             or entry.ligand_sha256 is None
@@ -817,6 +853,26 @@ class GninaScreeningStore:
             or conformer.artifact.sha256 != entry.conformer_sha256
         ):
             raise self._job_mismatch(campaign_id, entry, "prepared-input hashes changed")
+
+    def _verify_completed_job(
+        self, campaign_id: str, summary: dict[str, Any], entry: GninaScreeningEntry
+    ) -> None:
+        """Re-read the referenced job and refuse success unless it still matches.
+
+        The verified pose is a gate, not a payload: it is discarded here, and no
+        score, affinity or pose is written into campaign storage.
+        """
+        job = self._matching_job(campaign_id, summary, entry)
+        job_id = job.job_id
+        if (
+            entry.ligand_preparation_id is None
+            or entry.ligand_sha256 is None
+            or entry.conformer_sha256 is None
+            or entry.conformer_id is None
+            or entry.chemical_state_id is None
+        ):
+            raise self._job_mismatch(campaign_id, entry, "missing prepared-input hashes")
+        self._verify_entry_preparation(campaign_id, summary, entry)
         # Only the header pieces this check needs; the stored counters describe
         # the whole selection, so the full record is not reassembled here.
         request = GninaScreeningRequest.model_validate(summary["request"])

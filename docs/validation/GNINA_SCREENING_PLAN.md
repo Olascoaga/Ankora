@@ -104,6 +104,13 @@ still-queued entry running after that request. This is a storage-level guard;
 the future orchestrator must signal the active GNINA job and await its actual
 terminal outcome before finalizing the campaign.
 
+A screening-linked single job is checked against its project's recorded
+campaign and queued entry before the job is created or submitted. Its exact
+request, tool, box, receptor and prepared-input hashes must match. This check
+is not a reservation: the future orchestrator must still serialize launch and
+cancellation and prevent duplicate submissions. Synthetic tests exercise the
+guard; they do not constitute a GNINA campaign execution.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.

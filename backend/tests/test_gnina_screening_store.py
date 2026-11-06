@@ -346,6 +346,43 @@ def _queued_job_campaign(
     return store, campaign, running
 
 
+def test_before_launch_screening_job_must_match_the_recorded_campaign(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, entry = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, link=False
+    )
+    job = synthetic_completed_prepared_job[-1]
+    store.assert_can_start_job(job)
+    altered = [
+        job.model_copy(update={"receptor_sha256": "f" * 64}),
+        job.model_copy(update={"ligand_sha256": "f" * 64}),
+        job.model_copy(update={"conformer_sha256": "f" * 64}),
+        job.model_copy(update={"receptor_output_artifact_id": "other"}),
+        job.model_copy(update={"tool": job.tool.model_copy(update={"sha256": "f" * 64})}),
+        job.model_copy(update={"box": job.box.model_copy(update={"center_x": 123})}),
+        job.model_copy(
+            update={"request": job.request.model_copy(update={"binding_site_id": "other"})}
+        ),
+        job.model_copy(update={"request": job.request.model_copy(update={"ligand_id": "other"})}),
+        job.model_copy(update={"status": DockingJobStatus.RUNNING}),
+    ]
+    for candidate in altered:
+        with pytest.raises(AnkoraDomainError):
+            store.assert_can_start_job(candidate)
+    ligands = synthetic_completed_prepared_job[0]
+    path = ligands.pdbqt_content_path(entry.ligand_id, entry.ligand_preparation_id)
+    original = path.read_bytes()
+    path.write_bytes(original + b"tampered")
+    with pytest.raises(AnkoraDomainError):
+        store.assert_can_start_job(job)
+    path.write_bytes(original)
+    assert store.load_entry(campaign.campaign_id, entry.ligand_id) == entry
+    store.request_cancel(campaign.campaign_id)
+    with pytest.raises(AnkoraDomainError):
+        store.assert_can_start_job(job)
+
+
 def test_recovery_matches_one_verified_orphan_by_campaign_and_ligand(
     tmp_path, synthetic_completed_prepared_job, monkeypatch
 ):

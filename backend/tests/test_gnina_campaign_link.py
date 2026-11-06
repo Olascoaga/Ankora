@@ -110,9 +110,7 @@ def _stub_input_stores(tmp_path: Path) -> tuple[SimpleNamespace, SimpleNamespace
         content_path=lambda _receptor_id, _artifact_id: receptor_path,
     )
     sites = SimpleNamespace(
-        load_record=lambda _site_id: SimpleNamespace(
-            receptor_id="receptor", stale=False, box=_BOX
-        )
+        load_record=lambda _site_id: SimpleNamespace(receptor_id="receptor", stale=False, box=_BOX)
     )
     ligands = SimpleNamespace(
         load_pdbqt_record=lambda _ligand_id, _preparation_id: SimpleNamespace(
@@ -161,6 +159,7 @@ def _service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         ligands=ligands,
         leases=leases,
         resources=arbiter,
+        screening_store=SimpleNamespace(assert_can_start_job=lambda _job: None),
     )
     # Retire the real worker pool, then take ownership of submission so no
     # GNINA execution can begin while the durable record is inspected.
@@ -262,6 +261,29 @@ def test_invalid_campaign_id_creates_no_job(
     with pytest.raises(AnkoraDomainError) as caught:
         service.start(_request(), screening_campaign_id="not-a-uuid")
     assert caught.value.code == "GNINA_SCREENING_CAMPAIGN_ID_INVALID"
+    assert store.list_jobs() == []
+    assert executor.submissions == []
+    assert not arbiter.snapshot().active_allocations
+    leases.shutdown()
+
+
+def test_screening_guard_refuses_before_job_creation_or_submission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, store, arbiter, leases, executor = _service(tmp_path, monkeypatch)
+
+    def reject(_job):
+        raise AnkoraDomainError(
+            code="GNINA_SCREENING_MISMATCH",
+            stage="test",
+            message="synthetic mismatch",
+            status_code=409,
+        )
+
+    service._screening_store = SimpleNamespace(assert_can_start_job=reject)
+    with pytest.raises(AnkoraDomainError) as caught:
+        service.start(_request(), screening_campaign_id=str(uuid4()))
+    assert caught.value.code == "GNINA_SCREENING_MISMATCH"
     assert store.list_jobs() == []
     assert executor.submissions == []
     assert not arbiter.snapshot().active_allocations
