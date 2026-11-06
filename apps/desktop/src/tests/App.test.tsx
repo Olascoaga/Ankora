@@ -111,6 +111,30 @@ it("shows an interrupted GNINA screening without offering an unavailable retry",
   expect(screen.queryByRole("button", { name: "Retry as new" })).not.toBeInTheDocument();
 });
 
+it("does not offer an individual retry for a job owned by a GNINA screening", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
+    const payload = url.endsWith("/work/recovery") ? {
+      reconciled_at: "2026-09-05T12:00:00Z",
+      items: [{
+        work_kind: "gnina_job", work_id: "00000000-0000-0000-0000-000000000091",
+        screening_campaign_id: "00000000-0000-0000-0000-000000000092",
+        previous_status: "running", interrupted_entry_count: 0, completed_entry_count: 0,
+        last_heartbeat_at: null, previous_owner_instance_id: null,
+      }],
+    } : url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources
+      : url.endsWith("/system") ? system : tools;
+    return new Response(JSON.stringify(payload), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  });
+  render(<App />);
+  expect(await screen.findByText("GNINA job")).toBeInTheDocument();
+  expect(screen.getByText(/cannot be retried separately/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry as new" })).not.toBeInTheDocument();
+});
+
 it("renders the connected backend and tool states", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);

@@ -40,6 +40,7 @@ class GninaJobStore:
             directory = self.job_directory(record.job_id)
             if not directory.is_dir():
                 raise self._not_found(record.job_id)
+            self._require_stable_campaign_link(record)
             temporary = directory / f".record-{uuid4()}.tmp"
             try:
                 with temporary.open("x", encoding="utf-8", newline="\n") as stream:
@@ -115,6 +116,30 @@ class GninaJobStore:
                 details={"job_id": job_id, "artifact_id": artifact_id},
             )
         return path
+
+    def _require_stable_campaign_link(self, record: GninaJobRecord) -> None:
+        """The campaign correlation is written once, at creation, and never edited.
+
+        Every lifecycle update copies the loaded record, so this only ever fires
+        on a caller that invented, replaced or dropped the link. Refusing the
+        write keeps an orphaned job identifiable: a lost correlation cannot be
+        reconstructed from the record afterwards, and a changed one would
+        reassign a job's scientific work to a campaign that did not create it.
+        """
+        stored = self.load_job(record.job_id).screening_campaign_id
+        if stored == record.screening_campaign_id:
+            return
+        raise AnkoraDomainError(
+            code="GNINA_SCREENING_CAMPAIGN_LINK_IMMUTABLE",
+            stage="gnina_storage",
+            message="The screening campaign recorded for a GNINA job cannot be changed.",
+            status_code=409,
+            details={
+                "job_id": record.job_id,
+                "recorded_screening_campaign_id": stored,
+                "rejected_screening_campaign_id": record.screening_campaign_id,
+            },
+        )
 
     @staticmethod
     def _not_found(job_id: str) -> AnkoraDomainError:

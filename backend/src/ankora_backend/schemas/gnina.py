@@ -2,11 +2,25 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, DockingJobStatus
+
+
+def is_canonical_uuid(value: str) -> bool:
+    """True only for the lowercase hyphenated form that `str(UUID(...))` produces.
+
+    Accepting the variants `UUID()` tolerates - braces, `urn:uuid:`, uppercase,
+    missing hyphens - would let one campaign be referenced under several
+    spellings, so recovery could not match an orphaned job by string equality.
+    """
+    try:
+        return str(UUID(value)) == value
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 class GninaDockingParameters(BaseModel):
@@ -92,6 +106,15 @@ class GninaJobRecord(BaseModel):
 
     job_id: str = Field(min_length=1)
     engine: Literal["gnina"] = "gnina"
+    # The screening campaign this job was created for, written by the backend
+    # into the initial queued record so the correlation is durable from the
+    # instant the record exists. A process that stops between creating this job
+    # and recording its id in the campaign leaves an orphan that recovery can
+    # identify by this field alone, instead of guessing from creation time, the
+    # ligand or the command. Absent on standalone jobs, including every record
+    # written before this field existed; the associated ligand is already
+    # `request.ligand_id` and is deliberately not duplicated here.
+    screening_campaign_id: str | None = Field(default=None, frozen=True)
     status: DockingJobStatus
     phase: DockingJobPhase
     created_at: datetime
@@ -108,6 +131,14 @@ class GninaJobRecord(BaseModel):
     execution: GninaExecutionEvidence | None = None
     poses: list[GninaPoseResult] = Field(default_factory=list)
     failure: DockingFailure | None = None
+
+    @field_validator("screening_campaign_id")
+    @classmethod
+    def require_canonical_campaign_id(cls, value: str | None) -> str | None:
+        """A malformed link is refused rather than stored as an unusable string."""
+        if value is not None and not is_canonical_uuid(value):
+            raise ValueError("screening_campaign_id must be a canonical UUID")
+        return value
 
     @model_validator(mode="after")
     def guard_pose_publication(self) -> "GninaJobRecord":

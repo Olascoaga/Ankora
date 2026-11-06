@@ -26,7 +26,9 @@ from ankora_backend.services.resource_arbiter import ResourceArbiter
 from ankora_backend.services.work_leases import WorkLeaseManager
 
 
-def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, screening_campaign_id: str | None = None
+):
     monkeypatch.setattr(
         "ankora_backend.services.gnina_docking.require_current_inputs", lambda *_a, **_k: None
     )
@@ -63,6 +65,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     job = GninaJobRecord(
         job_id=store.new_job_id(),
+        screening_campaign_id=screening_campaign_id,
         status=DockingJobStatus.QUEUED,
         phase=DockingJobPhase.QUEUED,
         created_at=datetime.now(UTC),

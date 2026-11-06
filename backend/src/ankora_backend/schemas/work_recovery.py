@@ -47,6 +47,7 @@ class RecoveredWorkItem(BaseModel):
     completed_entry_count: int = Field(default=0, ge=0)
     last_heartbeat_at: datetime | None = None
     previous_owner_instance_id: str | None = None
+    screening_campaign_id: str | None = None
 
 
 class WorkRecoverySummary(BaseModel):

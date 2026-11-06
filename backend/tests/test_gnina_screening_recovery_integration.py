@@ -6,13 +6,13 @@ from uuid import uuid4
 
 import pytest
 from test_gnina_screening_schema import _queued
-from test_gnina_screening_store import _create_synthetic, _failure, _initial
+from test_gnina_screening_store import _create_synthetic, _failure, _initial, _queued_job_campaign
 from test_work_retry import _service
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.work_lease_store import WorkLeaseStore
-from ankora_backend.schemas.docking import DockingJobStatus
+from ankora_backend.schemas.docking import DockingJobPhase, DockingJobStatus
 from ankora_backend.schemas.work_recovery import (
     WorkKind,
     WorkLeaseRecord,
@@ -20,6 +20,8 @@ from ankora_backend.schemas.work_recovery import (
     WorkRetryRequest,
 )
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
+
+pytest_plugins = ("test_gnina_screening_store",)
 
 
 def test_startup_reconciles_screening_without_rerun_or_changing_another_project(
@@ -79,3 +81,47 @@ def test_retry_is_explicitly_unavailable_for_screening():
             WorkRetryRequest(acknowledge_new_immutable_attempt=True),
         )
     assert error.value.code == "WORK_RETRY_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("job_finished", [False, True])
+def test_startup_reconciles_linked_job_before_its_campaign(
+    tmp_path, monkeypatch, synthetic_completed_prepared_job, job_finished
+):
+    store, campaign, running = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    )
+    job = store.jobs.load_job(running.gnina_job_id)
+    if not job_finished:
+        store.jobs.update_job(
+            job.model_copy(
+                update={
+                    "status": DockingJobStatus.RUNNING,
+                    "phase": DockingJobPhase.DOCKING,
+                    "completed_at": None,
+                    "execution": None,
+                    "poses": [],
+                }
+            )
+        )
+    recovery = InterruptedWorkRecovery(
+        docking=MagicMock(),
+        autogrid=MagicMock(),
+        autodock4=MagicMock(),
+        autodock_gpu=MagicMock(),
+        leases=WorkLeaseStore(tmp_path),
+        gnina=store.jobs,
+        gnina_screening=store,
+    )
+    summary = recovery.reconcile()
+    saved = store.load_campaign(campaign.campaign_id)
+    assert saved.status is DockingJobStatus.FAILED
+    assert saved.entries[0].gnina_job_id == job.job_id
+    if job_finished:
+        assert saved.entries[0].status is DockingJobStatus.COMPLETED
+        assert (saved.succeeded_count, saved.failed_count) == (1, 0)
+        assert [item.work_kind for item in summary.items] == [WorkKind.GNINA_SCREENING]
+    else:
+        assert saved.entries[0].status is DockingJobStatus.FAILED
+        assert saved.entries[0].failure.code == "GNINA_EXECUTION_INTERRUPTED"
+        linked = next(item for item in summary.items if item.work_kind is WorkKind.GNINA_JOB)
+        assert linked.screening_campaign_id == campaign.campaign_id

@@ -197,6 +197,16 @@ class WorkRetryService:
                     details={"work_kind": work_kind.value, "work_id": work_id},
                 )
             interrupted = self._gnina_store.load_job(work_id)
+            if interrupted.screening_campaign_id is not None:
+                raise AnkoraDomainError(
+                    code="WORK_RETRY_CAMPAIGN_JOB_UNAVAILABLE",
+                    stage="work_recovery",
+                    message=(
+                        "A GNINA screening job cannot be retried independently of its campaign."
+                    ),
+                    status_code=409,
+                    details={"work_kind": work_kind.value, "work_id": work_id},
+                )
             self._require_interrupted(work_kind, work_id, interrupted.failure)
             created = self._gnina.start(interrupted.request)
             return self._response(

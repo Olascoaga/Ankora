@@ -36,6 +36,7 @@ from ankora_backend.schemas.gnina import (
     GninaPoseArtifact,
     GninaPoseResult,
     GninaToolIdentity,
+    is_canonical_uuid,
 )
 from ankora_backend.schemas.receptors import ReceptorOutputStage, ReceptorPreparationStatus
 from ankora_backend.schemas.work_recovery import WorkKind
@@ -111,7 +112,20 @@ class GninaDockingService:
             enable_experimental_cuda=enable_experimental_cuda,
         )
 
-    def start(self, request: GninaDockingRequest) -> GninaJobRecord:
+    def start(
+        self,
+        request: GninaDockingRequest,
+        *,
+        screening_campaign_id: str | None = None,
+    ) -> GninaJobRecord:
+        """Create and launch one GNINA job.
+
+        `screening_campaign_id` is an internal backend parameter, not part of
+        the HTTP request model: it is keyword-only and defaults to `None`, so
+        ordinary callers behave exactly as before. A screening orchestrator
+        passes the campaign it is working for, and the id is written into the
+        initial queued record before anything is submitted.
+        """
         if not _linux_host():
             raise _failure("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition.")
         # CUDA remains gated until independent, process-specific GPU observation is wired in.
@@ -119,6 +133,13 @@ class GninaDockingService:
             raise _failure(
                 "GNINA_CUDA_VERIFICATION_UNAVAILABLE",
                 "GNINA CUDA execution is not enabled until GPU evidence is verified.",
+            )
+        # Refused before any input is read, so a malformed link never reaches a
+        # durable record and no job is created under an unusable correlation.
+        if screening_campaign_id is not None and not is_canonical_uuid(screening_campaign_id):
+            raise _failure(
+                "GNINA_SCREENING_CAMPAIGN_ID_INVALID",
+                "The screening campaign identifier is not a canonical UUID.",
             )
         require_current_inputs(request, binding_site_store=self._sites, ligand_store=self._ligands)
         receptor = self._receptors.load_record(request.receptor_id)
@@ -180,6 +201,7 @@ class GninaDockingService:
         ]
         record = GninaJobRecord(
             job_id=job_id,
+            screening_campaign_id=screening_campaign_id,
             status=DockingJobStatus.QUEUED,
             phase=DockingJobPhase.QUEUED,
             created_at=datetime.now(UTC),

@@ -123,7 +123,15 @@ class InterruptedWorkRecovery:
                     }
                 )
             )
-            items.append(_item(WorkKind.GNINA_JOB, record.job_id, record.status.value, lease))
+            items.append(
+                _item(
+                    WorkKind.GNINA_JOB,
+                    record.job_id,
+                    record.status.value,
+                    lease,
+                    screening_campaign_id=record.screening_campaign_id,
+                )
+            )
         return items
 
     def _reconcile_gnina_screening(
@@ -445,11 +453,13 @@ def _item(
     lease: WorkLeaseRecord | None,
     interrupted_entry_count: int = 0,
     completed_entry_count: int = 0,
+    screening_campaign_id: str | None = None,
 ) -> RecoveredWorkItem:
     return RecoveredWorkItem(
         work_kind=work_kind,
         work_id=work_id,
         previous_status=previous_status,
+        screening_campaign_id=screening_campaign_id,
         interrupted_entry_count=interrupted_entry_count,
         completed_entry_count=completed_entry_count,
         last_heartbeat_at=lease.heartbeat_at if lease is not None else None,

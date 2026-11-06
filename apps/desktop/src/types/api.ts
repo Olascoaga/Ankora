@@ -1037,6 +1037,7 @@ export interface GninaPoseResult {
 export interface GninaDockingJobRecord {
   job_id: string;
   engine: "gnina";
+  screening_campaign_id?: string | null;
   status: DockingJobStatus;
   phase: DockingJobPhase;
   created_at: string;
@@ -2296,6 +2297,7 @@ export interface RecoveredWorkItem {
   completed_entry_count: number;
   last_heartbeat_at: string | null;
   previous_owner_instance_id: string | null;
+  screening_campaign_id?: string | null;
 }
 
 export interface WorkRecoverySummary {

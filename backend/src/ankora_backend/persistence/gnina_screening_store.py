@@ -57,7 +57,12 @@ from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, DockingJobStatus
-from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord, GninaToolIdentity
+from ankora_backend.schemas.gnina import (
+    GninaDockingRequest,
+    GninaJobRecord,
+    GninaToolIdentity,
+    is_canonical_uuid,
+)
 from ankora_backend.schemas.gnina_screening import (
     TERMINAL_CAMPAIGN_STATES,
     TERMINAL_ENTRY_STATES,
@@ -195,6 +200,8 @@ class GninaScreeningStore:
         Create-only: an existing campaign is never reopened or overwritten.
         """
         record = GninaScreeningCampaignRecord.model_validate(record.model_dump())
+        if not is_canonical_uuid(record.campaign_id):
+            raise self._invalid_campaign(record.campaign_id, "campaign ID must be a canonical UUID")
         if (
             record.status is not DockingJobStatus.QUEUED
             or record.phase is not DockingJobPhase.QUEUED
@@ -665,6 +672,7 @@ class GninaScreeningStore:
         job = self._jobs.load_job(job_id)
         if (
             job.job_id != job_id
+            or job.screening_campaign_id != campaign_id
             or job.request != expected
             or job.box != BindingBox.model_validate(summary["box"])
             or job.receptor_output_artifact_id != str(summary["receptor_output_artifact_id"])

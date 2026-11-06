@@ -5,9 +5,11 @@ from threading import Event
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ankora_backend.api.app import create_app
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.schemas.docking import DockingFailure, DockingJobStatus
 from ankora_backend.schemas.work_recovery import WorkKind, WorkRetryRequest
 from ankora_backend.services.work_retry import WorkRetryService
@@ -63,6 +65,7 @@ def test_gnina_retry_creates_a_new_attempt_only_for_interrupted_work():
     )
     old_id, new_id = str(uuid4()), str(uuid4())
     old = MagicMock()
+    old.screening_campaign_id = None
     old.failure = DockingFailure(code="GNINA_EXECUTION_INTERRUPTED", message="interrupted")
     store.load_job.return_value = old
     gnina.start.return_value = MagicMock(
@@ -73,3 +76,31 @@ def test_gnina_retry_creates_a_new_attempt_only_for_interrupted_work():
     )
     assert response.interrupted_work_id == old_id and response.new_work_id == new_id
     gnina.start.assert_called_once_with(old.request)
+
+
+def test_screening_job_cannot_be_retried_as_a_standalone_job():
+    gnina, store = MagicMock(), MagicMock()
+    service = WorkRetryService(
+        docking_store=MagicMock(),
+        autogrid_store=MagicMock(),
+        autodock4_store=MagicMock(),
+        autodock_gpu_store=MagicMock(),
+        vina=MagicMock(),
+        autogrid=MagicMock(),
+        autodock4=MagicMock(),
+        autodock_gpu=MagicMock(),
+        gnina=gnina,
+        gnina_store=store,
+    )
+    old = MagicMock()
+    old.screening_campaign_id = str(uuid4())
+    old.failure = DockingFailure(code="GNINA_EXECUTION_INTERRUPTED", message="interrupted")
+    store.load_job.return_value = old
+    with pytest.raises(AnkoraDomainError) as error:
+        service.retry(
+            WorkKind.GNINA_JOB,
+            str(uuid4()),
+            WorkRetryRequest(acknowledge_new_immutable_attempt=True),
+        )
+    assert error.value.code == "WORK_RETRY_CAMPAIGN_JOB_UNAVAILABLE"
+    gnina.start.assert_not_called()

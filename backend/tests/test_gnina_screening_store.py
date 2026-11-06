@@ -212,7 +212,9 @@ def test_single_entry_update_does_not_count_or_rewrite_the_full_library(tmp_path
 def synthetic_completed_prepared_job(prepared, tmp_path, monkeypatch):
     """Exercise identity links only; fake engine and topology are not scientific evidence."""
     ligand_store, ligand_id, prepared_entry, pdbqt, conformer = prepared
-    service, job_store, arbiter, leases, initial, installation = _setup(tmp_path, monkeypatch)
+    service, job_store, arbiter, leases, initial, installation = _setup(
+        tmp_path, monkeypatch, screening_campaign_id=str(uuid4())
+    )
     pdbqt_bytes = ligand_store.pdbqt_content_path(
         ligand_id, pdbqt.artifact.preparation_id
     ).read_bytes()
@@ -253,7 +255,9 @@ def synthetic_completed_prepared_job(prepared, tmp_path, monkeypatch):
     assert not arbiter.snapshot().active_allocations
 
 
-def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch, *, extra=False):
+def _queued_job_campaign(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch, *, extra=False, campaign_id=None
+):
     _ligands, _prepared_entry, pdbqt, conformer, job = synthetic_completed_prepared_job
     store = GninaScreeningStore(tmp_path)
     entry = _queued(
@@ -278,7 +282,7 @@ def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch
         entries.append(_queued("later", 3, chemical_state_id="state-later"))
     campaign = _record(
         entries,
-        campaign_id=str(uuid4()),
+        campaign_id=campaign_id or job.screening_campaign_id,
         status=DockingJobStatus.QUEUED,
         phase=DockingJobPhase.QUEUED,
         request=request,
@@ -300,6 +304,15 @@ def _queued_job_campaign(tmp_path, synthetic_completed_prepared_job, monkeypatch
         ),
     )
     return store, campaign, running
+
+
+def test_a_job_cannot_be_attached_to_another_campaign(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    with pytest.raises(AnkoraDomainError):
+        _queued_job_campaign(
+            tmp_path, synthetic_completed_prepared_job, monkeypatch, campaign_id=str(uuid4())
+        )
 
 
 def test_recovery_preserves_success_and_marks_unfinished_campaign_failed(

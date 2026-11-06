@@ -87,6 +87,13 @@ reconciles abandoned GNINA screenings after reconciling their GNINA jobs. The
 activity panel shows recovered counts and does not offer a screening retry
 until that operation is implemented.
 
+A single GNINA job may also carry its owning screening campaign's canonical
+UUID, recorded before execution and immutable in the single-job store. A
+campaign accepts only jobs carrying its own identity, and a linked interrupted
+job cannot be retried as a standalone job. The startup activity panel displays
+that restriction. This correlation enables orphan reconciliation but does not
+by itself attach an orphan or run a screening campaign.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.
