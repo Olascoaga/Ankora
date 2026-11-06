@@ -77,6 +77,12 @@ tampering and a small applied filter selection on Linux and Windows. The
 synthetic engine fixture does not validate scientific docking performance.
 The store is not wired to orchestration, recovery, an API or the interface.
 
+A library preflight now resolves every selected compound in selection order,
+retaining an explicit failure for missing or inconsistent source records and
+unprepared or altered derivatives while leaving verified neighbors queued.
+The preflight result and its pinned manifest have been exercised together with
+the campaign store using a synthetic library; no GNINA process was started.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
