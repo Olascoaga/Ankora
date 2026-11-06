@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -65,6 +66,19 @@ def _completed(store: GninaJobStore) -> GninaJobRecord:
         ),
         poses=poses,
     )
+
+
+def test_screening_children_do_not_appear_as_independent_campaigns(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    store = GninaJobStore.from_environment()
+    standalone = _completed(store)
+    child = _completed(store).model_copy(update={"screening_campaign_id": str(uuid4())})
+    store.create_job(standalone)
+    store.create_job(child)
+    with TestClient(create_app()) as client:
+        page = client.get("/api/v1/results/campaigns?scoring_family=gnina").json()
+        assert page["total"] == 1
+        assert page["entries"][0]["catalog_id"] == f"gnina_job:{standalone.job_id}"
 
 
 def test_catalog_keeps_gnina_score_axes_and_renders_methods(tmp_path, monkeypatch):

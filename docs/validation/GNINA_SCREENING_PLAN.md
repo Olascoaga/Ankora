@@ -43,9 +43,9 @@ Windows. This test does not implement a campaign or test a real GPU process.
 The independent screening-evidence verifier projects the first recorded
 CNN-ranked pose only after checking the single-job request, tool, receptor,
 prepared ligand and conformer identities against the campaign, preserved input
-hashes and the published pose hash. It is not yet
-wired into a campaign; the future caller must also validate the applied filter
-selection and prepared-ligand identities. The verifier does not run GNINA.
+hashes and the published pose hash. Campaign storage invokes it after checking
+the applied filter selection and prepared-ligand identities. The verifier does
+not run GNINA.
 
 The separate selection verifier checks the applied manifest's bytes, hash and
 size against the saved filter record, including selected order, evaluations,
@@ -75,7 +75,7 @@ job, exact prepared inputs and preserved pose; terminal outcomes remain frozen.
 Synthetic tests cover isolation, ordering, concurrency, failure, cancellation,
 tampering and a small applied filter selection on Linux and Windows. The
 synthetic engine fixture does not validate scientific docking performance.
-The store is not wired to campaign orchestration or a campaign API.
+The storage layer alone does not launch scientific work.
 
 The storage layer provides an atomic interruption transition for an abandoned
 campaign. It preserves completed entries, checks linked completed jobs before
@@ -118,15 +118,28 @@ cancellation, and cancels queued entries. It prevents duplicate ownership in
 the current process and stops active children before interruption reconciliation
 on unexpected failures. A durable campaign lease is acquired and released.
 Synthetic Linux and Windows tests cover cancellation, orphan cleanup, competing
-runners and a failed entry followed by a successful one. This runner is not yet
-attached to the project runtime or API; it is not a user-facing campaign and
-has not been validated with a real GNINA library or multiple backend processes.
+runners and a failed entry followed by a successful one. The runner has not
+been validated with a real GNINA library or multiple backend processes.
 
 The admission function validates Linux, the selected compute mode, project
 freshness, prepared receptor bytes, search box and GNINA tool identity, and
 persists the verified applied selection and all preflight outcomes. It does not
 launch a job. Its tests use a real synthetic library selection and a fake GNINA
-identity, not docking evidence. Runtime ownership, API and UI remain separate.
+identity, not docking evidence.
+
+The project runtime now owns the asynchronous campaign service. Its localhost
+API admits and starts a campaign, reads compact progress and revision deltas,
+lists stored campaign headers and accepts cancellation, including cancellation
+before the runner starts. A pending or running campaign blocks project changes;
+shutdown requests cancellation before stopping the GNINA worker. The launch guard
+rechecks the selection's effective stale state for each job. Individual jobs
+belonging to a screening are excluded from the single-job Results catalog; the
+campaign itself does not yet have Results catalog, export, or analysis support.
+Synthetic API tests cover queued cancellation, project isolation, and a
+two-entry campaign in which one prepared entry receives a simulated engine
+result and one unprepared entry fails. The synthetic test disables topology
+validation and is not evidence of chemical correctness. These tests do not
+constitute a real GNINA campaign or native Linux workstation acceptance.
 
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and

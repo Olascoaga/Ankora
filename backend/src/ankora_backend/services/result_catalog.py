@@ -177,7 +177,9 @@ class ResultCatalogService:
         if self._gnina_store is not None:
             with suppress(AnkoraDomainError, OSError):
                 entries.extend(
-                    self._from_gnina_job(record) for record in self._gnina_store.list_jobs()
+                    self._from_gnina_job(record)
+                    for record in self._gnina_store.list_jobs()
+                    if record.screening_campaign_id is None
                 )
         assessments = self._reproducibility.all_assessments()
         return [

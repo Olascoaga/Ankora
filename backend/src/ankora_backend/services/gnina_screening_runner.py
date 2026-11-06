@@ -61,6 +61,20 @@ class GninaScreeningRunner:
                 self._docking.cancel(job_id)
             return progress
 
+    def cancel_scheduled(self, campaign_id: str) -> GninaScreeningProgress:
+        """Cancel an owned campaign, including one still awaiting its worker."""
+        with self._lock:
+            if campaign_id in self._active:
+                return self.cancel(campaign_id)
+            progress = self._store.load_progress(campaign_id)
+            if progress.status in _TERMINAL:
+                return progress
+            if progress.status not in {DockingJobStatus.QUEUED, DockingJobStatus.CANCEL_REQUESTED}:
+                raise self._error(
+                    "GNINA_SCREENING_NOT_ACTIVE", "This campaign is not owned by this runner."
+                )
+            return self._store.request_cancel(campaign_id)
+
     def run(self, campaign_id: str) -> GninaScreeningProgress:
         """Run a fresh campaign once; existing attempts are never retried."""
         with self._lock:
@@ -69,7 +83,10 @@ class GninaScreeningRunner:
                     "GNINA_SCREENING_ALREADY_ACTIVE", "This campaign is already active."
                 )
             campaign = self._store.load_campaign(campaign_id)
-            if campaign.status is not DockingJobStatus.QUEUED or any(
+            if campaign.status not in {
+                DockingJobStatus.QUEUED,
+                DockingJobStatus.CANCEL_REQUESTED,
+            } or any(
                 not entry.is_terminal
                 and (entry.status is not DockingJobStatus.QUEUED or entry.gnina_job_id)
                 for entry in campaign.entries
@@ -202,6 +219,12 @@ class GninaScreeningRunner:
             # reconciliation is safe only after each has actually terminated.
             if acquired:
                 self._stop_and_reconcile(campaign_id)
+            else:
+                # Admission checked there was no prior attempt and this worker
+                # has not launched one before acquiring its campaign lease.
+                self._store.recover_interrupted_campaign(
+                    campaign_id, interrupted_at=datetime.now(UTC)
+                )
             raise
         finally:
             # Unexpected errors are not silently converted into successful work.
@@ -221,6 +244,19 @@ class GninaScreeningRunner:
             for job in self._store.jobs.list_jobs()
             if job.screening_campaign_id == campaign_id and job.status not in _TERMINAL
         ]
+        # list_jobs deliberately skips unreadable records. Never conclude that
+        # a known child has stopped just because it was omitted from the list.
+        with self._lock:
+            active_id = self._active.get(campaign_id)
+        if active_id is not None and not any(job.job_id == active_id for job in jobs):
+            active_job = self._store.jobs.load_job(active_id)
+            if active_job.screening_campaign_id != campaign_id:
+                raise self._error(
+                    "GNINA_SCREENING_CHILD_MISMATCH",
+                    "The active job no longer matches its campaign.",
+                )
+            if active_job.status not in _TERMINAL:
+                jobs.append(active_job)
         for job in jobs:
             self._docking.cancel(job.job_id)
         deadline = monotonic() + 30

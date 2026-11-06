@@ -78,6 +78,7 @@ from ankora_backend.schemas.ligand_library_preparation import (
 from ankora_backend.services.gnina_screening_evidence import verified_screening_pose
 from ankora_backend.services.gnina_screening_preparation import verified_screening_preparation
 from ankora_backend.services.gnina_screening_selection import verified_screening_selection
+from ankora_backend.services.project_dependencies import ProjectDependencyService
 
 _DATABASE_NAME = "campaign_state.sqlite3"
 _RECORD_NAME = "record.json"
@@ -419,6 +420,15 @@ class GninaScreeningStore:
                 raise self._invalid_campaign(campaign_id, "entry is not awaiting a new job")
             proposed = entry.model_copy(update={"gnina_job_id": job.job_id})
             self._check_job_identity(campaign_id, summary, proposed, job)
+            request = GninaScreeningRequest.model_validate(summary["request"])
+            ProjectDependencyService.for_project_root(self._project_root).require_current(
+                {
+                    request.receptor_id,
+                    request.binding_site_id,
+                    request.library_id,
+                    request.filter_run_id,
+                }
+            )
             self._verify_entry_preparation(campaign_id, summary, proposed)
 
     def request_cancel(self, campaign_id: str) -> GninaScreeningProgress:

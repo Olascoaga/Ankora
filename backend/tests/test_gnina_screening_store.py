@@ -383,6 +383,32 @@ def test_before_launch_screening_job_must_match_the_recorded_campaign(
         store.assert_can_start_job(job)
 
 
+def test_before_launch_rechecks_campaign_selection_freshness(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, _ = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, link=False
+    )
+    job = synthetic_completed_prepared_job[-1]
+
+    def reject(ids):
+        assert campaign.request.filter_run_id in ids
+        raise AnkoraDomainError(
+            code="PROJECT_INPUT_STALE",
+            stage="test",
+            message="synthetic stale selection",
+            status_code=409,
+        )
+
+    monkeypatch.setattr(
+        "ankora_backend.persistence.gnina_screening_store.ProjectDependencyService.for_project_root",
+        lambda _root: SimpleNamespace(require_current=reject),
+    )
+    with pytest.raises(AnkoraDomainError) as error:
+        store.assert_can_start_job(job)
+    assert error.value.code == "PROJECT_INPUT_STALE"
+
+
 def test_recovery_matches_one_verified_orphan_by_campaign_and_ligand(
     tmp_path, synthetic_completed_prepared_job, monkeypatch
 ):

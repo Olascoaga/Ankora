@@ -64,6 +64,12 @@ from ankora_backend.schemas.engine_comparison import EngineComparison
 from ankora_backend.schemas.exports import ExportKind, ExportPage
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
 from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord
+from ankora_backend.schemas.gnina_screening import (
+    GninaScreeningCampaignRecord,
+    GninaScreeningEntry,
+    GninaScreeningProgress,
+    GninaScreeningRequest,
+)
 from ankora_backend.schemas.ligand_library_preparation import LigandLibraryPreparationRecord
 from ankora_backend.schemas.ligands import (
     ApplyLigandLibraryFilterRequest,
@@ -160,6 +166,7 @@ from ankora_backend.services.engine_comparison import EngineComparisonService
 from ankora_backend.services.export_catalog import ExportCatalogService
 from ankora_backend.services.figure_export import FigureExportService
 from ankora_backend.services.gnina_docking import GninaDockingService
+from ankora_backend.services.gnina_screening_service import GninaScreeningService
 from ankora_backend.services.ligand_extraction import extract_crystallographic_ligand
 from ankora_backend.services.ligand_filtering import (
     apply_library_filters,
@@ -235,6 +242,10 @@ def _vina_docking_service(request: Request) -> VinaDockingService:
 
 def _gnina_docking_service(request: Request) -> GninaDockingService:
     return cast(GninaDockingService, request.app.state.gnina_docking)
+
+
+def _gnina_screening_service(request: Request) -> GninaScreeningService:
+    return cast(GninaScreeningService, request.app.state.gnina_screening)
 
 
 def _autogrid_map_service(request: Request) -> AutoGridMapService:
@@ -1020,6 +1031,48 @@ def create_gnina_docking_job(
     http_request: Request,
 ) -> GninaJobRecord:
     return _gnina_docking_service(http_request).start(request)
+
+
+@router.post(
+    "/docking/gnina/screenings", response_model=GninaScreeningCampaignRecord, status_code=202
+)
+def create_gnina_screening(
+    request: GninaScreeningRequest, http_request: Request
+) -> GninaScreeningCampaignRecord:
+    return _project_runtime(http_request).start_gnina_screening(request)
+
+
+@router.get("/docking/gnina/screenings", response_model=list[GninaScreeningProgress])
+def list_gnina_screenings(request: Request) -> list[GninaScreeningProgress]:
+    return _gnina_screening_service(request).list_progress()
+
+
+@router.get("/docking/gnina/screenings/{campaign_id}", response_model=GninaScreeningCampaignRecord)
+def get_gnina_screening(campaign_id: str, request: Request) -> GninaScreeningCampaignRecord:
+    return _gnina_screening_service(request).get(campaign_id)
+
+
+@router.get(
+    "/docking/gnina/screenings/{campaign_id}/progress", response_model=GninaScreeningProgress
+)
+def get_gnina_screening_progress(campaign_id: str, request: Request) -> GninaScreeningProgress:
+    return _gnina_screening_service(request).progress(campaign_id)
+
+
+@router.get(
+    "/docking/gnina/screenings/{campaign_id}/entries", response_model=list[GninaScreeningEntry]
+)
+def get_gnina_screening_entries(
+    campaign_id: str, request: Request, after_revision: int = Query(ge=0)
+) -> list[GninaScreeningEntry]:
+    return _gnina_screening_service(request).entries(campaign_id, after_revision)
+
+
+@router.post(
+    "/docking/gnina/screenings/{campaign_id}/cancel", response_model=GninaScreeningProgress
+)
+def cancel_gnina_screening(campaign_id: str, request: Request) -> GninaScreeningProgress:
+    return _gnina_screening_service(request).cancel(campaign_id)
 
 
 @router.get("/docking/gnina/jobs/{job_id}", response_model=GninaJobRecord)

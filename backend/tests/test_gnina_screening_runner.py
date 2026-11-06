@@ -323,3 +323,48 @@ def test_cancel_during_submission_waits_for_job_to_be_linked(
             canceler.join(5)
         worker.join(5)
         leases.shutdown()
+
+
+def test_cancel_scheduled_campaign_before_worker_starts(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, docking, leases, runner = _setup_runner(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, extra=True
+    )
+    try:
+        assert (
+            runner.cancel_scheduled(campaign.campaign_id).status
+            is DockingJobStatus.CANCEL_REQUESTED
+        )
+        result = runner.run(campaign.campaign_id)
+        assert result.status is DockingJobStatus.CANCELED
+        assert result.canceled_count == 2
+        assert docking.launched == []
+        assert not runner.has_active_work()
+    finally:
+        leases.shutdown()
+
+
+def test_reconciliation_stops_known_child_even_when_job_listing_omits_it(
+    tmp_path, synthetic_completed_prepared_job, monkeypatch
+):
+    store, campaign, docking, leases, runner = _setup_runner(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch, block=True
+    )
+    original_update = store.update_entry
+
+    def fail_update(campaign_id, entry):
+        if entry.status is DockingJobStatus.RUNNING:
+            raise RuntimeError("synthetic storage failure")
+        return original_update(campaign_id, entry)
+
+    monkeypatch.setattr(store, "update_entry", fail_update)
+    monkeypatch.setattr(store.jobs, "list_jobs", lambda: [])
+    try:
+        with pytest.raises(RuntimeError, match="synthetic storage failure"):
+            runner.run(campaign.campaign_id)
+        assert len(docking.canceled) == 1
+        assert store.jobs.load_job(docking.canceled[0]).status is DockingJobStatus.CANCELED
+        assert store.load_progress(campaign.campaign_id).status is DockingJobStatus.FAILED
+    finally:
+        leases.shutdown()
