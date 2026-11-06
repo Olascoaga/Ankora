@@ -96,6 +96,8 @@ unlinked entry is reconciled with that entry; a completed job is reported as a
 success only after its prepared inputs and pose verify. Multiple candidate jobs
 are never selected automatically: their identities are recorded for review.
 No work is retried automatically, and this foundation does not start a campaign.
+Synthetic startup checks also verify that recovery is restricted to the active
+project and does not alter a different project's pending work.
 
 The store can persist an idempotent cancellation request and refuses to mark a
 still-queued entry running after that request. This is a storage-level guard;

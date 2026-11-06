@@ -13,6 +13,7 @@ from test_gnina_screening_store import (
 from test_work_retry import _service
 
 from ankora_backend.domain.errors import AnkoraDomainError
+from ankora_backend.domain.project_context import project_scope
 from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.work_lease_store import WorkLeaseStore
 from ankora_backend.schemas.docking import DockingJobPhase, DockingJobStatus
@@ -84,6 +85,21 @@ def test_retry_is_explicitly_unavailable_for_screening():
             WorkRetryRequest(acknowledge_new_immutable_attempt=True),
         )
     assert error.value.code == "WORK_RETRY_UNAVAILABLE"
+
+
+def test_environment_startup_reconciles_only_the_active_project(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    first = GninaScreeningStore(tmp_path, project_id="project-one")
+    second = GninaScreeningStore(tmp_path, project_id="project-two")
+    one = _initial([_queued("one", 0)])
+    two = _initial([_queued("two", 0)])
+    _create_synthetic(first, one, monkeypatch)
+    _create_synthetic(second, two, monkeypatch)
+    with project_scope("project-one"):
+        summary = InterruptedWorkRecovery.from_environment().reconcile()
+    assert [item.work_id for item in summary.items] == [one.campaign_id]
+    assert first.load_progress(one.campaign_id).status is DockingJobStatus.FAILED
+    assert second.load_progress(two.campaign_id).status is DockingJobStatus.QUEUED
 
 
 @pytest.mark.parametrize("job_finished", [False, True])
