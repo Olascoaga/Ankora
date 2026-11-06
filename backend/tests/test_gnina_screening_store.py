@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from test_gnina_screening_preparation import prepared as prepared
 from test_gnina_screening_schema import _completed, _queued, _record, _request
 from test_gnina_service import _setup
 from test_ligand_filtering import _library
@@ -21,8 +22,6 @@ from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, Dock
 from ankora_backend.schemas.gnina_screening import GninaScreeningRequest, GninaScreeningSelection
 from ankora_backend.schemas.ligands import ApplyLigandLibraryFilterRequest
 from ankora_backend.services.ligand_filtering import apply_library_filters
-
-pytest_plugins = ("test_gnina_screening_preparation",)
 
 
 def _initial(entries):

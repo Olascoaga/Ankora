@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from test_gnina_screening_preparation import prepared as prepared
 from test_gnina_screening_schema import _queued
 from test_gnina_screening_store import _create_synthetic, _failure, _initial, _queued_job_campaign
 from test_gnina_screening_store import (
@@ -24,8 +25,6 @@ from ankora_backend.schemas.work_recovery import (
     WorkRetryRequest,
 )
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
-
-pytest_plugins = ("test_gnina_screening_preparation",)
 
 
 def test_startup_reconciles_screening_without_rerun_or_changing_another_project(
