@@ -46,6 +46,12 @@ identities, preserved input hashes and the published pose hash. It is not yet
 wired into a campaign; the future caller must also validate the applied filter
 selection and prepared-ligand identities. The verifier does not run GNINA.
 
+The separate selection verifier checks the applied manifest's bytes, hash and
+size against the saved filter record, including selected order, evaluations,
+chemical-state identities, filter settings and counts. Missing or inconsistent
+evidence is rejected, while a consistent empty selection has its own error. It
+does not yet start a campaign or validate prepared ligand artifacts.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
