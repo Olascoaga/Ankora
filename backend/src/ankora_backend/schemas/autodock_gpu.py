@@ -15,12 +15,11 @@ cluster structure. `DOCKING_POLICY.md` forbids merging engines; the same rule
 holds between backends of one engine, so GPU results are never pooled with CPU
 ones into a single ranking.
 
-**A seed does not make a GPU run reproducible.** AutoDock4 on the CPU is
-bit-identical across repeats of one seed; AutoDock-GPU is not. Six repeats of
-one seed on one machine produced six different ranking tables, with the best
-cluster energy spanning 0.13 kcal/mol (mean −3.30, sd 0.063). The seed is still
-recorded, because it is part of the protocol that was requested, but this
-contract states plainly that re-running will not reproduce the result exactly.
+**A seed alone does not establish reproducibility.** A previous Windows/OpenCL
+case produced six different rankings across six repeats, with the best cluster
+energy spanning 0.13 kcal/mol. That observation does not measure other inputs,
+devices or runtimes. The requested seed remains recorded; repeatability for an
+exact execution must be assessed from its own repeats.
 """
 
 from datetime import datetime
@@ -188,8 +187,7 @@ class AutoDockGpuDockingJobRecord(BaseModel):
     ligand_atom_types: list[str] = Field(min_length=1)
     ligand_atom_count: int = Field(ge=1)
     torsional_degrees_of_freedom: int = Field(ge=0)
-    # Stated on every record rather than left for a reader to infer from the
-    # backend: a repeat of this exact job will not reproduce these numbers.
+    # Legacy conservative flag: no guarantee, not a measured comparison of this job.
     bitwise_reproducible: bool = False
     command: list[str] = Field(default_factory=list)
     execution: AutoDockGpuExecutionEvidence | None = None

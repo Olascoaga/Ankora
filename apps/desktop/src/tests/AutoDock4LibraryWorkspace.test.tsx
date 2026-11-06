@@ -369,9 +369,9 @@ it("warns about irreproducibility as soon as the GPU is chosen, not after", asyn
   chooseGpu();
 
   expect(
-    screen.getByText(/does not reproduce a run from its seed/),
+    screen.getByText(/does not establish reproducibility for this GPU run/),
   ).toBeInTheDocument();
-  expect(screen.getByText(/Use the CPU backend when an exactly repeatable/))
+  expect(screen.getByText(/not a measurement of this execution/))
     .toBeInTheDocument();
 });
 

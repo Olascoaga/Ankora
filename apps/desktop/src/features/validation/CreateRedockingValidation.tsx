@@ -5,7 +5,7 @@ import type { CatalogEntry, CatalogPage, RedockingReferencePage, RedockingRunRec
   RedockingValidationRequest } from "../../types/api";
 
 type SourceKind = RedockingValidationRequest["source_kind"];
-const supported = new Set(["vina_job", "autodock4_job", "autodock_gpu_job"]);
+const supported = new Set(["vina_job", "autodock4_job", "autodock_gpu_job", "gnina_job"]);
 const message = (reason: unknown) => reason instanceof Error ? reason.message : "Validation could not be completed.";
 
 /** This form measures preserved outputs; it never submits a docking job. */
@@ -113,8 +113,9 @@ export function CreateRedockingValidation({ onCreated }: { onCreated: (run: Redo
           <span>{referenceOffset + 1}–{Math.min(referenceOffset + references.limit, references.total)} of {references.total}</span>
           <button type="button" disabled={referenceOffset + references.limit >= references.total} onClick={() => { setReferenceOffset(referenceOffset + 100); setReferenceId(""); setConfirmed(false); }}>Next references</button>
         </div> : null}
-        <p className="field-note">Choose the same molecule, not a prepared or minimized conformer. Ankora checks
-          original-structure identity, file fingerprints and heavy-atom compatibility; it does not align the poses.</p>
+        <p className="field-note">Choose the same molecule, not a prepared or minimized conformer. Confirm its
+          stereochemistry and chemical state: graph checks alone cannot establish stereochemical identity.
+          Ankora checks the source structure, file fingerprints and heavy-atom compatibility; it does not align poses.</p>
       </> : null}
       <label>3 · Recovery threshold (Å)
         <input aria-label="Recovery threshold (Å)" type="number" min="0.001" max="20" step="any" value={threshold}

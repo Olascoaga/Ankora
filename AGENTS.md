@@ -26,13 +26,16 @@ validation records, and Git history as the public handoff.
 - Never invent scientific results in tests. Label synthetic fixtures, and derive reference expectations from recorded evidence.
 - The frontend must never invoke Vina, GNINA, Meeko, or other scientific executables directly.
 - Detect and record external tool versions whenever tools are used.
-- Windows-native behavior is authoritative.
+- Preserve accepted Windows behavior. Linux development is authorized in WSL2/WSLg;
+  final Linux acceptance requires a native Linux workstation.
 - Keep original imported artifacts immutable and propagate stale state to dependent derivatives.
 - Bind local services only to localhost and construct subprocess calls with argument arrays.
 
 ## Session protocol
 
-- Codex implements; Claude Code may audit or review.
+- For the authorized Linux port, Claude Code and Gemini implement isolated
+  assignments on separate branches; Codex coordinates, reviews, and integrates.
+  Codex may continue implementation when their available budgets are exhausted.
 - Do not allow two agents to edit the same branch concurrently.
 - During an explicitly authorized implementation sequence, finish work in bounded units and commit each completed unit after its relevant tests and tracked documentation updates. Keep commits small and cohesive; do not wait for the scientist to repeat the commit instruction.
 - Before ending a coding session, run available tests and update the tracked project documentation. When the local `memory/` workspace exists, update `memory/PROJECT_STATE.md` and `memory/NEXT_SESSION.md` and record important decisions in `memory/DECISIONS.md`, but never stage those private files.

@@ -462,9 +462,9 @@ export function AutoDock4LibraryWorkspace({
           {backend === "autodock_gpu" ? (
             <div className="protonation-blocker" role="note">
               <p>
-                AutoDock-GPU does not reproduce a run from its seed. Six repeats of one
-                seed gave six different rankings, spanning 0.13 kcal/mol. Use the CPU
-                backend when an exactly repeatable result is required.
+                A seed alone does not establish reproducibility for this GPU run. An earlier
+                Windows/OpenCL case produced different rankings in six repeats; that is not
+                a measurement of this execution. Review repeats for your exact setup.
               </p>
             </div>
           ) : null}

@@ -9,3 +9,6 @@
 # Preserve upstream legal texts verbatim, including their source whitespace.
 apps/desktop/src-tauri/resources/legal/THIRD_PARTY_NOTICES.txt -whitespace
 resources/legal-sources/NSIS_COPYING.txt -whitespace
+
+# The real GNINA PDBQT retains fixed-column output byte for byte.
+backend/tests/fixtures/gnina_real_1hsg_mk1.pdbqt -whitespace

@@ -23,10 +23,29 @@ import { reproducibilityTitle } from "../results/reproducibility";
  * export is itself something that happened and can be found again.
  */
 
+export type CampaignExportSourceKind =
+  | "vina_batch"
+  | "autodock4_batch"
+  | "autodock_gpu_batch"
+  | "gnina_job";
+
+const EXPORTABLE_CAMPAIGN_KINDS = new Set<string>([
+  "vina_batch",
+  "autodock4_batch",
+  "autodock_gpu_batch",
+  "gnina_job",
+]);
+
+export function isExportableCampaignKind(
+  engineKey: string,
+): engineKey is CampaignExportSourceKind {
+  return EXPORTABLE_CAMPAIGN_KINDS.has(engineKey);
+}
+
 interface CampaignExportPanelProps {
-  sourceKind: "vina_batch" | "autodock4_batch" | "autodock_gpu_batch";
+  sourceKind: CampaignExportSourceKind;
   sourceId: string | null;
-  /** Only a finished campaign is worth exporting. */
+  /** Only a finished campaign or individual GNINA job is worth exporting. */
   ready: boolean;
   /** So a catalog watching this panel can pick the new bundle up. */
   onExported?: () => void;
@@ -46,11 +65,16 @@ export function CampaignExportPanel({
   const displayNameId = useId();
   const displayNameNoteId = useId();
   const canBrowse = folderChooserAvailable();
+  const isGninaJob = sourceKind === "gnina_job";
 
   async function browse() {
     setError(null);
     try {
-      const picked = await chooseFolder("Where should the campaign bundle be saved?");
+      const picked = await chooseFolder(
+        isGninaJob
+          ? "Where should the GNINA result bundle be saved?"
+          : "Where should the campaign bundle be saved?",
+      );
       if (picked === null) return;
       setDestination(picked);
       rememberFolder(picked);
@@ -83,11 +107,11 @@ export function CampaignExportPanel({
     <section className="receptor-section" aria-label="Campaign export">
       <div className="filter-heading"><span>Export</span></div>
       <p className="field-note">
-        Writes a folder holding the results table, a manifest of the receptor,
-        search space, map set, executable hash and full protocol, and a note
-        stating what the numbers are. Existing pose analyses and saved figures
-        travel with it in a portable ZIP. Nothing is recomputed.
+        {isGninaJob
+          ? "Writes a folder for this individual single-ligand GNINA result — one docking job, not a multi-ligand screening campaign — holding the pose table with separate CNN score, CNN affinity (pK) and minimized affinity (kcal/mol) metrics, SHA-256 hash-verified poses and prepared receptor, conformer and ligand PDBQT inputs, the search box, executable hash and full protocol. Scores are GNINA-specific predictions, never comparable across engines, and a single run or seed never claims repeat reproducibility. Existing pose analyses, saved figures and redocking validations travel with it in a portable ZIP. Verified crystal references are included when available; missing references are noted in the manifest. Nothing is recomputed."
+          : "Writes a folder holding the results table, a manifest of the receptor, search space, map set, executable hash and full protocol, and a note stating what the numbers are. Existing pose analyses and saved figures travel with it in a portable ZIP. Nothing is recomputed."}
       </p>
+      {isGninaJob ? <p className="field-note">The preserved command and logs may contain local file paths. Review the bundle before sharing it.</p> : null}
       {error ? <p className="protonation-blocker" role="alert">{error}</p> : null}
       <div className="export-bundle-name">
         <label className="section-label" htmlFor={displayNameId}>Bundle name (optional)</label>
@@ -96,7 +120,11 @@ export function CampaignExportPanel({
           type="text"
           maxLength={80}
           value={displayName}
-          placeholder="For example: PIK3CD validation · repeat 2"
+          placeholder={
+            isGninaJob
+              ? "For example: 7AQF RV2 · GNINA single ligand"
+              : "For example: PIK3CD validation · repeat 2"
+          }
           disabled={busy}
           aria-describedby={displayNameNoteId}
           onChange={(event) => {
@@ -105,7 +133,9 @@ export function CampaignExportPanel({
           }}
         />
         <small id={displayNameNoteId}>
-          A human label only; it never changes the campaign or its evidence.
+          {isGninaJob
+            ? "A human label only; it never changes the individual GNINA result or its evidence."
+            : "A human label only; it never changes the campaign or its evidence."}
         </small>
       </div>
       <div className="figure-export-destination">
@@ -136,22 +166,37 @@ export function CampaignExportPanel({
         disabled={!ready || !sourceId || busy}
         onClick={() => void exportCampaign()}
       >
-        {busy ? "Writing the bundle…" : "Export this campaign"}
+        {busy
+          ? "Writing the bundle…"
+          : isGninaJob
+            ? "Export this GNINA result"
+            : "Export this campaign"}
       </button>
       {!ready ? (
-        <p className="field-note">A campaign has to finish before it can be exported.</p>
+        <p className="field-note">
+          {isGninaJob
+            ? "A GNINA job has to finish before it can be exported."
+            : "A campaign has to finish before it can be exported."}
+        </p>
       ) : null}
       {bundle ? (
         <div className="state-resolved-note">
-          <strong>{bundle.display_name || "Campaign bundle written"}</strong>
-          <small>{bundle.row_count} molecules exported</small>
+          <strong>
+            {bundle.display_name
+              || (isGninaJob ? "GNINA result bundle written" : "Campaign bundle written")}
+          </strong>
+          <small>
+            {isGninaJob
+              ? `${bundle.row_count} ${bundle.row_count === 1 ? "pose" : "poses"} exported · single-ligand GNINA result`
+              : `${bundle.row_count} molecules exported`}
+          </small>
           <small>
             {bundle.engine} {bundle.engine_version}
             {` · ${reproducibilityTitle(bundle.reproducibility).toLowerCase()}`}
           </small>
           <small>{formatApplicationTimestamp(bundle.exported_at)}</small>
           <div className="export-identity" aria-label="Export identity">
-            <span>Campaign <code title={bundle.catalog_id}>{shortIdentity(bundle.source_id)}</code></span>
+            <span>{isGninaJob ? "GNINA job" : "Campaign"} <code title={bundle.catalog_id}>{shortIdentity(bundle.source_id)}</code></span>
             <span>Inputs <code title={bundle.input_identity_sha256}>{shortIdentity(bundle.input_identity_sha256)}</code></span>
             <span>Bundle <code title={bundle.bundle_identity_sha256}>{shortIdentity(bundle.bundle_identity_sha256)}</code></span>
           </div>

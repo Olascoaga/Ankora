@@ -14,6 +14,8 @@ class WorkKind(StrEnum):
     AUTODOCK4_BATCH = "autodock4_batch"
     AUTODOCK_GPU_JOB = "autodock_gpu_job"
     AUTODOCK_GPU_BATCH = "autodock_gpu_batch"
+    GNINA_JOB = "gnina_job"
+    GNINA_SCREENING = "gnina_screening"
 
 
 class WorkLeaseState(StrEnum):
@@ -45,6 +47,7 @@ class RecoveredWorkItem(BaseModel):
     completed_entry_count: int = Field(default=0, ge=0)
     last_heartbeat_at: datetime | None = None
     previous_owner_instance_id: str | None = None
+    screening_campaign_id: str | None = None
 
 
 class WorkRecoverySummary(BaseModel):

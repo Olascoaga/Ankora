@@ -54,7 +54,10 @@ def test_real_illustrated_guide_has_complete_sequential_figures(builder: ModuleT
 
 def test_guide_distinguishes_tutorial_and_validation_limitations() -> None:
     source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
-    assert "Current beta UI limitation" in source
+    assert "Calculate RMSD and save validation" in source
+    assert "symmetry-aware heavy-atom RMSD, computed in place" in source
+    assert "Do not substitute Vina's inter-mode RMSD." in source
+    assert "contains a Vina reference-RMSD verdict; a docking score cannot supply one." in source
     assert "not a controlled comparison of engines" in source
     assert "17 atomic contacts, 5 contacting" in source
     assert "8 residue/subtype groups" in source

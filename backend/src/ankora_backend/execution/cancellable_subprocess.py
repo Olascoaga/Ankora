@@ -1,5 +1,7 @@
-"""Cancellable Windows-native subprocess execution with raw capture."""
+"""Cancellable cross-platform scientific subprocess execution with raw capture."""
 
+import contextlib
+import os
 import subprocess
 import threading
 import time
@@ -7,8 +9,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ankora_backend.domain.errors import AnkoraDomainError
-from ankora_backend.execution.subprocess_runner import _kill_tree_and_drain
+from ankora_backend.execution.subprocess_runner import (
+    _kill_tree_and_drain,
+    _run_posix_tool_process,
+    _spawn_tool_process,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,57 +37,123 @@ def run_cancellable_tool(
     environment: Mapping[str, str] | None = None,
 ) -> CancellableToolExecution:
     command = [executable, *arguments]
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            shell=False,
-            env=environment,
+    if cancel_event.is_set():
+        return CancellableToolExecution(
+            command=command,
+            exit_code=-1,
+            stdout="",
+            stderr="",
+            canceled=True,
+            timed_out=False,
         )
-    except OSError as error:
-        raise AnkoraDomainError(
-            code="SCIENTIFIC_TOOL_LAUNCH_FAILED",
+
+    if os.name != "nt":
+        exit_code, stdout, stderr, canceled, timed_out = _run_posix_tool_process(
+            command=command,
+            cwd=cwd,
             stage=stage,
-            message="Windows could not launch the configured scientific tool.",
-            status_code=500,
-            details={"command": command, "reason": str(error)},
-        ) from error
+            timeout_seconds=timeout_seconds,
+            environment=environment,
+            cancel_event=cancel_event,
+        )
+        return CancellableToolExecution(
+            command=command,
+            exit_code=exit_code,
+            stdout=stdout,
+            stderr=stderr,
+            canceled=canceled,
+            timed_out=timed_out,
+        )
+
+    process = _spawn_tool_process(
+        command=command,
+        cwd=cwd,
+        stage=stage,
+        environment=environment,
+        start_new_session=False,
+    )
 
     started = time.monotonic()
-    while True:
-        try:
-            stdout, stderr = process.communicate(timeout=0.2)
-            return CancellableToolExecution(
-                command=command,
-                exit_code=process.returncode,
-                stdout=stdout or "",
-                stderr=stderr or "",
-                canceled=False,
-                timed_out=False,
-            )
-        except subprocess.TimeoutExpired:
+    completed = False
+    try:
+        while True:
             if cancel_event.is_set():
                 stdout, stderr = _kill_tree_and_drain(process)
+                completed = True
+                exit_code = (
+                    process.returncode
+                    if process.returncode is not None and process.returncode != 0
+                    else -1
+                )
                 return CancellableToolExecution(
                     command=command,
-                    exit_code=process.returncode,
+                    exit_code=exit_code,
                     stdout=stdout,
                     stderr=stderr,
                     canceled=True,
                     timed_out=False,
                 )
-            if time.monotonic() - started >= timeout_seconds:
-                stdout, stderr = _kill_tree_and_drain(process)
+            try:
+                stdout, stderr = process.communicate(timeout=0.2)
+                if cancel_event.is_set():
+                    _kill_tree_and_drain(process)
+                    completed = True
+                    exit_code = (
+                        process.returncode
+                        if process.returncode is not None and process.returncode != 0
+                        else -1
+                    )
+                    return CancellableToolExecution(
+                        command=command,
+                        exit_code=exit_code,
+                        stdout=stdout or "",
+                        stderr=stderr or "",
+                        canceled=True,
+                        timed_out=False,
+                    )
+                completed = True
                 return CancellableToolExecution(
                     command=command,
                     exit_code=process.returncode,
-                    stdout=stdout,
-                    stderr=stderr,
+                    stdout=stdout or "",
+                    stderr=stderr or "",
                     canceled=False,
-                    timed_out=True,
+                    timed_out=False,
                 )
+            except subprocess.TimeoutExpired:
+                if cancel_event.is_set():
+                    stdout, stderr = _kill_tree_and_drain(process)
+                    completed = True
+                    exit_code = (
+                        process.returncode
+                        if process.returncode is not None and process.returncode != 0
+                        else -1
+                    )
+                    return CancellableToolExecution(
+                        command=command,
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                        canceled=True,
+                        timed_out=False,
+                    )
+                if time.monotonic() - started >= timeout_seconds:
+                    stdout, stderr = _kill_tree_and_drain(process)
+                    completed = True
+                    exit_code = (
+                        process.returncode
+                        if process.returncode is not None and process.returncode != 0
+                        else -1
+                    )
+                    return CancellableToolExecution(
+                        command=command,
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                        canceled=False,
+                        timed_out=True,
+                    )
+    finally:
+        if not completed:
+            with contextlib.suppress(Exception):
+                _kill_tree_and_drain(process)

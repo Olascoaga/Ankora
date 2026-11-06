@@ -19,6 +19,51 @@ from ankora_backend.services.receptor_preparation import prepare_receptor
 from ankora_backend.services.structure_inspection import import_structure_bytes
 
 
+@pytest.mark.parametrize("source_format", ["pdb", "mmcif"])
+def test_terminal_oxygen_candidates_are_advisory_and_keep_sources_unchanged(
+    tmp_path: Path, source_format: str
+) -> None:
+    _, complete = _template_pair(tmp_path, insertion="X")
+    structure = gemmi.read_structure(str(complete))
+    first = structure[0][0]
+    if first[0].find_atom("OXT", "\x00"):
+        first[0].remove_atom("OXT", "\x00")
+    second = first.clone()
+    second.name = "B"
+    oxygen = gemmi.Atom()
+    oxygen.name = "OXT"
+    oxygen.element = gemmi.Element("O")
+    oxygen.occ = 1.0
+    second[0].add_atom(oxygen)
+    structure[0].add_chain(second)
+    if source_format == "mmcif":
+        structure.setup_entities()
+        source = structure.make_mmcif_document().as_string().encode()
+        filename = "synthetic.cif"
+    else:
+        source = structure.make_pdb_string().encode()
+        filename = "synthetic.pdb"
+    store = StructureArtifactStore(tmp_path / "data")
+    imported = import_structure_bytes(
+        content=source,
+        filename=filename,
+        source=StructureSource.LOCAL,
+        source_uri=None,
+        store=store,
+    )
+    report = inspect_receptor(
+        artifact_id=imported.artifact.artifact_id,
+        store=store,
+        inspection_method="templates_v1",
+    )
+    assert [candidate.model_dump() for candidate in report.terminal_oxygen_candidates] == [{
+        "chain_id": "A", "residue_name": "ALA", "sequence_number": 100,
+        "insertion_code": "X", "atom_name": "OXT",
+    }]
+    assert all("OXT" not in issue.missing_atoms for issue in report.issues)
+    assert store.content_path(imported.artifact.artifact_id).read_bytes() == source
+
+
 def test_headerless_mmcif_api_exposes_versioned_inspection_without_optional_tools(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

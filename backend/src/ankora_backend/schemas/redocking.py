@@ -46,9 +46,17 @@ class RedockingPose(BaseModel):
 
     run: int = Field(ge=1)
     rank: int = Field(ge=1)
+    # Always the engine's minimized empirical affinity in kcal/mol, including for
+    # GNINA. GNINA does not rank by it, which is why it is kept beside the CNN
+    # fields rather than being replaced by them.
     binding_energy_kcal_mol: float
     rmsd_angstrom: float = Field(ge=0)
     recovered: bool
+    # Present only for an engine that produced them. The CNN pose score is
+    # dimensionless and is the order GNINA ranked by; the CNN affinity is a
+    # predicted pK. Neither is an energy and neither belongs in the field above.
+    cnn_score: float | None = Field(default=None, ge=0, le=1)
+    cnn_affinity_pk: float | None = None
 
 
 class RedockingMetrics(BaseModel):
@@ -91,11 +99,15 @@ class RedockingRunRecord(BaseModel):
     binding_site_id: str = Field(min_length=1)
     # What was validated, and which engine produced it. A redocking result is
     # about a configuration, not about a program in the abstract.
-    source_kind: str = Field(pattern=r"^(autodock4_job|autodock_gpu_job|vina_job)$")
+    source_kind: str = Field(pattern=r"^(autodock4_job|autodock_gpu_job|gnina_job|vina_job)$")
     source_id: str = Field(min_length=1)
     engine: str = Field(min_length=1)
     engine_version: str = Field(min_length=1)
-    bitwise_reproducible: bool
+    # `None` means the source engine's repeat behavior has not been assessed,
+    # which is not the same claim as `False` ("repeats differ from its seed").
+    # GNINA records `None` until GNINA-specific repeat evidence exists. Records
+    # written before this field could be null keep their recorded boolean.
+    bitwise_reproducible: bool | None
     # The crystallographic pose, read from the immutable original rather than
     # from anything Ankora derived.
     reference_ligand_id: str = Field(min_length=1)
@@ -117,7 +129,7 @@ class RedockingValidationRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    source_kind: str = Field(pattern=r"^(autodock4_job|autodock_gpu_job|vina_job)$")
+    source_kind: str = Field(pattern=r"^(autodock4_job|autodock_gpu_job|gnina_job|vina_job)$")
     source_id: str = Field(min_length=1)
     reference_ligand_id: str = Field(min_length=1)
     threshold_angstrom: float = Field(default=2.0, gt=0, le=20)

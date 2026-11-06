@@ -10,11 +10,17 @@ from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import project_scope
 from ankora_backend.persistence.project_store import ProjectStore
 from ankora_backend.persistence.work_lease_store import WorkLeaseStore
+from ankora_backend.schemas.gnina_screening import (
+    GninaScreeningCampaignRecord,
+    GninaScreeningRequest,
+)
 from ankora_backend.schemas.projects import ProjectRecord
 from ankora_backend.schemas.work_recovery import WorkRecoverySummary
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
+from ankora_backend.services.gnina_docking import GninaDockingService
+from ankora_backend.services.gnina_screening_service import GninaScreeningService
 from ankora_backend.services.resource_arbiter import ResourceArbiter
 from ankora_backend.services.vina_docking import VinaDockingService
 from ankora_backend.services.work_leases import WorkLeaseManager
@@ -31,12 +37,21 @@ class ProjectServiceBundle:
     autogrid: AutoGridMapService
     autodock4: AutoDock4DockingService
     autodock_gpu: AutoDockGpuDockingService
+    gnina: GninaDockingService
+    gnina_screening: GninaScreeningService
     work_retry: WorkRetryService
 
     def has_active_work(self) -> bool:
         return any(
             service.has_active_work()
-            for service in (self.vina, self.autogrid, self.autodock4, self.autodock_gpu)
+            for service in (
+                self.vina,
+                self.autogrid,
+                self.autodock4,
+                self.autodock_gpu,
+                self.gnina,
+                self.gnina_screening,
+            )
         )
 
     def shutdown(self) -> None:
@@ -44,6 +59,8 @@ class ProjectServiceBundle:
         self.autogrid.shutdown()
         self.autodock4.shutdown()
         self.autodock_gpu.shutdown()
+        self.gnina_screening.shutdown()
+        self.gnina.shutdown()
         self.work_leases.shutdown()
 
 
@@ -71,6 +88,8 @@ class ProjectRuntime:
             state.autogrid_maps = bundle.autogrid
             state.autodock4_docking = bundle.autodock4
             state.autodock_gpu_docking = bundle.autodock_gpu
+            state.gnina_docking = bundle.gnina
+            state.gnina_screening = bundle.gnina_screening
             state.work_retry = bundle.work_retry
 
     def activate(self, project_id: str, state: Any) -> ProjectRecord:
@@ -111,6 +130,11 @@ class ProjectRuntime:
             previous.shutdown()
             return project
 
+    def start_gnina_screening(self, request: GninaScreeningRequest) -> GninaScreeningCampaignRecord:
+        """Admit and schedule under the same lock that protects project switches."""
+        with self._lock, project_scope(self._bundle.project_id):
+            return self._bundle.gnina_screening.start(request)
+
     def shutdown(self) -> None:
         with self._lock:
             self._bundle.shutdown()
@@ -136,11 +160,23 @@ class ProjectRuntime:
                 lease_manager=lease_manager,
                 resource_arbiter=self.resources,
             )
+            gnina = GninaDockingService.from_environment(
+                leases=lease_manager,
+                resources=self.resources,
+                enable_experimental_cuda=True,
+            )
+            gnina_screening = GninaScreeningService.from_environment(
+                docking=gnina,
+                leases=lease_manager,
+                resources=self.resources,
+                enable_experimental_cuda=True,
+            )
             retry = WorkRetryService.from_environment(
                 vina=vina,
                 autogrid=autogrid,
                 autodock4=autodock4,
                 autodock_gpu=autodock_gpu,
+                gnina=gnina,
             )
         return ProjectServiceBundle(
             project_id=project_id,
@@ -150,5 +186,7 @@ class ProjectRuntime:
             autogrid=autogrid,
             autodock4=autodock4,
             autodock_gpu=autodock_gpu,
+            gnina=gnina,
+            gnina_screening=gnina_screening,
             work_retry=retry,
         )

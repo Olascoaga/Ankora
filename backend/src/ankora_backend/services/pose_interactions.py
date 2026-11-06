@@ -14,6 +14,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pose_interaction_store import PoseInteractionStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
@@ -31,6 +32,7 @@ from ankora_backend.services.result_catalog import (
     AUTODOCK4_JOB,
     AUTODOCK_GPU_BATCH,
     AUTODOCK_GPU_JOB,
+    GNINA_JOB,
     VINA_BATCH,
     VINA_JOB,
 )
@@ -65,6 +67,7 @@ class PoseInteractionService:
         ligand_store: LigandArtifactStore,
         interaction_store: PoseInteractionStore,
         adapter: ProlifInteractionAdapter | None = None,
+        gnina_store: GninaJobStore | None = None,
     ) -> None:
         self._docking = docking_store
         self._autodock4 = autodock4_store
@@ -74,6 +77,7 @@ class PoseInteractionService:
         self._ligands = ligand_store
         self._interactions = interaction_store
         self._adapter = adapter or ProlifInteractionAdapter()
+        self._gnina = gnina_store
 
     @classmethod
     def from_environment(cls) -> "PoseInteractionService":
@@ -85,6 +89,7 @@ class PoseInteractionService:
             receptor_store=ReceptorArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             interaction_store=PoseInteractionStore.from_environment(),
+            gnina_store=GninaJobStore.from_environment(),
         )
 
     def list_poses(self, catalog_id: str, ligand_id: str) -> PoseInventory:
@@ -116,9 +121,7 @@ class PoseInteractionService:
         self, catalog_id: str, ligand_id: str, pose_artifact_id: str
     ) -> list[InteractionAnalysisRecord]:
         self._resolve(catalog_id, ligand_id, pose_artifact_id)
-        return self._interactions.list_for_pose(
-            catalog_id, ligand_id, pose_artifact_id
-        )
+        return self._interactions.list_for_pose(catalog_id, ligand_id, pose_artifact_id)
 
     def analyze(
         self,
@@ -166,9 +169,7 @@ class PoseInteractionService:
         )
         _verify_hash(receptor_path, analysis_output.sha256, "analysis receptor")
 
-        preparation = self._ligands.load_pdbqt_record(
-            ligand_id, resolved.ligand_preparation_id
-        )
+        preparation = self._ligands.load_pdbqt_record(ligand_id, resolved.ligand_preparation_id)
         if preparation.artifact.ligand_id != ligand_id:
             raise _failure(
                 "POSE_INTERACTION_LIGAND_IDENTITY_MISMATCH",
@@ -180,6 +181,25 @@ class PoseInteractionService:
         conformer_path = self._ligands.conformer_content_path(
             ligand_id, conformer.artifact.conformer_id
         )
+        if resolved.engine_key == GNINA_JOB:
+            if self._gnina is None:
+                raise _failure(
+                    "RESULT_CATALOG_ENGINE_UNKNOWN", "GNINA pose storage is unavailable."
+                )
+            gnina_job = self._gnina.load_job(resolved.record_id)
+            if (
+                preparation.artifact.sha256 != gnina_job.ligand_sha256
+                or conformer.artifact.sha256 != gnina_job.conformer_sha256
+            ):
+                raise _failure(
+                    "POSE_INTERACTION_LIGAND_IDENTITY_MISMATCH",
+                    "The prepared ligand or conformer differs from the GNINA inputs.",
+                )
+            _verify_hash(
+                self._ligands.pdbqt_content_path(ligand_id, resolved.ligand_preparation_id),
+                gnina_job.ligand_sha256,
+                "docking ligand",
+            )
         _verify_hash(conformer_path, conformer.artifact.sha256, "ligand conformer")
         _verify_hash(resolved.pose_path, resolved.pose.sha256, "docking pose")
 
@@ -251,6 +271,25 @@ class PoseInteractionService:
         """
         resolved = self._resolve(catalog_id, ligand_id, pose_artifact_id)
         receptor_record = self._receptors.load_record(resolved.receptor_id)
+        if resolved.engine_key == GNINA_JOB:
+            docking_output = next(
+                (
+                    item
+                    for item in receptor_record.outputs
+                    if item.artifact_id == resolved.docking_receptor_artifact_id
+                ),
+                None,
+            )
+            if docking_output is None or docking_output.sha256 != resolved.docking_receptor_sha256:
+                raise _failure(
+                    "POSE_INTERACTION_RECEPTOR_IDENTITY_MISMATCH",
+                    "The docking receptor no longer matches its recorded identity.",
+                )
+            _verify_hash(
+                self._receptors.content_path(resolved.receptor_id, docking_output.artifact_id),
+                docking_output.sha256,
+                "docking receptor",
+            )
         analysis_output = next(
             (
                 item
@@ -262,8 +301,7 @@ class PoseInteractionService:
         if analysis_output is None:
             raise _failure(
                 "POSE_COMPLEX_RECEPTOR_FORMAT_UNAVAILABLE",
-                "This prepared receptor has no PDB representation to combine "
-                "with the pose.",
+                "This prepared receptor has no PDB representation to combine with the pose.",
             )
         receptor_path = self._receptors.content_path(
             resolved.receptor_id, analysis_output.artifact_id
@@ -311,15 +349,11 @@ class PoseInteractionService:
             "REMARK   1 The value above is a computational estimate, not a",
             "REMARK   1 measured binding affinity.",
         ]
-        document = "\n".join(
-            [*header, *receptor_lines, "TER", *ligand_lines, "END", ""]
-        )
+        document = "\n".join([*header, *receptor_lines, "TER", *ligand_lines, "END", ""])
         filename = f"complex_{_ascii(resolved.pose.label).replace(chr(32), chr(95))}.pdb"
         return document, filename
 
-    def _resolve(
-        self, catalog_id: str, ligand_id: str, pose_artifact_id: str
-    ) -> _ResolvedPose:
+    def _resolve(self, catalog_id: str, ligand_id: str, pose_artifact_id: str) -> _ResolvedPose:
         engine_key, record_id = _split(catalog_id)
         poses, context = self._native_poses(engine_key, record_id, ligand_id)
         pose = next((item for item in poses if item.artifact_id == pose_artifact_id), None)
@@ -341,9 +375,7 @@ class PoseInteractionService:
             docking_receptor_artifact_id=str(context["receptor_artifact_id"]),
             docking_receptor_sha256=str(context["receptor_sha256"]),
             pose=pose,
-            pose_path=self._pose_path(
-                engine_key, record_id, ligand_id, pose_artifact_id
-            ),
+            pose_path=self._pose_path(engine_key, record_id, ligand_id, pose_artifact_id),
         )
 
     def _native_poses(
@@ -369,6 +401,18 @@ class PoseInteractionService:
                 "receptor_id": vina_job.request.receptor_id,
                 "receptor_artifact_id": vina_job.receptor_output_artifact_id,
                 "receptor_sha256": vina_job.receptor_sha256,
+            }
+        if engine_key == GNINA_JOB and self._gnina is not None:
+            record = self._gnina.load_job(record_id)
+            _same_ligand(record.request.ligand_id, ligand_id)
+            if record.status.value != "completed":
+                raise _failure("RESULT_POSE_NOT_AVAILABLE", "GNINA job is not complete.")
+            return [_gnina_pose(item, record_id) for item in record.poses], {
+                "engine_label": f"GNINA {record.tool.version}",
+                "ligand_preparation_id": record.request.ligand_preparation_id,
+                "receptor_id": record.request.receptor_id,
+                "receptor_artifact_id": record.receptor_output_artifact_id,
+                "receptor_sha256": record.receptor_sha256,
             }
         if engine_key in (AUTODOCK4_BATCH, AUTODOCK_GPU_BATCH):
             store: Any = self._autodock4 if engine_key == AUTODOCK4_BATCH else self._gpu
@@ -400,17 +444,15 @@ class PoseInteractionService:
             details={"engine_key": engine_key},
         )
 
-    def _pose_path(
-        self, engine_key: str, record_id: str, ligand_id: str, artifact_id: str
-    ) -> Path:
+    def _pose_path(self, engine_key: str, record_id: str, ligand_id: str, artifact_id: str) -> Path:
         if engine_key == VINA_BATCH:
             return self._docking.batch_pose_content_path(record_id, ligand_id, artifact_id)
         if engine_key == VINA_JOB:
             return self._docking.pose_content_path(record_id, artifact_id)
+        if engine_key == GNINA_JOB and self._gnina is not None:
+            return self._gnina.pose_content_path(record_id, artifact_id)
         if engine_key == AUTODOCK4_BATCH:
-            return self._autodock4.batch_pose_content_path(
-                record_id, ligand_id, artifact_id
-            )
+            return self._autodock4.batch_pose_content_path(record_id, ligand_id, artifact_id)
         if engine_key == AUTODOCK4_JOB:
             return self._autodock4.pose_content_path(record_id, artifact_id)
         if engine_key == AUTODOCK_GPU_BATCH:
@@ -418,6 +460,21 @@ class PoseInteractionService:
         if engine_key == AUTODOCK_GPU_JOB:
             return self._gpu.pose_content_path(record_id, artifact_id)
         raise _failure("RESULT_CATALOG_ENGINE_UNKNOWN", "Unknown result engine.")
+
+
+def _gnina_pose(item: Any, record_id: str) -> PoseReference:
+    return PoseReference(
+        artifact_id=item.artifact.artifact_id,
+        kind=PoseKind.GNINA_MODE,
+        ordinal=item.mode,
+        label=f"Mode {item.mode}",
+        result_kcal_mol=item.minimized_affinity_kcal_mol,
+        value_label="GNINA minimized affinity",
+        cnn_score=item.cnn_score,
+        cnn_affinity_pk=item.cnn_affinity,
+        sha256=item.artifact.sha256,
+        content_url=f"/docking/gnina/jobs/{record_id}/poses/{item.artifact.artifact_id}/content",
+    )
 
 
 def _vina_pose(item: Any) -> PoseReference:
@@ -482,15 +539,11 @@ def _same_ligand(expected: str, actual: str) -> None:
 
 def _next_serial(receptor_lines: list[str]) -> int:
     """One past the receptor's last atom serial."""
-    serials = [
-        int(line[6:11]) for line in receptor_lines if line[6:11].strip().isdigit()
-    ]
+    serials = [int(line[6:11]) for line in receptor_lines if line[6:11].strip().isdigit()]
     return (max(serials) + 1) if serials else 1
 
 
-def _named_ligand_atoms(
-    lines: list[str], chain: str, *, first_serial: int
-) -> list[str]:
+def _named_ligand_atoms(lines: list[str], chain: str, *, first_serial: int) -> list[str]:
     """One residue, uniquely named and numbered, which a PDB reader needs.
 
     A PDBQT names every atom for its element and starts its serials at 1, so
@@ -514,8 +567,7 @@ def _named_ligand_atoms(
         column = name.ljust(4) if len(element) > 1 else f" {name}".ljust(4)
         serial = str(first_serial + offset).rjust(5)[:5]
         named.append(
-            f"HETATM{serial} {column}{line[16:21]}{chain}{line[22:66]}"
-            f"{blank}{line[76:78]}"
+            f"HETATM{serial} {column}{line[16:21]}{chain}{line[22:66]}{blank}{line[76:78]}"
         )
     return named
 

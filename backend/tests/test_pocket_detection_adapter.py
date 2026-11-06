@@ -1,13 +1,14 @@
 """P2Rank adapter discovery and dependency contracts.
 
 All files are explicitly synthetic and no external tool is launched here.
+Native Linux execution with a real (synthetic) launcher is in test_linux_p2rank.py.
 """
 
 from pathlib import Path
 
 import pytest
 
-from ankora_backend.adapters.tools import pocket_detection
+from ankora_backend.adapters.tools import discovery, pocket_detection
 from ankora_backend.adapters.tools.discovery import DiscoveredTool
 from ankora_backend.execution.subprocess_runner import ToolExecution
 
@@ -15,6 +16,8 @@ from ankora_backend.execution.subprocess_runner import ToolExecution
 def test_execute_p2rank_uses_portable_install_version_and_discovered_java(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The accepted Windows development path, pinned explicitly on every host.
+    monkeypatch.setattr(discovery, "_windows_host", lambda: True)
     p2rank_path = tmp_path / "p2rank_2.5.1" / "prank.bat"
     p2rank_path.parent.mkdir()
     p2rank_path.write_text("synthetic fixture; never executed", encoding="utf-8")
@@ -59,7 +62,29 @@ def test_execute_p2rank_uses_portable_install_version_and_discovered_java(
     assert execution.exit_code == 0
     assert version == "2.5.1"
     assert captured["executable"] == "cmd"
+    assert captured["arguments"] == [
+        "/c",
+        str(p2rank_path),
+        "predict",
+        "-f",
+        str(receptor),
+        "-o",
+        str(output_dir),
+        "-visualizations",
+        "0",
+    ]
+    assert captured["cwd"] == output_dir
+    assert captured["timeout_seconds"] == pocket_detection.P2RANK_TIMEOUT_SECONDS == 900
     assert captured["environment"] is not None
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["JAVA_HOME"] == str(java_home)
+
+
+@pytest.mark.parametrize(("windows", "launcher"), [(True, "java.exe"), (False, "java")])
+def test_java_executable_follows_the_host_rules(
+    monkeypatch: pytest.MonkeyPatch, windows: bool, launcher: str
+) -> None:
+    monkeypatch.setattr(discovery, "_windows_host", lambda: windows)
+
+    assert pocket_detection.java_executable(Path("jdk-21")) == Path("jdk-21", "bin", launcher)

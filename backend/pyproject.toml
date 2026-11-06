@@ -27,6 +27,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "mypy>=1.14,<2",
+  # Imported by scripts/build_autodock_gpu_payload.py when its tests are collected;
+  # the same identity is pinned in requirements/windows-packaging.lock.
+  "pefile==2024.8.26",
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",
 ]

@@ -1,5 +1,8 @@
 from pathlib import Path, PureWindowsPath
 
+import pytest
+
+from ankora_backend.adapters.tools import discovery
 from ankora_backend.adapters.tools.discovery import (
     _portable_autodock4_candidate_directories,
     _portable_autodock_gpu_candidate_directories,
@@ -16,6 +19,17 @@ from ankora_backend.adapters.tools.discovery import (
     packaged_console_arguments,
     python_worker_arguments,
 )
+
+
+@pytest.fixture(autouse=True)
+def accepted_windows_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the accepted Windows resolution on every host.
+
+    On Windows this is a no-op. Other hosts select Windows rules explicitly so
+    the unchanged logic stays covered; it does not prove Windows filesystem
+    semantics there. Native rules are in test_linux_tool_discovery.py.
+    """
+    monkeypatch.setattr(discovery, "_windows_host", lambda: True)
 
 
 def _write_synthetic_pe(executable: Path, machine: int = 0x8664) -> None:

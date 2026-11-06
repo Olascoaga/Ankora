@@ -7,6 +7,8 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.work_lease_store import WorkLeaseStore
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchLigandResult,
@@ -46,36 +48,41 @@ class InterruptedWorkRecovery:
         autodock4: AutoDock4JobStore,
         autodock_gpu: AutoDockGpuJobStore,
         leases: WorkLeaseStore,
+        gnina: GninaJobStore | None = None,
+        gnina_screening: GninaScreeningStore | None = None,
     ) -> None:
         self._docking = docking
         self._autogrid = autogrid
         self._autodock4 = autodock4
         self._autodock_gpu = autodock_gpu
         self._leases = leases
+        self._gnina = gnina
+        self._gnina_screening = gnina_screening
 
     @classmethod
-    def from_environment(
-        cls, *, leases: WorkLeaseStore | None = None
-    ) -> "InterruptedWorkRecovery":
+    def from_environment(cls, *, leases: WorkLeaseStore | None = None) -> "InterruptedWorkRecovery":
         return cls(
             docking=DockingArtifactStore.from_environment(),
             autogrid=AutoGridMapStore.from_environment(),
             autodock4=AutoDock4JobStore.from_environment(),
             autodock_gpu=AutoDockGpuJobStore.from_environment(),
             leases=leases or WorkLeaseStore.from_environment(),
+            gnina=GninaJobStore.from_environment(),
+            gnina_screening=GninaScreeningStore.from_environment(),
         )
 
     def reconcile(self) -> WorkRecoverySummary:
         reconciled_at = datetime.now(UTC)
         lease_index = {
-            (lease.work_kind, lease.work_id): lease
-            for lease in self._leases.list_active()
+            (lease.work_kind, lease.work_id): lease for lease in self._leases.list_active()
         }
         items = [
             *self._reconcile_vina(reconciled_at, lease_index),
             *self._reconcile_autogrid(reconciled_at, lease_index),
             *self._reconcile_autodock4(reconciled_at, lease_index),
             *self._reconcile_autodock_gpu(reconciled_at, lease_index),
+            *self._reconcile_gnina(reconciled_at, lease_index),
+            *self._reconcile_gnina_screening(reconciled_at, lease_index),
         ]
         for item in items:
             lease = lease_index.get((item.work_kind, item.work_id))
@@ -89,6 +96,77 @@ class InterruptedWorkRecovery:
                     )
                 )
         return WorkRecoverySummary(reconciled_at=reconciled_at, items=items)
+
+    def _reconcile_gnina(
+        self,
+        now: datetime,
+        leases: dict[tuple[WorkKind, str], WorkLeaseRecord],
+    ) -> list[RecoveredWorkItem]:
+        if self._gnina is None:
+            return []
+        items: list[RecoveredWorkItem] = []
+        for record in self._gnina.list_jobs():
+            if record.status.value not in _ACTIVE:
+                continue
+            lease = leases.get((WorkKind.GNINA_JOB, record.job_id))
+            self._gnina.update_job(
+                record.model_copy(
+                    update={
+                        "status": DockingJobStatus.FAILED,
+                        "phase": DockingJobPhase.COMPLETE,
+                        "completed_at": now,
+                        "failure": DockingFailure(
+                            code="GNINA_EXECUTION_INTERRUPTED",
+                            message=_INTERRUPTED_MESSAGE,
+                            details=_failure_details(record.status.value, lease, now),
+                        ),
+                    }
+                )
+            )
+            items.append(
+                _item(
+                    WorkKind.GNINA_JOB,
+                    record.job_id,
+                    record.status.value,
+                    lease,
+                    screening_campaign_id=record.screening_campaign_id,
+                )
+            )
+        return items
+
+    def _reconcile_gnina_screening(
+        self,
+        now: datetime,
+        leases: dict[tuple[WorkKind, str], WorkLeaseRecord],
+    ) -> list[RecoveredWorkItem]:
+        if self._gnina_screening is None:
+            return []
+        items: list[RecoveredWorkItem] = []
+        for campaign_id in self._gnina_screening.list_campaign_ids():
+            before = self._gnina_screening.load_progress(campaign_id)
+            if before.status.value not in _ACTIVE:
+                continue
+            after = self._gnina_screening.recover_interrupted_campaign(
+                campaign_id, interrupted_at=now
+            )
+            lease = leases.get((WorkKind.GNINA_SCREENING, campaign_id))
+            interrupted = (
+                after.failed_count
+                - before.failed_count
+                + after.canceled_count
+                - before.canceled_count
+            )
+            items.append(
+                _item(
+                    WorkKind.GNINA_SCREENING,
+                    campaign_id,
+                    before.status.value,
+                    lease,
+                    interrupted,
+                    after.succeeded_count,
+                )
+            )
+        return items
 
     def _reconcile_vina(
         self,
@@ -136,9 +214,7 @@ class InterruptedWorkRecovery:
                             code="VINA_CAMPAIGN_INTERRUPTED",
                             message=_INTERRUPTED_BATCH_MESSAGE,
                             details={
-                                **_failure_details(
-                                    batch_record.status.value, lease, now
-                                ),
+                                **_failure_details(batch_record.status.value, lease, now),
                                 "interrupted_entry_count": interrupted,
                                 "completed_entries_preserved": counts["succeeded_count"],
                             },
@@ -146,9 +222,7 @@ class InterruptedWorkRecovery:
                     }
                 ),
                 changed_entries=[
-                    entry
-                    for entry in entries
-                    if entry.revision == batch_record.revision + 1
+                    entry for entry in entries if entry.revision == batch_record.revision + 1
                 ],
             )
             items.append(
@@ -187,9 +261,7 @@ class InterruptedWorkRecovery:
                     }
                 )
             )
-            items.append(
-                _item(WorkKind.AUTOGRID_JOB, record.job_id, record.status.value, lease)
-            )
+            items.append(_item(WorkKind.AUTOGRID_JOB, record.job_id, record.status.value, lease))
         return items
 
     def _reconcile_autodock4(
@@ -216,9 +288,7 @@ class InterruptedWorkRecovery:
                     }
                 )
             )
-            items.append(
-                _item(WorkKind.AUTODOCK4_JOB, record.job_id, record.status.value, lease)
-            )
+            items.append(_item(WorkKind.AUTODOCK4_JOB, record.job_id, record.status.value, lease))
         for batch_record in self._autodock4.list_batches():
             if batch_record.status.value not in _ACTIVE:
                 continue
@@ -243,9 +313,7 @@ class InterruptedWorkRecovery:
                             code="AUTODOCK4_CAMPAIGN_INTERRUPTED",
                             message=_INTERRUPTED_BATCH_MESSAGE,
                             details={
-                                **_failure_details(
-                                    batch_record.status.value, lease, now
-                                ),
+                                **_failure_details(batch_record.status.value, lease, now),
                                 "interrupted_entry_count": interrupted,
                                 "completed_entries_preserved": counts["succeeded_count"],
                             },
@@ -253,9 +321,7 @@ class InterruptedWorkRecovery:
                     }
                 ),
                 changed_entries=[
-                    entry
-                    for entry in entries
-                    if entry.revision == batch_record.revision + 1
+                    entry for entry in entries if entry.revision == batch_record.revision + 1
                 ],
             )
             items.append(
@@ -326,9 +392,7 @@ class InterruptedWorkRecovery:
                             code="AUTODOCK_GPU_CAMPAIGN_INTERRUPTED",
                             message=_INTERRUPTED_BATCH_MESSAGE,
                             details={
-                                **_failure_details(
-                                    batch_record.status.value, lease, now
-                                ),
+                                **_failure_details(batch_record.status.value, lease, now),
                                 "interrupted_entry_count": interrupted,
                                 "completed_entries_preserved": counts["succeeded_count"],
                             },
@@ -336,9 +400,7 @@ class InterruptedWorkRecovery:
                     }
                 ),
                 changed_entries=[
-                    entry
-                    for entry in entries
-                    if entry.revision == batch_record.revision + 1
+                    entry for entry in entries if entry.revision == batch_record.revision + 1
                 ],
             )
             items.append(
@@ -391,17 +453,17 @@ def _item(
     lease: WorkLeaseRecord | None,
     interrupted_entry_count: int = 0,
     completed_entry_count: int = 0,
+    screening_campaign_id: str | None = None,
 ) -> RecoveredWorkItem:
     return RecoveredWorkItem(
         work_kind=work_kind,
         work_id=work_id,
         previous_status=previous_status,
+        screening_campaign_id=screening_campaign_id,
         interrupted_entry_count=interrupted_entry_count,
         completed_entry_count=completed_entry_count,
         last_heartbeat_at=lease.heartbeat_at if lease is not None else None,
-        previous_owner_instance_id=(
-            lease.owner_instance_id if lease is not None else None
-        ),
+        previous_owner_instance_id=(lease.owner_instance_id if lease is not None else None),
     )
 
 
@@ -466,9 +528,7 @@ def _interrupt_autodock4_entries[
 
 def _counts(
     entries: Sequence[
-        VinaBatchLigandResult
-        | AutoDock4BatchLigandResult
-        | AutoDockGpuBatchLigandResult
+        VinaBatchLigandResult | AutoDock4BatchLigandResult | AutoDockGpuBatchLigandResult
     ],
 ) -> dict[str, int]:
     statuses = [entry.status.value for entry in entries]

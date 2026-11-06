@@ -151,6 +151,7 @@ export interface ReceptorInspectionReport {
   components: ReceptorComponent[];
   water_count: number;
   issues: ReceptorIssue[];
+  terminal_oxygen_candidates?: TerminalHeavyAtomAddition[];
   reference_component_id: string | null;
   near_reference_cutoff_angstrom: number;
   warnings: StructuredWarning[];
@@ -1001,6 +1002,162 @@ export interface VinaBatchDockingRequest {
 export type DockingJobStatus = "queued" | "running" | "cancel_requested" | "canceled" | "completed" | "failed";
 export type DockingJobPhase = "queued" | "validating" | "docking" | "parsing_poses" | "complete";
 
+export interface GninaDockingParameters {
+  compute: "cpu" | "cuda";
+  device_index: number;
+  cpu_threads: number;
+  seed: number;
+  exhaustiveness: number;
+  num_modes: number;
+  min_rmsd_filter_angstrom: number;
+  timeout_minutes: number;
+  cnn_scoring: "rescore";
+  cnn_model: "dense_1_3";
+  hydrogen_handling: "prepared_pdbqt_no_add_no_strip";
+  pose_sort_order: "cnn_score_descending";
+}
+
+export interface GninaDockingRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  parameters: GninaDockingParameters;
+  acknowledge_inputs_and_scoring: boolean;
+}
+
+export interface GninaPoseResult {
+  mode: number;
+  minimized_affinity_kcal_mol: number;
+  cnn_score: number;
+  cnn_affinity: number;
+  artifact: { artifact_id: string; mode: number; filename: string; sha256: string; size_bytes: number };
+}
+
+export interface GninaDockingJobRecord {
+  job_id: string;
+  engine: "gnina";
+  screening_campaign_id?: string | null;
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  request: GninaDockingRequest;
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  box: BindingBox;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  ligand_sha256: string;
+  conformer_sha256: string;
+  command: string[];
+  execution: (DockingExecutionEvidence & {
+    gpu_process_observed: boolean;
+    gpu_observation: string | null;
+    requested_gpu_uuid: string | null;
+    observed_gpu_uuid: string | null;
+  }) | null;
+  poses: GninaPoseResult[];
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+}
+
+// --- GNINA library screening campaigns (Linux only, ADR-027) ---------------
+
+/**
+ * A campaign entry is a reference, not a result.
+ *
+ * The backend contract deliberately keeps no CNN score, no CNN affinity, no
+ * minimized affinity and no pose on an entry: the individual GNINA job named by
+ * `gnina_job_id` already owns them with its own inputs, command and evidence.
+ * Anything this interface gained would be a second, unverifiable account of a
+ * scientific result, so scores are read from the job instead.
+ *
+ * `source_index` is library provenance only. It is absent when the library
+ * record could not be resolved and must never be used to order entries - the
+ * campaign's own order is selection order.
+ */
+export interface GninaScreeningEntry {
+  ligand_id: string;
+  chemical_state_id: string | null;
+  source_index: number | null;
+  name: string | null;
+  ligand_preparation_id: string | null;
+  ligand_sha256: string | null;
+  conformer_id: string | null;
+  conformer_sha256: string | null;
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  /** Recorded, not verified: the job this campaign claims as the attempt. */
+  gnina_job_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+  revision: number;
+}
+
+/** The immutable identity of the applied filter selection being docked. */
+export interface GninaScreeningSelection {
+  library_id: string;
+  filter_run_id: string;
+  manifest_artifact_id: string;
+  manifest_sha256: string;
+}
+
+export interface GninaScreeningRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  library_id: string;
+  filter_run_id: string;
+  /** The single-job parameters unchanged; GNINA settings stay GNINA-specific. */
+  parameters: GninaDockingParameters;
+  acknowledge_inputs_and_scoring: boolean;
+}
+
+/** The campaign header without its entries, for polling while it runs. */
+export interface GninaScreeningProgress {
+  campaign_id: string;
+  engine: "gnina";
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  revision: number;
+  started_at: string | null;
+  completed_at: string | null;
+  selected_count: number;
+  completed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  canceled_count: number;
+}
+
+export interface GninaScreeningCampaignRecord {
+  campaign_id: string;
+  engine: "gnina";
+  status: DockingJobStatus;
+  phase: DockingJobPhase;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  request: GninaScreeningRequest;
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  selection: GninaScreeningSelection;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  box: BindingBox;
+  /** One job at a time: a recorded fact of the run, not a setting. */
+  worker_count: number;
+  selected_count: number;
+  completed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  canceled_count: number;
+  /** The applied selection, in selection order. */
+  entries: GninaScreeningEntry[];
+  warnings: StructuredWarning[];
+  failure: { code: string; message: string; details: Record<string, unknown> } | null;
+  provenance: ProvenanceEvent | null;
+  revision: number;
+}
+
 export interface DockingPoseArtifact {
   artifact_id: string;
   mode: number;
@@ -1722,6 +1879,8 @@ export interface RedockingPose {
   run: number;
   rank: number;
   binding_energy_kcal_mol: number;
+  cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
   rmsd_angstrom: number;
   recovered: boolean;
 }
@@ -1748,11 +1907,11 @@ export interface RedockingRunRecord {
   reference_case: string | null;
   receptor_id: string;
   binding_site_id: string;
-  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job";
+  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job" | "gnina_job";
   source_id: string;
   engine: string;
   engine_version: string;
-  bitwise_reproducible: boolean;
+  bitwise_reproducible: boolean | null;
   reference_ligand_id: string;
   reference_sha256: string;
   reference_heavy_atom_count: number;
@@ -1763,7 +1922,7 @@ export interface RedockingRunRecord {
 }
 
 export interface RedockingValidationRequest {
-  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job";
+  source_kind: "autodock4_job" | "autodock_gpu_job" | "vina_job" | "gnina_job";
   source_id: string;
   reference_ligand_id: string;
   threshold_angstrom?: number;
@@ -1837,7 +1996,7 @@ export interface CampaignExport {
 export type ResultMode = "single_ligand" | "screening";
 
 /** What produced the number, which is what may never be merged. */
-export type ScoringFamily = "vina" | "autodock4";
+export type ScoringFamily = "vina" | "autodock4" | "gnina";
 
 export interface CatalogEntry {
   /** `{engine_key}:{record_id}` - stable, and it names its own source. */
@@ -1871,6 +2030,9 @@ export interface CatalogEntry {
   canceled_count: number;
   /** This engine's own best number, only meaningful beside `engine_label`. */
   best_result_kcal_mol: number | null;
+  primary_cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
+  minimized_affinity_kcal_mol?: number | null;
   best_molecule: string | null;
 }
 
@@ -1910,6 +2072,9 @@ export interface CompoundRow {
   status: string;
   failure_code: string | null;
   best_result_kcal_mol: number | null;
+  primary_cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
+  minimized_affinity_kcal_mol?: number | null;
   /** Vina counts poses; AutoDock counts clusters. Neither is fabricated. */
   pose_count: number | null;
   cluster_count: number | null;
@@ -1927,7 +2092,7 @@ export interface CompoundPage {
   limit: number;
 }
 
-export type PoseKind = "vina_mode" | "autodock_run";
+export type PoseKind = "vina_mode" | "autodock_run" | "gnina_mode";
 
 export interface PoseReference {
   artifact_id: string;
@@ -1936,6 +2101,8 @@ export interface PoseReference {
   label: string;
   result_kcal_mol: number;
   value_label: string;
+  cnn_score?: number | null;
+  cnn_affinity_pk?: number | null;
   cluster_rank: number | null;
   sub_rank: number | null;
   rmsd_lower_bound_angstrom: number | null;
@@ -2215,7 +2382,9 @@ export type WorkKind =
   | "autodock4_job"
   | "autodock4_batch"
   | "autodock_gpu_job"
-  | "autodock_gpu_batch";
+  | "autodock_gpu_batch"
+  | "gnina_job"
+  | "gnina_screening";
 
 export interface RecoveredWorkItem {
   work_kind: WorkKind;
@@ -2225,6 +2394,7 @@ export interface RecoveredWorkItem {
   completed_entry_count: number;
   last_heartbeat_at: string | null;
   previous_owner_instance_id: string | null;
+  screening_campaign_id?: string | null;
 }
 
 export interface WorkRecoverySummary {

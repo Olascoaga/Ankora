@@ -32,6 +32,7 @@ class ScoringFamily(StrEnum):
 
     VINA = "vina"
     AUTODOCK4 = "autodock4"
+    GNINA = "gnina"
 
 
 class ReproducibilityStatus(StrEnum):
@@ -140,6 +141,10 @@ class CatalogEntry(BaseModel):
     canceled_count: int = Field(ge=0)
     # This engine's own best number, only ever meaningful beside `engine_label`.
     best_result_kcal_mol: float | None = None
+    # GNINA ranks by dimensionless CNNscore, not by its energy or pK value.
+    primary_cnn_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    cnn_affinity_pk: float | None = Field(default=None, allow_inf_nan=False)
+    minimized_affinity_kcal_mol: float | None = Field(default=None, allow_inf_nan=False)
     best_molecule: str | None = None
 
 
@@ -200,6 +205,9 @@ class CompoundRow(BaseModel):
     status: str = Field(min_length=1)
     failure_code: str | None = None
     best_result_kcal_mol: float | None = None
+    primary_cnn_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    cnn_affinity_pk: float | None = Field(default=None, allow_inf_nan=False)
+    minimized_affinity_kcal_mol: float | None = Field(default=None, allow_inf_nan=False)
     # Vina counts poses; AutoDock counts clusters and the population of the top
     # one. The spec forbids fabricating either shape for the other engine.
     pose_count: int | None = None

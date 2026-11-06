@@ -155,6 +155,68 @@ different scoring functions. The renderer names whichever applies and never
 produces a combined value, a pooled ranking, or a sentence that compares the two
 as if they shared a scale.
 
+## GNINA single jobs
+
+A GNINA job is rendered by its own path, not by the Vina or AutoDock4 branch
+with the nouns changed. Those branches describe a Lamarckian genetic algorithm,
+AutoGrid map precomputation, Vina energy ranges and AutoDock clustering, none of
+which happens in a GNINA run. A Methods section that borrowed one would describe
+a procedure the campaign never executed, which is rule 1 failing in the
+direction that is hardest to see.
+
+**Three score axes, reported as three quantities.** GNINA returns a
+dimensionless CNN pose score bounded between 0 and 1, which is the engine's own
+descending ranking and carries no kcal/mol meaning; a predicted CNN affinity in
+pK, where higher means stronger predicted affinity; and a minimized affinity in
+kcal mol⁻¹ from the empirical scoring function, where more negative means more
+favourable. The section names each with its unit and direction, states the
+top-ranked pose's three values, and says explicitly that the ranking did not use
+the minimized affinity — so the top-ranked pose need not be the lowest-energy
+one. All three are predictions of this engine. None is a measured affinity and
+none is evidence of biological activity. None shares a scale with another
+engine's score.
+
+**What the run recorded, exactly.** The engine version, the executable SHA-256
+and its architecture; the seed, exhaustiveness, maximum modes and minimum
+inter-mode RMSD filter; the CNN scoring mode and the built-in model named
+specifically rather than as "CNN"; the prepared-PDBQT hydrogen policy, with
+hydrogen addition and stripping both disabled so the engine neither added nor
+removed hydrogens from its inputs; and the compute policy, stating that Ankora
+never falls back between devices.
+
+**The search box comes from the docking record, not the binding-site artifact.**
+A binding site can be superseded after a run, so the box reported is the one
+stored on the job itself. The site record supplies the derivation — padding, the
+co-crystallized ligand, the selected residues — only when it still names the
+same receptor and the same box numerically. When it does not, the derivation is
+a gap and the box is still reported.
+
+**A GPU observation is reported for what it is.** When the process was observed
+on the selected device, the section names the device and states that this
+confirms the engine's process was reported there, not that every neural-network
+operation executed on the GPU. An unobserved CUDA run is a gap, never an
+assumption.
+
+**A preparation is described only while its recorded hash still matches.**
+GNINA's record stores the SHA-256 of the receptor PDBQT, the ligand PDBQT and
+the conformer it was handed. Each preparation is described only when the stored
+artifact still hashes to that value. A receptor prepared again since the run is
+a different receptor, and describing its protocol would attribute these numbers
+to inputs that did not produce them. A mismatch, a missing artifact, a
+preparation belonging to another ligand, or a removed record each becomes its own
+explicit gap naming which check failed — never a default and never an inference
+from a sibling record.
+
+**An unfinished job publishes no numbers.** A failed, canceled, queued or
+running job is described as such, with its recorded failure code and message, and
+the section states that no CNN score, affinity prediction or pose is reported
+because the record holds none.
+
+Repeat behavior for GNINA is reported as not assessed until GNINA-specific
+repeat evidence exists. Ankora holds no verified published reference for GNINA
+yet, so the Software table reports it as having none rather than borrowing one;
+that is a gap in Ankora's citation map, not in the campaign's records.
+
 ## References
 
 Ankora supplies the reference each tool's authors ask to be cited, because it

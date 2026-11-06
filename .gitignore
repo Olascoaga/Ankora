@@ -18,6 +18,7 @@ __pycache__/
 target/
 apps/desktop/src-tauri/resources/backend/
 apps/desktop/src-tauri/resources/complete-legal/
+apps/desktop/src-tauri/gen/schemas/linux-schema.json
 build/windows-runtime/
 build/receptor-diagnostic-*/
 build/user-guide-*/

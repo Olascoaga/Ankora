@@ -59,7 +59,7 @@ export interface DockingBoxInteractionFeedback {
 export interface MolecularViewerAdapter {
   mount(container: HTMLElement): Promise<void>;
   loadStructures(sources: ViewerSource[]): Promise<void>;
-  setTheme(theme: "light" | "dark" | "blue" | "amethyst" | "system"): void;
+  setTheme(theme: "obsidian" | "light" | "dark" | "blue" | "amethyst" | "system"): void;
   select(selection: ViewerSelection | null): void;
   setDockingBox(box: BindingBox | null): Promise<void>;
   setInteractionContacts(

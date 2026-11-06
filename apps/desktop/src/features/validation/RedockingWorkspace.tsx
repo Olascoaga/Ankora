@@ -161,6 +161,7 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
 
 function RedockingResults({ run }: { run: RedockingRunRecord }) {
   const { metrics } = run;
+  const gnina = run.source_kind === "gnina_job";
   return (
     <section className="docking-results library-docking-results" aria-label="Redocking validation results">
       <div className="docking-results-heading">
@@ -203,7 +204,13 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
         <div><dt>Recovered</dt><dd>{metrics.recovered_pose_count} of {metrics.pose_count} poses</dd></div>
         <div>
           <dt>Repeatable</dt>
-          <dd>{run.bitwise_reproducible ? "Bit-identical on a repeat" : "Not from its seed"}</dd>
+          <dd>
+            {run.bitwise_reproducible === null
+              ? "Not assessed"
+              : run.bitwise_reproducible
+                ? "Bit-identical on a repeat"
+                : "Not from its seed"}
+          </dd>
         </div>
       </dl>
       <p className="field-note">Repeatability above is source metadata, not established by this RMSD calculation.
@@ -214,8 +221,20 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
           <thead>
             <tr>
               <th>Rank</th>
-              <th>Run</th>
-              <th>{run.source_kind === "vina_job" ? "Vina score (kcal/mol)" : "AutoDock4 binding energy (kcal/mol)"}</th>
+              <th>{gnina ? "Mode" : "Run"}</th>
+              <th>
+                {run.source_kind === "vina_job"
+                  ? "Vina score (kcal/mol)"
+                  : gnina
+                    ? "Minimized affinity (kcal/mol)"
+                    : "AutoDock4 binding energy (kcal/mol)"}
+              </th>
+              {gnina ? (
+                <>
+                  <th>CNN score</th>
+                  <th>CNN affinity (pK)</th>
+                </>
+              ) : null}
               <th>RMSD (Å)</th>
               <th>Recovered</th>
             </tr>
@@ -224,8 +243,14 @@ function RedockingResults({ run }: { run: RedockingRunRecord }) {
             {run.poses.map((pose) => (
               <tr key={pose.rank} className={pose.recovered ? "best-ranked" : ""}>
                 <td>{pose.rank}</td>
-                <td>Run {pose.run}</td>
+                <td>{gnina ? "Mode" : "Run"} {pose.run}</td>
                 <td>{formatScientificNumber(pose.binding_energy_kcal_mol, 2)}</td>
+                {gnina ? (
+                  <>
+                    <td>{formatScientificNumber(pose.cnn_score, 4)}</td>
+                    <td>{formatScientificNumber(pose.cnn_affinity_pk, 3)}</td>
+                  </>
+                ) : null}
                 <td>{formatScientificNumber(pose.rmsd_angstrom, 3)}</td>
                 <td>{pose.recovered ? "Within threshold" : "—"}</td>
               </tr>

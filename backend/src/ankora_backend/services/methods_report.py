@@ -15,10 +15,18 @@ Three rules the renderer follows, in order of importance:
   claims a biological result. The section describes what was done.
 * **Reproducibility is stated only when exact repeats were compared.** Engine
   type and the presence of a seed are never treated as repeat evidence.
+* **An engine's score axes are never merged into one another.** GNINA returns a
+  dimensionless CNN pose score, a predicted CNN affinity in pK and a minimized
+  empirical affinity in kcal/mol. They are three quantities, they are reported
+  as three quantities, and none of them is pooled with a Vina score or an
+  AutoDock4 binding energy.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -28,6 +36,7 @@ from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
@@ -42,6 +51,7 @@ from ankora_backend.services.result_catalog import (
     AUTODOCK4_JOB,
     AUTODOCK_GPU_BATCH,
     AUTODOCK_GPU_JOB,
+    GNINA_JOB,
     VINA_BATCH,
     VINA_JOB,
     ResultCatalogService,
@@ -68,7 +78,9 @@ _ALERT_POLICY_EFFECT = {
     "ignore": "those matches were recorded but did not affect selection",
 }
 _DUPLICATE_POLICY = {
-    "exclude": "excluded", "review": "flagged for review", "keep": "retained",
+    "exclude": "excluded",
+    "review": "flagged for review",
+    "keep": "retained",
 }
 
 
@@ -91,9 +103,14 @@ class _Draft:
     def tool(self, name: str | None, version: str | None, role: str) -> None:
         if not name or not version:
             return
-        self.software.setdefault(f"{name} {version}", MethodsSoftware(
-            name=name, version=version, role=role,
-        ))
+        self.software.setdefault(
+            f"{name} {version}",
+            MethodsSoftware(
+                name=name,
+                version=version,
+                role=role,
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -148,6 +165,25 @@ class _PreparationSet:
     unavailable_preparations: int
 
 
+@dataclass(frozen=True)
+class _Verified:
+    """A record that may be described, or the reason it may not be.
+
+    `record` is populated only when every hash the engine recorded still
+    matches the stored artifact, so a caller cannot accidentally describe a
+    preparation that was redone after the run it is writing about.
+    """
+
+    record: Any = None
+    gap: str | None = None
+
+
+@dataclass(frozen=True)
+class _GninaInputs:
+    receptor: _Verified = field(default_factory=lambda: _Verified(gap="the GNINA job record"))
+    ligand: _Verified = field(default_factory=lambda: _Verified(gap="the GNINA job record"))
+
+
 class MethodsReportService:
     def __init__(
         self,
@@ -162,6 +198,7 @@ class MethodsReportService:
         docking: DockingArtifactStore,
         autodock4: AutoDock4JobStore,
         autodock_gpu: AutoDockGpuJobStore,
+        gnina: GninaJobStore | None = None,
     ) -> None:
         self._catalog = catalog
         self._structures = structures
@@ -173,6 +210,7 @@ class MethodsReportService:
         self._docking = docking
         self._autodock4 = autodock4
         self._autodock_gpu = autodock_gpu
+        self._gnina = gnina
 
     @classmethod
     def from_environment(cls) -> "MethodsReportService":
@@ -187,17 +225,21 @@ class MethodsReportService:
             docking=DockingArtifactStore.from_environment(),
             autodock4=AutoDock4JobStore.from_environment(),
             autodock_gpu=AutoDockGpuJobStore.from_environment(),
+            gnina=GninaJobStore.from_environment(),
         )
 
     def render(self, catalog_id: str) -> MethodsReport:
         entry = self._catalog.get_campaign(catalog_id)
         draft = _Draft()
 
-        self._protein(draft, entry)
-        self._site(draft, entry)
-        self._ligands_section(draft, entry)
-        self._docking_section(draft, entry)
-        self._outcome(draft, entry)
+        if entry.engine_key == GNINA_JOB:
+            self._gnina_sections(draft, entry)
+        else:
+            self._protein(draft, entry)
+            self._site(draft, entry)
+            self._ligands_section(draft, entry)
+            self._docking_section(draft, entry)
+            self._outcome(draft, entry)
         self._software_section(draft)
 
         return MethodsReport(
@@ -208,6 +250,416 @@ class MethodsReportService:
             gaps=draft.gaps,
             software=list(draft.software.values()),
         )
+
+    # --- GNINA ------------------------------------------------------------
+
+    def _gnina_sections(self, draft: _Draft, entry: CatalogEntry) -> None:
+        """A GNINA single job, described from its own record and nothing else.
+
+        GNINA's record is self-contained in a way the other engines' are not:
+        it stores the box it actually searched and the SHA-256 of every input
+        it was handed. That makes a stronger guarantee available here than
+        elsewhere, so this path takes it — a preparation is described only when
+        the stored artifact still hashes to what GNINA was given. A receptor
+        prepared again since the run is a different receptor, and describing it
+        would put a protocol in the Methods section that did not produce these
+        numbers.
+        """
+        job = self._gnina_job(entry)
+        inputs = self._gnina_inputs(job)
+
+        self._gnina_protein(draft, job, inputs)
+        self._gnina_site(draft, entry, job)
+        self._gnina_ligand(draft, job, inputs)
+        self._gnina_docking(draft, entry, job, inputs)
+        self._gnina_outcome(draft, entry, job)
+
+    def _gnina_job(self, entry: CatalogEntry) -> Any:
+        if self._gnina is None:
+            return None
+        return _load(self._gnina.load_job, entry.record_id)
+
+    def _gnina_inputs(self, job: Any) -> "_GninaInputs":
+        """Resolve each input only as far as its recorded hash still matches."""
+        if job is None:
+            return _GninaInputs()
+        return _GninaInputs(
+            receptor=self._gnina_receptor(job),
+            ligand=self._gnina_ligand_preparation(job),
+        )
+
+    def _gnina_receptor(self, job: Any) -> "_Verified":
+        receptor = _load(self._receptors.load_record, job.request.receptor_id)
+        if receptor is None:
+            return _Verified(gap="the receptor preparation record for this GNINA job")
+        output = next(
+            (
+                item
+                for item in getattr(receptor, "outputs", [])
+                if item.artifact_id == job.receptor_output_artifact_id
+            ),
+            None,
+        )
+        if output is None:
+            return _Verified(
+                gap="the prepared receptor artifact GNINA was given, in the receptor record"
+            )
+        stored = _stored_digest(
+            self._receptors.content_path, job.request.receptor_id, output.artifact_id
+        )
+        if stored is None:
+            return _Verified(gap="readable stored bytes for the prepared receptor GNINA was given")
+        if stored != job.receptor_sha256 or output.sha256 != job.receptor_sha256:
+            return _Verified(
+                gap=("a prepared receptor whose stored bytes still match the hash GNINA recorded")
+            )
+        return _Verified(record=receptor)
+
+    def _gnina_ligand_preparation(self, job: Any) -> "_Verified":
+        request = job.request
+        pdbqt = _load2(
+            self._ligands.load_pdbqt_record, request.ligand_id, request.ligand_preparation_id
+        )
+        if pdbqt is None:
+            return _Verified(gap="the prepared ligand record for this GNINA job")
+        if getattr(pdbqt.artifact, "ligand_id", request.ligand_id) != request.ligand_id:
+            return _Verified(gap="a prepared ligand record belonging to the docked ligand")
+        ligand_bytes = _stored_digest(
+            self._ligands.pdbqt_content_path, request.ligand_id, request.ligand_preparation_id
+        )
+        if ligand_bytes is None:
+            return _Verified(gap="readable stored bytes for the prepared ligand GNINA was given")
+        if ligand_bytes != job.ligand_sha256 or pdbqt.artifact.sha256 != job.ligand_sha256:
+            return _Verified(
+                gap=("a prepared ligand whose stored bytes still match the hash GNINA recorded")
+            )
+        conformer = _load2(
+            self._ligands.load_conformer_record, request.ligand_id, pdbqt.artifact.conformer_id
+        )
+        if conformer is None:
+            return _Verified(gap="the conformer record behind this GNINA job's prepared ligand")
+        conformer_bytes = _stored_digest(
+            self._ligands.conformer_content_path, request.ligand_id, pdbqt.artifact.conformer_id
+        )
+        if conformer_bytes is None:
+            return _Verified(gap="readable stored bytes for the conformer GNINA was given")
+        if (
+            conformer_bytes != job.conformer_sha256
+            or conformer.artifact.sha256 != job.conformer_sha256
+        ):
+            return _Verified(
+                gap=("a conformer whose stored bytes still match the hash GNINA recorded")
+            )
+        return _Verified(record=(pdbqt, conformer))
+
+    def _gnina_protein(self, draft: _Draft, job: Any, inputs: "_GninaInputs") -> None:
+        draft.say("## Protein preparation\n")
+        if job is None:
+            draft.say(
+                "The GNINA job record for this result is no longer available, so no "
+                "receptor preparation can be described. "
+                f"{draft.missing('the GNINA job record')}\n"
+            )
+            return
+        receptor = inputs.receptor
+        if receptor.record is None:
+            draft.say(
+                "Ankora describes a receptor preparation only when the stored artifact "
+                "still matches the hash GNINA was given. That check did not pass here, "
+                f"so the preparation is not described: {draft.missing(receptor.gap or '')}\n"
+            )
+            return
+        draft.say(
+            "The receptor GNINA received is the prepared PDBQT identified by SHA-256 "
+            f"{job.receptor_sha256}, which still matches the stored artifact."
+        )
+        self._protein_prose(draft, receptor.record)
+
+    def _gnina_site(self, draft: _Draft, entry: CatalogEntry, job: Any) -> None:
+        draft.say("## Binding site definition\n")
+        if job is None:
+            draft.say(
+                "The search space cannot be stated without the job record. "
+                f"{draft.missing('the recorded GNINA search box')}\n"
+            )
+            return
+
+        box = job.box
+        draft.say(
+            "The search box recorded on the docking job itself was centred at "
+            f"({box.center_x}, {box.center_y}, {box.center_z}) Å with "
+            f"dimensions {box.size_x} × {box.size_y} × {box.size_z} Å, in "
+            "the coordinate frame of the prepared receptor. These are the values "
+            "GNINA was given, taken from the run's own record rather than from the "
+            "binding-site artifact, which can be superseded after a run."
+        )
+
+        site = _load(self._binding_sites.load_record, job.request.binding_site_id)
+        if site is None:
+            draft.say(
+                "How that box was originally derived is "
+                f"{draft.missing('the binding site record for this GNINA job')}.\n"
+            )
+            return
+        if site.receptor_id != job.request.receptor_id or not _same_box(site.box, box):
+            inconsistent = draft.missing(
+                "a binding site record consistent with the recorded GNINA box"
+            )
+            draft.say(
+                "The binding-site artifact this job names no longer describes the same "
+                f"receptor and box, so its derivation is not used here: {inconsistent}.\n"
+            )
+            return
+
+        decisions = site.decisions
+        source = _SITE_SOURCE.get(str(decisions.source), str(decisions.source))
+        detail = ""
+        if decisions.ligand_origin is not None:
+            heterogen = decisions.ligand_origin.heterogen
+            detail = (
+                f" ({heterogen.residue_name} {heterogen.chain_id}:"
+                f"{heterogen.sequence_number}, padded by "
+                f"{decisions.ligand_origin.padding_angstrom:g} Å on every side)"
+            )
+        elif decisions.residue_selection is not None:
+            count = len(decisions.residue_selection.residues)
+            detail = (
+                f" ({count} residue{'s' if count != 1 else ''}, padded by "
+                f"{decisions.residue_selection.padding_angstrom:g} Å)"
+            )
+        draft.say(f"That box was defined from {source}{detail}.")
+        if entry.map_set_id:
+            # GNINA scores from the structures themselves. A map set on the entry
+            # would mean a record from another engine's pipeline reached this one.
+            draft.say(
+                "No precomputed affinity grid maps were used; GNINA scores directly "
+                "from the prepared structures."
+            )
+        draft.say("")
+
+    def _gnina_ligand(self, draft: _Draft, job: Any, inputs: "_GninaInputs") -> None:
+        draft.say("## Ligand preparation\n")
+        if job is None:
+            draft.say(
+                "No ligand preparation can be described without the job record. "
+                f"{draft.missing('the GNINA prepared ligand identity')}\n"
+            )
+            return
+        draft.say(
+            "A single ligand was docked; no compound library was screened."
+            if _gnina_executed(job)
+            else "The job was configured for a single ligand, not a compound library."
+        )
+        ligand = inputs.ligand
+        if ligand.record is None:
+            draft.say(
+                "Ankora describes a ligand preparation only when the stored conformer "
+                "and PDBQT still match the hashes GNINA was given. That check did not "
+                "pass here, so the preparation is not described: "
+                f"{draft.missing(ligand.gap or '')}\n"
+            )
+            return
+
+        pdbqt, conformer = ligand.record
+        protocol = _protocol_from(pdbqt, conformer)
+        draft.tool(
+            protocol.conformer_tool_name,
+            protocol.conformer_tool_version,
+            "ligand conformer generation and minimization",
+        )
+        draft.tool(protocol.pdbqt_tool_name, protocol.pdbqt_tool_version, "ligand PDBQT conversion")
+        lineage = _state_lineage(self._ligands, job.request.ligand_id, conformer)
+        if lineage is not None:
+            for decision in lineage.decisions:
+                draft.tool(
+                    decision.tool_name, decision.tool_version, "ligand chemical-state resolution"
+                )
+        draft.say(
+            "The prepared ligand PDBQT and its conformer still match the hashes GNINA "
+            f"recorded ({job.ligand_sha256} and {job.conformer_sha256})."
+        )
+        draft.say(_single_preparation_sentence(protocol))
+        _chemical_state_prose(
+            draft,
+            _PreparationSet(
+                items=[
+                    _PreparedLigand(
+                        ligand_id=job.request.ligand_id,
+                        preparation_id=job.request.ligand_preparation_id,
+                        conformer=conformer,
+                        pdbqt=pdbqt,
+                        protocol=protocol,
+                        state_lineage=lineage,
+                    )
+                ],
+                total_entries=1,
+                entries_without_preparation=0,
+                unavailable_preparations=0,
+            ),
+            single=True,
+        )
+        draft.say("")
+
+    def _gnina_docking(
+        self, draft: _Draft, entry: CatalogEntry, job: Any, inputs: "_GninaInputs"
+    ) -> None:
+        draft.say("## Molecular docking\n")
+        if job is None:
+            draft.say(
+                "The docking parameters for this job are "
+                f"{draft.missing('the GNINA request parameters')}.\n"
+            )
+            return
+
+        executed = _gnina_executed(job)
+        tool = job.tool
+        draft.tool("GNINA", tool.version, "molecular docking")
+        identity = (
+            f"GNINA {tool.version}, a native {tool.architecture} Linux build "
+            f"identified by executable SHA-256 {tool.sha256}"
+        )
+        if executed:
+            draft.say(f"Docking was performed with {identity}.")
+        else:
+            draft.say(
+                f"This job was configured for {identity}. It did not complete a "
+                "successful run, so this section states the configuration that was "
+                "recorded rather than a protocol that produced results."
+            )
+
+        parameters = job.request.parameters
+        search = (
+            f"a fixed random seed of {parameters.seed}, an exhaustiveness of "
+            f"{parameters.exhaustiveness}, at most {parameters.num_modes} binding mode"
+            f"{'s' if parameters.num_modes != 1 else ''}, and a minimum inter-mode "
+            f"RMSD filter of {parameters.min_rmsd_filter_angstrom:g} Å"
+        )
+        draft.say(
+            f"The search used {search}."
+            if executed
+            else f"The recorded search configuration specified {search}."
+        )
+        scoring = (
+            f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
+            f"`{parameters.cnn_model}` model"
+        )
+        draft.say(
+            (
+                f"Pose scoring used the recorded GNINA CNN configuration: {scoring}."
+                if executed
+                else f"Pose scoring was configured as {scoring}."
+            )
+            + " The mode and model are reported as recorded."
+        )
+        if executed:
+            draft.say(
+                "Receptor and ligand were supplied as independently prepared PDBQT "
+                "files, and GNINA was run with both hydrogen addition and hydrogen "
+                "stripping disabled, so the engine neither added nor removed hydrogens "
+                "from the prepared inputs."
+            )
+        else:
+            draft.say(
+                "The configuration supplies receptor and ligand as independently "
+                "prepared PDBQT files with both hydrogen addition and hydrogen "
+                "stripping disabled, so the engine would neither add nor remove "
+                "hydrogens from the prepared inputs."
+            )
+        # Only claimable once both inputs were verified against their stored bytes;
+        # otherwise Ankora does not know which protonation the engine received.
+        if inputs.receptor.record is not None and inputs.ligand.record is not None:
+            draft.say(
+                "The protonation those inputs carry is the one recorded in their own preparation."
+            )
+        draft.say(_gnina_compute_prose(parameters, executed=executed))
+        if parameters.compute == "cuda":
+            if job.execution is None:
+                # Nothing launched, so there is no observation to miss.
+                draft.say(
+                    "No GNINA execution was recorded for this job, so there is no GPU "
+                    "process observation to report."
+                )
+            else:
+                observation = _gnina_gpu_observation(job.execution)
+                if observation is None:
+                    draft.say(
+                        "The recorded execution carries no GPU process observation, so "
+                        "execution on the selected device is "
+                        f"{draft.missing('recorded GNINA GPU process observation')}."
+                    )
+                else:
+                    draft.say(observation)
+        if entry.device_name and entry.device_name != _gnina_observed_uuid(job.execution):
+            draft.say(
+                "The catalog device label and the job's own GPU observation disagree, so "
+                "the device is reported only as the job recorded it: "
+                f"{draft.missing('a single consistent recorded GNINA device identity')}."
+            )
+        draft.say("")
+
+    def _gnina_outcome(self, draft: _Draft, entry: CatalogEntry, job: Any) -> None:
+        draft.say("## Results and reproducibility\n")
+        if job is None:
+            draft.say(
+                "No outcome can be reported without the job record. "
+                f"{draft.missing('the recorded GNINA outcome')}\n"
+            )
+            return
+
+        status = _text(job.status)
+        poses = list(job.poses)
+        if status != "completed" or not poses:
+            draft.say(_gnina_unfinished_prose(status, job.failure))
+            draft.say(
+                "No CNN score, affinity prediction or pose is reported for this job, "
+                "because its record holds none."
+            )
+            draft.say("")
+            return
+
+        top = poses[0]
+        draft.say(
+            f"One ligand was docked and GNINA returned {len(poses)} pose"
+            f"{'s' if len(poses) != 1 else ''}, retained in the order the engine "
+            "produced them."
+        )
+        draft.say(
+            "Poses are ordered by descending CNN pose score, which is the engine's own "
+            "ranking. The CNN pose score is dimensionless and bounded between 0 and 1; a "
+            "higher value ranks a pose earlier. It is not an energy and has no kcal/mol "
+            "interpretation."
+        )
+        draft.say(
+            "Ankora records two further quantities per pose and keeps them distinct from "
+            "that ranking and from each other:"
+        )
+        draft.say(
+            "- the CNN affinity prediction, in pK units, where a higher value means a "
+            "stronger predicted affinity;"
+        )
+        draft.say(
+            "- the minimized affinity from GNINA's empirical scoring function, in "
+            "kcal mol⁻¹, where a more negative value means a more favourable predicted "
+            "interaction."
+        )
+        draft.say(
+            f"For the top-ranked pose these were a CNN pose score of {top.cnn_score:g}, a "
+            f"predicted CNN affinity of {top.cnn_affinity:g} pK, and a minimized affinity "
+            f"of {top.minimized_affinity_kcal_mol:g} kcal mol⁻¹. The ranking did not use "
+            "the minimized affinity, so the top-ranked pose is not necessarily the one "
+            "with the lowest recorded energy."
+        )
+        draft.say(
+            "All three quantities are predictions of this engine for this pose. None is a "
+            "measured binding affinity and none is evidence of biological activity."
+        )
+        draft.say(
+            "They come from GNINA's own empirical function and convolutional model, and "
+            "they do not share a scale with the score of any other docking engine. Ankora "
+            "does not pool or jointly rank results across engines."
+        )
+        self._reproducibility_prose(draft, entry)
+        draft.say("")
 
     # --- sections ---------------------------------------------------------
 
@@ -220,7 +672,14 @@ class MethodsReportService:
                 f"available. {draft.missing('receptor preparation record')}\n"
             )
             return
+        self._protein_prose(draft, receptor)
 
+    def _protein_prose(self, draft: _Draft, receptor: Any) -> None:
+        """Everything a receptor record says about how it was prepared.
+
+        Shared with the GNINA path, which reaches it only after confirming that
+        the stored artifact still hashes to what the engine was handed.
+        """
         decisions = receptor.decisions
         events = {event.event_type: event for event in receptor.provenance}
         structure = _load(self._structures.load_record, receptor.source_artifact_id)
@@ -297,8 +756,7 @@ class MethodsReportService:
             tool = relax.tool
             draft.tool(tool.name, tool.version, "restrained clash relaxation")
             moved = (
-                f" No previously observed atom moved more than "
-                f"{float(displacement):.2f} Å."
+                f" No previously observed atom moved more than {float(displacement):.2f} Å."
                 if isinstance(displacement, (int, float))
                 else ""
             )
@@ -323,8 +781,7 @@ class MethodsReportService:
             )
         else:
             draft.say(
-                "Protonation of the receptor was "
-                f"{draft.missing('receptor protonation record')}."
+                f"Protonation of the receptor was {draft.missing('receptor protonation record')}."
             )
 
         pdbqt = events.get("receptor_pdbqt_generated")
@@ -415,7 +872,8 @@ class MethodsReportService:
             if maps is not None:
                 geometry = maps.geometry
                 draft.tool(
-                    maps.autogrid.tool.name, maps.autogrid.tool.version,
+                    maps.autogrid.tool.name,
+                    maps.autogrid.tool.version,
                     "affinity grid map calculation",
                 )
                 draft.say(
@@ -470,10 +928,7 @@ class MethodsReportService:
 
         draft.tool("RDKit", run.rdkit_version, "descriptor calculation and filtering")
         microstate_plan = getattr(run, "microstate_plan", None)
-        if (
-            microstate_plan is not None
-            and _text(microstate_plan.mode) == "enumerated_selection"
-        ):
+        if microstate_plan is not None and _text(microstate_plan.mode) == "enumerated_selection":
             draft.say(
                 "Before filtering, one protonation/tautomer microstate was "
                 "explicitly selected for each retained parent compound from a "
@@ -515,9 +970,7 @@ class MethodsReportService:
             f"({summary.duplicate_count} found)."
         )
         classified_count = (
-            summary.eligible_count
-            + summary.excluded_count
-            + summary.needs_decision_count
+            summary.eligible_count + summary.excluded_count + summary.needs_decision_count
         )
         census = (
             f"Of {summary.imported_count} compounds evaluated, "
@@ -628,9 +1081,7 @@ class MethodsReportService:
             )
         else:
             runs = parameters.get("runs", parameters.get("ga_runs"))
-            population = parameters.get(
-                "population_size", parameters.get("ga_population_size")
-            )
+            population = parameters.get("population_size", parameters.get("ga_population_size"))
             evaluations = parameters.get(
                 "energy_evaluations", parameters.get("ga_energy_evaluations")
             )
@@ -654,8 +1105,7 @@ class MethodsReportService:
             )
         if entry.executable_sha256:
             draft.say(
-                "The exact executable used is identified by SHA-256 "
-                f"{entry.executable_sha256}."
+                f"The exact executable used is identified by SHA-256 {entry.executable_sha256}."
             )
         if entry.device_name:
             draft.say(f"Docking ran on an {entry.device_name}.")
@@ -676,6 +1126,16 @@ class MethodsReportService:
             "from an empirical scoring function and are not measured binding "
             "affinities."
         )
+        self._reproducibility_prose(draft, entry)
+        draft.say("")
+
+    def _reproducibility_prose(self, draft: _Draft, entry: CatalogEntry) -> None:
+        """The three repeat-behavior states, shared by every engine.
+
+        The distinction between them is load-bearing: "we did not check" and
+        "we checked and it varies" are different claims, and neither may be
+        inferred from an engine's reputation or from the presence of a seed.
+        """
         assessment = entry.reproducibility
         if assessment.status is ReproducibilityStatus.MEASURED_REPRODUCIBLE:
             draft.say(
@@ -699,7 +1159,6 @@ class MethodsReportService:
                 "support an exact "
                 "rerun request but do not establish that its outputs will match."
             )
-        draft.say("")
 
     def _software_section(self, draft: _Draft) -> None:
         draft.say("## Software\n")
@@ -787,8 +1246,7 @@ class MethodsReportService:
 
 def _reproducibility_evidence(assessment: Any) -> str:
     executions = "; ".join(
-        f"{execution.catalog_id} (output fingerprint SHA-256 "
-        f"{execution.output_fingerprint_sha256})"
+        f"{execution.catalog_id} (output fingerprint SHA-256 {execution.output_fingerprint_sha256})"
         for execution in assessment.executions
     )
     return (
@@ -852,19 +1310,35 @@ def _load_preparations(ligands: Any, record: Any) -> _PreparationSet:
 
 
 def _load_preparation(
-    ligands: Any, ligand_id: str, preparation_id: str,
+    ligands: Any,
+    ligand_id: str,
+    preparation_id: str,
 ) -> _PreparedLigand | None:
     pdbqt = _load2(ligands.load_pdbqt_record, ligand_id, preparation_id)
     if pdbqt is None:
         return None
     conformer = _load2(
-        ligands.load_conformer_record, ligand_id, pdbqt.artifact.conformer_id,
+        ligands.load_conformer_record,
+        ligand_id,
+        pdbqt.artifact.conformer_id,
     )
     if conformer is None:
         return None
+    return _PreparedLigand(
+        ligand_id=ligand_id,
+        preparation_id=preparation_id,
+        conformer=conformer,
+        pdbqt=pdbqt,
+        protocol=_protocol_from(pdbqt, conformer),
+        state_lineage=_state_lineage(ligands, ligand_id, conformer),
+    )
+
+
+def _protocol_from(pdbqt: Any, conformer: Any) -> _PreparationProtocol:
+    """The recorded protocol behind one prepared ligand."""
     minimization = conformer.minimization
     conformer_tool = getattr(getattr(conformer, "provenance", None), "tool", None)
-    protocol = _PreparationProtocol(
+    return _PreparationProtocol(
         embedding_method=getattr(minimization, "embedding_method", None),
         force_field=_text(minimization.force_field),
         max_iterations=minimization.max_iterations,
@@ -879,13 +1353,145 @@ def _load_preparation(
         pdbqt_tool_version=pdbqt.tool.version,
         charge_model=_text(pdbqt.charge_model),
     )
-    return _PreparedLigand(
-        ligand_id=ligand_id,
-        preparation_id=preparation_id,
-        conformer=conformer,
-        pdbqt=pdbqt,
-        protocol=protocol,
-        state_lineage=_state_lineage(ligands, ligand_id, conformer),
+
+
+def _stored_digest(resolve: Any, *identifiers: str) -> str | None:
+    """SHA-256 of the bytes actually on disk, or None if they cannot be read.
+
+    The record's own `sha256` field is metadata written beside the artifact, so
+    comparing it to the engine's recorded hash only proves two JSON documents
+    agree. The Methods section claims the stored artifact still matches what
+    GNINA was handed, and only reading the file establishes that.
+    """
+    try:
+        path = Path(resolve(*identifiers))
+    except (AnkoraDomainError, OSError, ValueError, TypeError):
+        return None
+    digest = sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _gnina_executed(job: Any) -> bool:
+    """Whether this job actually completed a successful GNINA run.
+
+    Everything written in the past tense depends on this. A queued job has no
+    execution at all, and a failed or canceled one has an execution that did
+    not produce the protocol it was configured for.
+    """
+    execution = getattr(job, "execution", None)
+    return (
+        _text(job.status) == "completed"
+        and execution is not None
+        and getattr(execution, "exit_code", None) == 0
+        and not getattr(execution, "canceled", False)
+        and not getattr(execution, "timed_out", False)
+    )
+
+
+def _same_box(first: Any, second: Any) -> bool:
+    """Whether two records describe the same search space.
+
+    Compared numerically rather than by identifier: two binding-site records
+    can name the same pocket, and the box is what says whether they searched
+    the same space.
+    """
+    names = ("center_x", "center_y", "center_z", "size_x", "size_y", "size_z")
+    try:
+        return all(
+            math.isclose(
+                float(getattr(first, name)),
+                float(getattr(second, name)),
+                rel_tol=0.0,
+                abs_tol=1e-6,
+            )
+            for name in names
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+_GNINA_UNFINISHED = {
+    "failed": "did not complete; its recorded status is `failed`",
+    "canceled": "was canceled before it finished",
+    "cancel_requested": "has a pending cancellation and no terminal outcome",
+    "running": "was still running when this record was read",
+    "queued": "had not started when this record was read",
+}
+
+
+def _gnina_unfinished_prose(status: str, failure: Any) -> str:
+    described = _GNINA_UNFINISHED.get(status, f"has the recorded status `{status}`")
+    sentence = f"This GNINA job {described}, and no poses were published for it."
+    code = getattr(failure, "code", None)
+    if code:
+        message = str(getattr(failure, "message", "") or "").rstrip(".")
+        sentence += f" The recorded failure was {code}"
+        sentence += f": {message}." if message else "."
+    return sentence
+
+
+def _gnina_compute_prose(parameters: Any, *, executed: bool) -> str:
+    threads = parameters.cpu_threads
+    plural = "s" if threads != 1 else ""
+    if parameters.compute == "cpu":
+        placement = (
+            f"The run was executed on the CPU with {threads} thread{plural} and GPU "
+            "execution explicitly disabled."
+            if executed
+            else f"The run was configured for the CPU with {threads} thread{plural} "
+            "and GPU execution explicitly disabled."
+        )
+        return (
+            f"{placement} Ankora never falls back between compute devices: the "
+            "recorded policy is the one that applies."
+        )
+    placement = (
+        f"The run was requested on CUDA logical device {parameters.device_index} with "
+        f"{threads} CPU thread{plural}."
+        if executed
+        else f"The run was configured to request CUDA logical device "
+        f"{parameters.device_index} with {threads} CPU thread{plural}."
+    )
+    return (
+        f"{placement} Ankora never falls back from a requested GPU to the CPU; a run "
+        "that cannot be observed on the selected device fails instead of producing "
+        "poses."
+    )
+
+
+def _gnina_observed_uuid(execution: Any) -> str | None:
+    return getattr(execution, "observed_gpu_uuid", None)
+
+
+def _gnina_gpu_observation(execution: Any) -> str | None:
+    """What the GPU observation does and does not establish.
+
+    A detected executable or a reported device is not proof that GPU inference
+    ran, so this states the narrower thing that was actually observed.
+    """
+    if execution is None or not getattr(execution, "gpu_process_observed", False):
+        return None
+    observed = _gnina_observed_uuid(execution)
+    if not observed:
+        return None
+    requested = getattr(execution, "requested_gpu_uuid", None)
+    sentence = f"Ankora observed the GNINA process occupying GPU {observed}"
+    if requested:
+        sentence += (
+            f", the device requested for this run ({requested})"
+            if requested == observed
+            else f", while the device requested for this run was {requested}"
+        )
+    return (
+        f"{sentence}. This confirms that the engine's own process was reported on that "
+        "device; it is not independent proof that every neural-network operation "
+        "executed on the GPU."
     )
 
 
@@ -897,10 +1503,7 @@ def _single_preparation_sentence(protocol: _PreparationProtocol) -> str:
 
 
 def _batch_preparation_prose(draft: _Draft, preparations: _PreparationSet) -> None:
-    missing = (
-        preparations.entries_without_preparation
-        + preparations.unavailable_preparations
-    )
+    missing = preparations.entries_without_preparation + preparations.unavailable_preparations
     if missing:
         draft.say(
             f"Preparation evidence was available for {len(preparations.items)} of "
@@ -929,8 +1532,7 @@ def _batch_preparation_prose(draft: _Draft, preparations: _PreparationSet) -> No
         groups.items(), key=lambda pair: (_protocol_description(pair[0]), pair[1])
     ):
         draft.say(
-            f"- {count} ligand{'s' if count != 1 else ''}: "
-            f"{_protocol_description(protocol)}."
+            f"- {count} ligand{'s' if count != 1 else ''}: {_protocol_description(protocol)}."
         )
 
 
@@ -1033,7 +1635,10 @@ def _state_lineage(ligands: Any, ligand_id: str, conformer: Any) -> _StateLineag
 
 
 def _chemical_state_prose(
-    draft: _Draft, preparations: _PreparationSet, *, single: bool,
+    draft: _Draft,
+    preparations: _PreparationSet,
+    *,
+    single: bool,
 ) -> None:
     known = [item.state_lineage for item in preparations.items if item.state_lineage]
     unknown = len(preparations.items) - len(known)
@@ -1055,27 +1660,19 @@ def _chemical_state_prose(
         draft.say(f"{subject} {_state_description(lineage)}.")
     else:
         draft.say(
-            f"The {len(known)} verified ligands comprised "
-            f"{len(groups)} chemical-state lineages:"
+            f"The {len(known)} verified ligands comprised {len(groups)} chemical-state lineages:"
         )
         for lineage, count in sorted(
             groups.items(), key=lambda pair: (_state_description(pair[0]), pair[1])
         ):
-            draft.say(
-                f"- {count} ligand{'s' if count != 1 else ''} "
-                f"{_state_description(lineage)}."
-            )
+            draft.say(f"- {count} ligand{'s' if count != 1 else ''} {_state_description(lineage)}.")
     if all(
         decision.kind not in {"protonation", "microstate"}
         for lineage in known
         for decision in lineage.decisions
     ):
         draft.say("No pH-based ligand protonation enumeration was recorded.")
-    if all(
-        decision.kind != "microstate"
-        for lineage in known
-        for decision in lineage.decisions
-    ):
+    if all(decision.kind != "microstate" for lineage in known for decision in lineage.decisions):
         draft.say("No ligand tautomer enumeration was recorded.")
 
 
@@ -1094,9 +1691,7 @@ def _state_description(lineage: _StateLineage) -> str:
         )
         if decision.kind == "microstate":
             truncation = (
-                ", with the configured bound reached"
-                if decision.enumeration_truncated
-                else ""
+                ", with the configured bound reached" if decision.enumeration_truncated else ""
             )
             descriptions.append(
                 "used explicitly selected protonation/tautomer candidate "
@@ -1127,6 +1722,7 @@ _ENGINE_NAMES = {
     AUTODOCK4_JOB: "AutoDock4",
     AUTODOCK_GPU_BATCH: "AutoDock-GPU",
     AUTODOCK_GPU_JOB: "AutoDock-GPU",
+    GNINA_JOB: "GNINA",
 }
 
 
@@ -1167,7 +1763,12 @@ def _required_rules(plan: Any) -> list[str]:
 
 def _custom_rule(rule: Any) -> str:
     operators = {
-        "lt": "<", "le": "≤", "gt": ">", "ge": "≥", "eq": "=", "between": "between",
+        "lt": "<",
+        "le": "≤",
+        "gt": ">",
+        "ge": "≥",
+        "eq": "=",
+        "between": "between",
     }
     symbol = operators.get(str(rule.operator), str(rule.operator))
     label = rule.label or str(rule.descriptor).replace("_", " ")

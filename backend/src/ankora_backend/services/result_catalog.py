@@ -9,6 +9,7 @@ The frontend asks this service rather than knowing six store layouts, which is
 what keeps the interface from growing its own opinion about where results live.
 """
 
+from contextlib import suppress
 from typing import Any
 
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -16,6 +17,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
@@ -35,10 +37,12 @@ AUTODOCK_GPU_BATCH = "autodock_gpu_batch"
 VINA_JOB = "vina_job"
 AUTODOCK4_JOB = "autodock4_job"
 AUTODOCK_GPU_JOB = "autodock_gpu_job"
+GNINA_JOB = "gnina_job"
 
 VALUE_LABEL = {
     ScoringFamily.VINA: "Vina score (kcal/mol)",
     ScoringFamily.AUTODOCK4: "Binding energy (kcal/mol)",
+    ScoringFamily.GNINA: "CNN score (higher ranks first)",
 }
 
 
@@ -51,12 +55,14 @@ class ResultCatalogService:
         autodock_gpu_store: AutoDockGpuJobStore,
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
+        gnina_store: GninaJobStore | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._autodock4_store = autodock4_store
         self._autodock_gpu_store = autodock_gpu_store
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
+        self._gnina_store = gnina_store
         self._reproducibility = ReproducibilityService(
             docking_store=docking_store,
             autodock4_store=autodock4_store,
@@ -71,6 +77,7 @@ class ResultCatalogService:
             autodock_gpu_store=AutoDockGpuJobStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
+            gnina_store=GninaJobStore.from_environment(),
         )
 
     # --- listing ----------------------------------------------------------
@@ -167,14 +174,17 @@ class ResultCatalogService:
             except (AnkoraDomainError, OSError):
                 continue
             entries.extend(project(record) for record in job_records)
+        if self._gnina_store is not None:
+            with suppress(AnkoraDomainError, OSError):
+                entries.extend(
+                    self._from_gnina_job(record)
+                    for record in self._gnina_store.list_jobs()
+                    if record.screening_campaign_id is None
+                )
         assessments = self._reproducibility.all_assessments()
         return [
             entry.model_copy(
-                update={
-                    "reproducibility": assessments.get(
-                        entry.catalog_id, entry.reproducibility
-                    )
-                }
+                update={"reproducibility": assessments.get(entry.catalog_id, entry.reproducibility)}
             )
             for entry in entries
         ]
@@ -229,13 +239,22 @@ class ResultCatalogService:
                 if needle in row.name.casefold()
                 or needle in (row.canonical_smiles or "").casefold()
             ]
-        rows.sort(
-            key=lambda row: (
-                row.best_result_kcal_mol is None,
-                row.best_result_kcal_mol if row.best_result_kcal_mol is not None else 0.0,
-                row.source_index,
+        if entry.scoring_family is ScoringFamily.GNINA:
+            rows.sort(
+                key=lambda row: (
+                    row.primary_cnn_score is None,
+                    -(row.primary_cnn_score or 0.0),
+                    row.source_index,
+                )
             )
-        )
+        else:
+            rows.sort(
+                key=lambda row: (
+                    row.best_result_kcal_mol is None,
+                    row.best_result_kcal_mol if row.best_result_kcal_mol is not None else 0.0,
+                    row.source_index,
+                )
+            )
         return CompoundPage(
             catalog_id=catalog_id,
             engine_label=entry.engine_label,
@@ -312,6 +331,8 @@ class ResultCatalogService:
             return self._from_autodock4_job(self._autodock4_store.load_job(record_id))
         if engine_key == AUTODOCK_GPU_JOB:
             return self._from_gpu_job(self._autodock_gpu_store.load_job(record_id))
+        if engine_key == GNINA_JOB and self._gnina_store is not None:
+            return self._from_gnina_job(self._gnina_store.load_job(record_id))
         raise self._unknown(engine_key)
 
     @staticmethod
@@ -348,11 +369,29 @@ class ResultCatalogService:
                     pose_count=len(vina.poses),
                 )
             ]
+        if engine_key == GNINA_JOB and self._gnina_store is not None:
+            job = self._gnina_store.load_job(record_id)
+            pose = job.poses[0] if job.poses else None
+            return [
+                self._single_row(
+                    job.request.ligand_id,
+                    job.status.value,
+                    job.failure.code if job.failure else None,
+                    best=None,
+                    pose_count=len(job.poses),
+                ).model_copy(
+                    update={
+                        "primary_cnn_score": pose.cnn_score if pose else None,
+                        "cnn_affinity_pk": pose.cnn_affinity if pose else None,
+                        "minimized_affinity_kcal_mol": pose.minimized_affinity_kcal_mol
+                        if pose
+                        else None,
+                    }
+                )
+            ]
         if engine_key in (AUTODOCK4_JOB, AUTODOCK_GPU_JOB):
             store: Any = (
-                self._autodock4_store
-                if engine_key == AUTODOCK4_JOB
-                else self._autodock_gpu_store
+                self._autodock4_store if engine_key == AUTODOCK4_JOB else self._autodock_gpu_store
             )
             job = store.load_job(record_id)
             top = next((c for c in job.clusters if c.cluster_rank == 1), None)
@@ -539,6 +578,36 @@ class ResultCatalogService:
             best_molecule=molecule,
         )
 
+    def _from_gnina_job(self, record: Any) -> CatalogEntry:
+        pose = record.poses[0] if record.poses else None
+        return CatalogEntry(
+            catalog_id=f"{GNINA_JOB}:{record.job_id}",
+            engine_key=GNINA_JOB,
+            record_id=record.job_id,
+            mode=ResultMode.SINGLE_LIGAND,
+            scoring_family=ScoringFamily.GNINA,
+            backend=record.request.parameters.compute,
+            engine_label=f"GNINA {record.tool.version}",
+            engine_version=record.tool.version,
+            executable_sha256=record.tool.sha256,
+            device_name=record.execution.observed_gpu_uuid if record.execution else None,
+            status=record.status.value,
+            created_at=record.created_at,
+            completed_at=record.completed_at,
+            receptor_id=record.request.receptor_id,
+            binding_site_id=record.request.binding_site_id,
+            box=record.box.model_dump(mode="json"),
+            ligand_id=record.request.ligand_id,
+            best_molecule=self._inspect(record.request.ligand_id)[0],
+            selected_count=1,
+            succeeded_count=1 if pose else 0,
+            failed_count=1 if record.status.value == "failed" else 0,
+            canceled_count=1 if record.status.value == "canceled" else 0,
+            primary_cnn_score=pose.cnn_score if pose else None,
+            cnn_affinity_pk=pose.cnn_affinity if pose else None,
+            minimized_affinity_kcal_mol=pose.minimized_affinity_kcal_mol if pose else None,
+        )
+
     def _from_vina_job(self, record: Any) -> CatalogEntry:
         return CatalogEntry(
             catalog_id=f"{VINA_JOB}:{record.job_id}",
@@ -607,6 +676,8 @@ class ResultCatalogService:
 
     def _with_box(self, entry: CatalogEntry) -> CatalogEntry:
         """The exact search space, which is half of what identifies a result."""
+        if entry.scoring_family is ScoringFamily.GNINA:
+            return entry
         try:
             site = self._binding_site_store.load_record(entry.binding_site_id)
         except (AnkoraDomainError, OSError, ValueError):
@@ -659,9 +730,7 @@ def _pose_best(entry: Any) -> float | None:
 def _cluster_best(entry: Any) -> float | None:
     if not entry.clusters:
         return None
-    return float(
-        min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters)
-    )
+    return float(min(cluster.lowest_binding_energy_kcal_mol for cluster in entry.clusters))
 
 
 def _single_counts(record: Any, best: float | None) -> dict[str, Any]:

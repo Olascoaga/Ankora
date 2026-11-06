@@ -1,4 +1,4 @@
-"""Repository entry point for the Windows native scientific-tool smoke matrix."""
+"""Repository entry point for the native scientific-tool smoke matrix (Windows and Linux)."""
 
 from __future__ import annotations
 

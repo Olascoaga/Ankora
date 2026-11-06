@@ -1,6 +1,7 @@
 """Synthetic NSIS fixtures; no real installer or scientific payload is changed."""
 
 import subprocess
+import sys
 
 import pytest
 from scripts.compact_windows_installer import build, compact_script, model_script
@@ -64,6 +65,23 @@ def test_model_dedup_preserves_other_files_and_runs_before_registration():
         model_script(result, ("default",))
 
 
+def test_build_rejects_non_windows_payload_paths_without_touching_original(tmp_path):
+    original = tmp_path / "original.exe"
+    original.write_bytes(b"SYNTHETIC original installer")
+    posix_payload = original if sys.platform != "win32" else "/posix/synthetic/original.exe"
+    source = tmp_path / "installer.nsi"
+    source.write_text(SCRIPT + f'File "{posix_payload}"\n')
+    output = tmp_path / "candidate"
+    with pytest.raises(ValueError, match="No generated Windows payload inputs found"):
+        build(source, output, tmp_path / "compiler.exe", 64, [original])
+    assert original.read_bytes() == b"SYNTHETIC original installer"
+    assert not output.exists()
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="build() requires existing Windows drive-letter payload paths (^[A-Za-z]:[\\\\/])",
+)
 def test_output_is_create_only_and_original_is_preserved(tmp_path):
     original = tmp_path / "original.exe"
     original.write_bytes(b"SYNTHETIC original installer")
@@ -77,6 +95,10 @@ def test_output_is_create_only_and_original_is_preserved(tmp_path):
     assert not list(output.iterdir())
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="build() requires existing Windows drive-letter payload paths (^[A-Za-z]:[\\\\/])",
+)
 def test_compiler_failure_never_touches_protected_original(tmp_path, monkeypatch):
     original = tmp_path / "original.exe"
     original.write_bytes(b"SYNTHETIC original installer")

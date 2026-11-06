@@ -20,6 +20,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorIssueKind,
     ReceptorIssueSeverity,
     ResidueLocator,
+    TerminalHeavyAtomAddition,
 )
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
@@ -162,11 +163,44 @@ def inspect_receptor(
         components=components,
         water_count=water_count,
         issues=issues,
+        terminal_oxygen_candidates=_terminal_oxygen_candidates(model),
         reference_component_id=reference_component_id,
         near_reference_cutoff_angstrom=NEAR_REFERENCE_CUTOFF_ANGSTROM,
         warnings=warnings,
         provenance=provenance,
     )
+
+
+def _terminal_oxygen_candidates(model: gemmi.Model) -> list[TerminalHeavyAtomAddition]:
+    """Flag absent OXT at an observed chain end, without inferring a biological terminus.
+
+    Only standard protein polymer residues are offered. This is advisory, not a
+    prediction that PDB2PQR will add OXT, and selection/removal can change the
+    eventual end of a prepared chain. The preparation validator remains final.
+    """
+    candidates: list[TerminalHeavyAtomAddition] = []
+    for chain in model:
+        # Match the final selected-chain check used by receptor preparation.
+        polymer = [residue for residue in chain if residue.het_flag == "A"]
+        if not chain.name or not polymer:
+            continue
+        residue = polymer[-1]
+        info = gemmi.find_tabulated_residue(residue.name)
+        if (
+            residue.entity_type is not gemmi.EntityType.Polymer
+            or not info.is_standard()
+            or not info.is_amino_acid()
+            or residue.seqid.num is None
+            or any(atom.name.strip() == "OXT" for atom in residue)
+        ):
+            continue
+        candidates.append(TerminalHeavyAtomAddition(
+            chain_id=chain.name,
+            residue_name=residue.name.strip(),
+            sequence_number=residue.seqid.num,
+            insertion_code=_clean_char(residue.seqid.icode),
+        ))
+    return candidates
 
 
 def _read_structure(

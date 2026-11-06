@@ -90,6 +90,49 @@ const gpuEntry: CatalogEntry = {
 
 const page: CatalogPage = { entries: [gpuEntry, baseEntry], total: 2, offset: 0, limit: 25 };
 
+it("opens GNINA history without labeling CNN scores as energy", async () => {
+  const gnina: CatalogEntry = {
+    ...baseEntry, catalog_id: "gnina_job:gnina-1", engine_key: "gnina_job", record_id: "gnina-1",
+    engine_label: "GNINA 1.3.3", engine_version: "1.3.3", scoring_family: "gnina", mode: "single_ligand",
+    ligand_id: "ligand-1", receptor_id: "receptor-1", binding_site_id: "site-1", selected_count: 1, succeeded_count: 1, failed_count: 0,
+    best_result_kcal_mol: null, primary_cnn_score: 0.9, cnn_affinity_pk: 8,
+    minimized_affinity_kcal_mol: -4, best_molecule: "Synthetic GNINA ligand",
+  };
+  const compound = {
+    ligand_id: "ligand-1", source_index: 0, name: "Synthetic GNINA ligand", canonical_smiles: "CC",
+    molecular_weight_g_mol: 30, status: "completed", failure_code: null, best_result_kcal_mol: null,
+    primary_cnn_score: 0.9, cnn_affinity_pk: 8, minimized_affinity_kcal_mol: -4,
+    pose_count: 2, cluster_count: null, top_cluster_runs: null,
+  };
+  const pose = (mode: number, score: number, energy: number) => ({
+    artifact_id: `pose-${mode}`, kind: "gnina_mode", ordinal: mode, label: `Mode ${mode}`,
+    cnn_score: score, cnn_affinity_pk: 8, result_kcal_mol: energy,
+    value_label: "GNINA minimized affinity", sha256: "a".repeat(64), content_url: `/synthetic/pose-${mode}`,
+  });
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/interactions")) return json([]);
+    if (url.endsWith("/poses")) return json({ catalog_id: gnina.catalog_id, ligand_id: "ligand-1",
+      engine_label: "GNINA 1.3.3", receptor_artifact_id: null, receptor_content_url: null,
+      poses: [pose(1, 0.9, -4), pose(2, 0.7, -9)] });
+    if (url.includes("/compounds")) return json({ catalog_id: gnina.catalog_id, engine_label: gnina.engine_label,
+      value_label: "CNN score (higher ranks first)", rows: [compound], total: 1, offset: 0, limit: 100 });
+    return json({ entries: [gnina], total: 1, offset: 0, limit: 25 });
+  });
+  render(<ResultsWorkspace />);
+  const card = (await screen.findByRole("list", { name: "Recorded results" })).querySelector('[role="listitem"]')!;
+  expect(card).toHaveTextContent("0.9000");
+  expect(card).not.toHaveTextContent("kcal/mol");
+  fireEvent.click(card);
+  expect(await screen.findByText("CNN affinity (pK)")).toBeInTheDocument();
+  // GNINA campaigns now offer Methods, written from the job's own record.
+  expect(screen.getByRole("button", { name: "Write the Methods section" })).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Synthetic GNINA ligand", { selector: "td" }));
+  expect(await screen.findByRole("button", { name: "Analyze this pose with ProLIF" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /Mode 1.*CNN score 0.9000.*-4.000 kcal\/mol/ })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /Mode 2.*CNN score 0.7000.*-9.000 kcal\/mol/ })).toBeInTheDocument();
+});
+
 const vinaCompounds: CompoundPage = {
   catalog_id: "vina_batch:vina-1",
   engine_label: "AutoDock Vina 1.2.7",

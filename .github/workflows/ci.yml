@@ -23,10 +23,50 @@ jobs:
           cache: npm
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            requirements/windows-py312.lock
+            requirements/windows-packaging.lock
+
+      # The hosted interpreter carries unrelated tools (CI run 40808598327: pipx 1.18.4
+      # requiring newer filelock/packaging than the locks), which made `pip check` fail.
+      # Every later `python` resolves to this clean, project-only virtual environment.
+      - name: Create isolated Python environment
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP "ankora-ci-venv"
+          & "${{ steps.setup-python.outputs.python-path }}" -m venv $venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VIRTUAL_ENV=$venv" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Join-Path $venv "Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify the isolated Python environment
+        shell: python
+        run: |
+          import importlib.metadata
+          import os
+          import site
+          import sys
+          from pathlib import Path
+
+          venv = Path(os.environ["VIRTUAL_ENV"]).resolve()
+          if sys.prefix == sys.base_prefix or Path(sys.prefix).resolve() != venv:
+              sys.exit(f"python on PATH is not the isolated environment: {sys.executable}")
+          if site.ENABLE_USER_SITE:
+              sys.exit("User site-packages must be disabled in the isolated environment.")
+          distributions = list(importlib.metadata.distributions())
+          outside = sorted(
+              f"{dist.metadata['Name']} at {dist.locate_file('')}"
+              for dist in distributions
+              if not Path(str(dist.locate_file(""))).resolve().is_relative_to(venv)
+          )
+          if outside:
+              sys.exit(f"Distributions outside the isolated environment are visible: {outside}")
+          names = sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in distributions)
+          print(f"Isolated interpreter {sys.executable} (base {sys.base_prefix}); {names}")
 
       - name: Reject private absolute paths
         run: python scripts/check_public_paths.py
@@ -45,8 +85,60 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Install backend dependencies
-        run: python -m pip install -e "backend[dev]"
+      # Install exactly the accepted hash-locked wheels; never resolve version ranges.
+      # One command per step: pwsh steps only fail on the last command's exit code.
+      - name: Install hash-locked Python dependencies
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements/windows-py312.lock"
+
+      - name: Install hash-locked packaging tools
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements/windows-packaging.lock"
+
+      - name: Install backend source without resolving dependencies
+        run: python -m pip install --no-deps --no-build-isolation -e backend
+
+      - name: Check installed dependency consistency
+        run: python -m pip check
+
+      - name: Verify installed versions match the Windows locks
+        shell: python
+        run: |
+          import importlib.metadata
+          import platform
+          import re
+          import struct
+          import sys
+          from pathlib import Path
+
+          if sys.version_info[:2] != (3, 12) or struct.calcsize("P") != 8:
+              sys.exit(f"Locked cp312 wheels need 64-bit CPython 3.12, found {sys.version}")
+          pip_version = importlib.metadata.version("pip")
+          print(f"Python {platform.python_version()} {platform.machine()}; pip {pip_version}")
+          pin = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)\s+--hash=sha256:[0-9a-f]{64}$")
+          pins = {}
+          for lock in ("requirements/windows-py312.lock", "requirements/windows-packaging.lock"):
+              for line in Path(lock).read_text(encoding="utf-8").splitlines():
+                  match = pin.match(line.strip())
+                  if match:
+                      name = re.sub(r"[-_.]+", "-", match.group(1)).lower()
+                      pins[name] = match.group(2)
+          # Version drift of these packages failed CI run 40803611622.
+          required = {"dimorphite-dl": "2.0.2", "rdkit": "2025.9.6", "numpy": "2.5.2"}
+          problems = [
+              f"lock pins {name}=={pins.get(name)}, expected {version}"
+              for name, version in required.items()
+              if pins.get(name) != version
+          ]
+          for name, expected in sorted(pins.items()):
+              try:
+                  installed = importlib.metadata.version(name)
+              except importlib.metadata.PackageNotFoundError:
+                  installed = "missing"
+              print(f"{name}=={installed}")
+              if installed != expected:
+                  problems.append(f"{name}: installed {installed}, locked {expected}")
+          if problems:
+              sys.exit("Installed environment differs from the Windows locks:\n  " + "\n  ".join(problems))
+          print(f"{len(pins)} locked distributions are installed at their exact versions.")
 
       - name: Verify native-tool smoke matrix
         run: python scripts/run_native_tool_smoke.py --check

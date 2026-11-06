@@ -30,7 +30,7 @@ import { describeUsage, useResourceUsage } from "./useResourceUsage";
 import { useWorkbenchLayout } from "./workbenchLayout";
 
 type ActivityTab = "activity" | "warnings" | "provenance" | "tools" | "about";
-type ThemeMode = "dark" | "light" | "blue" | "amethyst" | "system";
+type ThemeMode = "obsidian" | "dark" | "light" | "blue" | "amethyst" | "system";
 type DensityMode = "comfortable" | "compact";
 
 const DEFAULT_PROJECT_CATALOG: ProjectCatalog = {
@@ -83,7 +83,7 @@ export function App() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [projectGraphLimit, setProjectGraphLimit] = useState(100);
-  const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme", ["dark", "light", "blue", "amethyst", "system"], "dark"));
+  const [theme, setTheme] = useState<ThemeMode>(() => readUiSetting("ankora-theme-v2", ["obsidian", "dark", "light", "blue", "amethyst", "system"], "obsidian"));
   const [density, setDensity] = useState<DensityMode>(() => readUiSetting("ankora-density", ["comfortable", "compact"], "comfortable"));
   const importMenuRef = useRef<HTMLDetailsElement>(null);
   const globalFileInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +172,7 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.density = density;
     try {
-      localStorage.setItem("ankora-theme", theme);
+      localStorage.setItem("ankora-theme-v2", theme); localStorage.setItem("ankora-theme", theme);
       localStorage.setItem("ankora-density", density);
     } catch { /* Settings persistence is optional in restricted WebViews. */ }
   }, [density, theme]);
@@ -599,7 +599,7 @@ export function App() {
             <button type="button" onClick={() => setInspectorCollapsed((value) => !value)}><AppIcon name="panel-right" />{inspectorCollapsed ? "Show" : "Hide"} inspector</button>
             <button type="button" onClick={() => setActivityOpen((value) => !value)}><AppIcon name="activity" />{activityOpen ? "Close" : "Open"} activity center</button>
             <div className="menu-section-label">Theme</div>
-            {(["dark", "light", "blue", "amethyst", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "dark" ? "Midnight Laboratory" : option === "light" ? "Light" : option === "blue" ? "Dark (Blue)" : option === "amethyst" ? "Dark (Amethyst)" : "Follow Windows"}</button>)}
+            {(["obsidian", "dark", "blue", "amethyst", "light", "system"] as const).map((option) => <button type="button" className={theme === option ? "selected" : ""} key={option} onClick={() => setTheme(option)}>{option === "obsidian" ? "Obsidian Instrument" : option === "dark" ? "Midnight Laboratory" : option === "light" ? "Light" : option === "blue" ? "Cryo-EM Graphite" : option === "amethyst" ? "Spectra Quartz" : "Follow Windows"}</button>)}
             <div className="menu-section-label">Density</div>
             {(["comfortable", "compact"] as const).map((option) => <button type="button" className={density === option ? "selected" : ""} key={option} onClick={() => setDensity(option)}>{option === "comfortable" ? "Comfortable" : "Compact"}</button>)}
           </AppMenu>
@@ -661,7 +661,7 @@ export function App() {
         ? <ResultsWorkspace />
         : activeStep === "Validation"
         ? <RedockingWorkspace key={activeProject.project_id} />
-        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} onActivityChange={setWorkspaceActivity} /> : <>
+        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} platform={state.system?.platform} onActivityChange={setWorkspaceActivity} /> : <>
       <section className="workspace" aria-label="Structure workspace">
         <div className="workspace-heading">
           <div><span className="eyebrow">01 / Structure</span><h2>{structure?.metadata.title ?? "Inspect before transforming"}</h2></div>
@@ -789,7 +789,7 @@ export function App() {
             {activityTab === "provenance" ? <div className="activity-provenance"><div><small>Current artifact</small><strong>{provenanceLabel}</strong></div><div><small>Latest generated command</small><code>{generatedCommand}</code></div></div> : null}
             {activityTab === "tools" ? <div className="tools-activity-view">
               <div className="tools-activity-toolbar"><div><strong>Backend scientific environment</strong><span>Python {state.system?.python_version ?? "—"} · {state.system?.python_environment ?? "unknown environment"}</span></div><button type="button" disabled={toolsRefreshing} onClick={() => void refreshTools()}><AppIcon name="tools" />{toolsRefreshing ? "Scanning…" : "Rescan tools"}</button></div>
-              <div className="activity-tools"><ToolSummary name="PDBFixer" status={state.tools?.pdbfixer} /><ToolSummary name="PDB2PQR" status={state.tools?.pdb2pqr} /><ToolSummary name="PROPKA" status={state.tools?.propka} /><ToolSummary name="Meeko receptor" status={state.tools?.meeko} /><ToolSummary name="Meeko ligand" status={state.tools?.meeko_ligand} /><ToolSummary name="AutoDock Vina" status={state.tools?.vina} /><ToolSummary name="AutoGrid4" status={state.tools?.autogrid4} /><ToolSummary name="AutoDock4 CPU" status={state.tools?.autodock4} /><ToolSummary name="AutoDock-GPU" status={state.tools?.autodock_gpu} /><ToolSummary name="GNINA · deferred" status={state.tools?.gnina} /><ToolSummary name="P2Rank" status={state.tools?.p2rank} /></div>
+              <div className="activity-tools"><ToolSummary name="PDBFixer" status={state.tools?.pdbfixer} /><ToolSummary name="PDB2PQR" status={state.tools?.pdb2pqr} /><ToolSummary name="PROPKA" status={state.tools?.propka} /><ToolSummary name="Meeko receptor" status={state.tools?.meeko} /><ToolSummary name="Meeko ligand" status={state.tools?.meeko_ligand} /><ToolSummary name="AutoDock Vina" status={state.tools?.vina} /><ToolSummary name="AutoGrid4" status={state.tools?.autogrid4} /><ToolSummary name="AutoDock4 CPU" status={state.tools?.autodock4} /><ToolSummary name="AutoDock-GPU" status={state.tools?.autodock_gpu} /><ToolSummary name={state.system?.platform === "linux" ? "GNINA · Linux" : "GNINA · deferred"} status={state.tools?.gnina} /><ToolSummary name="P2Rank" status={state.tools?.p2rank} /></div>
             </div> : null}
             {activityTab === "about" ? <div className="activity-about"><div className="brand-mark"><AppIcon name="molecule" /></div><div><strong>Ankora 0.1.0</strong><p>Native Windows workbench for explicit, inspectable, and reproducible molecular docking.</p></div></div> : null}
           </div>
@@ -865,6 +865,8 @@ function recoveredWorkLabel(item: RecoveredWorkItem): string {
     autodock4_batch: "AutoDock4 screening",
     autodock_gpu_job: "AutoDock-GPU job",
     autodock_gpu_batch: "AutoDock-GPU screening",
+    gnina_job: "GNINA job",
+    gnina_screening: "GNINA screening",
   };
   return labels[item.work_kind];
 }
@@ -895,7 +897,7 @@ function RecoveryPanel({
       return <article key={key} className={response ? "retried" : ""}>
         <div className="recovery-item-heading"><div><strong>{recoveredWorkLabel(item)}</strong><code title={item.work_id}>{item.work_id.slice(0, 12)}…</code></div><span>{item.previous_status.replaceAll("_", " ")}</span></div>
         {item.interrupted_entry_count || item.completed_entry_count ? <p className="recovery-counts">{item.completed_entry_count} completed molecule{item.completed_entry_count === 1 ? "" : "s"} preserved · {item.interrupted_entry_count} interrupted</p> : null}
-        {response ? <div className="retry-started"><AppIcon name="success" /><span><strong>New attempt {response.status.replaceAll("_", " ")}</strong><code title={response.new_work_id}>{response.new_work_id.slice(0, 12)}…</code></span></div> : <>
+        {item.work_kind === "gnina_screening" || item.screening_campaign_id ? <p>{item.screening_campaign_id ? "This job belongs to a GNINA screening campaign and cannot be retried separately." : "Retrying this screening is not available yet. Its recorded work is preserved."}</p> : response ? <div className="retry-started"><AppIcon name="success" /><span><strong>New attempt {response.status.replaceAll("_", " ")}</strong><code title={response.new_work_id}>{response.new_work_id.slice(0, 12)}…</code></span></div> : <>
           <label className="retry-acknowledgement"><input type="checkbox" checked={Boolean(acknowledgements[key])} onChange={(event) => onAcknowledge(key, event.target.checked)} /><span>I understand this creates a new immutable attempt; it does not resume or alter the interrupted one.</span></label>
           <button type="button" disabled={!acknowledgements[key] || isRetrying} onClick={() => onRetry(item)}>{isRetrying ? "Starting a new attempt…" : "Retry as new"}</button>
         </>}
@@ -1030,7 +1032,7 @@ function InspectorGroup({ title, count, children, initiallyOpen = true }: { titl
 
 function SystemInspector({ state, onOpenTools }: { state: ApplicationState; onOpenTools: () => void }) {
   const toolEntries = state.tools ? [
-    ["PDBFixer", state.tools.pdbfixer], ["PDB2PQR", state.tools.pdb2pqr], ["PROPKA", state.tools.propka], ["Meeko receptor", state.tools.meeko], ["Meeko ligand", state.tools.meeko_ligand], ["AutoDock Vina", state.tools.vina], ["AutoGrid4", state.tools.autogrid4], ["AutoDock4 CPU", state.tools.autodock4], ["AutoDock-GPU", state.tools.autodock_gpu], ["GNINA · deferred", state.tools.gnina], ["P2Rank", state.tools.p2rank],
+    ["PDBFixer", state.tools.pdbfixer], ["PDB2PQR", state.tools.pdb2pqr], ["PROPKA", state.tools.propka], ["Meeko receptor", state.tools.meeko], ["Meeko ligand", state.tools.meeko_ligand], ["AutoDock Vina", state.tools.vina], ["AutoGrid4", state.tools.autogrid4], ["AutoDock4 CPU", state.tools.autodock4], ["AutoDock-GPU", state.tools.autodock_gpu], [state.system?.platform === "linux" ? "GNINA · Linux" : "GNINA · deferred", state.tools.gnina], ["P2Rank", state.tools.p2rank],
   ] as const : [];
   const availableCount = toolEntries.filter(([, tool]) => tool.available).length;
   return (

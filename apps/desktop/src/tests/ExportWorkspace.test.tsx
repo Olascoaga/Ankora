@@ -220,3 +220,174 @@ it("says so plainly when nothing has been exported", async () => {
 
   expect(await screen.findByText("Nothing has been exported yet")).toBeInTheDocument();
 });
+
+it("offers a completed individual GNINA result alongside screening batches, excludes incomplete jobs, and exports via source_kind=gnina_job", async () => {
+  const catalogWithGnina = {
+    entries: [
+      ...campaigns.entries,
+      {
+        ...campaigns.entries[0],
+        catalog_id: "gnina_job:gnina-1",
+        engine_key: "gnina_job",
+        record_id: "gnina-1",
+        mode: "single_ligand",
+        scoring_family: "gnina",
+        backend: "cuda",
+        engine_label: "GNINA 1.3.3",
+        engine_version: "1.3.3",
+        reproducibility: {
+          status: "not_assessed",
+          protocol: "ankora-reproducibility-v1",
+          scope: "parsed scientific outputs and retained pose-artifact bytes",
+          input_fingerprint_sha256: "3".repeat(64),
+          executions: [],
+        },
+        status: "completed",
+        selected_count: 1,
+        succeeded_count: 1,
+        failed_count: 0,
+        best_result_kcal_mol: null,
+        primary_cnn_score: 0.9123,
+        cnn_affinity_pk: 7.45,
+        minimized_affinity_kcal_mol: -8.12,
+        best_molecule: "Synthetic GNINA ligand",
+      },
+      {
+        ...campaigns.entries[0],
+        catalog_id: "gnina_job:gnina-running",
+        engine_key: "gnina_job",
+        record_id: "gnina-running",
+        mode: "single_ligand",
+        scoring_family: "gnina",
+        engine_label: "GNINA 1.3.3",
+        status: "running",
+        selected_count: 1,
+        succeeded_count: 0,
+        best_molecule: "Synthetic incomplete GNINA ligand",
+      },
+      {
+        ...campaigns.entries[0],
+        catalog_id: "vina_job:vina-single",
+        engine_key: "vina_job",
+        record_id: "vina-single",
+        mode: "single_ligand",
+        scoring_family: "vina",
+        engine_label: "AutoDock Vina 1.2.7",
+        status: "completed",
+        selected_count: 1,
+        succeeded_count: 1,
+        best_molecule: "Synthetic Vina single ligand",
+      },
+    ],
+    total: 4,
+    offset: 0,
+    limit: 200,
+  } as unknown as CatalogPage;
+
+  const gninaExports: ExportPage = {
+    entries: [
+      {
+        export_id: "gnina-bundle-1",
+        kind: "campaign",
+        exported_at: "2026-11-04T19:00:00Z",
+        title: "Synthetic GNINA 1.3.3 export",
+        subtitle: "1/1 molecules docked",
+        catalog_id: "gnina_job:gnina-1",
+        source_kind: "gnina_job",
+        source_id: "gnina-1",
+        display_name: "Synthetic GNINA 1.3.3 export",
+        input_identity_sha256: "1".repeat(64),
+        bundle_identity_sha256: "2".repeat(64),
+        archive_filename: "Ankora_Synthetic-GNINA_bundle.zip",
+        analysis_id: null,
+        ligand_id: "ligand-1",
+        reproducibility: {
+          status: "not_assessed",
+          protocol: "ankora-reproducibility-v1",
+          scope: "parsed scientific outputs and retained pose-artifact bytes",
+          input_fingerprint_sha256: "3".repeat(64),
+          executions: [],
+        },
+        bitwise_reproducible: null,
+        directory: "synthetic/exports/gnina-bundle-1",
+        outside_project: false,
+        files: [
+          { filename: "results.csv", size_bytes: 512, content_url: "/exports/gnina-bundle-1/results.csv" },
+        ],
+      },
+    ],
+    total: 1,
+    offset: 0,
+    limit: 25,
+  };
+
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes("/exports/campaigns") && init?.method === "POST") {
+      return json({
+        export_id: "gnina-bundle-1",
+        exported_at: "2026-11-04T19:00:00Z",
+        source_kind: "gnina_job",
+        source_id: "gnina-1",
+        catalog_id: "gnina_job:gnina-1",
+        display_name: null,
+        input_identity_sha256: "1".repeat(64),
+        bundle_identity_sha256: "2".repeat(64),
+        archive_filename: "Ankora_Synthetic-GNINA_bundle.zip",
+        engine: "GNINA",
+        engine_version: "1.3.3",
+        reproducibility: {
+          status: "not_assessed",
+          protocol: "ankora-reproducibility-v1",
+          scope: "parsed scientific outputs and retained pose-artifact bytes",
+          input_fingerprint_sha256: "3".repeat(64),
+          executions: [],
+        },
+        row_count: 2,
+        interaction_analysis_count: 0,
+        figure_count: 0,
+        directory: "synthetic/exports/gnina-bundle-1",
+        outside_project: false,
+        record_directory: "synthetic/exports/gnina-bundle-1",
+        files: ["README.txt", "manifest.json", "results.csv", "Ankora_Synthetic-GNINA_bundle.zip"],
+      }, 201);
+    }
+    if (url.includes("/results/campaigns")) return json(catalogWithGnina);
+    return json(gninaExports);
+  });
+
+  render(<ExportWorkspace />);
+
+  const chooser = await screen.findByLabelText("Completed campaign");
+  expect(within(chooser).getByRole("option", { name: /AutoDock-GPU 1\.6 · 25\/25/ })).toBeInTheDocument();
+  expect(
+    within(chooser).getByRole("option", {
+      name: /GNINA 1\.3\.3 · Single ligand \(Synthetic GNINA ligand\) · 1\/1/,
+    }),
+  ).toBeInTheDocument();
+  expect(within(chooser).queryByRole("option", { name: /Synthetic incomplete GNINA ligand/ })).not.toBeInTheDocument();
+  expect(within(chooser).queryByRole("option", { name: /AutoDock Vina 1\.2\.7/ })).not.toBeInTheDocument();
+
+  const recordedList = await screen.findByRole("list", { name: "Recorded exports" });
+  const recordedCard = within(recordedList).getByRole("listitem");
+  expect(recordedCard).toHaveTextContent("GNINA result bundle");
+  expect(recordedCard).toHaveTextContent("GNINA job gnina-1");
+
+  fireEvent.change(chooser, { target: { value: "gnina_job:gnina-1" } });
+
+  const exportPanel = await screen.findByRole("region", { name: "Campaign export" });
+  expect(exportPanel).toHaveTextContent(/individual single-ligand GNINA result/);
+  expect(exportPanel).toHaveTextContent(/separate CNN score, CNN affinity \(pK\) and minimized affinity \(kcal\/mol\) metrics/);
+  expect(exportPanel).toHaveTextContent(/SHA-256 hash-verified poses/);
+  expect(exportPanel).toHaveTextContent(/never comparable across engines, and a single run or seed never claims repeat reproducibility/);
+
+  fireEvent.click(within(exportPanel).getByRole("button", { name: "Export this GNINA result" }));
+
+  expect(
+    await within(exportPanel).findByText("2 poses exported · single-ligand GNINA result"),
+  ).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.stringContaining("/exports/campaigns?source_kind=gnina_job&source_id=gnina-1"),
+    expect.objectContaining({ method: "POST" }),
+  );
+});

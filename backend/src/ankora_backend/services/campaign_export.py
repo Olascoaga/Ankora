@@ -20,6 +20,14 @@ Three rules the format enforces rather than documents:
 * **Molecules that were never docked stay in the table.** A selection of 259
   that produced 257 results is not a table of 257 rows; the two that failed and
   why are part of the result.
+
+A single GNINA job is exported through the same endpoint and the same response
+contract, but it is **not** described as a screening library. It has one
+ligand and N poses, so its table is one row per pose and the library-shaped
+columns are absent rather than filled with blanks: an empty `library_id` or
+`canonical_smiles` column invites a reader to concatenate a single job with a
+screening table, which is the merge this format exists to prevent. Its three
+score axes stay three columns, in the engine's own descending CNN order.
 """
 
 import csv
@@ -28,24 +36,30 @@ import json
 import os
 import shutil
 import zipfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from ankora_backend.adapters.engines.gnina import parse_gnina_pdbqt
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
+from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.autodock4 import AutoDock4BatchRecord
 from ankora_backend.schemas.autodock_gpu import AutoDockGpuBatchRecord
-from ankora_backend.schemas.docking import VinaBatchDockingRecord
+from ankora_backend.schemas.docking import DockingJobStatus, VinaBatchDockingRecord
 from ankora_backend.schemas.figures import FigureManifest
+from ankora_backend.schemas.gnina import GninaJobRecord
+from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.redocking import RedockingRunRecord
 from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 from ankora_backend.services.export_destinations import (
     free_directory,
@@ -68,6 +82,21 @@ _HEADER_COMMON = [
     "failure_message",
 ]
 
+# A single job's table is about poses of one ligand, so it shares no column
+# with a screening table beyond the rank. The three GNINA axes are three
+# separate columns, each named with its own unit.
+_HEADER_GNINA_POSES = [
+    "rank",
+    "mode",
+    "ligand_id",
+    "gnina_cnn_score",
+    "gnina_cnn_affinity_pk",
+    "gnina_minimized_affinity_kcal_mol",
+    "pose_artifact_id",
+    "pose_filename",
+    "pose_sha256",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class ExportedCampaign:
@@ -86,16 +115,27 @@ class ExportedCampaign:
     box: dict[str, float]
     map_set_id: str | None
     map_set_identity_key: str | None
-    selection_manifest_sha256: str
-    library_id: str
-    filter_run_id: str
     parameters: dict[str, Any]
     executable_sha256: str | None
     device_name: str | None
-    selected_count: int
-    succeeded_count: int
-    failed_count: int
     rows: list[dict[str, Any]]
+    # A screening campaign selected molecules from a filtered library and its
+    # table has one row per molecule. A single job has none of those things,
+    # and inventing an identifier or a zeroed count for it would describe a
+    # library that was never assembled. `None` means absent from the export,
+    # not empty.
+    selection_manifest_sha256: str | None = None
+    library_id: str | None = None
+    filter_run_id: str | None = None
+    selected_count: int | None = None
+    succeeded_count: int | None = None
+    failed_count: int | None = None
+    # One row per pose of one ligand rather than one row per molecule. The
+    # table shape is a property of what was run, so it travels with the data
+    # instead of being re-derived from the engine name.
+    row_kind: str = "molecule"
+    pose_count: int | None = None
+    ligand_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,24 +145,29 @@ class RecordedEvidence:
     analyses: list[dict[str, Any]]
     figures: list[dict[str, Any]]
     collection_warnings: list[dict[str, str]]
+    validations: list[dict[str, Any]] = field(default_factory=list)
 
     def manifest_payload(self) -> dict[str, Any]:
         return {
             "pose_interaction_analyses": self.analyses,
             "figures": self.figures,
+            "redocking_validations": self.validations,
             "collection_warnings": self.collection_warnings,
             "notes": [
                 "These files are copies of records and rendered figures that "
                 "already existed when this campaign was exported.",
-                "No interaction was recomputed and no figure was redrawn for this bundle.",
+                "No interaction was recomputed, no figure was redrawn and no "
+                "RMSD was recalculated for this bundle.",
                 "Interaction contacts describe geometric criteria on one exact "
                 "pose; they are not measured affinity or biological proof.",
+                "A redocking verdict concerns one configuration on one reference "
+                "system and is not validation of the engine in general.",
             ],
         }
 
 
 def _empty_evidence() -> RecordedEvidence:
-    return RecordedEvidence(analyses=[], figures=[], collection_warnings=[])
+    return RecordedEvidence(analyses=[], figures=[], collection_warnings=[], validations=[])
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +197,23 @@ def results_csv(campaign: ExportedCampaign) -> str:
 
     Molecules the engine could not dock keep their row and carry the reason, so
     the table describes the selection rather than only its successes.
+
+    A single job's table is one row per pose instead, and carries none of the
+    library columns: it is a different kind of table and says so in its header.
     """
+    if campaign.row_kind == "pose":
+        buffer = io.StringIO()
+        writer = csv.DictWriter(
+            buffer,
+            fieldnames=_HEADER_GNINA_POSES,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        for row in campaign.rows:
+            writer.writerow(row)
+        return buffer.getvalue()
+
     columns = [*_HEADER_COMMON, campaign.value_column]
     if campaign.engine != "AutoDock Vina":
         # Cluster population describes sampling concentration within this
@@ -175,6 +236,7 @@ def manifest(
     source_kind: str | None = None,
     source_id: str | None = None,
     bundle_identity: CampaignBundleIdentity | None = None,
+    source_files: list[dict[str, Any]] | None = None,
 ) -> str:
     """Everything needed to know what the table is, and to ask for it again."""
     moment = exported_at or datetime.now(UTC)
@@ -196,27 +258,97 @@ def manifest(
         },
         "inputs": _campaign_inputs(campaign),
         "protocol": campaign.parameters,
-        "counts": {
-            "selected": campaign.selected_count,
-            "succeeded": campaign.succeeded_count,
-            "failed": campaign.failed_count,
+        "counts": _campaign_counts(campaign),
+        "table": {
+            "file": "results.csv",
+            "row": campaign.row_kind,
+            "columns": (
+                _HEADER_GNINA_POSES
+                if campaign.row_kind == "pose"
+                else [*_HEADER_COMMON, campaign.value_column]
+            ),
         },
         "recorded_evidence": (evidence or _empty_evidence()).manifest_payload(),
-        "scientific_notes": [
-            (
-                f"{campaign.value_column} is this engine's own measure. It is a "
-                "computational estimate in kcal/mol, not an experimental "
-                "binding affinity."
-            ),
-            (
-                "Values from different engines are on different scales and must "
-                "not be merged, averaged, or combined into a consensus score."
-            ),
-        ],
+        "scientific_notes": _scientific_notes(campaign),
     }
     if bundle_identity is not None:
         payload["bundle"] = bundle_identity.manifest_payload()
+    if source_files:
+        payload["source_files"] = {
+            "files": source_files,
+            "notes": [
+                "These are copies of the exact bytes the job preserved. "
+                "Nothing was reparsed, reformatted or regenerated.",
+                "`integrity` says what each hash establishes. "
+                "`matches_recorded_sha256` means the job recorded a SHA-256 "
+                "for that file before this export and the copied bytes still "
+                "match it. `export_time_digest_only` means the job records no "
+                "hash for that file, so the digest identifies the copy in this "
+                "bundle and is not evidence of a check made at run time.",
+                "The raw engine output and captured logs are in the second "
+                "group. Their content can be compared against the stdout, "
+                "stderr and per-pose scores retained inside record.json.",
+            ],
+        }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def _campaign_counts(campaign: ExportedCampaign) -> dict[str, Any]:
+    """What was counted, without inventing a selection that never existed."""
+    if campaign.row_kind == "pose":
+        return {"ligands": 1, "poses": campaign.pose_count}
+    return {
+        "selected": campaign.selected_count,
+        "succeeded": campaign.succeeded_count,
+        "failed": campaign.failed_count,
+    }
+
+
+def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
+    if campaign.row_kind == "pose":
+        return [
+            (
+                "gnina_cnn_score is dimensionless, bounded between 0 and 1, and "
+                "is the order GNINA ranked these poses in. It is not an energy "
+                "and has no kcal/mol interpretation."
+            ),
+            (
+                "gnina_cnn_affinity_pk is a predicted affinity in pK units, "
+                "where higher indicates stronger predicted binding."
+            ),
+            (
+                "gnina_minimized_affinity_kcal_mol is the minimized affinity "
+                "from GNINA's empirical scoring function, in kcal/mol. GNINA "
+                "did not rank by it, so the top-ranked pose is not necessarily "
+                "the one with the lowest recorded energy."
+            ),
+            (
+                "All three are predictions of this engine for this pose. None "
+                "is an experimentally measured binding affinity and none is "
+                "evidence of biological activity."
+            ),
+            (
+                "None of these values shares a scale with a Vina score or an "
+                "AutoDock4 binding energy. They must not be merged, averaged, "
+                "or combined into a consensus score."
+            ),
+            (
+                "This bundle is one docking job for one ligand. It is not a "
+                "screening library and carries no library, filter-run or "
+                "selection identity."
+            ),
+        ]
+    return [
+        (
+            f"{campaign.value_column} is this engine's own measure. It is a "
+            "computational estimate in kcal/mol, not an experimental "
+            "binding affinity."
+        ),
+        (
+            "Values from different engines are on different scales and must "
+            "not be merged, averaged, or combined into a consensus score."
+        ),
+    ]
 
 
 def readme(
@@ -245,13 +377,25 @@ def readme(
             f"Archive       {bundle_identity.archive_filename}",
         ]
     recorded = evidence or _empty_evidence()
+    if campaign.row_kind == "pose":
+        lines += [
+            f"Ligand        1 ligand, {campaign.pose_count} poses",
+            "",
+            "results.csv   one row per pose, in the engine's own ranking order,",
+            "              which is descending CNN pose score. This is one",
+            "              docking job, not a screening library: it carries no",
+            "              library, filter-run or selection identity.",
+        ]
+    else:
+        lines += [
+            f"Molecules     {campaign.selected_count} selected, "
+            f"{campaign.succeeded_count} docked, {campaign.failed_count} not docked",
+            "",
+            "results.csv   one row per selected molecule, in the engine's own",
+            "              ranking order. Molecules that could not be docked keep",
+            "              their row and carry the reason.",
+        ]
     lines += [
-        f"Molecules     {campaign.selected_count} selected, "
-        f"{campaign.succeeded_count} docked, {campaign.failed_count} not docked",
-        "",
-        "results.csv   one row per selected molecule, in the engine's own",
-        "              ranking order. Molecules that could not be docked keep",
-        "              their row and carry the reason.",
         "manifest.json the receptor, search space, map set, executable hash and",
         "              complete search protocol these numbers came from.",
         f"{(bundle_identity.archive_filename if bundle_identity else 'campaign_bundle.zip')} ",
@@ -259,16 +403,33 @@ def readme(
         "              interaction record and saved figure for this campaign.",
         "",
         f"M9 evidence   {len(recorded.analyses)} interaction analyses, "
-        f"{len(recorded.figures)} figure records",
-        "              copied as recorded; no interaction was recomputed and",
-        "              no figure was redrawn for this export.",
-        "",
-        f"The column '{campaign.value_column}' is this engine's own measure: a",
-        "computational estimate in kcal/mol, not an experimental affinity.",
-        "Values from different engines sit on different scales and must not be",
-        "merged or averaged into a consensus score.",
+        f"{len(recorded.figures)} figure records, "
+        f"{len(recorded.validations)} redocking verdicts",
+        "              copied as recorded; no interaction was recomputed, no",
+        "              figure was redrawn and no RMSD was recalculated for",
+        "              this export.",
         "",
     ]
+    if campaign.row_kind == "pose":
+        lines += [
+            "The three score columns are three different quantities and are not",
+            "interchangeable: gnina_cnn_score is dimensionless (0-1) and is the",
+            "order GNINA ranked by; gnina_cnn_affinity_pk is a predicted pK;",
+            "gnina_minimized_affinity_kcal_mol is in kcal/mol and did not set",
+            "the ranking, so the top pose need not have the lowest energy.",
+            "All three are predictions of this engine for this pose. None is an",
+            "experimentally measured affinity, and none shares a scale with a",
+            "Vina score or an AutoDock4 binding energy.",
+            "",
+        ]
+    else:
+        lines += [
+            f"The column '{campaign.value_column}' is this engine's own measure: a",
+            "computational estimate in kcal/mol, not an experimental affinity.",
+            "Values from different engines sit on different scales and must not be",
+            "merged or averaged into a consensus score.",
+            "",
+        ]
     lines.append(_reproducibility_note(campaign.reproducibility))
     return "\n".join(lines) + "\n"
 
@@ -439,6 +600,128 @@ def from_autodock_gpu_batch(
         failed_count=record.failed_count,
         rows=_autodock_rows(list(record.entries)),
     )
+
+
+def _number(value: float) -> str:
+    """A recorded number, written out rather than rounded into a claim."""
+    return repr(value)
+
+
+def from_gnina_job(
+    record: GninaJobRecord,
+    *,
+    reproducibility: ReproducibilityAssessment | None = None,
+) -> ExportedCampaign:
+    """One GNINA job: one ligand, N poses, three score axes, nothing merged.
+
+    The rows are emitted in the record's own mode order. That order is the
+    engine's descending CNN pose score and the record's own validator enforces
+    it, so this function never sorts: re-sorting by the minimized affinity
+    would publish a ranking GNINA did not produce.
+    """
+    rows: list[dict[str, Any]] = []
+    for pose in record.poses:
+        rows.append(
+            {
+                "rank": pose.mode,
+                "mode": pose.mode,
+                "ligand_id": record.request.ligand_id,
+                "gnina_cnn_score": _number(pose.cnn_score),
+                "gnina_cnn_affinity_pk": _number(pose.cnn_affinity),
+                "gnina_minimized_affinity_kcal_mol": _number(pose.minimized_affinity_kcal_mol),
+                "pose_artifact_id": pose.artifact.artifact_id,
+                "pose_filename": pose.artifact.filename,
+                "pose_sha256": pose.artifact.sha256,
+            }
+        )
+    return ExportedCampaign(
+        engine="GNINA",
+        engine_version=record.tool.version,
+        backend=record.request.parameters.compute,
+        # Named so it can never be read as the one value column a screening
+        # table has; the real axes are three separate columns.
+        value_column="gnina_minimized_affinity_kcal_mol",
+        reproducibility=reproducibility or ReproducibilityAssessment(),
+        receptor_id=record.request.receptor_id,
+        receptor_sha256=record.receptor_sha256,
+        binding_site_id=record.request.binding_site_id,
+        box=record.box.model_dump(mode="json"),
+        map_set_id=None,
+        map_set_identity_key=None,
+        parameters=record.request.parameters.model_dump(mode="json"),
+        executable_sha256=record.tool.sha256,
+        device_name=None,
+        rows=rows,
+        row_kind="pose",
+        pose_count=len(record.poses),
+        ligand_id=record.request.ligand_id,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _JobArtifact:
+    """One file from the job directory, with what the record says about it."""
+
+    filename: str
+    destination: str
+    recorded_sha256: str | None
+    description: str
+
+
+def _gnina_job_artifacts(record: GninaJobRecord) -> list[_JobArtifact]:
+    """Every file the bundle must carry, and which of them have recorded hashes.
+
+    The job record stores SHA-256 for its prepared inputs and for each
+    published pose. It does **not** store one for `record.json`, the raw engine
+    output or the captured logs, so those are carried with an export-time
+    digest only and the manifest says which kind each is. Inventing a
+    "recorded" hash for them would turn this bundle into evidence of a check
+    that never ran.
+    """
+    artifacts = [
+        _JobArtifact(
+            "receptor.pdbqt",
+            "inputs/receptor.pdbqt",
+            record.receptor_sha256,
+            "the prepared receptor PDBQT GNINA was given",
+        ),
+        _JobArtifact(
+            "ligand.pdbqt",
+            "inputs/ligand.pdbqt",
+            record.ligand_sha256,
+            "the prepared ligand PDBQT GNINA was given",
+        ),
+        _JobArtifact(
+            "conformer.sdf",
+            "inputs/conformer.sdf",
+            record.conformer_sha256,
+            "the conformer the prepared ligand came from",
+        ),
+        _JobArtifact(
+            "raw_poses.pdbqt",
+            "raw/raw_poses.pdbqt",
+            None,
+            "the unparsed pose file GNINA wrote",
+        ),
+        _JobArtifact("stdout.log", "raw/stdout.log", None, "the captured GNINA stdout"),
+        _JobArtifact("stderr.log", "raw/stderr.log", None, "the captured GNINA stderr"),
+        _JobArtifact(
+            "record.json",
+            "job/record.json",
+            None,
+            "the GNINA job record this bundle was built from",
+        ),
+    ]
+    artifacts += [
+        _JobArtifact(
+            pose.artifact.filename,
+            f"poses/{pose.artifact.filename}",
+            pose.artifact.sha256,
+            f"the published pose for mode {pose.mode}",
+        )
+        for pose in record.poses
+    ]
+    return artifacts
 
 
 def _sha256(path: Path) -> str:
@@ -617,16 +900,240 @@ def collect_recorded_evidence(
             }
         )
 
+    validations, validation_warnings = collect_recorded_validations(
+        root=resolved_root, catalog_id=catalog_id, export_directory=destination
+    )
     return RecordedEvidence(
         analyses=sorted(analyses, key=lambda item: str(item["analysis_id"])),
         figures=sorted(figures, key=lambda item: str(item["figure_id"])),
-        collection_warnings=warnings,
+        collection_warnings=[*warnings, *validation_warnings],
+        validations=validations,
     )
 
 
-def _write_portable_bundle(
-    directory: Path, filename: str = "campaign_bundle.zip"
-) -> Path:
+def collect_gnina_source_files(
+    *,
+    record: GninaJobRecord,
+    export_directory: Path,
+    preserved: dict[str, bytes],
+) -> list[dict[str, Any]]:
+    """Copy the job's own preserved bytes into the bundle, or fail the export.
+
+    These are required inputs, not optional evidence: a bundle that silently
+    omitted the raw engine output or one pose would look complete while being
+    unreproducible. So anything unreadable, absent, or no longer matching a
+    hash the record holds aborts the whole export before a ZIP exists.
+    """
+    destination = export_directory.resolve()
+    carried: list[dict[str, Any]] = []
+    for artifact in _gnina_job_artifacts(record):
+        content = preserved[artifact.filename]
+        digest = sha256(content).hexdigest()
+        target = destination / artifact.destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb") as stream:
+            stream.write(content)
+        copied_digest, size = digest, len(content)
+        carried.append(
+            {
+                "filename": artifact.filename,
+                "path": _relative(target, destination),
+                "description": artifact.description,
+                "sha256": copied_digest,
+                "size_bytes": size,
+                # Which claim this hash supports: the record either held a
+                # hash for this file before the export, or it did not.
+                "integrity": (
+                    "matches_recorded_sha256"
+                    if artifact.recorded_sha256 is not None
+                    else "export_time_digest_only"
+                ),
+                "recorded_sha256": artifact.recorded_sha256,
+            }
+        )
+    return carried
+
+
+def _verify_gnina_source(record: GninaJobRecord, store: GninaJobStore) -> dict[str, bytes]:
+    """Snapshot and check required bytes before creating any export directory."""
+    preserved: dict[str, bytes] = {}
+    for artifact in _gnina_job_artifacts(record):
+        try:
+            content = store.output_path(record.job_id, artifact.filename).read_bytes()
+        except (AnkoraDomainError, OSError, ValueError) as error:
+            raise _source_incomplete(
+                record.job_id,
+                artifact.filename,
+                f"This export requires {artifact.description}, which could not be read.",
+            ) from error
+        digest = sha256(content).hexdigest()
+        if artifact.recorded_sha256 is not None and digest != artifact.recorded_sha256:
+            raise AnkoraDomainError(
+                code="EXPORT_SOURCE_TAMPERED",
+                stage=_STAGE,
+                status_code=409,
+                message="A GNINA artifact differs from its recorded hash; no bundle was written.",
+                details={
+                    "job_id": record.job_id,
+                    "filename": artifact.filename,
+                    "expected_sha256": artifact.recorded_sha256,
+                    "observed_sha256": digest,
+                },
+            )
+        preserved[artifact.filename] = content
+    if GninaJobRecord.model_validate_json(preserved["record.json"]) != record:
+        raise _source_incomplete(record.job_id, "record.json", "The GNINA job record changed.")
+    if record.execution is None:
+        raise _source_incomplete(record.job_id, "record.json", "Execution evidence is missing.")
+    for filename, expected in (
+        ("stdout.log", record.execution.stdout),
+        ("stderr.log", record.execution.stderr),
+    ):
+        if preserved[filename] != expected.encode("utf-8"):
+            raise _source_incomplete(
+                record.job_id, filename, "The log differs from recorded execution."
+            )
+    try:
+        raw = parse_gnina_pdbqt(preserved["raw_poses.pdbqt"])
+    except AnkoraDomainError as error:
+        raise _source_incomplete(
+            record.job_id, "raw_poses.pdbqt", "The raw output is invalid."
+        ) from error
+    if len(raw) != len(record.poses) or any(
+        item.mode != pose.mode
+        or item.cnn_score != pose.cnn_score
+        or item.cnn_affinity != pose.cnn_affinity
+        or item.minimized_affinity_kcal_mol != pose.minimized_affinity_kcal_mol
+        or sha256(item.pdbqt).hexdigest() != pose.artifact.sha256
+        or len(item.pdbqt) != pose.artifact.size_bytes
+        for item, pose in zip(raw, record.poses, strict=False)
+    ):
+        raise _source_incomplete(
+            record.job_id, "raw_poses.pdbqt", "Raw output differs from published poses."
+        )
+    return preserved
+
+
+def _source_incomplete(job_id: str, filename: str, message: str) -> AnkoraDomainError:
+    return AnkoraDomainError(
+        code="EXPORT_SOURCE_INCOMPLETE",
+        stage=_STAGE,
+        message=message,
+        status_code=409,
+        details={"job_id": job_id, "filename": filename},
+    )
+
+
+def collect_recorded_validations(
+    *, root: Path, catalog_id: str, export_directory: Path
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Copy existing redocking verdicts for this exact result, byte-for-byte.
+
+    A verdict is a judgement about this run that already happened. It travels
+    as the bytes that were recorded; nothing is re-measured, and a malformed
+    record becomes a visible warning rather than a silent omission.
+    """
+    resolved_root = root.resolve()
+    destination = export_directory.resolve()
+    validations: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+
+    project_root = resolve_project_root(resolved_root)
+    validations_root = project_root / "validation" / "redocking"
+    for source in sorted(validations_root.glob("*/record.json")):
+        identity = source.parent.name
+        try:
+            raw = source.read_text(encoding="utf-8")
+            verdict = RedockingRunRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "redocking_record_unreadable",
+                    "identity": identity,
+                    "reason": str(error),
+                }
+            )
+            continue
+        if f"{verdict.source_kind}:{verdict.source_id}" != catalog_id:
+            continue
+        if verdict.validation_id != identity:
+            warnings.append(
+                {
+                    "kind": "redocking_record_identity_mismatch",
+                    "identity": identity,
+                    "reason": "Folder and record identifiers do not match.",
+                }
+            )
+            continue
+        target = destination / "evidence" / "redocking" / identity / "record.json"
+        digest, size = _copy_preserved(source, target)
+        reference_info: dict[str, Any] | None = None
+        if verdict.source_kind == "gnina_job":
+            try:
+                ligands = LigandArtifactStore(resolved_root)
+                reference = ligands.load_record(verdict.reference_ligand_id)
+                reference_bytes = ligands.content_path(verdict.reference_ligand_id).read_bytes()
+                if (
+                    reference.artifact.source is not LigandSource.CRYSTALLOGRAPHIC
+                    or reference.artifact.sha256 != verdict.reference_sha256
+                    or sha256(reference_bytes).hexdigest() != verdict.reference_sha256
+                    or len(reference_bytes) != reference.artifact.size_bytes
+                ):
+                    raise ValueError(
+                        "The crystallographic reference no longer matches the verdict."
+                    )
+                reference_path = (
+                    destination
+                    / "evidence"
+                    / "redocking"
+                    / identity
+                    / "reference"
+                    / ligands.sanitize_filename(reference.artifact.filename)
+                )
+                reference_path.parent.mkdir(parents=True, exist_ok=True)
+                with reference_path.open("xb") as stream:
+                    stream.write(reference_bytes)
+                reference_info = {
+                    "path": _relative(reference_path, destination),
+                    "sha256": verdict.reference_sha256,
+                    "size_bytes": len(reference_bytes),
+                }
+            except (AnkoraDomainError, OSError, ValueError):
+                warnings.append(
+                    {
+                        "kind": "redocking_reference_unavailable",
+                        "identity": identity,
+                        "reason": (
+                            "The original reference is missing or does not match its recorded hash."
+                        ),
+                    }
+                )
+        validations.append(
+            {
+                "validation_id": verdict.validation_id,
+                "reference_ligand_id": verdict.reference_ligand_id,
+                "reference_sha256": verdict.reference_sha256,
+                "threshold_angstrom": verdict.metrics.threshold_angstrom,
+                "outcome": verdict.metrics.outcome.value,
+                "sampling_success": verdict.metrics.sampling_success,
+                "ranking_success": verdict.metrics.ranking_success,
+                "top1_rmsd_angstrom": verdict.metrics.top1_rmsd_angstrom,
+                # Null stays null: for GNINA this means repeat behavior was
+                # never assessed, which is not the same claim as `false`.
+                "bitwise_reproducible": verdict.bitwise_reproducible,
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+                **({"reference": reference_info} if verdict.source_kind == "gnina_job" else {}),
+            }
+        )
+    return (
+        sorted(validations, key=lambda item: str(item["validation_id"])),
+        warnings,
+    )
+
+
+def _write_portable_bundle(directory: Path, filename: str = "campaign_bundle.zip") -> Path:
     """Zip the complete folder without ever adding the ZIP to itself."""
     if Path(filename).name != filename or not filename.lower().endswith(".zip"):
         raise ValueError("Campaign archive filename must be a plain ZIP filename")
@@ -656,6 +1163,7 @@ class CampaignExportService:
         autodock4_store: AutoDock4JobStore,
         autodock_gpu_store: AutoDockGpuJobStore,
         binding_site_store: BindingSiteArtifactStore,
+        gnina_store: GninaJobStore | None = None,
     ) -> None:
         self._root = root.resolve()
         self._project_root = resolve_project_root(self._root)
@@ -663,6 +1171,7 @@ class CampaignExportService:
         self._autodock4_store = autodock4_store
         self._autodock_gpu_store = autodock_gpu_store
         self._binding_site_store = binding_site_store
+        self._gnina_store = gnina_store
         self._reproducibility = ReproducibilityService(
             docking_store=docking_store,
             autodock4_store=autodock4_store,
@@ -679,6 +1188,7 @@ class CampaignExportService:
             autodock4_store=AutoDock4JobStore.from_environment(),
             autodock_gpu_store=AutoDockGpuJobStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
+            gnina_store=GninaJobStore.from_environment(),
         )
 
     def export_campaign(
@@ -689,7 +1199,17 @@ class CampaignExportService:
         destination: str | None = None,
         display_name: str | None = None,
     ) -> dict[str, Any]:
-        campaign = self._load(source_kind, batch_id)
+        gnina_record = self._gnina_record(batch_id) if source_kind == "gnina_job" else None
+        preserved = (
+            _verify_gnina_source(gnina_record, self._gnina_store)
+            if gnina_record is not None and self._gnina_store is not None
+            else {}
+        )
+        campaign = (
+            from_gnina_job(gnina_record)
+            if gnina_record is not None
+            else self._load(source_kind, batch_id)
+        )
         campaign = replace(
             campaign,
             reproducibility=self._reproducibility.assessment(f"{source_kind}:{batch_id}"),
@@ -713,6 +1233,15 @@ class CampaignExportService:
             catalog_id=f"{source_kind}:{batch_id}",
             export_directory=directory,
         )
+        # The single job's own preserved bytes: required inputs, so a failure
+        # here aborts the export rather than writing a partial bundle.
+        source_files: list[dict[str, Any]] = []
+        if source_kind == "gnina_job":
+            source_files = collect_gnina_source_files(
+                record=gnina_record,  # type: ignore[arg-type]
+                export_directory=directory,
+                preserved=preserved,
+            )
 
         files = {
             "results.csv": results_csv(campaign),
@@ -723,6 +1252,7 @@ class CampaignExportService:
                 source_kind=source_kind,
                 source_id=batch_id,
                 bundle_identity=bundle_identity,
+                source_files=source_files,
             ),
             "README.txt": readme(
                 campaign,
@@ -764,6 +1294,7 @@ class CampaignExportService:
             "row_count": len(campaign.rows),
             "interaction_analysis_count": len(evidence.analyses),
             "figure_count": len(evidence.figures),
+            "redocking_validation_count": len(evidence.validations),
             "directory": str(written_to),
             "outside_project": chosen is not None,
             "record_directory": str(directory),
@@ -805,6 +1336,8 @@ class CampaignExportService:
             return from_autodock4_batch(self._autodock4_store.load_batch(batch_id))
         if source_kind == "autodock_gpu_batch":
             return from_autodock_gpu_batch(self._autodock_gpu_store.load_batch(batch_id))
+        if source_kind == "gnina_job":
+            return from_gnina_job(self._gnina_record(batch_id))
         raise AnkoraDomainError(
             code="EXPORT_SOURCE_UNKNOWN",
             stage=_STAGE,
@@ -813,8 +1346,42 @@ class CampaignExportService:
             details={"source_kind": source_kind},
         )
 
+    def _gnina_record(self, job_id: str) -> GninaJobRecord:
+        """A GNINA job that is safe to describe as a result.
+
+        An unfinished, failed or canceled job has no published poses and no
+        complete raw output, so exporting it would produce a bundle whose
+        table and manifest imply a run that did not finish.
+        """
+        if self._gnina_store is None:
+            raise AnkoraDomainError(
+                code="EXPORT_SOURCE_UNAVAILABLE",
+                stage=_STAGE,
+                message="GNINA result storage is unavailable in this installation.",
+                status_code=422,
+                details={"source_kind": "gnina_job"},
+            )
+        record = self._gnina_store.load_job(job_id)
+        if record.status is not DockingJobStatus.COMPLETED or not record.poses:
+            raise AnkoraDomainError(
+                code="EXPORT_SOURCE_INCOMPLETE",
+                stage=_STAGE,
+                message=(
+                    "Only a completed GNINA job with published poses can be "
+                    "exported; no bundle was written."
+                ),
+                status_code=409,
+                details={"job_id": job_id, "status": record.status.value},
+            )
+        return record
+
     def _with_box(self, campaign: ExportedCampaign) -> ExportedCampaign:
         """The search space belongs in the manifest, not only its identifier."""
+        if campaign.box:
+            # A GNINA job records the box it was actually run with. A binding
+            # site can be edited after a run, so the site artifact must not
+            # overwrite the box these numbers came from.
+            return campaign
         try:
             site = self._binding_site_store.load_record(campaign.binding_site_id)
         except AnkoraDomainError:
@@ -867,23 +1434,37 @@ def _bundle_name(
 
 
 def _campaign_inputs(campaign: ExportedCampaign) -> dict[str, Any]:
-    return {
+    """The inputs this result actually had.
+
+    A key that is absent is absent: a single job has no library, no filter run
+    and no selection manifest, and emitting those keys as `null` beside a
+    screening bundle's real values would invite a reader to treat the two as
+    the same kind of thing.
+    """
+    payload: dict[str, Any] = {
         "receptor_id": campaign.receptor_id,
         "receptor_pdbqt_sha256": campaign.receptor_sha256,
         "binding_site_id": campaign.binding_site_id,
         "search_box": campaign.box,
         "map_set_id": campaign.map_set_id,
         "map_set_identity_key": campaign.map_set_identity_key,
-        "library_id": campaign.library_id,
-        "filter_run_id": campaign.filter_run_id,
-        "selection_manifest_sha256": campaign.selection_manifest_sha256,
     }
+    if campaign.ligand_id is not None:
+        payload["ligand_id"] = campaign.ligand_id
+    for key, value in (
+        ("library_id", campaign.library_id),
+        ("filter_run_id", campaign.filter_run_id),
+        ("selection_manifest_sha256", campaign.selection_manifest_sha256),
+    ):
+        if value is not None:
+            payload[key] = value
+    return payload
 
 
 def _json_sha256(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     return sha256(encoded).hexdigest()
 
 

@@ -89,6 +89,55 @@ def test_log_without_ranking_records_is_rejected() -> None:
     assert failure.value.details["reason"] == "no RANKING records"
 
 
+def test_signed_positive_energies_in_real_gpu_output_format() -> None:
+    """Shortened excerpt of the preserved 1HSG/MK1 WSL GPU engineering run.
+
+    The original DLG and complete coordinates remain in its private evidence.
+    These exact energy, run, cluster and RMSD lines include the +0.70 format
+    that caused Ankora to reject the otherwise successful execution.
+    """
+    excerpt = """\
+DOCKED: MODEL        1
+DOCKED: USER    Run = 1
+DOCKED: USER    Estimated Free Energy of Binding    =  -1.29 kcal/mol  [=(1)+(2)+(3)-(4)]
+DOCKED: ENDMDL
+DOCKED: MODEL        2
+DOCKED: USER    Run = 2
+DOCKED: USER    Estimated Free Energy of Binding    =  +0.70 kcal/mol  [=(1)+(2)+(3)-(4)]
+DOCKED: ENDMDL
+    CLUSTERING HISTOGRAM
+   1 |     -1.29 |   1 |     -1.29 |   1 |#
+   2 |     +0.70 |   2 |     +0.70 |   1 |#
+    RMSD TABLE
+   1      1      1       -1.29      0.00     23.67           RANKING
+   2      1      2       +0.70      0.00     24.41           RANKING
+"""
+    parsed = parse_autodock4_log(excerpt)
+
+    assert [row.binding_energy_kcal_mol for row in parsed.ranking] == [-1.29, 0.70]
+    assert [pose.binding_energy_kcal_mol for pose in parsed.poses] == [-1.29, 0.70]
+    assert [cluster.mean_binding_energy_kcal_mol for cluster in parsed.clusters] == [
+        -1.29,
+        0.70,
+    ]
+    assert [cluster.lowest_binding_energy_kcal_mol for cluster in parsed.clusters] == [
+        -1.29,
+        0.70,
+    ]
+
+
+def test_nonfinite_energy_in_docked_pose_is_still_rejected() -> None:
+    corrupted = REAL_LOG.replace(
+        "Estimated Free Energy of Binding    =   -3.16 kcal/mol",
+        "Estimated Free Energy of Binding    =   +nan kcal/mol",
+        1,
+    )
+    assert corrupted != REAL_LOG
+    with pytest.raises(AnkoraDomainError) as failure:
+        parse_autodock4_log(corrupted)
+    assert "no run number or binding energy" in failure.value.details["reason"]
+
+
 def test_ranking_and_docked_run_disagreement_is_rejected() -> None:
     """A log whose ranking table and conformations describe different runs is
     not a partially usable result; it means the parse anchors drifted."""

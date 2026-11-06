@@ -1,7 +1,13 @@
+import sys
+
 from fastapi.testclient import TestClient
 
 from ankora_backend.api.app import create_app
 from ankora_backend.schemas.work_recovery import WorkKind, WorkRetryResponse
+
+# Hosts with an accepted runtime (ADR-001, ADR-026); derived from the interpreter,
+# independently of how system_info names the platform.
+SUPPORTED_HOST_PLATFORMS = {"win32": "windows", "linux": "linux"}
 
 
 def test_health_endpoint() -> None:
@@ -50,7 +56,7 @@ def test_system_endpoint_reports_runtime() -> None:
     body = response.json()
 
     assert response.status_code == 200
-    assert body["platform"] == "windows"
+    assert body["platform"] == SUPPORTED_HOST_PLATFORMS[sys.platform]
     assert body["architecture"] in {"x86_64", "arm64"}
     assert body["python_version"].startswith("3.12")
     assert body["python_environment"]

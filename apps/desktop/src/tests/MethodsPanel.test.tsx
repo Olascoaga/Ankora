@@ -215,6 +215,33 @@ it("keeps a reference list readable instead of one run-on paragraph", async () =
   expect(items[1]).toHaveTextContent("Morris GM");
 });
 
+it("keeps GNINA's three score axes legible as the generator separated them", async () => {
+  // The panel is engine-agnostic, so what matters is that it does not collapse
+  // the two per-pose quantities into the ranking paragraph above them: an
+  // author skim-reading a run-on block is how a pK gets reported as kcal/mol.
+  serve(report({
+    catalog_id: "gnina_job:gnina-1",
+    engine_label: "GNINA 1.3.3",
+    markdown: [
+      "## Results and reproducibility",
+      "",
+      "Poses are ordered by descending CNN pose score, which is the engine's own ranking.",
+      "Ankora records two further quantities per pose and keeps them distinct:",
+      "- the CNN affinity prediction, in pK units.",
+      "- the minimized affinity from GNINA's empirical scoring function, in kcal mol⁻¹.",
+    ].join("\n"),
+    software: [{ name: "GNINA", version: "1.3.3", role: "molecular docking" }],
+  }));
+
+  await openDialog();
+
+  expect(screen.getByText(/GNINA 1\.3\.3 · 1 tools cited/)).toBeInTheDocument();
+  const items = screen.getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(items[0]).toHaveTextContent("pK units");
+  expect(items[1]).toHaveTextContent("kcal mol⁻¹");
+});
+
 it("keeps lineage bullets as separate items", async () => {
   serve(report({ markdown: [
     "## Ligand preparation",

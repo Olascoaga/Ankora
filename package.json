@@ -7,12 +7,15 @@
   ],
   "scripts": {
     "dev": "npm --workspace @ankora/desktop run dev:web",
+    "dev:linux": "npm --workspace @ankora/desktop run dev:linux",
     "build": "npm --workspace @ankora/desktop run build:web",
     "test": "npm --workspace @ankora/desktop run test",
     "test:frontend": "npm --workspace @ankora/desktop run test",
     "typecheck": "npm --workspace @ankora/desktop run typecheck",
     "tauri:dev": "npm --workspace @ankora/desktop run tauri:dev",
+    "tauri:dev:linux": "npm --workspace @ankora/desktop run tauri:dev:linux",
     "tauri:build": "npm --workspace @ankora/desktop run tauri:build",
+    "tauri:build:linux": "npm --workspace @ankora/desktop run tauri:build:linux",
     "tauri:installer": "npm --workspace @ankora/desktop run tauri:installer"
   },
   "engines": {

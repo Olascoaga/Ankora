@@ -23,7 +23,10 @@ function noSavedReceptor(): Response {
   return new Response(JSON.stringify({ code: "RECEPTOR_HISTORY_EMPTY", stage: "receptor_storage", message: "No saved receptor derivative is available in this project yet.", details: {}, recoverable: false }), { status: 404, headers: { "Content-Type": "application/json" } });
 }
 
-it("shows startup interruptions and retries only after explicit acknowledgement", async () => {
+it.each([
+  ["vina_batch", "AutoDock Vina screening"],
+  ["gnina_job", "GNINA job"],
+])("shows and explicitly retries interrupted %s", async (kind, label) => {
   const interruptedId = "00000000-0000-0000-0000-000000000091";
   const newId = "00000000-0000-0000-0000-000000000092";
   const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -35,19 +38,19 @@ it("shows startup interruptions and retries only after explicit acknowledgement"
       return new Response(JSON.stringify({
         reconciled_at: "2026-09-05T12:00:00Z",
         items: [{
-          work_kind: "vina_batch",
+          work_kind: kind,
           work_id: interruptedId,
           previous_status: "running",
-          interrupted_entry_count: 3,
-          completed_entry_count: 7,
+          interrupted_entry_count: kind === "vina_batch" ? 3 : 0,
+          completed_entry_count: kind === "vina_batch" ? 7 : 0,
           last_heartbeat_at: "2026-09-05T11:59:00Z",
           previous_owner_instance_id: "backend-instance",
         }],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    if (url.includes(`/work/recovery/vina_batch/${interruptedId}/retry`)) {
+    if (url.includes(`/work/recovery/${kind}/${interruptedId}/retry`)) {
       return new Response(JSON.stringify({
-        work_kind: "vina_batch",
+        work_kind: kind,
         interrupted_work_id: interruptedId,
         new_work_id: newId,
         status: "queued",
@@ -68,7 +71,8 @@ it("shows startup interruptions and retries only after explicit acknowledgement"
   render(<App />);
 
   expect(await screen.findByText("1 interrupted operation recovered")).toBeInTheDocument();
-  expect(screen.getByText("7 completed molecules preserved · 3 interrupted")).toBeInTheDocument();
+  expect(screen.getByText(label)).toBeInTheDocument();
+  if (kind === "vina_batch") expect(screen.getByText("7 completed molecules preserved · 3 interrupted")).toBeInTheDocument();
   const retry = screen.getByRole("button", { name: "Retry as new" });
   expect(retry).toBeDisabled();
   fireEvent.click(screen.getByLabelText(/I understand this creates a new immutable attempt/));
@@ -81,6 +85,54 @@ it("shows startup interruptions and retries only after explicit acknowledgement"
   expect(JSON.parse(String(retryRequest?.init?.body))).toEqual({
     acknowledge_new_immutable_attempt: true,
   });
+});
+
+it("shows an interrupted GNINA screening without offering an unavailable retry", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
+    const payload = url.endsWith("/work/recovery") ? {
+      reconciled_at: "2026-09-05T12:00:00Z",
+      items: [{
+        work_kind: "gnina_screening", work_id: "00000000-0000-0000-0000-000000000091",
+        previous_status: "running", interrupted_entry_count: 2, completed_entry_count: 1,
+        last_heartbeat_at: null, previous_owner_instance_id: null,
+      }],
+    } : url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources
+      : url.endsWith("/system") ? system : tools;
+    return new Response(JSON.stringify(payload), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  });
+  render(<App />);
+  expect(await screen.findByText("GNINA screening")).toBeInTheDocument();
+  expect(screen.getByText("1 completed molecule preserved · 2 interrupted")).toBeInTheDocument();
+  expect(screen.getByText(/Retrying this screening is not available yet/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry as new" })).not.toBeInTheDocument();
+});
+
+it("does not offer an individual retry for a job owned by a GNINA screening", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
+    const payload = url.endsWith("/work/recovery") ? {
+      reconciled_at: "2026-09-05T12:00:00Z",
+      items: [{
+        work_kind: "gnina_job", work_id: "00000000-0000-0000-0000-000000000091",
+        screening_campaign_id: "00000000-0000-0000-0000-000000000092",
+        previous_status: "running", interrupted_entry_count: 0, completed_entry_count: 0,
+        last_heartbeat_at: null, previous_owner_instance_id: null,
+      }],
+    } : url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources
+      : url.endsWith("/system") ? system : tools;
+    return new Response(JSON.stringify(payload), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  });
+  render(<App />);
+  expect(await screen.findByText("GNINA job")).toBeInTheDocument();
+  expect(screen.getByText(/cannot be retried separately/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry as new" })).not.toBeInTheDocument();
 });
 
 it("renders the connected backend and tool states", async () => {
@@ -98,8 +150,12 @@ it("renders the connected backend and tool states", async () => {
   expect(screen.getByText("of 11 tools detected")).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
   expect(document.querySelector(".app-shell")).toHaveAttribute("data-visual-system", "midnight-laboratory");
+  expect(document.documentElement).toHaveAttribute("data-theme", "obsidian");
   fireEvent.click(screen.getByText("View"));
+  expect(screen.getByRole("button", { name: "Obsidian Instrument" })).toHaveClass("selected");
   expect(screen.getByRole("button", { name: "Midnight Laboratory" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Cryo-EM Graphite" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Spectra Quartz" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Light" }));
   expect(document.documentElement).toHaveAttribute("data-theme", "light");
   fireEvent.click(screen.getByText("Tools"));
@@ -382,6 +438,8 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   fireEvent.click(screen.getByRole("button", { name: "Mark 1 affected residue for removal" }));
   expect(screen.getByRole("combobox", { name: "Decision for ALA 1" })).toHaveValue("remove");
   expect(screen.getByRole("button", { name: "1 affected residue marked for removal", hidden: true })).toBeDisabled();
+  expect(screen.getByText("Clear terminal oxygen authorizations for deselected chains or removed residues.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Clear terminal oxygen authorizations" }));
   fireEvent.click(screen.getByRole("button", { name: "Analyze pKa proposals" }));
   await waitFor(() => expect(apply).not.toBeDisabled());
   fireEvent.change(screen.getByRole("combobox", { name: "Protonation decision for HIS 5 A" }), { target: { value: "HIE" } });
@@ -404,13 +462,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
     generate_pdbqt: true,
     protonation: expect.objectContaining({
       enabled: true,
-      authorized_terminal_heavy_atom_additions: [{
-        chain_id: "A",
-        residue_name: "ALA",
-        sequence_number: 1,
-        insertion_code: "",
-        atom_name: "OXT",
-      }],
+      authorized_terminal_heavy_atom_additions: [],
       overrides: [{
         residue: { chain_id: "A", residue_name: "HIS", sequence_number: 5, insertion_code: "" },
         state: "HIE",
@@ -451,7 +503,7 @@ it("requires explicit M2 decisions before creating a receptor derivative", async
   // Docking models one pH, so the default enumeration asks for one pH.
   expect(fetchSpy.mock.calls.some(([url]) =>
     String(url).includes("protonation-options?ph_min=7.4&ph_max=7.4"))).toBe(true);
-});
+}, 15000); // This end-to-end interaction spans receptor and ligand workflows on Windows CI.
 
 it("reopens the latest receptor without rerunning scientific tools", async () => {
   const sourceId = "00000000-0000-0000-0000-000000000003";

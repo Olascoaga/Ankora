@@ -28,6 +28,7 @@ results are never pooled with CPU ones.
 
 import os
 import re
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,8 +48,18 @@ _VERSION_PATTERN = re.compile(
     r"AutoDock-GPU\s+version:\s*v?(\d+(?:\.\d+)+)\s*\|\s*(\w+)\s*\|\s*(\w+)",
     re.IGNORECASE,
 )
+# Official v1.6 Linux CUDA output contains only the version, without Windows'
+# build and architecture fields. Keep this narrower form Linux-specific.
+_LINUX_VERSION_PATTERN = re.compile(
+    r"^[ \t]*AutoDock-GPU[ \t]+version:[ \t]*v?(\d+(?:\.\d+)+)[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 # "OpenCL device:                           NVIDIA GeForce RTX 5050 Laptop GPU"
 _DEVICE_PATTERN = re.compile(r"^\s*(?:OpenCL|Cuda)\s+device:\s*(.+?)\s*$", re.MULTILINE)
+_EXECUTION_DEVICE_PATTERN = re.compile(
+    r"^[ \t]*(OpenCL|CUDA)[ \t]+device:[ \t]*([^\r\n]+?)[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 # The tool's own verdicts, captured verbatim from real successful and failed
 # runs. Exit codes are useless here, so these are the only signal.
@@ -81,6 +92,47 @@ class AutoDockGpuInstallation:
         return self.device_name is not None
 
 
+def _version_identity(output: str, *, linux: bool) -> tuple[str, str, str | None] | None:
+    """Read only reported fields; never invent a Linux build or architecture."""
+    windows_match = _VERSION_PATTERN.search(output)
+    if windows_match:
+        return windows_match.group(1), windows_match.group(2), windows_match.group(3)
+    if linux:
+        linux_match = _LINUX_VERSION_PATTERN.search(output)
+        if linux_match:
+            return linux_match.group(1), "unreported", None
+    return None
+
+
+def execution_device_report(
+    stdout: str, stderr: str, *, probed_device: str
+) -> dict[str, object]:
+    """Record the tool's report, not an independent proof of hardware execution."""
+    matches = {
+        (runtime.casefold(), device.strip())
+        for runtime, device in _EXECUTION_DEVICE_PATTERN.findall(f"{stdout}\n{stderr}")
+        if device.strip()
+    }
+    if len(matches) != 1:
+        return {
+            "status": "missing" if not matches else "ambiguous",
+            "runtime": None,
+            "device_name": None,
+            "matches_probe": None,
+        }
+    runtime, device = next(iter(matches))
+    return {
+        "status": "reported",
+        "runtime": "CUDA" if runtime == "cuda" else "OpenCL",
+        "device_name": device,
+        "matches_probe": device == probed_device,
+    }
+
+
+def _linux_host() -> bool:
+    return sys.platform.startswith("linux")
+
+
 def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
     """Verify AutoDock-GPU by launching it, and learn which device it will use.
 
@@ -95,7 +147,7 @@ def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
         raise AnkoraDomainError(
             code="SCIENTIFIC_TOOL_UNAVAILABLE",
             stage=_STAGE,
-            message="AutoDock-GPU is not configured on this Windows system.",
+            message="AutoDock-GPU is not configured on this system.",
             status_code=422,
             details={
                 "tool": "AutoDock-GPU",
@@ -119,10 +171,10 @@ def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
         stage=_STAGE,
         timeout_seconds=30,
     )
-    version_match = _VERSION_PATTERN.search(
-        f"{help_execution.stdout}\n{help_execution.stderr}"
+    version_identity = _version_identity(
+        f"{help_execution.stdout}\n{help_execution.stderr}", linux=_linux_host()
     )
-    if help_execution.exit_code != 0 or version_match is None:
+    if help_execution.exit_code != 0 or version_identity is None:
         raise AnkoraDomainError(
             code="AUTODOCK_GPU_VERSION_UNVERIFIED",
             stage=_STAGE,
@@ -135,7 +187,7 @@ def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
                 "stderr": help_execution.stderr,
             },
         )
-    version = version_match.group(1)
+    version, build, reported_architecture = version_identity
     if version != SUPPORTED_AUTODOCK_GPU_VERSION:
         raise AnkoraDomainError(
             code="AUTODOCK_GPU_VERSION_UNSUPPORTED",
@@ -155,8 +207,8 @@ def probe_autodock_gpu(*, device_number: int = 1) -> AutoDockGpuInstallation:
         executable=discovered.path,
         version=version,
         sha256=discovered.sha256,
-        architecture=discovered.architecture or version_match.group(3),
-        build=version_match.group(2),
+        architecture=discovered.architecture or reported_architecture,
+        build=build,
         device_name=_probe_device(
             executable=discovered.path,
             working_directory=working_directory,
@@ -198,7 +250,7 @@ def require_device(installation: AutoDockGpuInstallation) -> str:
             code="AUTODOCK_GPU_NO_DEVICE",
             stage=_STAGE,
             message=(
-                "AutoDock-GPU is installed but selected no OpenCL device, so it "
+                "AutoDock-GPU is installed but selected no CUDA or OpenCL device, so it "
                 "cannot dock on this machine."
             ),
             status_code=422,

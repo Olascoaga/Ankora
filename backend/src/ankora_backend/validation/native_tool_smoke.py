@@ -1,4 +1,7 @@
-"""Bounded Windows smoke matrix for every supported process-launching adapter.
+"""Bounded native smoke matrix for every supported process-launching adapter.
+
+The matrix and its scope are the accepted Windows ones; on Linux it runs the same
+ten adapters and records unavailable tools (such as AutoDock-GPU) as failures.
 
 The matrix writes create-only local evidence below ``.ankora-data``.  It is a
 runtime compatibility check, not a scientific benchmark: receptor and ligand
@@ -28,7 +31,7 @@ from ankora_backend.adapters.engines.autogrid import probe_autogrid4
 from ankora_backend.adapters.engines.vina import probe_vina
 from ankora_backend.adapters.tools.discovery import discover_java_home, python_worker_arguments
 from ankora_backend.adapters.tools.ligand_preparation import execute_meeko_ligand
-from ankora_backend.adapters.tools.pocket_detection import execute_p2rank
+from ankora_backend.adapters.tools.pocket_detection import execute_p2rank, java_executable
 from ankora_backend.adapters.tools.receptor_preparation import (
     run_meeko_receptor,
     run_pdb2pqr_propka,
@@ -43,6 +46,9 @@ from ankora_backend.services.ligand_import import import_local_ligand
 from ankora_backend.services.ligand_minimization import generate_ligand_conformer
 
 SCHEMA_VERSION = 1
+# The package-probe worker imports this module by name; `__name__` is
+# "__main__" when the matrix itself is started with `python -m`.
+MODULE_NAME = "ankora_backend.validation.native_tool_smoke"
 SUPPORTED_ADAPTER_IDS = (
     "python_scientific_runtime",
     "pdbfixer_repair",
@@ -82,11 +88,19 @@ class FileEvidence:
 @dataclass(frozen=True, slots=True)
 class ExecutionEvidence:
     command: list[str]
-    exit_code: int
+    exit_code: int | None
     stdout_path: str
     stdout_sha256: str
     stderr_path: str
     stderr_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PartialExecution:
+    command: list[str]
+    exit_code: int | None
+    stdout: str
+    stderr: str
 
 
 @dataclass(slots=True)
@@ -124,7 +138,7 @@ class EvidenceWriter:
         self,
         *,
         result: AdapterResult,
-        execution: ToolExecution,
+        execution: ToolExecution | _PartialExecution,
         sequence: int | None = None,
     ) -> None:
         executable_index = 0
@@ -226,6 +240,69 @@ def _require_success(execution: ToolExecution, output: Path | None = None) -> No
         raise RuntimeError(f"tool did not create required output {output.name}")
 
 
+def record_p2rank_java_probe(
+    writer: EvidenceWriter,
+    result: AdapterResult,
+    java_execution: ToolExecution,
+) -> None:
+    writer.execution(result=result, execution=java_execution, sequence=1)
+    result.details = {
+        **result.details,
+        "java_executable_sha256": result.executable_sha256,
+        "java_version_output": java_execution.stderr.strip(),
+    }
+    result.executable_sha256 = None
+
+
+def record_p2rank_execution(
+    writer: EvidenceWriter,
+    result: AdapterResult,
+    p2rank_execution: ToolExecution,
+    *,
+    version: str,
+) -> None:
+    writer.execution(result=result, execution=p2rank_execution, sequence=2)
+    result.version = version
+
+
+def _run_p2rank_smoke(
+    writer: EvidenceWriter,
+    p2rank: AdapterResult,
+    p2rank_dir: Path,
+    *,
+    source_receptor: Path | None,
+    source_receptor_error: str | None = None,
+) -> None:
+    if source_receptor is None:
+        raise RuntimeError(
+            f"fixed receptor fixture is unavailable: {source_receptor_error}"
+        )
+    fixture = _copy_fixture(source_receptor, p2rank_dir / "source_receptor.pdb")
+    p2rank.fixtures.append(writer.file(path=fixture, role="upstream_receptor"))
+    java_home = discover_java_home(os.getenv("JAVA_HOME"))
+    if java_home is None:
+        raise RuntimeError("compatible Java runtime was not found")
+    java_execution = run_tool(
+        executable=str(java_executable(java_home)),
+        arguments=["-version"],
+        cwd=p2rank_dir,
+        stage="native_tool_smoke",
+        timeout_seconds=30,
+    )
+    record_p2rank_java_probe(writer, p2rank, java_execution)
+    _require_success(java_execution)
+    output = p2rank_dir / "prediction"
+    output.mkdir()
+    execution, version = execute_p2rank(
+        receptor_pdb_path=fixture, output_dir=output
+    )
+    record_p2rank_execution(writer, p2rank, execution, version=version)
+    _require_success(execution)
+    if not any(output.rglob("*_predictions.csv")):
+        raise RuntimeError("P2Rank created no structured predictions CSV")
+    _outputs(writer, p2rank, p2rank_dir, excluded={fixture})
+
+
 def _record_domain_failure(
     writer: EvidenceWriter, result: AdapterResult, error: AnkoraDomainError
 ) -> None:
@@ -237,17 +314,29 @@ def _record_domain_failure(
     if (
         isinstance(command, list)
         and all(isinstance(item, str) for item in command)
-        and isinstance(exit_code, int)
+        and (
+            exit_code is None
+            or (isinstance(exit_code, int) and not isinstance(exit_code, bool))
+        )
         and isinstance(stdout, str)
         and isinstance(stderr, str)
     ):
         writer.execution(
             result=result,
-            execution=ToolExecution(
-                command=command,
-                exit_code=exit_code,
-                stdout=stdout,
-                stderr=stderr,
+            execution=(
+                ToolExecution(
+                    command=command,
+                    exit_code=exit_code,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                if exit_code is not None
+                else _PartialExecution(
+                    command=command,
+                    exit_code=None,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
             ),
         )
     result.status = "failed"
@@ -276,6 +365,12 @@ def _package_probe_payload() -> dict[str, str]:
         importlib.import_module(module)
         versions[distribution] = importlib.metadata.version(distribution)
     return versions
+
+
+def package_probe_arguments() -> list[str]:
+    return python_worker_arguments(
+        worker="native-smoke", module=MODULE_NAME, arguments=["--package-probe"]
+    )
 
 
 def _default_receptor_fixture() -> Path:
@@ -336,9 +431,7 @@ def run_native_tool_smoke(
     def run_runtime() -> None:
         execution = run_tool(
             executable=sys.executable,
-            arguments=python_worker_arguments(
-                worker="native-smoke", module=__name__, arguments=["--package-probe"]
-            ),
+            arguments=package_probe_arguments(),
             cwd=repository_root,
             stage="native_tool_smoke",
             timeout_seconds=120,
@@ -514,40 +607,17 @@ def run_native_tool_smoke(
     )
     results.append(p2rank)
     p2rank_dir = writer.adapter_directory(p2rank.adapter_id)
-
-    def run_p2rank_smoke() -> None:
-        if source_receptor is None:
-            raise RuntimeError(
-                f"fixed receptor fixture is unavailable: {source_receptor_error}"
-            )
-        fixture = _copy_fixture(source_receptor, p2rank_dir / "source_receptor.pdb")
-        p2rank.fixtures.append(writer.file(path=fixture, role="upstream_receptor"))
-        java_home = discover_java_home(os.getenv("JAVA_HOME"))
-        if java_home is None:
-            raise RuntimeError("compatible Java runtime was not found")
-        java_execution = run_tool(
-            executable=str(java_home / "bin" / "java.exe"),
-            arguments=["-version"],
-            cwd=p2rank_dir,
-            stage="native_tool_smoke",
-            timeout_seconds=30,
-        )
-        writer.execution(result=p2rank, execution=java_execution, sequence=1)
-        _require_success(java_execution)
-        output = p2rank_dir / "prediction"
-        output.mkdir()
-        execution, version = execute_p2rank(
-            receptor_pdb_path=fixture, output_dir=output
-        )
-        writer.execution(result=p2rank, execution=execution, sequence=2)
-        p2rank.version = version
-        p2rank.details = {"java_version_output": java_execution.stderr.strip()}
-        _require_success(execution)
-        if not any(output.rglob("*_predictions.csv")):
-            raise RuntimeError("P2Rank created no structured predictions CSV")
-        _outputs(writer, p2rank, p2rank_dir, excluded={fixture})
-
-    _run_adapter(writer, p2rank, run_p2rank_smoke)
+    _run_adapter(
+        writer,
+        p2rank,
+        lambda: _run_p2rank_smoke(
+            writer,
+            p2rank,
+            p2rank_dir,
+            source_receptor=source_receptor,
+            source_receptor_error=source_receptor_error,
+        ),
+    )
 
     def engine_result(adapter_id: str, adapter: str, scope: str) -> AdapterResult:
         result = AdapterResult(adapter_id=adapter_id, adapter=adapter, scope=scope)
@@ -695,7 +765,7 @@ def _default_output_root(repository_root: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run Ankora's bounded Windows native-tool smoke matrix."
+        description="Run Ankora's bounded native-tool smoke matrix."
     )
     parser.add_argument(
         "--root",
