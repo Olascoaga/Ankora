@@ -52,6 +52,12 @@ chemical-state identities, filter settings and counts. Missing or inconsistent
 evidence is rejected, while a consistent empty selection has its own error. It
 does not yet start a campaign or validate prepared ligand artifacts.
 
+The typed campaign contract records selected entries in selection order and
+links each attempted entry to an individual GNINA job without copying scores
+or asserting that the link has been verified. Terminal counts, status and
+progress are checked for internal consistency; the compact progress header
+does not contain the library. This model is not persistence or execution.
+
 1. Implement project-isolated typed campaign and entry persistence with atomic
    updates, immutable identities, explicit lifecycle invariants and synthetic
    tests. This is a foundation, not an executable workflow.
