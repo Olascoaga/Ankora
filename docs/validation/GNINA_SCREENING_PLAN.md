@@ -119,7 +119,7 @@ the current process and stops active children before interruption reconciliation
 on unexpected failures. A durable campaign lease is acquired and released.
 Synthetic Linux and Windows tests cover cancellation, orphan cleanup, competing
 runners and a failed entry followed by a successful one. The runner has not
-been validated with a real GNINA library or multiple backend processes.
+been validated with multiple backend processes.
 
 The admission function validates Linux, the selected compute mode, project
 freshness, prepared receptor bytes, search box and GNINA tool identity, and
@@ -148,8 +148,10 @@ separate from empirical kcal/mol values, and response revisions cannot move
 progress backwards. The workspace can reopen saved project campaigns after
 checking receptor, box and selection identities. The Results catalog, campaign
 export, interaction analysis and redocking are explicitly unavailable for the
-campaign as a whole. UI tests use synthetic records; a real GNINA multi-ligand
-run and a WSLg/native workstation visual check are still required.
+campaign as a whole. UI tests use synthetic records. The separately declared
+WSL CPU check in `LINUX_GNINA_SCREENING_SMOKE.md` completed with two real GNINA
+jobs on synthetic molecules. CUDA screening and a WSLg/native workstation
+visual check are still required.
 
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
