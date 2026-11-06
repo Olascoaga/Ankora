@@ -122,6 +122,12 @@ runners and a failed entry followed by a successful one. This runner is not yet
 attached to the project runtime or API; it is not a user-facing campaign and
 has not been validated with a real GNINA library or multiple backend processes.
 
+The admission function validates Linux, the selected compute mode, project
+freshness, prepared receptor bytes, search box and GNINA tool identity, and
+persists the verified applied selection and all preflight outcomes. It does not
+launch a job. Its tests use a real synthetic library selection and a fake GNINA
+identity, not docking evidence. Runtime ownership, API and UI remain separate.
+
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and
 unprepared or altered derivatives while leaving verified neighbors queued.
