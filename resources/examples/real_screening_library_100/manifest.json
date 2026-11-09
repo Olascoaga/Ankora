@@ -1,0 +1,79 @@
+{
+  "source_url": "https://github.com/rdkit/rdkit/blob/Release_2025_09_6/Data/NCI/first_5K.smi",
+  "source_rdkit_version": "2025.09.6",
+  "source_sha256": "91e71c015f14939837f2943dcc904f7c87e5a3a0124d82b05c28ad2f23004def",
+  "selection": "first 100 source rows, original order",
+  "source_subset_sha256": "7230041129c4433e2264199eba52ccb29a8c7b225c6b404e9ec21b18671ebd4d",
+  "sdf_sha256": "bc45046a563b7d34fb823c2b35da6d70b88af05e422a9f54022453f7b68fee0d",
+  "records": 100,
+  "sdf_canonical_isomeric_roundtrip_mismatches": 0,
+  "profiles": {
+    "predeterminado": {
+      "plan": {
+        "preset": "general_oral",
+        "require_lipinski": true,
+        "max_lipinski_violations": 1,
+        "require_veber": true,
+        "require_ghose": false,
+        "require_muegge": false,
+        "minimum_qed": null,
+        "pains_policy": "review",
+        "brenk_policy": "review",
+        "duplicate_policy": "exclude",
+        "custom_rules": []
+      },
+      "summary": {
+        "imported_count": 100,
+        "eligible_count": 80,
+        "excluded_count": 2,
+        "needs_decision_count": 18,
+        "duplicate_count": 0,
+        "pains_match_count": 5,
+        "brenk_match_count": 47
+      },
+      "evaluated": 82,
+      "reason_counts_overlap": {
+        "PAINS_REVIEW": 5,
+        "BRENK_REVIEW": 47,
+        "STEREOCHEMISTRY_REQUIRES_DECISION": 18,
+        "VEBER_REQUIRED": 1,
+        "LIPINSKI_REQUIRED": 1
+      }
+    },
+    "demostracion": {
+      "plan": {
+        "preset": "custom",
+        "require_lipinski": true,
+        "max_lipinski_violations": 1,
+        "require_veber": true,
+        "require_ghose": true,
+        "require_muegge": true,
+        "minimum_qed": 0.3,
+        "pains_policy": "exclude",
+        "brenk_policy": "exclude",
+        "duplicate_policy": "exclude",
+        "custom_rules": []
+      },
+      "summary": {
+        "imported_count": 100,
+        "eligible_count": 11,
+        "excluded_count": 71,
+        "needs_decision_count": 18,
+        "duplicate_count": 0,
+        "pains_match_count": 5,
+        "brenk_match_count": 47
+      },
+      "evaluated": 82,
+      "reason_counts_overlap": {
+        "GHOSE_REQUIRED": 30,
+        "MUEGGE_REQUIRED": 57,
+        "PAINS_EXCLUDED": 5,
+        "BRENK_EXCLUDED": 47,
+        "STEREOCHEMISTRY_REQUIRES_DECISION": 18,
+        "VEBER_REQUIRED": 1,
+        "QED_BELOW_MINIMUM": 3,
+        "LIPINSKI_REQUIRED": 1
+      }
+    }
+  }
+}
