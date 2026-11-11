@@ -87,3 +87,23 @@ Run the identical WSLg interactive protocol in a new create-only directory
 (`logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-02`) targeting
 `input[aria-label='Maximum poses']` while keeping every acceptance criterion
 unchanged.
+
+## Observed run: wslg-screening-ui-02 (premature wait-predicate match)
+
+The campaign launched cleanly on CUDA (`NCI-20` completed with two descending
+`CNN score` poses `0.6464` and `0.5684` while `NCI-22` was running), captured
+`1280-running.png`, and expanded `NCI-20`. The harness wait condition matched
+`11 / 11` against the static `11 / 11 selected molecules prepared` text in
+Section 1 after the first molecule completed, before the remaining 10 molecules
+finished (`—`). Owned teardown cleanly stopped the running campaign, freed all
+four ports, left zero GPU compute processes, and left the source tree digest
+unchanged. Retained create-only `wslg-screening-ui-02/evidence.json` SHA-256:
+`048eff98a38140bd4a28b960f5f9a35943b2d0291e5f660d8c551bfb53135b75`.
+
+### Predeclared follow-up (`wslg-screening-ui-03`)
+
+Run the identical WSLg interactive protocol in create-only directory
+`logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-03`, waiting until the
+active `Cancel campaign` control disappears (terminal campaign status
+`completed`) and all 11 compound rows display read numeric scores before
+auditing the table, Mol* WebGL 2.0 context, and `1280×800` / `960×680` layouts.

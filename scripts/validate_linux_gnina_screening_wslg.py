@@ -28,7 +28,7 @@ SOURCE_RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/screening-ap
 EXPECTED_SOURCE_EVIDENCE_SHA256 = (
     "9662bd482fa2a7c93fbf22ad5b9d22dc98b4c0aa0011d4c9774e898e30c3ddac"
 )
-RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-02"
+RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-03"
 PYTHON_BIN = Path("/home/samael/Ankora/.venv/bin/python")
 NODE_BIN_DIR = Path("/home/samael/.nvm/versions/node/v24.19.0/bin")
 CARGO_BIN_DIR = Path("/home/samael/.cargo/bin")
@@ -320,7 +320,7 @@ def main() -> int:
     trace_dir.mkdir(parents=True, exist_ok=False)
 
     evidence: dict[str, Any] = {
-        "check": "wslg-screening-ui-02",
+        "check": "wslg-screening-ui-03",
         "started_at": started_at,
         "passed": False,
         "environment": {
@@ -661,17 +661,22 @@ def main() -> int:
         wd.wait_until(
             "Campaign completed 11 / 11",
             """
-            const insp = document.querySelector("[aria-label='GNINA campaign inspector']");
+            const cancelBtn = [...document.querySelectorAll('.docking-inspector button')]
+              .find(b => b.innerText.includes('Cancel campaign'));
+            if (cancelBtn) return false;
             const readBtn = [...document.querySelectorAll("[aria-label='GNINA campaign results'] button")]
               .find(b => b.innerText.includes('Read scores from ') && !b.disabled);
             if (readBtn) readBtn.click();
-            const region = document.querySelector("[aria-label='GNINA campaign results']");
-            return Boolean(
-              insp
-              && insp.innerText.includes('11 / 11')
-              && region
-              && region.innerText.includes("Every finished molecule's job has been read")
-            );
+            const results = document.querySelector("[aria-label='GNINA campaign results']");
+            if (!results || !results.innerText.includes("Every finished molecule's job has been read")) {
+              return false;
+            }
+            const rows = [...results.querySelectorAll(':scope .docking-results-scroll > table > tbody > tr:not(.pose-expansion)')];
+            if (rows.length !== 11) return false;
+            return rows.every(tr => {
+              const cells = tr.querySelectorAll(':scope > td');
+              return cells.length >= 6 && !cells[2].innerText.includes('—');
+            });
             """,
             timeout=240.0,
         )
