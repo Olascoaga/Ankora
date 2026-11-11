@@ -140,7 +140,13 @@ before the runner starts. A pending or running campaign blocks project changes;
 shutdown requests cancellation before stopping the GNINA worker. The launch guard
 rechecks the selection's effective stale state for each job. Individual jobs
 belonging to a screening are excluded from the single-job Results catalog; the
-campaign itself does not yet have Results catalog, export, or analysis support.
+campaign itself is projected into the Results catalog (`gnina_screening`),
+supports M9 ProLIF pose interactions and combined receptor–pose complex PDB
+export, atomic project Trash (`trash/result_campaigns/`), Crossref-verified
+campaign `Methods` reporting (`10.1186/s13321-021-00522-2`), and fail-closed
+portable multi-ligand campaign export (`POST /api/v1/exports/campaigns` with
+`source_kind=gnina_screening`). Campaign-level redocking validation and
+cross-engine comparison remain explicitly unavailable.
 Synthetic API tests cover queued cancellation, project isolation, and a
 two-entry campaign in which one prepared entry receives a simulated engine
 result and one unprepared entry fails. The synthetic test disables topology
@@ -152,9 +158,11 @@ progress, per-molecule failures, exact job scores and pose selection. Finished
 jobs are fetched incrementally, CNN pose scores and predicted affinities remain
 separate from empirical kcal/mol values, and response revisions cannot move
 progress backwards. The workspace can reopen saved project campaigns after
-checking receptor, box and selection identities. The Results catalog, campaign
-export, interaction analysis and redocking are explicitly unavailable for the
-campaign as a whole. UI tests use synthetic records. The separately declared
+checking receptor, box and selection identities. Results catalog projection,
+M9 ProLIF pose interactions, complex PDB export, atomic project Trash,
+Crossref-verified campaign Methods reporting and portable multi-ligand campaign
+export are integrated; campaign redocking validation and cross-engine
+comparison remain explicitly unavailable for the campaign as a whole. UI tests use synthetic records. The separately declared
 WSL CPU check in `LINUX_GNINA_SCREENING_SMOKE.md` completed with two real GNINA
 jobs on synthetic molecules. The separately declared 11-molecule NCI WSL CUDA screening and active-GPU
 mid-campaign cancellation checks in `LINUX_GNINA_SCREENING_CUDA.md` and the

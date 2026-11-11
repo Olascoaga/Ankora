@@ -31,7 +31,13 @@ _STAGE = "export_catalog"
 
 # The files each kind serves back, and nothing else: a filename reaching a
 # route from a manifest is still a filename that came from disk.
-_CAMPAIGN_SERVED = {"results.csv", "manifest.json", "README.txt", "campaign_bundle.zip"}
+_CAMPAIGN_SERVED = {
+    "results.csv",
+    "methods.md",
+    "manifest.json",
+    "README.txt",
+    "campaign_bundle.zip",
+}
 
 
 class ExportCatalogService:

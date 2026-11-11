@@ -43,6 +43,7 @@ const EXPORTABLE = new Set<CampaignExportSourceKind>([
   "autodock4_batch",
   "autodock_gpu_batch",
   "gnina_job",
+  "gnina_screening",
 ]);
 
 export function ResultsWorkspace() {

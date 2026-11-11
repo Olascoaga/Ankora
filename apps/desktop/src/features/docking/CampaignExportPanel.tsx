@@ -27,13 +27,15 @@ export type CampaignExportSourceKind =
   | "vina_batch"
   | "autodock4_batch"
   | "autodock_gpu_batch"
-  | "gnina_job";
+  | "gnina_job"
+  | "gnina_screening";
 
 const EXPORTABLE_CAMPAIGN_KINDS = new Set<string>([
   "vina_batch",
   "autodock4_batch",
   "autodock_gpu_batch",
   "gnina_job",
+  "gnina_screening",
 ]);
 
 export function isExportableCampaignKind(
@@ -66,6 +68,7 @@ export function CampaignExportPanel({
   const displayNameNoteId = useId();
   const canBrowse = folderChooserAvailable();
   const isGninaJob = sourceKind === "gnina_job";
+  const isGninaScreening = sourceKind === "gnina_screening";
 
   async function browse() {
     setError(null);
@@ -109,9 +112,11 @@ export function CampaignExportPanel({
       <p className="field-note">
         {isGninaJob
           ? "Writes a folder for this individual single-ligand GNINA result — one docking job, not a multi-ligand screening campaign — holding the pose table with separate CNN score, CNN affinity (pK) and minimized affinity (kcal/mol) metrics, SHA-256 hash-verified poses and prepared receptor, conformer and ligand PDBQT inputs, the search box, executable hash and full protocol. Scores are GNINA-specific predictions, never comparable across engines, and a single run or seed never claims repeat reproducibility. Existing pose analyses, saved figures and redocking validations travel with it in a portable ZIP. Verified crystal references are included when available; missing references are noted in the manifest. Nothing is recomputed."
-          : "Writes a folder holding the results table, a manifest of the receptor, search space, map set, executable hash and full protocol, and a note stating what the numbers are. Existing pose analyses and saved figures travel with it in a portable ZIP. Nothing is recomputed."}
+          : isGninaScreening
+            ? "Writes a folder for this multi-ligand GNINA screening campaign holding the full selected-library table (ranked by descending top-pose CNN score with selection-order tie-breaking, keeping separate CNN score, CNN affinity (pK) and minimized affinity (kcal/mol) metrics plus preflight and engine failures), SHA-256 hash-verified receptor, pinned selection manifest, conformer, ligand PDBQT and published pose files, each linked child job's preserved raw outputs and logs, the recorded search box, executable hash, Methods section and full protocol. Scores are GNINA-specific predictions, never comparable across engines, and a single run or seed never claims repeat reproducibility. Existing pose analyses and saved figures travel with it in a portable ZIP. Nothing is recomputed."
+            : "Writes a folder holding the results table, a manifest of the receptor, search space, map set, executable hash and full protocol, and a note stating what the numbers are. Existing pose analyses and saved figures travel with it in a portable ZIP. Nothing is recomputed."}
       </p>
-      {isGninaJob ? <p className="field-note">The preserved command and logs may contain local file paths. Review the bundle before sharing it.</p> : null}
+      {isGninaJob || isGninaScreening ? <p className="field-note">The preserved command and logs may contain local file paths. Review the bundle before sharing it.</p> : null}
       {error ? <p className="protonation-blocker" role="alert">{error}</p> : null}
       <div className="export-bundle-name">
         <label className="section-label" htmlFor={displayNameId}>Bundle name (optional)</label>
@@ -123,7 +128,9 @@ export function CampaignExportPanel({
           placeholder={
             isGninaJob
               ? "For example: 7AQF RV2 · GNINA single ligand"
-              : "For example: PIK3CD validation · repeat 2"
+              : isGninaScreening
+                ? "For example: 7AQF NCI screen · GNINA CUDA"
+                : "For example: PIK3CD validation · repeat 2"
           }
           disabled={busy}
           aria-describedby={displayNameNoteId}

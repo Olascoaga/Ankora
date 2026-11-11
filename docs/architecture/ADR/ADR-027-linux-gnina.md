@@ -109,10 +109,12 @@ the order of Vina and AutoDock results remain unchanged. A GNINA job may be
 moved to project Trash through the same all-or-nothing result removal operation.
 The catalog can reopen the saved poses and calculate ProLIF interactions for an
 exact GNINA pose after checking the recorded input identities. GNINA-specific
-single-job exports preserve the original engine evidence and the available
-recorded analyses and redocking references; see `docs/validation/GNINA_EXPORT.md`.
-Multi-ligand GNINA campaign export is not implemented. Single-job redocking
-validation is implemented as described below. The
+single-job and multi-ligand screening campaign (`gnina_screening`) exports
+preserve the original engine evidence, pinned library selection manifest,
+campaign snapshot and SQLite state sidecar, per-molecule child job records and
+poses, generated `methods.md` and available recorded analyses; see
+`docs/validation/GNINA_EXPORT.md`. Single-job redocking validation is
+implemented as described below. The
 isolated WSL CUDA pose interaction engineering check is recorded in
 `docs/validation/LINUX_GNINA_INTERACTIONS.md`.
 

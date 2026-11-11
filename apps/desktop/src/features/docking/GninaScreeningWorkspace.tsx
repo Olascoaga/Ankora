@@ -762,7 +762,6 @@ export function GninaScreeningWorkspace({
             These single-ligand or Vina/AutoDock4 actions are still not offered for a campaign:
           </p>
           <ul className="field-note">
-            <li>Export: there is no multi-ligand GNINA campaign bundle.</li>
             <li>Redocking validation: no campaign entry point exists.</li>
             <li>Engine comparison: GNINA is not part of it.</li>
           </ul>

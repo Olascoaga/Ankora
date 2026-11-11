@@ -769,6 +769,8 @@ it("displays a multi-ligand GNINA screening campaign without kcal/mol pooling", 
   expect(within(table).getByText("CNN affinity (pK)")).toBeInTheDocument();
   expect(within(table).getByText("Minimized affinity (kcal/mol)")).toBeInTheDocument();
   expect(within(table).getByText("GNINA_SCREENING_LIGAND_NOT_PREPARED")).toBeInTheDocument();
+  const exportRegion = await screen.findByRole("region", { name: "Campaign export" });
+  expect(exportRegion).toHaveTextContent(/multi-ligand GNINA screening campaign/);
 });
 
 it("opens M9 pose interactions from a multi-ligand GNINA screening molecule with all three score axes", async () => {

@@ -391,3 +391,99 @@ it("offers a completed individual GNINA result alongside screening batches, excl
     expect.objectContaining({ method: "POST" }),
   );
 });
+
+it("offers a completed multi-ligand GNINA screening campaign and exports via source_kind=gnina_screening", async () => {
+  const catalogWithGninaScreening = {
+    entries: [
+      {
+        ...campaigns.entries[0],
+        catalog_id: "gnina_screening:screen-1",
+        engine_key: "gnina_screening",
+        record_id: "screen-1",
+        mode: "screening",
+        scoring_family: "gnina",
+        backend: "cuda",
+        engine_label: "GNINA 1.3.3",
+        engine_version: "1.3.3",
+        reproducibility: {
+          status: "not_assessed",
+          protocol: "ankora-reproducibility-v1",
+          scope: "parsed scientific outputs and retained pose-artifact bytes",
+          input_fingerprint_sha256: "3".repeat(64),
+          executions: [],
+        },
+        status: "completed",
+        selected_count: 11,
+        succeeded_count: 10,
+        failed_count: 1,
+        best_result_kcal_mol: null,
+        primary_cnn_score: 0.939,
+        cnn_affinity_pk: 6.17,
+        minimized_affinity_kcal_mol: -2.68,
+        best_molecule: "Synthetic NCI-68",
+      },
+    ],
+    total: 1,
+    offset: 0,
+    limit: 200,
+  } as unknown as CatalogPage;
+
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes("/exports/campaigns") && init?.method === "POST") {
+      return json({
+        export_id: "gnina-screen-bundle-1",
+        exported_at: "2026-11-11T19:00:00Z",
+        source_kind: "gnina_screening",
+        source_id: "screen-1",
+        catalog_id: "gnina_screening:screen-1",
+        display_name: null,
+        input_identity_sha256: "1".repeat(64),
+        bundle_identity_sha256: "2".repeat(64),
+        archive_filename: "Ankora_GNINA_gnina_screening_bundle.zip",
+        engine: "GNINA",
+        engine_version: "1.3.3",
+        reproducibility: {
+          status: "not_assessed",
+          protocol: "ankora-reproducibility-v1",
+          scope: "parsed scientific outputs and retained pose-artifact bytes",
+          input_fingerprint_sha256: "3".repeat(64),
+          executions: [],
+        },
+        row_count: 11,
+        interaction_analysis_count: 1,
+        figure_count: 0,
+        directory: "synthetic/exports/gnina-screen-bundle-1",
+        outside_project: false,
+        record_directory: "synthetic/exports/gnina-screen-bundle-1",
+        files: ["README.txt", "manifest.json", "methods.md", "results.csv", "Ankora_GNINA_gnina_screening_bundle.zip"],
+      }, 201);
+    }
+    if (url.includes("/results/campaigns")) return json(catalogWithGninaScreening);
+    return json({ entries: [], total: 0, offset: 0, limit: 25 });
+  });
+
+  render(<ExportWorkspace />);
+
+  const chooser = await screen.findByLabelText("Completed campaign");
+  expect(
+    within(chooser).getByRole("option", { name: /GNINA 1\.3\.3 · 10\/11/ }),
+  ).toBeInTheDocument();
+
+  fireEvent.change(chooser, { target: { value: "gnina_screening:screen-1" } });
+
+  const exportPanel = await screen.findByRole("region", { name: "Campaign export" });
+  expect(exportPanel).toHaveTextContent(/multi-ligand GNINA screening campaign/);
+  expect(exportPanel).toHaveTextContent(/descending top-pose CNN score with selection-order tie-breaking/);
+  expect(exportPanel).toHaveTextContent(/The preserved command and logs may contain local file paths/);
+
+  fireEvent.click(within(exportPanel).getByRole("button", { name: "Export this campaign" }));
+
+  expect(
+    await within(exportPanel).findByText("11 molecules exported"),
+  ).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.stringContaining("/exports/campaigns?source_kind=gnina_screening&source_id=screen-1"),
+    expect.objectContaining({ method: "POST" }),
+  );
+});

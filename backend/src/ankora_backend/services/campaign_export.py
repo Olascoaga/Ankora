@@ -28,6 +28,13 @@ columns are absent rather than filled with blanks: an empty `library_id` or
 `canonical_smiles` column invites a reader to concatenate a single job with a
 screening table, which is the merge this format exists to prevent. Its three
 score axes stay three columns, in the engine's own descending CNN order.
+
+A multi-ligand GNINA screening campaign (`gnina_screening`) is exported as one
+row per selected molecule: docked molecules are ranked by descending top-pose
+`gnina_cnn_score` (ties broken by applied selection order), undocked preflight
+or engine failures stay in the table unranked in selection order, and the three
+GNINA axes remain three separate columns alongside the verified pinned
+selection manifest, campaign records and per-molecule child job artifacts.
 """
 
 import csv
@@ -36,6 +43,7 @@ import json
 import os
 import shutil
 import zipfile
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -50,6 +58,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.autodock4 import AutoDock4BatchRecord
@@ -57,6 +66,10 @@ from ankora_backend.schemas.autodock_gpu import AutoDockGpuBatchRecord
 from ankora_backend.schemas.docking import DockingJobStatus, VinaBatchDockingRecord
 from ankora_backend.schemas.figures import FigureManifest
 from ankora_backend.schemas.gnina import GninaJobRecord
+from ankora_backend.schemas.gnina_screening import (
+    GninaScreeningCampaignRecord,
+    GninaScreeningEntry,
+)
 from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
 from ankora_backend.schemas.redocking import RedockingRunRecord
@@ -66,6 +79,8 @@ from ankora_backend.services.export_destinations import (
     slug,
     validated_destination,
 )
+from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
+from ankora_backend.services.gnina_screening_selection import verified_screening_selection
 from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "campaign_export"
@@ -95,6 +110,19 @@ _HEADER_GNINA_POSES = [
     "pose_artifact_id",
     "pose_filename",
     "pose_sha256",
+]
+
+# A multi-ligand GNINA screening campaign keeps every selected molecule in one
+# library table while preserving all three GNINA axes separately alongside the
+# verified top-pose artifact and linked child job identity.
+_HEADER_GNINA_SCREENING = [
+    *_HEADER_COMMON,
+    "gnina_cnn_score",
+    "gnina_cnn_affinity_pk",
+    "gnina_minimized_affinity_kcal_mol",
+    "top_pose_artifact_id",
+    "top_pose_sha256",
+    "gnina_job_id",
 ]
 
 
@@ -214,11 +242,14 @@ def results_csv(campaign: ExportedCampaign) -> str:
             writer.writerow(row)
         return buffer.getvalue()
 
-    columns = [*_HEADER_COMMON, campaign.value_column]
-    if campaign.engine != "AutoDock Vina":
-        # Cluster population describes sampling concentration within this
-        # execution; it is not evidence that a separate execution will match.
-        columns += ["clusters", "top_cluster_runs"]
+    if campaign.engine == "GNINA":
+        columns = list(_HEADER_GNINA_SCREENING)
+    else:
+        columns = [*_HEADER_COMMON, campaign.value_column]
+        if campaign.engine != "AutoDock Vina":
+            # Cluster population describes sampling concentration within this
+            # execution; it is not evidence that a separate execution will match.
+            columns += ["clusters", "top_cluster_runs"]
 
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
@@ -265,7 +296,11 @@ def manifest(
             "columns": (
                 _HEADER_GNINA_POSES
                 if campaign.row_kind == "pose"
-                else [*_HEADER_COMMON, campaign.value_column]
+                else (
+                    _HEADER_GNINA_SCREENING
+                    if campaign.engine == "GNINA"
+                    else [*_HEADER_COMMON, campaign.value_column]
+                )
             ),
         },
         "recorded_evidence": (evidence or _empty_evidence()).manifest_payload(),
@@ -276,19 +311,39 @@ def manifest(
     if source_files:
         payload["source_files"] = {
             "files": source_files,
-            "notes": [
-                "These are copies of the exact bytes the job preserved. "
-                "Nothing was reparsed, reformatted or regenerated.",
-                "`integrity` says what each hash establishes. "
-                "`matches_recorded_sha256` means the job recorded a SHA-256 "
-                "for that file before this export and the copied bytes still "
-                "match it. `export_time_digest_only` means the job records no "
-                "hash for that file, so the digest identifies the copy in this "
-                "bundle and is not evidence of a check made at run time.",
-                "The raw engine output and captured logs are in the second "
-                "group. Their content can be compared against the stdout, "
-                "stderr and per-pose scores retained inside record.json.",
-            ],
+            "notes": (
+                [
+                    "These are copies of the exact bytes preserved by the "
+                    "screening campaign, its pinned applied selection manifest, "
+                    "and each attempted molecule's GNINA child job. Nothing was "
+                    "reparsed, reformatted or regenerated.",
+                    "`integrity` says what each hash establishes. "
+                    "`matches_recorded_sha256` means the campaign or child job "
+                    "recorded a SHA-256 for that file before this export and "
+                    "the copied bytes still match it. "
+                    "`export_time_digest_only` means no hash was recorded at "
+                    "run time, so the digest identifies the copy in this bundle "
+                    "and is not evidence of a check made at run time.",
+                    "Per-molecule raw GNINA outputs, captured logs and child "
+                    "job records live under `jobs/<gnina_job_id>/` and can be "
+                    "compared against each child job's recorded execution and "
+                    "published poses.",
+                ]
+                if source_kind == "gnina_screening"
+                else [
+                    "These are copies of the exact bytes the job preserved. "
+                    "Nothing was reparsed, reformatted or regenerated.",
+                    "`integrity` says what each hash establishes. "
+                    "`matches_recorded_sha256` means the job recorded a SHA-256 "
+                    "for that file before this export and the copied bytes still "
+                    "match it. `export_time_digest_only` means the job records no "
+                    "hash for that file, so the digest identifies the copy in this "
+                    "bundle and is not evidence of a check made at run time.",
+                    "The raw engine output and captured logs are in the second "
+                    "group. Their content can be compared against the stdout, "
+                    "stderr and per-pose scores retained inside record.json.",
+                ]
+            ),
         }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
@@ -336,6 +391,43 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "This bundle is one docking job for one ligand. It is not a "
                 "screening library and carries no library, filter-run or "
                 "selection identity."
+            ),
+        ]
+    if campaign.engine == "GNINA":
+        return [
+            (
+                "gnina_cnn_score is dimensionless, bounded between 0 and 1, and "
+                "is the primary order in which docked molecules are ranked here "
+                "(descending top-pose CNNscore, with exact ties broken by "
+                "applied selection order). It is not an energy and has no "
+                "kcal/mol interpretation."
+            ),
+            (
+                "gnina_cnn_affinity_pk is the top pose's predicted affinity in "
+                "pK units, where higher indicates stronger predicted binding."
+            ),
+            (
+                "gnina_minimized_affinity_kcal_mol is the top pose's minimized "
+                "affinity from GNINA's empirical scoring function, in kcal/mol. "
+                "GNINA did not rank poses or molecules by it, so the top-ranked "
+                "molecule is not necessarily the one with the lowest recorded "
+                "energy."
+            ),
+            (
+                "All three are computational predictions of this engine. None "
+                "is an experimentally measured binding affinity and none is "
+                "evidence of biological activity."
+            ),
+            (
+                "None of these values shares a scale with a Vina score or an "
+                "AutoDock4 binding energy. They must not be merged, averaged, "
+                "or combined into a consensus score."
+            ),
+            (
+                "Every selected molecule stays in results.csv; molecules "
+                "refused at preflight or failed during execution follow "
+                "unranked in selection order with blank score columns and their "
+                "recorded failure codes."
             ),
         ]
     return [
@@ -418,6 +510,20 @@ def readme(
             "gnina_minimized_affinity_kcal_mol is in kcal/mol and did not set",
             "the ranking, so the top pose need not have the lowest energy.",
             "All three are predictions of this engine for this pose. None is an",
+            "experimentally measured affinity, and none shares a scale with a",
+            "Vina score or an AutoDock4 binding energy.",
+            "",
+        ]
+    elif campaign.engine == "GNINA":
+        lines += [
+            "The three score columns are three different quantities and are not",
+            "interchangeable: gnina_cnn_score is dimensionless (0-1) and sets",
+            "the descending molecule ranking (ties broken by selection order);",
+            "gnina_cnn_affinity_pk is the top pose's predicted pK;",
+            "gnina_minimized_affinity_kcal_mol is in kcal/mol and did not set",
+            "the ranking, so the top-ranked molecule need not have the lowest",
+            "energy. Undocked molecules follow unranked in selection order with",
+            "blank score columns and their recorded failure codes. None is an",
             "experimentally measured affinity, and none shares a scale with a",
             "Vina score or an AutoDock4 binding energy.",
             "",
@@ -655,6 +761,149 @@ def from_gnina_job(
         row_kind="pose",
         pose_count=len(record.poses),
         ligand_id=record.request.ligand_id,
+    )
+
+
+def _inspect_screening_ligand(
+    entry: GninaScreeningEntry,
+    ligand_store: LigandArtifactStore | None,
+) -> tuple[str, str, str]:
+    """Resolve molecule name, canonical SMILES and MW without failing if gone."""
+    fallback_name = entry.name or entry.ligand_id
+    if ligand_store is None:
+        return fallback_name, "", ""
+    try:
+        ligand_record = ligand_store.load_record(entry.ligand_id)
+    except (AnkoraDomainError, OSError, ValueError):
+        return fallback_name, "", ""
+    inspection = ligand_record.inspection
+    if entry.chemical_state_id is not None and (
+        ligand_record.state is None or entry.chemical_state_id != ligand_record.state.state_id
+    ):
+        with suppress(AnkoraDomainError, OSError, ValueError):
+            inspection = ligand_store.load_state_inspection(
+                entry.ligand_id, entry.chemical_state_id
+            )
+    weight = (
+        f"{inspection.molecular_weight_g_mol:.3f}"
+        if inspection.molecular_weight_g_mol is not None
+        else ""
+    )
+    return (
+        entry.name or ligand_record.inspection.name,
+        inspection.canonical_smiles or "",
+        weight,
+    )
+
+
+def from_gnina_screening(
+    record: GninaScreeningCampaignRecord,
+    *,
+    completed_jobs: dict[str, GninaJobRecord],
+    attempted_jobs: dict[str, GninaJobRecord] | None = None,
+    ligand_store: LigandArtifactStore | None = None,
+    reproducibility: ReproducibilityAssessment | None = None,
+) -> ExportedCampaign:
+    """One multi-ligand GNINA screening campaign, keeping three axes separate.
+
+    Docked molecules are ranked by descending top-pose `CNNscore` with exact
+    ties broken by applied selection order. Preflight-refused or failed
+    molecules stay in the table unranked (`rank` blank) in selection order.
+    """
+    indexed: list[tuple[int, GninaScreeningEntry, GninaJobRecord | None]] = [
+        (order, entry, completed_jobs.get(entry.ligand_id))
+        for order, entry in enumerate(record.entries)
+    ]
+    indexed.sort(
+        key=lambda item: (
+            item[2] is None,
+            -item[2].poses[0].cnn_score if item[2] is not None else 0.0,
+            item[0],
+        )
+    )
+    rows: list[dict[str, Any]] = []
+    current_rank = 0
+    for selection_order, entry, child_job in indexed:
+        molecule, smiles, weight = _inspect_screening_ligand(entry, ligand_store)
+        source_index = entry.source_index if entry.source_index is not None else selection_order
+        failure = entry.failure
+        if child_job is not None:
+            current_rank += 1
+            top_pose = child_job.poses[0]
+            rows.append(
+                {
+                    "rank": current_rank,
+                    "molecule": molecule,
+                    "source_index": source_index,
+                    "ligand_id": entry.ligand_id,
+                    "canonical_smiles": smiles,
+                    "molecular_weight_g_mol": weight,
+                    "status": entry.status.value,
+                    "failure_code": failure.code if failure else "",
+                    "failure_message": failure.message if failure else "",
+                    "gnina_cnn_score": _number(top_pose.cnn_score),
+                    "gnina_cnn_affinity_pk": _number(top_pose.cnn_affinity),
+                    "gnina_minimized_affinity_kcal_mol": _number(
+                        top_pose.minimized_affinity_kcal_mol
+                    ),
+                    "top_pose_artifact_id": top_pose.artifact.artifact_id,
+                    "top_pose_sha256": top_pose.artifact.sha256,
+                    "gnina_job_id": child_job.job_id,
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "rank": "",
+                    "molecule": molecule,
+                    "source_index": source_index,
+                    "ligand_id": entry.ligand_id,
+                    "canonical_smiles": smiles,
+                    "molecular_weight_g_mol": weight,
+                    "status": entry.status.value,
+                    "failure_code": failure.code if failure else "",
+                    "failure_message": failure.message if failure else "",
+                    "gnina_cnn_score": "",
+                    "gnina_cnn_affinity_pk": "",
+                    "gnina_minimized_affinity_kcal_mol": "",
+                    "top_pose_artifact_id": "",
+                    "top_pose_sha256": "",
+                    "gnina_job_id": entry.gnina_job_id or "",
+                }
+            )
+
+    observed_gpus: set[str] = set()
+    all_jobs = [*completed_jobs.values(), *((attempted_jobs or {}).values())]
+    for job in all_jobs:
+        if job.execution is not None and job.execution.observed_gpu_uuid is not None:
+            observed_gpus.add(job.execution.observed_gpu_uuid)
+    device_name = next(iter(observed_gpus)) if len(observed_gpus) == 1 else None
+
+    return ExportedCampaign(
+        engine="GNINA",
+        engine_version=record.tool.version,
+        backend=record.request.parameters.compute,
+        value_column="gnina_cnn_score",
+        reproducibility=reproducibility or ReproducibilityAssessment(),
+        receptor_id=record.request.receptor_id,
+        receptor_sha256=record.receptor_sha256,
+        binding_site_id=record.request.binding_site_id,
+        box=record.box.model_dump(mode="json"),
+        map_set_id=None,
+        map_set_identity_key=None,
+        selection_manifest_sha256=record.selection.manifest_sha256,
+        library_id=record.request.library_id,
+        filter_run_id=record.request.filter_run_id,
+        parameters={
+            **record.request.parameters.model_dump(mode="json"),
+            "worker_count": record.worker_count,
+        },
+        executable_sha256=record.tool.sha256,
+        device_name=device_name,
+        selected_count=record.selected_count,
+        succeeded_count=record.succeeded_count,
+        failed_count=record.failed_count,
+        rows=rows,
     )
 
 
@@ -1024,6 +1273,407 @@ def _source_incomplete(job_id: str, filename: str, message: str) -> AnkoraDomain
     )
 
 
+def _screening_incomplete(campaign_id: str, filename: str, message: str) -> AnkoraDomainError:
+    return AnkoraDomainError(
+        code="EXPORT_SOURCE_INCOMPLETE",
+        stage=_STAGE,
+        message=message,
+        status_code=409,
+        details={"campaign_id": campaign_id, "filename": filename},
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedGninaScreening:
+    """In-memory verified snapshot of a completed GNINA screening campaign."""
+
+    record: GninaScreeningCampaignRecord
+    snapshot_bytes: bytes
+    state_bytes: bytes
+    selection_bytes: bytes
+    receptor_bytes: bytes
+    completed_jobs: dict[str, GninaJobRecord]
+    completed_preserved: dict[str, dict[str, bytes]]
+    failed_jobs: dict[str, GninaJobRecord]
+    failed_preserved: dict[str, dict[str, bytes]]
+
+
+_SCREENING_SNAPSHOT_FIELDS = (
+    "chemical_state_id",
+    "source_index",
+    "name",
+    "ligand_preparation_id",
+    "ligand_sha256",
+    "conformer_id",
+    "conformer_sha256",
+)
+
+
+def _verify_gnina_screening_source(
+    *,
+    campaign_id: str,
+    screening_store: GninaScreeningStore | None,
+    job_store: GninaJobStore | None,
+    ligand_store: LigandArtifactStore | None,
+    root: Path,
+) -> _VerifiedGninaScreening:
+    """Verify campaign, selection manifest and child jobs before writing anything."""
+    if screening_store is None:
+        raise AnkoraDomainError(
+            code="EXPORT_SOURCE_UNAVAILABLE",
+            stage=_STAGE,
+            message="GNINA screening storage is unavailable in this installation.",
+            status_code=422,
+            details={"source_kind": "gnina_screening"},
+        )
+    resolved_jobs = job_store or screening_store.jobs
+    resolved_ligands = ligand_store or LigandArtifactStore(root)
+
+    record = screening_store.load_campaign(campaign_id)
+    if record.status is not DockingJobStatus.COMPLETED or record.succeeded_count <= 0:
+        raise AnkoraDomainError(
+            code="EXPORT_SOURCE_INCOMPLETE",
+            stage=_STAGE,
+            message=(
+                "Only a completed GNINA screening campaign with published poses "
+                "can be exported; no bundle was written."
+            ),
+            status_code=409,
+            details={"campaign_id": campaign_id, "status": record.status.value},
+        )
+
+    campaign_dir = screening_store.campaign_directory(campaign_id)
+    try:
+        snapshot_bytes = (campaign_dir / "record.json").read_bytes()
+        state_bytes = (campaign_dir / "campaign_state.sqlite3").read_bytes()
+        snapshot = GninaScreeningCampaignRecord.model_validate_json(snapshot_bytes)
+    except (AnkoraDomainError, OSError, ValueError) as error:
+        raise _screening_incomplete(
+            campaign_id,
+            "record.json",
+            "The campaign creation snapshot or state database could not be read.",
+        ) from error
+
+    if (
+        snapshot.campaign_id != record.campaign_id
+        or snapshot.request != record.request
+        or snapshot.selection != record.selection
+        or snapshot.selected_ligand_ids != record.selected_ligand_ids
+        or snapshot.selected_count != record.selected_count
+        or snapshot.tool != record.tool
+        or snapshot.box != record.box
+        or snapshot.receptor_output_artifact_id != record.receptor_output_artifact_id
+        or snapshot.receptor_sha256 != record.receptor_sha256
+        or len(snapshot.entries) != len(record.entries)
+        or any(
+            initial.ligand_id != final.ligand_id
+            or any(
+                getattr(initial, field) is not None
+                and getattr(initial, field) != getattr(final, field)
+                for field in _SCREENING_SNAPSHOT_FIELDS
+            )
+            for initial, final in zip(snapshot.entries, record.entries, strict=True)
+        )
+    ):
+        raise _screening_incomplete(
+            campaign_id,
+            "record.json",
+            "The campaign creation snapshot disagrees with the recorded terminal state.",
+        )
+
+    try:
+        selection_bytes = resolved_ligands.filter_run_content_path(
+            record.request.library_id, record.request.filter_run_id
+        ).read_bytes()
+    except (AnkoraDomainError, OSError, ValueError) as error:
+        raise _screening_incomplete(
+            campaign_id,
+            "selection_manifest.json",
+            "The pinned library selection manifest could not be read.",
+        ) from error
+
+    selection_digest = sha256(selection_bytes).hexdigest()
+    if selection_digest != record.selection.manifest_sha256:
+        raise AnkoraDomainError(
+            code="EXPORT_SOURCE_TAMPERED",
+            stage=_STAGE,
+            status_code=409,
+            message=(
+                "The pinned selection manifest differs from its recorded hash; "
+                "no bundle was written."
+            ),
+            details={
+                "campaign_id": campaign_id,
+                "filename": "selection_manifest.json",
+                "expected_sha256": record.selection.manifest_sha256,
+                "observed_sha256": selection_digest,
+            },
+        )
+    try:
+        selection_run = verified_screening_selection(
+            store=resolved_ligands,
+            library_id=record.request.library_id,
+            filter_run_id=record.request.filter_run_id,
+        )
+    except AnkoraDomainError as error:
+        raise _screening_incomplete(
+            campaign_id,
+            "selection_manifest.json",
+            "The pinned library selection manifest failed verification.",
+        ) from error
+    if (
+        selection_run.artifact.filter_run_id != record.selection.manifest_artifact_id
+        or list(record.selected_ligand_ids) != selection_run.selected_ligand_ids
+    ):
+        raise _screening_incomplete(
+            campaign_id,
+            "selection_manifest.json",
+            "The pinned library selection manifest disagrees with the campaign.",
+        )
+
+    completed_jobs: dict[str, GninaJobRecord] = {}
+    completed_preserved: dict[str, dict[str, bytes]] = {}
+    failed_jobs: dict[str, GninaJobRecord] = {}
+    failed_preserved: dict[str, dict[str, bytes]] = {}
+    receptor_bytes: bytes | None = None
+
+    for entry in record.entries:
+        if entry.status is DockingJobStatus.COMPLETED:
+            if entry.gnina_job_id is None:
+                raise _screening_incomplete(
+                    campaign_id,
+                    "record.json",
+                    "A completed screening entry has no linked GNINA job.",
+                )
+            try:
+                child_job = resolved_jobs.load_job(entry.gnina_job_id)
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                raise _screening_incomplete(
+                    campaign_id,
+                    entry.gnina_job_id,
+                    "A completed screening entry's GNINA job could not be read.",
+                ) from error
+            preserved_child = _verify_gnina_source(child_job, resolved_jobs)
+            for label, expected_hash, observed_hash in (
+                ("receptor.pdbqt", record.receptor_sha256, child_job.receptor_sha256),
+                ("ligand.pdbqt", entry.ligand_sha256, child_job.ligand_sha256),
+                ("conformer.sdf", entry.conformer_sha256, child_job.conformer_sha256),
+                ("gnina", record.tool.sha256, child_job.tool.sha256),
+            ):
+                if expected_hash != observed_hash:
+                    raise AnkoraDomainError(
+                        code="EXPORT_SOURCE_TAMPERED",
+                        stage=_STAGE,
+                        status_code=409,
+                        message=(
+                            "A linked GNINA child job differs from the campaign's "
+                            "recorded hash; no bundle was written."
+                        ),
+                        details={
+                            "campaign_id": campaign_id,
+                            "job_id": child_job.job_id,
+                            "filename": label,
+                            "expected_sha256": expected_hash,
+                            "observed_sha256": observed_hash,
+                        },
+                    )
+            try:
+                verified_job = verified_campaign_entry_job(
+                    store=resolved_jobs, campaign=record, entry=entry
+                )
+            except AnkoraDomainError as error:
+                raise _screening_incomplete(
+                    campaign_id,
+                    child_job.job_id,
+                    "A linked GNINA child job disagrees with its campaign entry.",
+                ) from error
+            if receptor_bytes is None:
+                receptor_bytes = preserved_child["receptor.pdbqt"]
+            elif preserved_child["receptor.pdbqt"] != receptor_bytes:
+                raise AnkoraDomainError(
+                    code="EXPORT_SOURCE_TAMPERED",
+                    stage=_STAGE,
+                    status_code=409,
+                    message="Receptor bytes differ across campaign jobs; no bundle was written.",
+                    details={"campaign_id": campaign_id, "job_id": verified_job.job_id},
+                )
+            completed_jobs[entry.ligand_id] = verified_job
+            completed_preserved[verified_job.job_id] = preserved_child
+        elif entry.gnina_job_id is not None:
+            try:
+                failed_job = resolved_jobs.load_job(entry.gnina_job_id)
+                raw_record = resolved_jobs.output_path(
+                    entry.gnina_job_id, "record.json"
+                ).read_bytes()
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                raise _screening_incomplete(
+                    campaign_id,
+                    entry.gnina_job_id,
+                    "A failed screening entry's linked GNINA job could not be read.",
+                ) from error
+            if (
+                failed_job.screening_campaign_id != record.campaign_id
+                or failed_job.request.ligand_id != entry.ligand_id
+            ):
+                raise _screening_incomplete(
+                    campaign_id,
+                    entry.gnina_job_id,
+                    "A failed screening entry's linked GNINA job belongs elsewhere.",
+                )
+            failed_files: dict[str, bytes] = {"record.json": raw_record}
+            for optional_name in ("stdout.log", "stderr.log", "raw_poses.pdbqt"):
+                with suppress(AnkoraDomainError, OSError, ValueError):
+                    candidate = resolved_jobs.output_path(entry.gnina_job_id, optional_name)
+                    if candidate.is_file():
+                        failed_files[optional_name] = candidate.read_bytes()
+            failed_jobs[entry.ligand_id] = failed_job
+            failed_preserved[failed_job.job_id] = failed_files
+
+    if receptor_bytes is None or sha256(receptor_bytes).hexdigest() != record.receptor_sha256:
+        raise _screening_incomplete(
+            campaign_id,
+            "receptor.pdbqt",
+            "Verified receptor PDBQT bytes were not available for this campaign.",
+        )
+
+    return _VerifiedGninaScreening(
+        record=record,
+        snapshot_bytes=snapshot_bytes,
+        state_bytes=state_bytes,
+        selection_bytes=selection_bytes,
+        receptor_bytes=receptor_bytes,
+        completed_jobs=completed_jobs,
+        completed_preserved=completed_preserved,
+        failed_jobs=failed_jobs,
+        failed_preserved=failed_preserved,
+    )
+
+
+def _write_verified_file(
+    *,
+    destination: Path,
+    relative_path: str,
+    filename: str,
+    content: bytes,
+    recorded_sha256: str | None,
+    description: str,
+) -> dict[str, Any]:
+    target = destination / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("xb") as stream:
+        stream.write(content)
+    digest = sha256(content).hexdigest()
+    return {
+        "filename": filename,
+        "path": _relative(target, destination),
+        "description": description,
+        "sha256": digest,
+        "size_bytes": len(content),
+        "integrity": (
+            "matches_recorded_sha256"
+            if recorded_sha256 is not None
+            else "export_time_digest_only"
+        ),
+        "recorded_sha256": recorded_sha256,
+    }
+
+
+def collect_gnina_screening_source_files(
+    *,
+    verified: _VerifiedGninaScreening,
+    export_directory: Path,
+) -> list[dict[str, Any]]:
+    """Write campaign snapshot, pinned inputs and per-job artifacts into bundle."""
+    destination = export_directory.resolve()
+    record = verified.record
+    carried: list[dict[str, Any]] = [
+        _write_verified_file(
+            destination=destination,
+            relative_path="inputs/receptor.pdbqt",
+            filename="receptor.pdbqt",
+            content=verified.receptor_bytes,
+            recorded_sha256=record.receptor_sha256,
+            description="the prepared receptor PDBQT shared by this GNINA campaign",
+        ),
+        _write_verified_file(
+            destination=destination,
+            relative_path="inputs/selection_manifest.json",
+            filename="selection_manifest.json",
+            content=verified.selection_bytes,
+            recorded_sha256=record.selection.manifest_sha256,
+            description="the pinned applied library selection manifest",
+        ),
+        _write_verified_file(
+            destination=destination,
+            relative_path="campaign/record.json",
+            filename="record.json",
+            content=verified.snapshot_bytes,
+            recorded_sha256=None,
+            description="the immutable GNINA campaign creation snapshot",
+        ),
+        _write_verified_file(
+            destination=destination,
+            relative_path="campaign/campaign_state.sqlite3",
+            filename="campaign_state.sqlite3",
+            content=verified.state_bytes,
+            recorded_sha256=None,
+            description="the terminal GNINA campaign SQLite state database",
+        ),
+    ]
+
+    for entry in record.entries:
+        completed = verified.completed_jobs.get(entry.ligand_id)
+        if completed is not None:
+            preserved = verified.completed_preserved[completed.job_id]
+            prefix = f"jobs/{completed.job_id}"
+            for artifact in _gnina_job_artifacts(completed):
+                if artifact.filename == "receptor.pdbqt":
+                    # Shared across the campaign and already written once under inputs/.
+                    continue
+                carried.append(
+                    _write_verified_file(
+                        destination=destination,
+                        relative_path=f"{prefix}/{artifact.destination}",
+                        filename=artifact.filename,
+                        content=preserved[artifact.filename],
+                        recorded_sha256=artifact.recorded_sha256,
+                        description=f"{artifact.description} ({entry.ligand_id})",
+                    )
+                )
+            continue
+
+        failed = verified.failed_jobs.get(entry.ligand_id)
+        if failed is not None:
+            failed_files = verified.failed_preserved[failed.job_id]
+            prefix = f"jobs/{failed.job_id}"
+            carried.append(
+                _write_verified_file(
+                    destination=destination,
+                    relative_path=f"{prefix}/job/record.json",
+                    filename="record.json",
+                    content=failed_files["record.json"],
+                    recorded_sha256=None,
+                    description=f"the failed GNINA child job record ({entry.ligand_id})",
+                )
+            )
+            for optional_name in ("raw_poses.pdbqt", "stdout.log", "stderr.log"):
+                if optional_name in failed_files:
+                    carried.append(
+                        _write_verified_file(
+                            destination=destination,
+                            relative_path=f"{prefix}/raw/{optional_name}",
+                            filename=optional_name,
+                            content=failed_files[optional_name],
+                            recorded_sha256=None,
+                            description=(
+                                f"captured {optional_name} for failed GNINA job ({entry.ligand_id})"
+                            ),
+                        )
+                    )
+
+    return carried
+
+
 def collect_recorded_validations(
     *, root: Path, catalog_id: str, export_directory: Path
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
@@ -1164,6 +1814,8 @@ class CampaignExportService:
         autodock_gpu_store: AutoDockGpuJobStore,
         binding_site_store: BindingSiteArtifactStore,
         gnina_store: GninaJobStore | None = None,
+        gnina_screening_store: GninaScreeningStore | None = None,
+        ligand_store: LigandArtifactStore | None = None,
     ) -> None:
         self._root = root.resolve()
         self._project_root = resolve_project_root(self._root)
@@ -1172,6 +1824,8 @@ class CampaignExportService:
         self._autodock_gpu_store = autodock_gpu_store
         self._binding_site_store = binding_site_store
         self._gnina_store = gnina_store
+        self._gnina_screening_store = gnina_screening_store
+        self._ligand_store = ligand_store
         self._reproducibility = ReproducibilityService(
             docking_store=docking_store,
             autodock4_store=autodock4_store,
@@ -1189,6 +1843,8 @@ class CampaignExportService:
             autodock_gpu_store=AutoDockGpuJobStore.from_environment(),
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             gnina_store=GninaJobStore.from_environment(),
+            gnina_screening_store=GninaScreeningStore.from_environment(),
+            ligand_store=LigandArtifactStore.from_environment(),
         )
 
     def export_campaign(
@@ -1205,11 +1861,28 @@ class CampaignExportService:
             if gnina_record is not None and self._gnina_store is not None
             else {}
         )
-        campaign = (
-            from_gnina_job(gnina_record)
-            if gnina_record is not None
-            else self._load(source_kind, batch_id)
+        verified_screening = (
+            _verify_gnina_screening_source(
+                campaign_id=batch_id,
+                screening_store=self._gnina_screening_store,
+                job_store=self._gnina_store,
+                ligand_store=self._ligand_store,
+                root=self._root,
+            )
+            if source_kind == "gnina_screening"
+            else None
         )
+        if gnina_record is not None:
+            campaign = from_gnina_job(gnina_record)
+        elif verified_screening is not None:
+            campaign = from_gnina_screening(
+                verified_screening.record,
+                completed_jobs=verified_screening.completed_jobs,
+                attempted_jobs=verified_screening.failed_jobs,
+                ligand_store=self._ligand_store or LigandArtifactStore(self._root),
+            )
+        else:
+            campaign = self._load(source_kind, batch_id)
         campaign = replace(
             campaign,
             reproducibility=self._reproducibility.assessment(f"{source_kind}:{batch_id}"),
@@ -1233,14 +1906,19 @@ class CampaignExportService:
             catalog_id=f"{source_kind}:{batch_id}",
             export_directory=directory,
         )
-        # The single job's own preserved bytes: required inputs, so a failure
-        # here aborts the export rather than writing a partial bundle.
+        # The single job's or screening campaign's own preserved bytes: required
+        # inputs, so a failure aborts the export before any partial bundle exists.
         source_files: list[dict[str, Any]] = []
         if source_kind == "gnina_job":
             source_files = collect_gnina_source_files(
                 record=gnina_record,  # type: ignore[arg-type]
                 export_directory=directory,
                 preserved=preserved,
+            )
+        elif verified_screening is not None:
+            source_files = collect_gnina_screening_source_files(
+                verified=verified_screening,
+                export_directory=directory,
             )
 
         files = {
