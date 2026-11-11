@@ -151,9 +151,32 @@ still hash to the values GNINA recorded. A mismatch, a missing artifact, a
 preparation belonging to another ligand, or a removed record is an explicit gap
 naming the failed check. An unfinished job reports its status and recorded
 failure and publishes no score, affinity prediction or pose. Repeat behavior
-stays not assessed until GNINA-specific repeat evidence exists, and GNINA is
-reported as having no verified published reference until one is resolved against
-registered DOI metadata.
+stays not assessed until GNINA-specific repeat evidence exists.
+
+### Crossref-verified GNINA citation and screening campaign Methods
+
+Updated 2026-11-11. GNINA's primary publication (`10.1186/s13321-021-00522-2`:
+McNutt AT, Francoeur P, Aggarwal R, Masuda T, Meli R, Ragoza M, Sunseri J, Koes
+DR. *GNINA 1.0: molecular docking with deep learning*. Journal of
+Cheminformatics 2021; 13(1):43) was verified directly against Crossref DOI
+metadata and registered in `tool_citations.py` under `"GNINA"`, so both single
+jobs and screening campaigns render a numbered reference in `## Software` and
+`## References`.
+
+Multi-ligand GNINA screening campaigns (`gnina_screening:<campaign_id>`) render
+a dedicated `Methods` report via
+`GET /api/v1/results/campaigns/gnina_screening/{campaign_id}/methods`, never
+sharing Vina or AutoDock4 prose. In addition to the receptor, search-box,
+engine-identity, CNN-scoring, hydrogen-policy and GPU-observation invariants of
+single-job GNINA, the campaign renderer verifies the pinned selection manifest
+SHA-256 and selection order (`verified_screening_selection`), checks every
+recorded entry's stored `conformer.sdf` and `ligand.pdbqt` bytes against
+`entry.conformer_sha256` and `entry.ligand_sha256`, verifies every completed
+child job and published pose (`verified_campaign_entry_job`), documents
+sequential execution (`worker_count = 1`), distinguishes preflight refusals from
+engine failures, and reports the top-ranked compound by descending `CNNscore`
+(ties broken by selection order) alongside its separate `CNNaffinity` (pK) and
+`minimizedAffinity` (kcal mol⁻¹).
 
 ## GNINA single-job redocking validation
 

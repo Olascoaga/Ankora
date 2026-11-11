@@ -36,6 +36,7 @@ from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
@@ -46,12 +47,15 @@ from ankora_backend.schemas.results_catalog import (
     ReproducibilityStatus,
     ScoringFamily,
 )
+from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
+from ankora_backend.services.gnina_screening_selection import verified_screening_selection
 from ankora_backend.services.result_catalog import (
     AUTODOCK4_BATCH,
     AUTODOCK4_JOB,
     AUTODOCK_GPU_BATCH,
     AUTODOCK_GPU_JOB,
     GNINA_JOB,
+    GNINA_SCREENING,
     VINA_BATCH,
     VINA_JOB,
     ResultCatalogService,
@@ -199,6 +203,7 @@ class MethodsReportService:
         autodock4: AutoDock4JobStore,
         autodock_gpu: AutoDockGpuJobStore,
         gnina: GninaJobStore | None = None,
+        gnina_screening: GninaScreeningStore | None = None,
     ) -> None:
         self._catalog = catalog
         self._structures = structures
@@ -211,6 +216,7 @@ class MethodsReportService:
         self._autodock4 = autodock4
         self._autodock_gpu = autodock_gpu
         self._gnina = gnina
+        self._gnina_screening = gnina_screening
 
     @classmethod
     def from_environment(cls) -> "MethodsReportService":
@@ -226,6 +232,7 @@ class MethodsReportService:
             autodock4=AutoDock4JobStore.from_environment(),
             autodock_gpu=AutoDockGpuJobStore.from_environment(),
             gnina=GninaJobStore.from_environment(),
+            gnina_screening=GninaScreeningStore.from_environment(),
         )
 
     def render(self, catalog_id: str) -> MethodsReport:
@@ -234,6 +241,8 @@ class MethodsReportService:
 
         if entry.engine_key == GNINA_JOB:
             self._gnina_sections(draft, entry)
+        elif entry.engine_key == GNINA_SCREENING:
+            self._gnina_screening_sections(draft, entry)
         else:
             self._protein(draft, entry)
             self._site(draft, entry)
@@ -375,18 +384,26 @@ class MethodsReportService:
         )
         self._protein_prose(draft, receptor.record)
 
-    def _gnina_site(self, draft: _Draft, entry: CatalogEntry, job: Any) -> None:
+    def _gnina_site(
+        self,
+        draft: _Draft,
+        entry: CatalogEntry,
+        job: Any,
+        *,
+        record_noun: str = "docking job",
+    ) -> None:
+        short_noun = "job" if record_noun == "docking job" else record_noun
         draft.say("## Binding site definition\n")
         if job is None:
             draft.say(
-                "The search space cannot be stated without the job record. "
+                f"The search space cannot be stated without the {short_noun} record. "
                 f"{draft.missing('the recorded GNINA search box')}\n"
             )
             return
 
         box = job.box
         draft.say(
-            "The search box recorded on the docking job itself was centred at "
+            f"The search box recorded on the {record_noun} itself was centred at "
             f"({box.center_x}, {box.center_y}, {box.center_z}) Å with "
             f"dimensions {box.size_x} × {box.size_y} × {box.size_z} Å, in "
             "the coordinate frame of the prepared receptor. These are the values "
@@ -398,7 +415,7 @@ class MethodsReportService:
         if site is None:
             draft.say(
                 "How that box was originally derived is "
-                f"{draft.missing('the binding site record for this GNINA job')}.\n"
+                f"{draft.missing(f'the binding site record for this GNINA {short_noun}')}.\n"
             )
             return
         if site.receptor_id != job.request.receptor_id or not _same_box(site.box, box):
@@ -406,7 +423,7 @@ class MethodsReportService:
                 "a binding site record consistent with the recorded GNINA box"
             )
             draft.say(
-                "The binding-site artifact this job names no longer describes the same "
+                f"The binding-site artifact this {short_noun} names no longer describes the same "
                 f"receptor and box, so its derivation is not used here: {inconsistent}.\n"
             )
             return
@@ -651,6 +668,536 @@ class MethodsReportService:
         )
         draft.say(
             "All three quantities are predictions of this engine for this pose. None is a "
+            "measured binding affinity and none is evidence of biological activity."
+        )
+        draft.say(
+            "They come from GNINA's own empirical function and convolutional model, and "
+            "they do not share a scale with the score of any other docking engine. Ankora "
+            "does not pool or jointly rank results across engines."
+        )
+        self._reproducibility_prose(draft, entry)
+        draft.say("")
+
+    def _gnina_screening_sections(self, draft: _Draft, entry: CatalogEntry) -> None:
+        """A multi-ligand GNINA screening campaign, verified across every input and child job."""
+        campaign = self._gnina_screening_campaign(entry)
+        receptor = (
+            self._gnina_receptor(campaign)
+            if campaign is not None
+            else _Verified(gap="the GNINA screening campaign record")
+        )
+        verified_jobs, job_verification_failed = self._gnina_screening_verified_jobs(campaign)
+
+        self._gnina_screening_protein(draft, campaign, receptor)
+        self._gnina_site(draft, entry, campaign, record_noun="screening campaign")
+        ligands_verified = self._gnina_screening_ligands(draft, campaign)
+        self._gnina_screening_docking(
+            draft,
+            entry,
+            campaign,
+            verified_jobs,
+            job_verification_failed=job_verification_failed,
+            receptor_verified=receptor.record is not None,
+            ligands_verified=ligands_verified,
+        )
+        self._gnina_screening_outcome(
+            draft,
+            entry,
+            campaign,
+            verified_jobs,
+            job_verification_failed=job_verification_failed,
+        )
+
+    def _gnina_screening_campaign(self, entry: CatalogEntry) -> Any:
+        if self._gnina_screening is None:
+            return None
+        return _load(self._gnina_screening.load_campaign, entry.record_id)
+
+    def _gnina_screening_job_store(self) -> GninaJobStore | None:
+        if self._gnina is not None:
+            return self._gnina
+        if self._gnina_screening is not None:
+            return self._gnina_screening.jobs
+        return None
+
+    def _gnina_screening_verified_jobs(self, campaign: Any) -> tuple[dict[str, Any], bool]:
+        if campaign is None:
+            return {}, False
+        job_store = self._gnina_screening_job_store()
+        verified: dict[str, Any] = {}
+        failed_verification = False
+        for item in campaign.entries:
+            if _text(item.status) != "completed":
+                continue
+            if job_store is None:
+                failed_verification = True
+                continue
+            try:
+                verified[item.ligand_id] = verified_campaign_entry_job(
+                    store=job_store,
+                    campaign=campaign,
+                    entry=item,
+                )
+            except (AnkoraDomainError, OSError, ValueError):
+                failed_verification = True
+        return verified, failed_verification
+
+    def _gnina_screening_protein(
+        self, draft: _Draft, campaign: Any, receptor: "_Verified"
+    ) -> None:
+        draft.say("## Protein preparation\n")
+        if campaign is None:
+            draft.say(
+                "The GNINA screening campaign record for this result is no longer "
+                "available, so no receptor preparation can be described. "
+                f"{draft.missing('the GNINA screening campaign record')}\n"
+            )
+            return
+        if receptor.record is None:
+            draft.say(
+                "Ankora describes a receptor preparation only when the stored artifact "
+                "still matches the hash GNINA was given. That check did not pass here, "
+                f"so the preparation is not described: {draft.missing(receptor.gap or '')}\n"
+            )
+            return
+        draft.say(
+            "The receptor GNINA received across this screening campaign is the prepared "
+            f"PDBQT identified by SHA-256 {campaign.receptor_sha256}, which still matches "
+            "the stored artifact."
+        )
+        self._protein_prose(draft, receptor.record)
+
+    def _gnina_screening_ligands(self, draft: _Draft, campaign: Any) -> bool:
+        draft.say("## Ligand preparation\n")
+        if campaign is None:
+            draft.say(
+                "No compound library or ligand preparation can be described without the "
+                "screening campaign record. "
+                f"{draft.missing('the GNINA screening ligand selection')}\n"
+            )
+            return False
+
+        library = _load(self._ligands.load_library_record, campaign.selection.library_id)
+        if library is None:
+            draft.say(
+                "The compound library record for this screening campaign is no longer "
+                f"available. {draft.missing('compound library record')}"
+            )
+        else:
+            artifact = library.artifact
+            draft.say(
+                f"{artifact.record_count} compounds were imported from "
+                f"{artifact.filename} ({artifact.format.upper()}); "
+                f"{library.imported_count} were parsed successfully and "
+                f"{library.failed_count} could not be read."
+            )
+
+        run = _verified_gnina_selection_run(self._ligands, campaign)
+        if run is None:
+            manifest_gap = draft.missing(
+                "a verified library filter selection manifest matching the recorded GNINA campaign"
+            )
+            draft.say(
+                "Ankora describes library filtering for a GNINA screening campaign only "
+                "when the stored selection manifest still matches the SHA-256 hash and "
+                "selection order pinned on the campaign. That check did not pass here, so "
+                f"the filter protocol is not described: {manifest_gap}."
+            )
+        else:
+            _gnina_filter_run_prose(
+                draft,
+                run,
+                selected_count=campaign.selected_count,
+                manifest_sha256=campaign.selection.manifest_sha256,
+            )
+
+        ligands_verified = self._gnina_screening_preparations(draft, campaign)
+        draft.say("")
+        return ligands_verified
+
+    def _gnina_screening_preparations(self, draft: _Draft, campaign: Any) -> bool:
+        preflight_unprepared = [
+            item
+            for item in campaign.entries
+            if item.is_preflight_failure
+            and (
+                item.ligand_preparation_id is None
+                or item.ligand_sha256 is None
+                or item.conformer_id is None
+                or item.conformer_sha256 is None
+            )
+        ]
+        recorded_entries = [
+            item for item in campaign.entries if item not in preflight_unprepared
+        ]
+        if preflight_unprepared:
+            count = len(preflight_unprepared)
+            draft.say(
+                f"{count} selected compound{'s' if count != 1 else ''} lacked a verified "
+                f"docking-ready preparation at preflight and {'were' if count != 1 else 'was'} "
+                "recorded as failed without launching GNINA."
+            )
+        if not recorded_entries:
+            return False
+
+        verified_items: list[_PreparedLigand] = []
+        for item in recorded_entries:
+            prepared = _gnina_entry_preparation(self._ligands, item)
+            if prepared is not None:
+                verified_items.append(prepared)
+        unverified_count = len(recorded_entries) - len(verified_items)
+        if unverified_count:
+            prep_gap = draft.missing(
+                "verified ligand conformer and PDBQT artifacts for every recorded "
+                "GNINA screening entry"
+            )
+            draft.say(
+                "Ankora describes ligand preparations only when stored conformer and "
+                "PDBQT bytes still match the SHA-256 hashes recorded by the campaign; "
+                f"{len(verified_items)} of {len(recorded_entries)} recorded ligand "
+                f"preparations passed verification: {prep_gap}."
+            )
+        if not verified_items:
+            return False
+
+        for prepared in verified_items:
+            protocol = prepared.protocol
+            draft.tool(
+                protocol.conformer_tool_name,
+                protocol.conformer_tool_version,
+                "ligand conformer generation and minimization",
+            )
+            draft.tool(
+                protocol.pdbqt_tool_name,
+                protocol.pdbqt_tool_version,
+                "ligand PDBQT conversion",
+            )
+            if prepared.state_lineage is not None:
+                for decision in prepared.state_lineage.decisions:
+                    draft.tool(
+                        decision.tool_name,
+                        decision.tool_version,
+                        "ligand chemical-state resolution",
+                    )
+
+        groups: dict[_PreparationProtocol, int] = {}
+        for prepared in verified_items:
+            groups[prepared.protocol] = groups.get(prepared.protocol, 0) + 1
+        if len(groups) == 1:
+            protocol, count = next(iter(groups.items()))
+            prefix = "All" if unverified_count == 0 else "The"
+            draft.say(
+                f"{prefix} {count} verified ligand preparation"
+                f"{'s' if count != 1 else ''} used {_protocol_description(protocol)}."
+            )
+        else:
+            draft.say(
+                f"The {len(verified_items)} verified ligand preparations used "
+                f"{len(groups)} distinct recorded protocols:"
+            )
+            for protocol, count in sorted(
+                groups.items(), key=lambda pair: (_protocol_description(pair[0]), pair[1])
+            ):
+                draft.say(
+                    f"- {count} ligand{'s' if count != 1 else ''}: "
+                    f"{_protocol_description(protocol)}."
+                )
+
+        _chemical_state_prose(
+            draft,
+            _PreparationSet(
+                items=verified_items,
+                total_entries=len(verified_items),
+                entries_without_preparation=0,
+                unavailable_preparations=0,
+            ),
+            single=False,
+        )
+        return unverified_count == 0
+
+    def _gnina_screening_docking(
+        self,
+        draft: _Draft,
+        entry: CatalogEntry,
+        campaign: Any,
+        verified_jobs: dict[str, Any],
+        *,
+        job_verification_failed: bool,
+        receptor_verified: bool,
+        ligands_verified: bool,
+    ) -> None:
+        draft.say("## Molecular docking\n")
+        if campaign is None:
+            draft.say(
+                "The docking parameters for this screening campaign are "
+                f"{draft.missing('the GNINA screening request parameters')}.\n"
+            )
+            return
+
+        executed = (
+            not job_verification_failed
+            and campaign.succeeded_count > 0
+            and len(verified_jobs) == campaign.succeeded_count
+            and all(_gnina_executed(job) for job in verified_jobs.values())
+        )
+        tool = campaign.tool
+        draft.tool("GNINA", tool.version, "molecular docking")
+        identity = (
+            f"GNINA {tool.version}, a native {tool.architecture} Linux build "
+            f"identified by executable SHA-256 {tool.sha256}"
+        )
+        if executed:
+            draft.say(
+                f"Library screening was performed with {identity}. Prepared compounds "
+                f"were docked sequentially (worker_count = {campaign.worker_count}), "
+                "executing one independent GNINA single-ligand job per entry in selection "
+                "order without concurrent scheduling."
+            )
+        else:
+            draft.say(
+                f"This screening campaign was configured for {identity} with sequential "
+                f"execution (worker_count = {campaign.worker_count}, one independent "
+                "GNINA job per prepared entry in selection order). Because a complete "
+                "verified run set is not available, this section states the recorded "
+                "configuration rather than a completed campaign protocol."
+            )
+
+        parameters = campaign.request.parameters
+        search = (
+            f"a fixed random seed of {parameters.seed}, an exhaustiveness of "
+            f"{parameters.exhaustiveness}, at most {parameters.num_modes} binding mode"
+            f"{'s' if parameters.num_modes != 1 else ''} per compound, and a minimum "
+            f"inter-mode RMSD filter of {parameters.min_rmsd_filter_angstrom:g} Å"
+        )
+        draft.say(
+            f"Each docking job used {search}."
+            if executed
+            else f"The recorded search configuration specified {search}."
+        )
+        scoring = (
+            f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
+            f"`{parameters.cnn_model}` model"
+        )
+        draft.say(
+            (
+                f"Pose scoring used the recorded GNINA CNN configuration: {scoring}."
+                if executed
+                else f"Pose scoring was configured as {scoring}."
+            )
+            + " The mode and model are reported as recorded."
+        )
+        if executed:
+            draft.say(
+                "Receptor and ligands were supplied as independently prepared PDBQT "
+                "files, and GNINA was run with both hydrogen addition and hydrogen "
+                "stripping disabled, so the engine neither added nor removed hydrogens "
+                "from the prepared inputs."
+            )
+        else:
+            draft.say(
+                "The configuration supplies receptor and ligands as independently "
+                "prepared PDBQT files with both hydrogen addition and hydrogen "
+                "stripping disabled, so the engine would neither add nor remove "
+                "hydrogens from the prepared inputs."
+            )
+        if receptor_verified and ligands_verified:
+            draft.say(
+                "The protonation those inputs carry is the one recorded in their own preparation."
+            )
+        draft.say(_gnina_compute_prose(parameters, executed=executed))
+        if parameters.compute == "cuda":
+            self._gnina_screening_gpu_prose(
+                draft,
+                entry,
+                campaign,
+                verified_jobs,
+                job_verification_failed=job_verification_failed,
+            )
+        draft.say("")
+
+    def _gnina_screening_gpu_prose(
+        self,
+        draft: _Draft,
+        entry: CatalogEntry,
+        campaign: Any,
+        verified_jobs: dict[str, Any],
+        *,
+        job_verification_failed: bool,
+    ) -> None:
+        if campaign.succeeded_count == 0 and not verified_jobs:
+            draft.say(
+                "No completed GNINA execution was recorded for this campaign, so there "
+                "is no GPU process observation to report."
+            )
+            return
+        if job_verification_failed or len(verified_jobs) < campaign.succeeded_count:
+            gpu_gap = draft.missing(
+                "recorded GNINA GPU process observation for every completed screening entry"
+            )
+            draft.say(
+                "Because not all completed child GNINA job records passed verification, "
+                f"GPU process observation across the campaign is {gpu_gap}."
+            )
+            return
+        observed_uuids: list[str] = []
+        requested_uuids: set[str] = set()
+        for job in verified_jobs.values():
+            execution = getattr(job, "execution", None)
+            observed = _gnina_observed_uuid(execution)
+            if (
+                execution is None
+                or not getattr(execution, "gpu_process_observed", False)
+                or not observed
+            ):
+                draft.say(
+                    "At least one completed child execution carries no GPU process "
+                    "observation, so execution on the selected device across the "
+                    f"campaign is {draft.missing('recorded GNINA GPU process observation')}."
+                )
+                return
+            observed_uuids.append(observed)
+            requested = getattr(execution, "requested_gpu_uuid", None)
+            if requested:
+                requested_uuids.add(requested)
+
+        unique_observed = sorted(set(observed_uuids))
+        count = len(observed_uuids)
+        if len(unique_observed) == 1:
+            device = unique_observed[0]
+            sentence = (
+                f"Ankora observed the GNINA process in all {count} completed child "
+                f"execution{'s' if count != 1 else ''} occupying GPU {device}"
+            )
+            if len(requested_uuids) == 1:
+                requested_only = next(iter(requested_uuids))
+                sentence += (
+                    f", the device requested for this campaign ({requested_only})"
+                    if requested_only == device
+                    else f", while the device requested for this campaign was {requested_only}"
+                )
+        else:
+            sentence = (
+                f"Ankora observed the GNINA processes across {count} completed child "
+                f"executions occupying GPUs {_join(unique_observed)}"
+            )
+        draft.say(
+            f"{sentence}. This confirms that each engine process was reported on the "
+            "observed device; it is not independent proof that every neural-network "
+            "operation executed on the GPU."
+        )
+        if entry.device_name and (
+            len(unique_observed) != 1 or entry.device_name != unique_observed[0]
+        ):
+            device_gap = draft.missing("a single consistent recorded GNINA device identity")
+            draft.say(
+                "The catalog device label and the child jobs' GPU observations disagree, "
+                f"so the device is reported only from the verified job records: {device_gap}."
+            )
+
+    def _gnina_screening_outcome(
+        self,
+        draft: _Draft,
+        entry: CatalogEntry,
+        campaign: Any,
+        verified_jobs: dict[str, Any],
+        *,
+        job_verification_failed: bool,
+    ) -> None:
+        draft.say("## Results and reproducibility\n")
+        if campaign is None:
+            draft.say(
+                "No outcome can be reported without the screening campaign record. "
+                f"{draft.missing('the recorded GNINA screening outcome')}\n"
+            )
+            return
+
+        preflight_failures = sum(1 for item in campaign.entries if item.is_preflight_failure)
+        engine_failures = campaign.failed_count - preflight_failures
+        failure_detail = ""
+        if campaign.failed_count:
+            failure_detail = (
+                f" ({preflight_failures} refused at preflight before launching GNINA "
+                f"and {engine_failures} failed during docking)"
+            )
+        canceled_clause = (
+            f", and {campaign.canceled_count} were canceled"
+            if campaign.canceled_count
+            else ""
+        )
+        draft.say(
+            f"{campaign.selected_count} selected compound entries were evaluated in "
+            f"selection order: {campaign.succeeded_count} completed with poses, "
+            f"{campaign.failed_count} failed{failure_detail}{canceled_clause}."
+        )
+        if job_verification_failed:
+            jobs_gap = draft.missing(
+                "verified child GNINA jobs and pose artifacts for every completed screening entry"
+            )
+            draft.say(
+                "One or more completed child GNINA job records or pose artifacts no "
+                "longer match the hashes recorded for this campaign, so campaign scores "
+                f"and rankings are not reported: {jobs_gap}.\n"
+            )
+            return
+
+        status = _text(campaign.status)
+        if status != "completed" or campaign.succeeded_count == 0 or not verified_jobs:
+            described = _GNINA_UNFINISHED.get(status, f"has the recorded status `{status}`")
+            sentence = f"This GNINA screening campaign {described}."
+            code = getattr(campaign.failure, "code", None)
+            if code:
+                message = str(getattr(campaign.failure, "message", "") or "").rstrip(".")
+                sentence += f" The recorded campaign failure was {code}"
+                sentence += f": {message}." if message else "."
+            draft.say(sentence)
+            draft.say(
+                "Campaign-level hit ranking is reported only for completed campaigns; "
+                "any partial child jobs remain individually inspectable from their own "
+                "verified records."
+            )
+            draft.say("")
+            return
+
+        ranked_completed: list[tuple[int, Any, Any]] = []
+        for selection_index, item in enumerate(campaign.entries):
+            if _text(item.status) != "completed":
+                continue
+            job = verified_jobs.get(item.ligand_id)
+            if job is not None and job.poses:
+                ranked_completed.append((selection_index, item, job.poses[0]))
+        ranked_completed.sort(key=lambda row: (-row[2].cnn_score, row[0]))
+        _, best_item, best_pose = ranked_completed[0]
+        best_label = best_item.name or best_item.ligand_id
+
+        draft.say(
+            "Completed compounds are ranked by descending top-pose CNN pose score, with "
+            "ties broken by selection order. The CNN pose score is dimensionless and "
+            "bounded between 0 and 1; a higher value ranks a compound earlier. It is not "
+            "an energy and has no kcal/mol interpretation."
+        )
+        draft.say(
+            "Ankora records two further quantities for each completed compound's top pose "
+            "and keeps them distinct from that ranking and from each other:"
+        )
+        draft.say(
+            "- the CNN affinity prediction, in pK units, where a higher value means a "
+            "stronger predicted affinity;"
+        )
+        draft.say(
+            "- the minimized affinity from GNINA's empirical scoring function, in "
+            "kcal mol⁻¹, where a more negative value means a more favourable predicted "
+            "interaction."
+        )
+        draft.say(
+            f"The top-ranked compound ({best_label}) had a top-pose CNN pose score of "
+            f"{best_pose.cnn_score:g}, a predicted CNN affinity of "
+            f"{best_pose.cnn_affinity:g} pK, and a minimized affinity of "
+            f"{best_pose.minimized_affinity_kcal_mol:g} kcal mol⁻¹. Campaign ranking did "
+            "not use the minimized affinity, so the highest-ranked compound is not "
+            "necessarily the one with the lowest recorded energy."
+        )
+        draft.say(
+            "All three quantities are computational predictions of this engine. None is a "
             "measured binding affinity and none is evidence of biological activity."
         )
         draft.say(
@@ -1334,6 +1881,142 @@ def _load_preparation(
     )
 
 
+def _verified_gnina_selection_run(ligands: Any, campaign: Any) -> Any:
+    """Return the filter run only when its stored manifest still matches the campaign."""
+    selection = campaign.selection
+    try:
+        run = verified_screening_selection(
+            store=ligands,
+            library_id=selection.library_id,
+            filter_run_id=selection.filter_run_id,
+        )
+    except (AnkoraDomainError, OSError, ValueError):
+        return None
+    if (
+        run.artifact.filter_run_id != selection.manifest_artifact_id
+        or run.artifact.sha256 != selection.manifest_sha256
+        or tuple(run.selected_ligand_ids) != campaign.selected_ligand_ids
+    ):
+        return None
+    return run
+
+
+def _gnina_filter_run_prose(
+    draft: _Draft,
+    run: Any,
+    *,
+    selected_count: int,
+    manifest_sha256: str,
+) -> None:
+    draft.tool("RDKit", run.rdkit_version, "descriptor calculation and filtering")
+    microstate_plan = getattr(run, "microstate_plan", None)
+    if microstate_plan is not None and _text(microstate_plan.mode) == "enumerated_selection":
+        draft.say(
+            "Before filtering, one protonation/tautomer microstate was explicitly "
+            "selected for each retained parent compound from a bounded enumeration at "
+            f"pH {microstate_plan.ph_min:g}-{microstate_plan.ph_max:g} (pKa precision "
+            f"{microstate_plan.precision:g}; at most "
+            f"{microstate_plan.max_tautomers_per_protomer} tautomers per protomer and "
+            f"{microstate_plan.max_microstates_per_parent} microstates per parent). "
+            "Candidate order was not interpreted as a population or suitability ranking."
+        )
+    else:
+        draft.say(
+            "Library filtering used each compound's exact submitted or explicitly "
+            "component-resolved chemical state; no protonation or tautomer alternative "
+            "was selected automatically."
+        )
+    plan = run.plan
+    required = _required_rules(plan)
+    summary = run.summary
+    draft.say(
+        "Physicochemical descriptors were computed with RDKit "
+        f"{run.rdkit_version} and the library was filtered against "
+        f"{_join(required)}."
+        if required
+        else "Physicochemical descriptors were computed with RDKit "
+        f"{run.rdkit_version}; no rule was applied as a requirement."
+    )
+    if plan.custom_rules:
+        draft.say(
+            "Additional user-defined criteria were applied: "
+            f"{_join([_custom_rule(rule) for rule in plan.custom_rules])}."
+        )
+    draft.say(
+        f"{_alert_policy_sentence('PAINS', summary.pains_match_count, plan.pains_policy)} "
+        f"{_alert_policy_sentence('Brenk', summary.brenk_match_count, plan.brenk_policy)} "
+        "Exact canonical-SMILES duplicates were "
+        f"{_DUPLICATE_POLICY.get(str(plan.duplicate_policy), str(plan.duplicate_policy))} "
+        f"({summary.duplicate_count} found)."
+    )
+    classified_count = (
+        summary.eligible_count + summary.excluded_count + summary.needs_decision_count
+    )
+    census = (
+        f"Of {summary.imported_count} compounds evaluated, "
+        f"{summary.eligible_count} were eligible for selection, "
+        f"{summary.excluded_count} were excluded, and "
+        f"{summary.needs_decision_count} required an explicit chemical-state "
+        "decision (undefined stereochemistry or multiple fragments)."
+    )
+    if classified_count == summary.imported_count:
+        draft.say(
+            f"{census} These mutually exclusive outcomes account for all "
+            f"{summary.imported_count} compounds."
+        )
+    else:
+        census_gap = draft.missing("internally consistent library filter census")
+        draft.say(
+            f"{census} The categories account for {classified_count} compounds; "
+            f"the discrepancy is {census_gap}."
+        )
+    draft.say(
+        f"The applied selection manifest (SHA-256 {manifest_sha256}) carried "
+        f"{selected_count} compound entries forward to docking in selection order."
+    )
+
+
+def _gnina_entry_preparation(ligands: Any, entry: Any) -> _PreparedLigand | None:
+    """Verify one screening entry's stored conformer and PDBQT bytes against campaign hashes."""
+    if (
+        not entry.ligand_preparation_id
+        or not entry.ligand_sha256
+        or not entry.conformer_id
+        or not entry.conformer_sha256
+    ):
+        return None
+    pdbqt = _load2(ligands.load_pdbqt_record, entry.ligand_id, entry.ligand_preparation_id)
+    if pdbqt is None:
+        return None
+    if (
+        getattr(pdbqt.artifact, "ligand_id", entry.ligand_id) != entry.ligand_id
+        or pdbqt.artifact.conformer_id != entry.conformer_id
+        or pdbqt.artifact.sha256 != entry.ligand_sha256
+    ):
+        return None
+    ligand_bytes = _stored_digest(
+        ligands.pdbqt_content_path, entry.ligand_id, entry.ligand_preparation_id
+    )
+    if ligand_bytes != entry.ligand_sha256:
+        return None
+    conformer = _load2(ligands.load_conformer_record, entry.ligand_id, entry.conformer_id)
+    if conformer is None or conformer.artifact.sha256 != entry.conformer_sha256:
+        return None
+    conformer_bytes = _stored_digest(
+        ligands.conformer_content_path, entry.ligand_id, entry.conformer_id
+    )
+    if conformer_bytes != entry.conformer_sha256:
+        return None
+    return _PreparedLigand(
+        ligand_id=entry.ligand_id,
+        preparation_id=entry.ligand_preparation_id,
+        conformer=conformer,
+        pdbqt=pdbqt,
+        protocol=_protocol_from(pdbqt, conformer),
+        state_lineage=_state_lineage(ligands, entry.ligand_id, conformer),
+    )
+
+
 def _protocol_from(pdbqt: Any, conformer: Any) -> _PreparationProtocol:
     """The recorded protocol behind one prepared ligand."""
     minimization = conformer.minimization
@@ -1723,6 +2406,7 @@ _ENGINE_NAMES = {
     AUTODOCK_GPU_BATCH: "AutoDock-GPU",
     AUTODOCK_GPU_JOB: "AutoDock-GPU",
     GNINA_JOB: "GNINA",
+    GNINA_SCREENING: "GNINA",
 }
 
 

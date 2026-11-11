@@ -267,6 +267,14 @@ _MMFF94S = Reference(
     year=1999, volume="20", issue="7", pages="720-729",
     doi="10.1002/(SICI)1096-987X(199905)20:7<720::AID-JCC7>3.0.CO;2-X",
 )
+_GNINA = Reference(
+    key="gnina-1.0",
+    authors="McNutt AT, Francoeur P, Aggarwal R, Masuda T, Meli R, Ragoza M, Sunseri J, Koes DR",
+    title="GNINA 1.0: molecular docking with deep learning",
+    container="Journal of Cheminformatics",
+    year=2021, volume="13", issue="1", pages="43",
+    doi="10.1186/s13321-021-00522-2",
+)
 
 # Keyed by the tool name exactly as the Methods renderer records it. A name
 # absent from this map is reported as having no recorded reference.
@@ -275,6 +283,7 @@ _BY_TOOL: dict[str, tuple[Reference, ...]] = {
     "AutoDock4": (_AUTODOCK4,),
     "AutoGrid": (_AUTODOCK4,),
     "AutoDock-GPU": (_AUTODOCK_GPU,),
+    "GNINA": (_GNINA,),
     "Meeko": (_MEEKO,),
     "Meeko ligand preparation": (_MEEKO,),
     "PDBFixer": (_OPENMM,),

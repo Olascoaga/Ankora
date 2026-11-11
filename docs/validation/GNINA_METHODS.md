@@ -1,20 +1,25 @@
 # GNINA Methods report
 
-A completed GNINA single job can write the Methods section its own record
-supports, through the same Results interface and the same route as the other
-engines: `GET /api/v1/results/campaigns/gnina_job/{job_id}/methods`. The route
-previously failed closed with `GNINA_METHODS_UNAVAILABLE`; that behavior is
-superseded by the GNINA Methods decision in ADR-027. The engineering checks that
-recorded the fail-closed behavior, including `catalog-cuda-01` in
-`LINUX_GNINA_CATALOG.md`, are unchanged and remain accurate for the state they
-observed.
+Completed GNINA single jobs and multi-ligand GNINA screening campaigns write the
+Methods section their own records support, through the same Results interface
+and routes as the other engines:
+
+- `GET /api/v1/results/campaigns/gnina_job/{job_id}/methods`
+- `GET /api/v1/results/campaigns/gnina_screening/{campaign_id}/methods`
+
+Single-job Methods previously failed closed with `GNINA_METHODS_UNAVAILABLE`;
+that behavior is superseded by ADR-027. Historical engineering checks that
+recorded the earlier fail-closed behavior, including `catalog-cuda-01` in
+`LINUX_GNINA_CATALOG.md`, remain unchanged for the state they observed.
 
 ## What the section reports
 
-Written from the GNINA job record alone, never from another engine's renderer:
+Written from the GNINA job or screening campaign record alone, never from
+another engine's renderer:
 
 - **Engine identity** — version, executable SHA-256, and native x86-64 Linux
-  architecture.
+  architecture, plus sequential `worker_count = 1` execution for screening
+  campaigns (one independent GNINA job per prepared entry in selection order).
 - **Search protocol** — the fixed seed, exhaustiveness, maximum binding modes,
   and minimum inter-mode RMSD filter.
 - **CNN configuration** — the recorded scoring mode and built-in model named
@@ -22,12 +27,25 @@ Written from the GNINA job record alone, never from another engine's renderer:
 - **Hydrogen handling** — independently prepared PDBQT inputs with hydrogen
   addition and stripping both disabled, so the engine neither added nor removed
   hydrogens; recorded protonation is described when the inputs are verified.
+- **Library selection and per-entry preparations (screening campaigns)** —
+  library import counts, RDKit filter criteria, PAINS/Brenk/duplicate policies
+  and filter census are described only when the stored filter manifest still
+  matches the SHA-256 and selection order pinned on `campaign.selection`;
+  per-entry conformer and PDBQT protocols are described only when stored bytes
+  match `entry.conformer_sha256` and `entry.ligand_sha256`, while preflight
+  refusals (`gnina_job_id is None`) are reported explicitly without inventing
+  unrecorded preparations.
 - **Compute policy** — CPU threads with GPU disabled, or the requested CUDA
   logical device, and in both cases that Ankora never falls back between devices.
-- **Search box** — taken from the docking record itself, because a binding-site
-  artifact can be superseded after a run. The site record supplies the box's
-  derivation only while it still names the same receptor and the same box
-  numerically.
+- **Search box** — taken from the docking or campaign record itself, because a
+  binding-site artifact can be superseded after a run. The site record supplies
+  the box's derivation only while it still names the same receptor and the same
+  box numerically.
+- **Crossref-verified GNINA citation** — `tool_citations.py` registers GNINA 1.0
+  verified directly against Crossref metadata (`10.1186/s13321-021-00522-2`:
+  McNutt AT, Francoeur P, Aggarwal R, Masuda T, Meli R, Ragoza M, Sunseri J,
+  Koes DR. *GNINA 1.0: molecular docking with deep learning*. Journal of
+  Cheminformatics. 2021;13(1):43).
 
 ## Score semantics
 
@@ -98,13 +116,10 @@ stay separate list items rather than collapsing into the ranking paragraph.
 
 ### Outstanding
 
-- A separate single-case integration check with a preserved WSL CUDA source job
-  succeeded; see `LINUX_GNINA_METHODS.md`. No docking was rerun for this unit.
-- **No GNINA citation is supplied yet.** Ankora holds no reference for GNINA that
-  has been resolved against registered DOI metadata, so the Software table
-  reports it as having none and the prose tells the author to supply it. Adding
-  one requires Crossref verification, not recall; a fabricated citation looks
-  correct until a reader follows it. This is a gap in Ankora's citation map, not
-  in any campaign's records.
+- Single-case integration checks with preserved WSL CUDA source runs (`catalog-cuda-01`
+  for single-job GNINA in `LINUX_GNINA_METHODS.md` and an isolated `tmp_path` copy
+  of the 11-compound `screening-api-cuda-01` campaign in `test_gnina_methods.py`)
+  pass with zero gaps and Crossref-verified GNINA 1.0 citation rendering. No
+  docking was rerun for this unit.
 - Native Linux workstation acceptance remains pending, as for the rest of the
   GNINA port.

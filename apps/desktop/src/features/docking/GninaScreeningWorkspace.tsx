@@ -764,7 +764,6 @@ export function GninaScreeningWorkspace({
           <ul className="field-note">
             <li>Export: there is no multi-ligand GNINA campaign bundle.</li>
             <li>Redocking validation: no campaign entry point exists.</li>
-            <li>Methods report: no campaign-level section is generated.</li>
             <li>Engine comparison: GNINA is not part of it.</li>
           </ul>
           <p className="field-note">
