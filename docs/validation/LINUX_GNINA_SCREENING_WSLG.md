@@ -43,9 +43,9 @@ bare-metal Linux workstation acceptance (ADR-026 Gate 3).
      padding), preview the box, and click
      `Define this binding site and continue to Docking`.
    - In `Docking`, select `GNINA · screening`, set `Compute` to `cuda`,
-     `CPU threads = 2`, `Seed = 20261029`, `Exhaustiveness = 1`, `Modes = 2`,
-     and `Timeout / molecule (min) = 3`, acknowledge the GNINA scoring notice,
-     and click `Dock 11 prepared molecules`.
+     `CPU threads = 2`, `Seed = 20261029`, `Exhaustiveness = 1`,
+     `Maximum poses = 2`, and `Timeout / molecule (min) = 3`, acknowledge the
+     GNINA scoring notice, and click `Dock 11 prepared molecules`.
 4. Observe live campaign execution to terminal `completed` (`11 / 11`
    succeeded) and every finished molecule's individual job read (`Every finished
    molecule's job has been read`, clicking `Read scores from …` if any remain
@@ -66,3 +66,24 @@ bare-metal Linux workstation acceptance (ADR-026 Gate 3).
    sessions, verify ports `8765`, `1420`, `4444`, and `4445` are free and zero
    GPU compute processes remain, and write create-only `evidence.json` even on
    failure.
+
+## Observed run: wslg-screening-ui-01 (harness selector mismatch)
+
+The native Linux `wry` (`0.55.1`) Tauri desktop window opened cleanly over WSLg
+against loopback-only `uvicorn`, Vite, and `tauri-driver` listeners, reopened
+the saved 1HSG receptor, hydrated the 11-molecule `nci_real_100.sdf` selection,
+defined the `MK1` co-crystallized binding site, and opened `GNINA · screening`.
+The test script then failed at parameter entry because it queried
+`input[aria-label='Modes']` instead of the rendered label
+`input[aria-label='Maximum poses']`. Owned teardown freed all four ports, left
+zero GPU compute processes, and left the source tree digest unchanged. The
+untouched create-only failure record is retained at
+`wslg-screening-ui-01/evidence.json` with SHA-256
+`de4ebf995cf6b31530cee687842070ca317b5cdc6dff8ff988a00bcd3c84172f`.
+
+### Predeclared follow-up (`wslg-screening-ui-02`)
+
+Run the identical WSLg interactive protocol in a new create-only directory
+(`logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-02`) targeting
+`input[aria-label='Maximum poses']` while keeping every acceptance criterion
+unchanged.

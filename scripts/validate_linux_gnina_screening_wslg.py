@@ -28,7 +28,7 @@ SOURCE_RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/screening-ap
 EXPECTED_SOURCE_EVIDENCE_SHA256 = (
     "9662bd482fa2a7c93fbf22ad5b9d22dc98b4c0aa0011d4c9774e898e30c3ddac"
 )
-RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-01"
+RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-02"
 PYTHON_BIN = Path("/home/samael/Ankora/.venv/bin/python")
 NODE_BIN_DIR = Path("/home/samael/.nvm/versions/node/v24.19.0/bin")
 CARGO_BIN_DIR = Path("/home/samael/.cargo/bin")
@@ -320,7 +320,7 @@ def main() -> int:
     trace_dir.mkdir(parents=True, exist_ok=False)
 
     evidence: dict[str, Any] = {
-        "check": "wslg-screening-ui-01",
+        "check": "wslg-screening-ui-02",
         "started_at": started_at,
         "passed": False,
         "environment": {
@@ -611,13 +611,13 @@ def main() -> int:
             setInput(document.querySelector("input[aria-label='CPU threads']"), 2);
             setInput(document.querySelector("input[aria-label='Seed']"), 20261029);
             setInput(document.querySelector("input[aria-label='Exhaustiveness']"), 1);
-            setInput(document.querySelector("input[aria-label='Modes']"), 2);
+            setInput(document.querySelector("input[aria-label='Maximum poses']"), 2);
             setInput(document.querySelector("input[aria-label='Timeout / molecule (min)']"), 3);
             return {
               compute: document.querySelector("select[aria-label='Compute']").value,
               threads: document.querySelector("input[aria-label='CPU threads']").value,
               exhaustiveness: document.querySelector("input[aria-label='Exhaustiveness']").value,
-              modes: document.querySelector("input[aria-label='Modes']").value,
+              modes: document.querySelector("input[aria-label='Maximum poses']").value,
             };
             """
         )
