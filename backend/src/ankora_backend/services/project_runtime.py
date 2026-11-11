@@ -177,6 +177,7 @@ class ProjectRuntime:
                 autodock4=autodock4,
                 autodock_gpu=autodock_gpu,
                 gnina=gnina,
+                gnina_screening=gnina_screening,
             )
         return ProjectServiceBundle(
             project_id=project_id,

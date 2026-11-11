@@ -8,6 +8,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.schemas.work_recovery import (
     WorkKind,
@@ -18,6 +19,7 @@ from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
 from ankora_backend.services.gnina_docking import GninaDockingService
+from ankora_backend.services.gnina_screening_service import GninaScreeningService
 from ankora_backend.services.vina_docking import VinaDockingService
 
 _INTERRUPTED_CODES = {
@@ -29,6 +31,7 @@ _INTERRUPTED_CODES = {
     WorkKind.AUTODOCK_GPU_JOB: "AUTODOCK_GPU_EXECUTION_INTERRUPTED",
     WorkKind.AUTODOCK_GPU_BATCH: "AUTODOCK_GPU_CAMPAIGN_INTERRUPTED",
     WorkKind.GNINA_JOB: "GNINA_EXECUTION_INTERRUPTED",
+    WorkKind.GNINA_SCREENING: "GNINA_SCREENING_CAMPAIGN_INTERRUPTED",
 }
 
 
@@ -56,6 +59,8 @@ class WorkRetryService:
         autodock_gpu: AutoDockGpuDockingService,
         gnina: GninaDockingService | None = None,
         gnina_store: GninaJobStore | None = None,
+        gnina_screening: GninaScreeningService | None = None,
+        gnina_screening_store: GninaScreeningStore | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._autogrid_store = autogrid_store
@@ -67,6 +72,8 @@ class WorkRetryService:
         self._autodock_gpu = autodock_gpu
         self._gnina = gnina
         self._gnina_store = gnina_store
+        self._gnina_screening = gnina_screening
+        self._gnina_screening_store = gnina_screening_store
 
     @classmethod
     def from_environment(
@@ -77,6 +84,7 @@ class WorkRetryService:
         autodock4: AutoDock4DockingService,
         autodock_gpu: AutoDockGpuDockingService,
         gnina: GninaDockingService,
+        gnina_screening: GninaScreeningService | None = None,
     ) -> "WorkRetryService":
         return cls(
             docking_store=DockingArtifactStore.from_environment(),
@@ -89,6 +97,8 @@ class WorkRetryService:
             autodock_gpu=autodock_gpu,
             gnina=gnina,
             gnina_store=GninaJobStore.from_environment(),
+            gnina_screening=gnina_screening,
+            gnina_screening_store=GninaScreeningStore.from_environment(),
         )
 
     def retry(
@@ -213,12 +223,23 @@ class WorkRetryService:
                 work_kind, work_id, created.job_id, created.status.value, created.created_at
             )
         if work_kind is WorkKind.GNINA_SCREENING:
-            raise AnkoraDomainError(
-                code="WORK_RETRY_UNAVAILABLE",
-                stage="work_recovery",
-                message="Retrying a GNINA screening campaign is not available yet.",
-                status_code=409,
-                details={"work_kind": work_kind.value, "work_id": work_id},
+            if self._gnina_screening is None or self._gnina_screening_store is None:
+                raise AnkoraDomainError(
+                    code="WORK_RETRY_UNAVAILABLE",
+                    stage="work_recovery",
+                    message="GNINA screening retry service is not available.",
+                    status_code=409,
+                    details={"work_kind": work_kind.value, "work_id": work_id},
+                )
+            campaign = self._gnina_screening_store.load_campaign(work_id)
+            self._require_interrupted(work_kind, work_id, campaign.failure)
+            created_campaign = self._gnina_screening.start(campaign.request)
+            return self._response(
+                work_kind,
+                work_id,
+                created_campaign.campaign_id,
+                created_campaign.status.value,
+                created_campaign.created_at,
             )
         assert_never(work_kind)
 

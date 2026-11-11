@@ -1,6 +1,8 @@
 """Synthetic startup recovery; no scientific executable is invoked."""
 
 from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -25,6 +27,7 @@ from ankora_backend.schemas.work_recovery import (
     WorkRetryRequest,
 )
 from ankora_backend.services.work_recovery import InterruptedWorkRecovery
+from ankora_backend.services.work_retry import WorkRetryService
 
 
 def test_startup_reconciles_screening_without_rerun_or_changing_another_project(
@@ -76,7 +79,7 @@ def test_startup_reconciles_screening_without_rerun_or_changing_another_project(
     assert recovery.reconcile().items == []
 
 
-def test_retry_is_explicitly_unavailable_for_screening():
+def test_retry_is_explicitly_unavailable_without_a_screening_service():
     with pytest.raises(AnkoraDomainError) as error:
         _service().retry(
             WorkKind.GNINA_SCREENING,
@@ -84,6 +87,120 @@ def test_retry_is_explicitly_unavailable_for_screening():
             WorkRetryRequest(acknowledge_new_immutable_attempt=True),
         )
     assert error.value.code == "WORK_RETRY_UNAVAILABLE"
+
+
+def _screening_retry_service(store, screening):  # type: ignore[no-untyped-def]
+    return WorkRetryService(
+        docking_store=MagicMock(),
+        autogrid_store=MagicMock(),
+        autodock4_store=MagicMock(),
+        autodock_gpu_store=MagicMock(),
+        vina=MagicMock(),
+        autogrid=MagicMock(),
+        autodock4=MagicMock(),
+        autodock_gpu=MagicMock(),
+        gnina=MagicMock(),
+        gnina_store=store.jobs,
+        gnina_screening=screening,
+        gnina_screening_store=store,
+    )
+
+
+def _snapshot(directory: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(directory)): path.read_bytes()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_retry_starts_reconciled_campaign_request_as_new_campaign(tmp_path, monkeypatch):
+    """Synthetic: the new campaign is a mock; no GNINA process is started."""
+    store = GninaScreeningStore(tmp_path)
+    campaign = _initial([_queued("alpha", 0), _queued("beta", 1)])
+    _create_synthetic(store, campaign, monkeypatch)
+    store.update_entry(campaign.campaign_id, _failure(campaign.entries[0]))
+    store.recover_interrupted_campaign(campaign.campaign_id, interrupted_at=datetime.now(UTC))
+    interrupted = store.load_campaign(campaign.campaign_id)
+    assert interrupted.failure.code == "GNINA_SCREENING_CAMPAIGN_INTERRUPTED"
+    before = _snapshot(store.campaign_directory(campaign.campaign_id))
+    assert before
+    created_at = datetime.now(UTC)
+    new_id = str(uuid4())
+    screening = MagicMock()
+    screening.start.return_value = SimpleNamespace(
+        campaign_id=new_id,
+        status=DockingJobStatus.QUEUED,
+        created_at=created_at,
+    )
+
+    response = _screening_retry_service(store, screening).retry(
+        WorkKind.GNINA_SCREENING,
+        campaign.campaign_id,
+        WorkRetryRequest(acknowledge_new_immutable_attempt=True),
+    )
+
+    screening.start.assert_called_once_with(interrupted.request)
+    assert response.work_kind is WorkKind.GNINA_SCREENING
+    assert response.interrupted_work_id == campaign.campaign_id
+    assert response.new_work_id == new_id
+    assert response.status == "queued"
+    assert response.created_at == created_at
+    assert store.load_campaign(campaign.campaign_id) == interrupted
+    assert _snapshot(store.campaign_directory(campaign.campaign_id)) == before
+
+
+def test_retry_rejects_screening_campaign_not_reconciled_as_interrupted(tmp_path, monkeypatch):
+    store = GninaScreeningStore(tmp_path)
+    campaign = _initial([_queued("alpha", 0)])
+    _create_synthetic(store, campaign, monkeypatch)
+    screening = MagicMock()
+
+    with pytest.raises(AnkoraDomainError) as error:
+        _screening_retry_service(store, screening).retry(
+            WorkKind.GNINA_SCREENING,
+            campaign.campaign_id,
+            WorkRetryRequest(acknowledge_new_immutable_attempt=True),
+        )
+
+    assert error.value.code == "WORK_NOT_INTERRUPTED"
+    assert error.value.details["expected_failure_code"] == "GNINA_SCREENING_CAMPAIGN_INTERRUPTED"
+    screening.start.assert_not_called()
+
+
+def test_screening_retry_requires_explicit_new_attempt_acknowledgement():
+    store = MagicMock()
+    screening = MagicMock()
+
+    with pytest.raises(AnkoraDomainError) as error:
+        _screening_retry_service(store, screening).retry(
+            WorkKind.GNINA_SCREENING, str(uuid4()), WorkRetryRequest()
+        )
+
+    assert error.value.code == "WORK_RETRY_CONFIRMATION_REQUIRED"
+    store.load_campaign.assert_not_called()
+    screening.start.assert_not_called()
+
+
+def test_retry_rejects_a_screening_child_job_independently_of_its_campaign(
+    tmp_path, monkeypatch, synthetic_completed_prepared_job
+):
+    store, _campaign, _entry = _queued_job_campaign(
+        tmp_path, synthetic_completed_prepared_job, monkeypatch
+    )
+    job = store.jobs.load_job(synthetic_completed_prepared_job[-1].job_id)
+    assert job.screening_campaign_id is not None
+    service = _screening_retry_service(store, MagicMock())
+
+    with pytest.raises(AnkoraDomainError) as error:
+        service.retry(
+            WorkKind.GNINA_JOB,
+            job.job_id,
+            WorkRetryRequest(acknowledge_new_immutable_attempt=True),
+        )
+
+    assert error.value.code == "WORK_RETRY_CAMPAIGN_JOB_UNAVAILABLE"
+    service._gnina.start.assert_not_called()
 
 
 def test_environment_startup_reconciles_only_the_active_project(tmp_path, monkeypatch):
