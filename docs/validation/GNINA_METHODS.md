@@ -22,8 +22,14 @@ another engine's renderer:
   campaigns (one independent GNINA job per prepared entry in selection order).
 - **Search protocol** — the fixed seed, exhaustiveness, maximum binding modes,
   and minimum inter-mode RMSD filter.
-- **CNN configuration** — the recorded scoring mode and built-in model named
-  specifically rather than as "CNN".
+- **CNN configuration** — the recorded scoring mode (`rescore` or `refinement`)
+  and built-in model (`dense_1_3`, or built-in ensembles `default_1_3_ensemble`
+  / `default1.0` with their exact CLI flag convention and all member network
+  names from `cnn_model_identity`) named specifically rather than as "CNN",
+  together with explicit disclosure under `refinement` that pose coordinates
+  were optimized against combined 3D CNN and empirical gradients so
+  `minimizedAffinity` (kcal mol⁻¹) was evaluated on CNN-refined geometry and is
+  not an independent empirical energy check.
 - **Hydrogen handling** — independently prepared PDBQT inputs with hydrogen
   addition and stripping both disabled, so the engine neither added nor removed
   hydrogens; recorded protonation is described when the inputs are verified.

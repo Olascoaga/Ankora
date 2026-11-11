@@ -17,6 +17,7 @@ from ankora_backend.adapters.engines.gnina import (
     parse_gnina_pdbqt,
     probe_gnina,
     require_matching_topology,
+    resolve_cnn_model_identity,
 )
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
@@ -49,6 +50,7 @@ from ankora_backend.services.resource_arbiter import (
     ResourceClaim,
     ResourceLease,
     ResourceRequestCanceled,
+    gnina_claim,
 )
 from ankora_backend.services.work_leases import WorkLeaseManager
 
@@ -188,6 +190,9 @@ class GninaDockingService:
             ),
         )
         installation = probe_gnina()
+        cnn_model_identity = resolve_cnn_model_identity(
+            request.parameters.cnn_model, binary_sha256=installation.sha256
+        )
         job_id = self._store.new_job_id()
         claim = self._claim(job_id, request)
         self._resources.validate(claim)
@@ -214,6 +219,7 @@ class GninaDockingService:
             tool=GninaToolIdentity(
                 version=installation.version, sha256=installation.sha256, architecture="x86_64"
             ),
+            cnn_model_identity=cnn_model_identity,
             box=site.box,
             receptor_output_artifact_id=output.artifact_id,
             receptor_sha256=output.sha256,
@@ -255,14 +261,7 @@ class GninaDockingService:
 
     @staticmethod
     def _claim(job_id: str, request: GninaDockingRequest) -> ResourceClaim:
-        return ResourceClaim(
-            workload="gnina_job",
-            owner_id=job_id,
-            cpu_threads=request.parameters.cpu_threads,
-            gpu_slots=1 if request.parameters.compute == "cuda" else 0,
-            memory_bytes=2 * 1024**3,
-            disk_bytes=64 * 1024**2,
-        )
+        return gnina_claim(job_id, request.parameters)
 
     def get(self, job_id: str) -> GninaJobRecord:
         return self._store.load_job(job_id)

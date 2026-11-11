@@ -172,6 +172,7 @@ class ExportedCampaign:
     pose_count: int | None = None
     ligand_id: str | None = None
     ranking_metric: str | None = None
+    cnn_model_identity: dict[str, Any] | None = None
     warnings: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -295,18 +296,21 @@ def manifest(
     }
     if campaign.ranking_metric is not None:
         table_payload["ranking_metric"] = campaign.ranking_metric
+    engine_payload: dict[str, Any] = {
+        "name": campaign.engine,
+        "version": campaign.engine_version,
+        "backend": campaign.backend,
+        "executable_sha256": campaign.executable_sha256,
+        "device": campaign.device_name,
+    }
+    if campaign.cnn_model_identity is not None:
+        engine_payload["cnn_model_identity"] = campaign.cnn_model_identity
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
         "ankora_export_format": 4 if bundle_identity is not None else 2,
         "source_kind": source_kind,
         "source_id": source_id,
-        "engine": {
-            "name": campaign.engine,
-            "version": campaign.engine_version,
-            "backend": campaign.backend,
-            "executable_sha256": campaign.executable_sha256,
-            "device": campaign.device_name,
-        },
+        "engine": engine_payload,
         "reproducibility": {
             **campaign.reproducibility.model_dump(mode="json"),
             "note": _reproducibility_note(campaign.reproducibility),
@@ -373,6 +377,30 @@ def _campaign_counts(campaign: ExportedCampaign) -> dict[str, Any]:
     }
 
 
+def _gnina_ensemble_and_refinement_notes(campaign: ExportedCampaign) -> list[str]:
+    extra: list[str] = []
+    if campaign.cnn_model_identity is not None:
+        members = list(campaign.cnn_model_identity.get("member_names") or [])
+        if len(members) > 1:
+            selector = campaign.cnn_model_identity.get("selector")
+            cli_arg = campaign.cnn_model_identity.get("cli_argument")
+            cli_clause = "omitting --cnn" if cli_arg is None else f"--cnn {cli_arg}"
+            extra.append(
+                f"CNN ensemble identity: selector '{selector}' ({cli_clause}) "
+                f"evaluated {len(members)} built-in networks ({', '.join(members)})."
+            )
+    if campaign.parameters.get("cnn_scoring") == "refinement":
+        extra.append(
+            "Under cnn_scoring='refinement', GNINA locally optimized pose "
+            "coordinates against combined 3D CNN and empirical gradients. "
+            "gnina_minimized_affinity_kcal_mol was evaluated on that CNN-refined "
+            "geometry (where closer CNN-favored contacts can produce elevated or "
+            "positive steric repulsion energies in kcal/mol) and is not an "
+            "independent empirical energy check."
+        )
+    return extra
+
+
 def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
     if campaign.row_kind == "pose":
         return [
@@ -398,6 +426,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "did not rank by it, so the top-ranked pose is not necessarily "
                 "the one with the lowest recorded energy."
             ),
+            *_gnina_ensemble_and_refinement_notes(campaign),
             (
                 "All of these GNINA quantities are predictions of this engine "
                 "for this pose. None is an experimentally measured binding "
@@ -465,6 +494,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "unranked in selection order with blank score columns and their "
                 "recorded failure codes."
             ),
+            *_gnina_ensemble_and_refinement_notes(campaign),
         ]
         for warning in campaign.warnings:
             if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
@@ -506,6 +536,13 @@ def readme(
     ]
     if campaign.device_name:
         lines.append(f"Device        {campaign.device_name}")
+    if campaign.cnn_model_identity is not None:
+        members = list(campaign.cnn_model_identity.get("member_names") or [])
+        if len(members) > 1:
+            lines.append(
+                f"CNN ensemble  {campaign.cnn_model_identity.get('selector')} "
+                f"({', '.join(members)})"
+            )
     if bundle_identity is not None:
         lines += [
             f"Name          {bundle_identity.display_name or '(not assigned)'}",
@@ -562,6 +599,14 @@ def readme(
             "Vina score or an AutoDock4 binding energy.",
             "",
         ]
+        if campaign.parameters.get("cnn_scoring") == "refinement":
+            lines += [
+                "Refinement note: pose coordinates were locally optimized against",
+                "combined 3D CNN and empirical gradients (cnn_scoring='refinement'),",
+                "so gnina_minimized_affinity_kcal_mol was evaluated on CNN-refined",
+                "geometry and is not an independent empirical energy check.",
+                "",
+            ]
     elif campaign.engine == "GNINA":
         ranking_clause = (
             "while between-molecule ranking is set by descending gnina_cnn_vs "
@@ -583,6 +628,14 @@ def readme(
             "Vina score or an AutoDock4 binding energy.",
             "",
         ]
+        if campaign.parameters.get("cnn_scoring") == "refinement":
+            lines += [
+                "Refinement note: pose coordinates were locally optimized against",
+                "combined 3D CNN and empirical gradients (cnn_scoring='refinement'),",
+                "so gnina_minimized_affinity_kcal_mol was evaluated on CNN-refined",
+                "geometry and is not an independent empirical energy check.",
+                "",
+            ]
         for warning in campaign.warnings:
             if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
                 lines += [
@@ -834,6 +887,11 @@ def from_gnina_job(
         pose_count=len(record.poses),
         ligand_id=record.request.ligand_id,
         ranking_metric="gnina_cnn_score",
+        cnn_model_identity=(
+            record.cnn_model_identity.model_dump(mode="json")
+            if record.cnn_model_identity is not None
+            else None
+        ),
     )
 
 
@@ -976,6 +1034,12 @@ def from_gnina_screening(
             observed_gpus.add(job.execution.observed_gpu_uuid)
     device_name = next(iter(observed_gpus)) if len(observed_gpus) == 1 else None
     ranking_column = "gnina_cnn_vs" if rank_by_cnn_vs else "gnina_cnn_score"
+    resolved_model_identity = record.cnn_model_identity
+    if resolved_model_identity is None:
+        for job in all_jobs:
+            if job.cnn_model_identity is not None:
+                resolved_model_identity = job.cnn_model_identity
+                break
 
     return ExportedCampaign(
         engine="GNINA",
@@ -1004,6 +1068,11 @@ def from_gnina_screening(
         failed_count=record.failed_count,
         rows=rows,
         ranking_metric=ranking_column,
+        cnn_model_identity=(
+            resolved_model_identity.model_dump(mode="json")
+            if resolved_model_identity is not None
+            else None
+        ),
         warnings=[warning.model_dump(mode="json") for warning in record.warnings],
     )
 

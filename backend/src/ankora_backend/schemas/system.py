@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ContractModel(BaseModel):
@@ -45,6 +45,7 @@ class ResourceAllocation(ContractModel):
     memory_bytes: int
     disk_bytes: int
     gpu_slots: int
+    gpu_memory_bytes: int = Field(default=0, ge=0)
 
 
 class ResourceSchedulerSnapshot(ContractModel):
@@ -54,6 +55,9 @@ class ResourceSchedulerSnapshot(ContractModel):
     cpu_threads_allocated: int
     gpu_slots_capacity: int
     gpu_slots_allocated: int
+    gpu_memory_total_bytes: int | None = None
+    gpu_memory_reserve_bytes: int = Field(default=0, ge=0)
+    gpu_memory_reserved_bytes: int = Field(default=0, ge=0)
     memory_reserve_bytes: int
     memory_bytes_reserved: int
     disk_path: str

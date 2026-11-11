@@ -29,7 +29,15 @@ historical pre-`ADR-028` records with `cnn_vs = None` export cleanly with blank
 campaign includes any completed molecule with `CNNaffinity <= 0` (`K_d >= 1 M`),
 the recorded `GNINA_CNN_VS_NONPOSITIVE_AFFINITY` warning is preserved in
 `manifest.json` (`warnings`) and `README.txt` to disclose negative-product sign
-inversion among negative-pK decoys. None of these quantities is measured
+inversion among negative-pK decoys. When a run uses a built-in CNN ensemble
+(`default_1_3_ensemble` or `default1.0`), `engine.cnn_model_identity` in
+`manifest.json`, `scientific_notes`, and `README.txt` record the exact ensemble
+selector, CLI invocation (`--cnn` omitted vs `--cnn default1.0`), and full list
+of built-in member networks; when `cnn_scoring = "refinement"`, both
+`manifest.json` and `README.txt` state explicitly that pose coordinates were
+locally optimized against combined 3D CNN and empirical gradients so
+`gnina_minimized_affinity_kcal_mol` was evaluated on CNN-refined geometry and is
+not an independent empirical energy check. None of these quantities is measured
 affinity or evidence of biological activity, and none shares a scale with
 AutoDock Vina or AutoDock4.
 

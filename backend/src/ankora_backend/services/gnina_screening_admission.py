@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from hashlib import sha256
 
-from ankora_backend.adapters.engines.gnina import _linux_host, probe_gnina
+from ankora_backend.adapters.engines.gnina import (
+    _linux_host,
+    probe_gnina,
+    resolve_cnn_model_identity,
+)
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
@@ -19,9 +23,10 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningSelection,
 )
 from ankora_backend.schemas.receptors import ReceptorOutputStage, ReceptorPreparationStatus
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.gnina_screening_preflight import prepare_screening_entries
 from ankora_backend.services.project_dependencies import ProjectDependencyService
-from ankora_backend.services.resource_arbiter import ResourceArbiter, ResourceClaim
+from ankora_backend.services.resource_arbiter import ResourceArbiter, gnina_claim
 
 
 def admit_screening(
@@ -75,19 +80,35 @@ def admit_screening(
     installation = probe_gnina()
     if installation.architecture != "x86_64":
         raise _error("GNINA_EXECUTABLE_INVALID", "GNINA requires a Linux x86-64 executable.")
-    campaign_id = store.new_campaign_id()
-    resources.validate(
-        ResourceClaim(
-            workload="gnina_job",
-            owner_id=campaign_id,
-            cpu_threads=request.parameters.cpu_threads,
-            gpu_slots=1 if request.parameters.compute == "cuda" else 0,
-            memory_bytes=2 * 1024**3,
-            disk_bytes=64 * 1024**2,
-        )
+    cnn_model_identity = resolve_cnn_model_identity(
+        request.parameters.cnn_model, binary_sha256=installation.sha256
     )
+    campaign_id = store.new_campaign_id()
+    resources.validate(gnina_claim(campaign_id, request.parameters))
     entries = list(preflight.entries)
     failures = sum(entry.status is DockingJobStatus.FAILED for entry in entries)
+    prepared_count = len(entries) - failures
+    warnings: list[StructuredWarning] = []
+    if request.parameters.cnn_scoring == "refinement":
+        warnings.append(
+            StructuredWarning(
+                code=WarningCode.GNINA_SCREENING_REFINEMENT_DURATION_BUDGET,
+                stage="gnina_screening",
+                message=(
+                    "CNN gradient refinement (`cnn_scoring='refinement'`) typically requires "
+                    "multiple minutes per ligand on CUDA (5–17× slower than `rescore`, scaling "
+                    "with ensemble size and exhaustiveness); budget multi-minute per-compound "
+                    "wall-clock execution across this sequential campaign."
+                ),
+                details={
+                    "cnn_scoring": request.parameters.cnn_scoring,
+                    "cnn_model": request.parameters.cnn_model,
+                    "ensemble_member_count": cnn_model_identity.member_count,
+                    "prepared_entry_count": prepared_count,
+                    "timeout_minutes_per_ligand": request.parameters.timeout_minutes,
+                },
+            )
+        )
     record = GninaScreeningCampaignRecord(
         campaign_id=campaign_id,
         status=DockingJobStatus.QUEUED,
@@ -98,6 +119,7 @@ def admit_screening(
         tool=GninaToolIdentity(
             version=installation.version, sha256=installation.sha256, architecture="x86_64"
         ),
+        cnn_model_identity=cnn_model_identity,
         selection=GninaScreeningSelection(
             library_id=request.library_id,
             filter_run_id=request.filter_run_id,
@@ -111,6 +133,7 @@ def admit_screening(
         completed_count=failures,
         failed_count=failures,
         entries=entries,
+        warnings=warnings,
     )
     store.create_campaign(record)
     return record

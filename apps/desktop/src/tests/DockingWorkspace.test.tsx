@@ -490,6 +490,133 @@ it("does not cancel the previous result while a new GNINA launch is pending", as
   window.localStorage.clear();
 });
 
+it("enforces CUDA and 10-minute floor for GNINA single refinement and discloses ensemble members", async () => {
+  window.localStorage.clear();
+  let submitted: Record<string, unknown> | null = null;
+  const refinedCompleted: GninaDockingJobRecord = {
+    ...gninaJob("completed"),
+    cnn_model_identity: {
+      selector: "default_1_3_ensemble",
+      cli_argument: null,
+      member_names: ["dense_1_3", "dense_1_3_PT_KD_3", "crossdock_default2018_KD_4"],
+      member_count: 3,
+    },
+    request: {
+      ...gninaJob("completed").request,
+      parameters: {
+        ...gninaParameters,
+        compute: "cuda",
+        cnn_scoring: "refinement",
+        cnn_model: "default_1_3_ensemble",
+        timeout_minutes: 10,
+      },
+    },
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/jobs") && init?.method === "POST") {
+      submitted = JSON.parse(String(init.body));
+      return json({ ...refinedCompleted, status: "running", phase: "docking", poses: [] }, 202);
+    }
+    if (path.endsWith("/docking/gnina/jobs/gnina-synthetic")) return json(refinedCompleted);
+    return new Response("", { status: 200 });
+  });
+
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+
+  // Lower timeout below 10 min while still in rescore, then switch to refinement:
+  // CPU must stay CPU (fail-closed blocker, never silent switch), and timeout bumps to 10.
+  fireEvent.change(screen.getByLabelText("Timeout (minutes)"), { target: { value: "5" } });
+  fireEvent.change(screen.getByLabelText("CNN scoring mode"), { target: { value: "refinement" } });
+  expect(screen.getByLabelText("Compute")).toHaveValue("cpu");
+  expect(screen.getByLabelText("Timeout (minutes)")).toHaveValue(10);
+  expect(screen.getByRole("alert")).toHaveTextContent("CNN refinement requires NVIDIA GPU · CUDA");
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  expect(screen.getByRole("button", { name: "Run GNINA" })).toBeDisabled();
+
+  // Select CUDA + 3-model GNINA 1.3 ensemble.
+  fireEvent.change(screen.getByLabelText("Compute"), { target: { value: "cuda" } });
+  fireEvent.change(screen.getByLabelText("CNN model"), { target: { value: "default_1_3_ensemble" } });
+  expect(screen.getByText(/dense_1_3, dense_1_3_PT_KD_3, crossdock_default2018_KD_4/)).toBeInTheDocument();
+  expect(screen.getByText(/not an independent empirical energy check/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("Use these exact inputs and parameters"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run GNINA" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run GNINA" }));
+
+  expect(await screen.findByRole("button", { name: "Pose 1" }, { timeout: 3000 })).toBeInTheDocument();
+  expect(submitted).toMatchObject({
+    parameters: {
+      compute: "cuda",
+      cnn_scoring: "refinement",
+      cnn_model: "default_1_3_ensemble",
+      timeout_minutes: 10,
+    },
+  });
+  window.localStorage.clear();
+});
+
+it("submits GNINA screening refinement with default1.0 ensemble and renders duration budget note", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  initial.request.parameters = {
+    ...gninaParameters,
+    compute: "cuda",
+    cnn_scoring: "refinement",
+    cnn_model: "default1.0",
+    timeout_minutes: 15,
+  };
+  initial.cnn_model_identity = {
+    selector: "default1.0",
+    cli_argument: "default1.0",
+    member_names: ["dense", "general_default2018_3", "dense_3", "crossdock_default2018", "redock_default2018_2"],
+    member_count: 5,
+  };
+  initial.warnings = [
+    {
+      code: "GNINA_SCREENING_REFINEMENT_DURATION_BUDGET",
+      stage: "gnina_screening",
+      message: "Synthetic multi-minute per-compound refinement duration budget warning.",
+      details: { ensemble_member_count: 5 },
+      recoverable: true,
+    },
+  ];
+  let submitted: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") {
+      submitted = JSON.parse(String(init.body));
+      return json({ ...initial, status: "completed", phase: "complete", completed_count: 2, failed_count: 2 }, 202);
+    }
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    return new Response("", { status: 200 });
+  });
+
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.change(screen.getByLabelText("Compute"), { target: { value: "cuda" } });
+  fireEvent.change(screen.getByLabelText("CNN scoring mode"), { target: { value: "refinement" } });
+  fireEvent.change(screen.getByLabelText("CNN model"), { target: { value: "default1.0" } });
+  fireEvent.change(screen.getByLabelText("Timeout / molecule (min)"), { target: { value: "15" } });
+  expect(screen.getByText(/dense, general_default2018_3, dense_3, crossdock_default2018, redock_default2018_2/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+
+  expect(await screen.findByText(/Refinement duration budget · GNINA_SCREENING_REFINEMENT_DURATION_BUDGET/)).toBeInTheDocument();
+  expect(submitted).toMatchObject({
+    parameters: {
+      compute: "cuda",
+      cnn_scoring: "refinement",
+      cnn_model: "default1.0",
+      timeout_minutes: 15,
+    },
+  });
+  window.localStorage.clear();
+});
+
 function job(status: VinaDockingJobRecord["status"]): VinaDockingJobRecord {
   return {
     job_id: "job-synthetic", engine: "autodock_vina", status, phase: status === "completed" ? "complete" : "docking",

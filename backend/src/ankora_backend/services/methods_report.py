@@ -556,9 +556,8 @@ class MethodsReportService:
             if executed
             else f"The recorded search configuration specified {search}."
         )
-        scoring = (
-            f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
-            f"`{parameters.cnn_model}` model"
+        scoring = _gnina_cnn_model_prose(
+            parameters, getattr(job, "cnn_model_identity", None)
         )
         draft.say(
             (
@@ -568,6 +567,15 @@ class MethodsReportService:
             )
             + " The mode and model are reported as recorded."
         )
+        if parameters.cnn_scoring == "refinement":
+            draft.say(
+                "Under `refinement`, GNINA locally optimized pose coordinates against "
+                "combined 3D CNN and empirical scoring gradients rather than rescoring "
+                "empirical-only geometries."
+                if executed
+                else "Under `refinement`, GNINA is configured to locally optimize pose "
+                "coordinates against combined 3D CNN and empirical scoring gradients."
+            )
         if executed:
             draft.say(
                 "Receptor and ligand were supplied as independently prepared PDBQT "
@@ -666,6 +674,14 @@ class MethodsReportService:
             "the minimized affinity, so the top-ranked pose is not necessarily the one "
             "with the lowest recorded energy."
         )
+        if getattr(job.request.parameters, "cnn_scoring", "rescore") == "refinement":
+            draft.say(
+                "Because pose coordinates were locally optimized under CNN `refinement` "
+                "(combined 3D CNN and empirical gradients), the minimized empirical "
+                "affinity in kcal mol⁻¹ was evaluated at CNN-refined geometry where "
+                "closer CNN-favored contacts can produce elevated or positive steric "
+                "repulsion terms, so it is not an independent empirical energy check."
+            )
         top_cnn_vs = getattr(top, "cnn_vs", None)
         if top_cnn_vs is not None:
             vs_origin = (
@@ -986,10 +1002,11 @@ class MethodsReportService:
             if executed
             else f"The recorded search configuration specified {search}."
         )
-        scoring = (
-            f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
-            f"`{parameters.cnn_model}` model"
-        )
+        resolved_model_identity = getattr(campaign, "cnn_model_identity", None)
+        if resolved_model_identity is None and verified_jobs:
+            first_job = next(iter(verified_jobs.values()))
+            resolved_model_identity = getattr(first_job, "cnn_model_identity", None)
+        scoring = _gnina_cnn_model_prose(parameters, resolved_model_identity)
         draft.say(
             (
                 f"Pose scoring used the recorded GNINA CNN configuration: {scoring}."
@@ -998,6 +1015,15 @@ class MethodsReportService:
             )
             + " The mode and model are reported as recorded."
         )
+        if parameters.cnn_scoring == "refinement":
+            draft.say(
+                "Under `refinement`, GNINA locally optimized pose coordinates against "
+                "combined 3D CNN and empirical scoring gradients rather than rescoring "
+                "empirical-only geometries."
+                if executed
+                else "Under `refinement`, GNINA is configured to locally optimize pose "
+                "coordinates against combined 3D CNN and empirical scoring gradients."
+            )
         if executed:
             draft.say(
                 "Receptor and ligands were supplied as independently prepared PDBQT "
@@ -1281,6 +1307,14 @@ class MethodsReportService:
                     f"Ankora also recorded a top-pose `CNN_VS` (`CNNscore × CNNaffinity`) of "
                     f"{best_cnn_vs:g} for {best_label}."
                 )
+        if getattr(campaign.request.parameters, "cnn_scoring", "rescore") == "refinement":
+            draft.say(
+                "Because pose coordinates across this campaign were locally optimized under "
+                "CNN `refinement` (combined 3D CNN and empirical gradients), each compound's "
+                "minimized empirical affinity in kcal mol⁻¹ was evaluated at CNN-refined "
+                "geometry where closer CNN-favored contacts can produce elevated or positive "
+                "steric repulsion terms, so it is not an independent empirical energy check."
+            )
         draft.say(
             "All of these GNINA quantities are computational predictions of this engine. "
             "None is a measured binding affinity and none is evidence of biological activity."
@@ -2583,3 +2617,25 @@ def _load2(loader: Any, first: str, second: str) -> Any:
         return loader(first, second)
     except (AnkoraDomainError, OSError, ValueError):
         return None
+
+
+def _gnina_cnn_model_prose(parameters: Any, model_identity: Any) -> str:
+    member_names = tuple(getattr(model_identity, "member_names", ()) or ())
+    if len(member_names) > 1:
+        selector = getattr(model_identity, "selector", parameters.cnn_model)
+        cli_argument = getattr(model_identity, "cli_argument", None)
+        cli_note = (
+            "invoked by omitting `--cnn`"
+            if cli_argument is None
+            else f"invoked via `--cnn {cli_argument}`"
+        )
+        members = ", ".join(f"`{name}`" for name in member_names)
+        return (
+            f"scoring mode `{parameters.cnn_scoring}` with the built-in "
+            f"{len(member_names)}-model `{selector}` ensemble ({cli_note}; "
+            f"member networks: {members})"
+        )
+    return (
+        f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
+        f"`{parameters.cnn_model}` model"
+    )

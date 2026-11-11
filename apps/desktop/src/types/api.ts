@@ -1002,6 +1002,16 @@ export interface VinaBatchDockingRequest {
 export type DockingJobStatus = "queued" | "running" | "cancel_requested" | "canceled" | "completed" | "failed";
 export type DockingJobPhase = "queued" | "validating" | "docking" | "parsing_poses" | "complete";
 
+export type GninaCnnScoringMode = "rescore" | "refinement";
+export type GninaCnnModelSelector = "dense_1_3" | "default_1_3_ensemble" | "default1.0";
+
+export interface GninaCnnModelIdentity {
+  selector: GninaCnnModelSelector;
+  cli_argument: string | null;
+  member_names: string[];
+  member_count: number;
+}
+
 export interface GninaDockingParameters {
   compute: "cpu" | "cuda";
   device_index: number;
@@ -1011,8 +1021,8 @@ export interface GninaDockingParameters {
   num_modes: number;
   min_rmsd_filter_angstrom: number;
   timeout_minutes: number;
-  cnn_scoring: "rescore";
-  cnn_model: "dense_1_3";
+  cnn_scoring: GninaCnnScoringMode;
+  cnn_model: GninaCnnModelSelector;
   hydrogen_handling: "prepared_pdbqt_no_add_no_strip";
   pose_sort_order: "cnn_score_descending";
 }
@@ -1051,6 +1061,7 @@ export interface GninaDockingJobRecord {
   completed_at: string | null;
   request: GninaDockingRequest;
   tool: { version: string; sha256: string; architecture: "x86_64" };
+  cnn_model_identity?: GninaCnnModelIdentity | null;
   box: BindingBox;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
@@ -1148,6 +1159,7 @@ export interface GninaScreeningCampaignRecord {
   request: GninaScreeningRequest;
   hit_ranking_metric?: GninaHitRankingMetric;
   tool: { version: string; sha256: string; architecture: "x86_64" };
+  cnn_model_identity?: GninaCnnModelIdentity | null;
   selection: GninaScreeningSelection;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
@@ -2342,6 +2354,7 @@ export interface ResourceAllocation {
   memory_bytes: number;
   disk_bytes: number;
   gpu_slots: number;
+  gpu_memory_bytes?: number;
 }
 
 export interface ResourceSchedulerSnapshot {
@@ -2349,6 +2362,9 @@ export interface ResourceSchedulerSnapshot {
   cpu_threads_allocated: number;
   gpu_slots_capacity: number;
   gpu_slots_allocated: number;
+  gpu_memory_total_bytes?: number | null;
+  gpu_memory_reserve_bytes?: number;
+  gpu_memory_reserved_bytes?: number;
   memory_reserve_bytes: number;
   memory_bytes_reserved: number;
   disk_path: string;

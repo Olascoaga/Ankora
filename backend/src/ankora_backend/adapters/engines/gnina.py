@@ -27,12 +27,34 @@ from ankora_backend.execution.cancellable_subprocess import (
 )
 from ankora_backend.execution.subprocess_runner import run_tool
 from ankora_backend.schemas.binding_sites import BindingBox
-from ankora_backend.schemas.gnina import GninaDockingParameters
+from ankora_backend.schemas.gnina import (
+    GninaCnnModelIdentity,
+    GninaCnnModelSelector,
+    GninaDockingParameters,
+)
 
 Chem: Any = import_module("rdkit.Chem")
 _STAGE = "gnina_docking"
 _VERSION_PATTERN = re.compile(r"\bgnina\s+v?(\d+(?:\.\d+)+)\b", re.IGNORECASE)
 _SUPPORTED_VERSION = "1.3.3"
+VERIFIED_GNINA_1_3_3_SHA256 = (
+    "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172"
+)
+_ENSEMBLE_MEMBERS: dict[GninaCnnModelSelector, tuple[str, ...]] = {
+    "dense_1_3": ("dense_1_3",),
+    "default_1_3_ensemble": (
+        "dense_1_3",
+        "dense_1_3_PT_KD_3",
+        "crossdock_default2018_KD_4",
+    ),
+    "default1.0": (
+        "dense",
+        "general_default2018_3",
+        "dense_3",
+        "crossdock_default2018",
+        "redock_default2018_2",
+    ),
+}
 _SDF_PROPERTY = re.compile(rb"^>\s*<([^>]+)>")
 
 
@@ -134,6 +156,38 @@ def probe_gnina() -> GninaInstallation:
     return GninaInstallation(str(path), version, digest, "x86_64")
 
 
+def resolve_cnn_model_identity(
+    selector: GninaCnnModelSelector,
+    *,
+    binary_sha256: str,
+) -> GninaCnnModelIdentity:
+    """Resolve explicit built-in CNN model or ensemble members for a GNINA build.
+
+    Built-in ensemble selectors (`default_1_3_ensemble` and `default1.0`) depend
+    on the internal `CNNTorchScorer` ensemble table compiled into the verified
+    official GNINA 1.3.3 Linux binary (`VERIFIED_GNINA_1_3_3_SHA256`), so an
+    unverified binary is refused rather than allowed to claim unverified
+    built-in ensemble membership.
+    """
+    if selector != "dense_1_3" and binary_sha256.lower() != VERIFIED_GNINA_1_3_3_SHA256:
+        raise _error(
+            "GNINA_CNN_ENSEMBLE_UNVERIFIED_BINARY",
+            "Built-in GNINA CNN ensembles require the verified GNINA 1.3.3 executable "
+            "SHA-256 so ensemble member provenance is exact.",
+            selector=selector,
+            binary_sha256=binary_sha256,
+            expected_sha256=VERIFIED_GNINA_1_3_3_SHA256,
+        )
+    members = _ENSEMBLE_MEMBERS[selector]
+    cli_arg = None if selector == "default_1_3_ensemble" else selector
+    return GninaCnnModelIdentity(
+        selector=selector,
+        cli_argument=cli_arg,
+        member_names=members,
+        member_count=len(members),
+    )
+
+
 def build_gnina_arguments(
     *,
     receptor_path: Path,
@@ -189,15 +243,19 @@ def build_gnina_arguments(
         str(parameters.min_rmsd_filter_angstrom),
         "--cnn_scoring",
         parameters.cnn_scoring,
-        "--cnn",
-        parameters.cnn_model,
-        "--addH",
-        "0",
-        "--stripH",
-        "0",
-        "--out",
-        str(output_path),
     ]
+    if parameters.cnn_model != "default_1_3_ensemble":
+        arguments.extend(("--cnn", parameters.cnn_model))
+    arguments.extend(
+        (
+            "--addH",
+            "0",
+            "--stripH",
+            "0",
+            "--out",
+            str(output_path),
+        )
+    )
     if parameters.compute == "cpu":
         arguments.append("--no_gpu")
     else:

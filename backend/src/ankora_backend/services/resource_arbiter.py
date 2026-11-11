@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -31,6 +31,10 @@ from ankora_backend.schemas.system import (
     ResourceAllocation,
     ResourceSchedulerSnapshot,
 )
+from ankora_backend.services.gnina_gpu_observer import query_single_gpu_memory_bytes
+
+if TYPE_CHECKING:
+    from ankora_backend.schemas.gnina import GninaDockingParameters
 
 _MIB = 1024 * 1024
 _GIB = 1024 * _MIB
@@ -47,6 +51,7 @@ class ResourceClaim:
     memory_bytes: int
     disk_bytes: int
     gpu_slots: int = 0
+    gpu_memory_bytes: int = 0
 
     def __post_init__(self) -> None:
         if not self.workload or not self.owner_id:
@@ -55,6 +60,8 @@ class ResourceClaim:
             raise ValueError("Resource claim quantities cannot be negative.")
         if self.gpu_slots < 0:
             raise ValueError("GPU slot count cannot be negative.")
+        if self.gpu_memory_bytes < 0:
+            raise ValueError("GPU memory reservation cannot be negative.")
 
 
 class ResourceRequestCanceled(Exception):
@@ -107,13 +114,22 @@ class ResourceArbiter:
         disk_reserve_bytes: int,
         memory_available: Callable[[], int],
         disk_free: Callable[[], int],
+        gpu_memory_total_bytes: int | None = None,
+        gpu_memory_reserve_bytes: int = 0,
+        gpu_memory_free: Callable[[], int | None] | None = None,
     ) -> None:
         if cpu_threads < 1:
             raise ValueError("The CPU capacity must contain at least one thread.")
         if gpu_slots < 0:
             raise ValueError("The GPU capacity cannot be negative.")
+        if gpu_memory_total_bytes is not None and gpu_memory_total_bytes < 0:
+            raise ValueError("The GPU memory capacity cannot be negative.")
+        if gpu_memory_reserve_bytes < 0:
+            raise ValueError("The GPU memory reserve cannot be negative.")
         self.cpu_threads = cpu_threads
         self.gpu_slots = gpu_slots
+        self.gpu_memory_total_bytes = gpu_memory_total_bytes
+        self.gpu_memory_reserve_bytes = gpu_memory_reserve_bytes
         self.memory_total_bytes = memory_total_bytes
         self.memory_reserve_bytes = memory_reserve_bytes
         self.disk_path = disk_path.resolve()
@@ -121,6 +137,7 @@ class ResourceArbiter:
         self.disk_reserve_bytes = disk_reserve_bytes
         self._memory_available = memory_available
         self._disk_free = disk_free
+        self._gpu_memory_free = gpu_memory_free
         self._condition = threading.Condition(threading.RLock())
         self._waiters: deque[_Waiter] = deque()
         self._active: dict[str, ResourceClaim] = {}
@@ -147,6 +164,22 @@ class ResourceArbiter:
             "ANKORA_RESOURCE_DISK_RESERVE_BYTES",
             max(2 * _GIB, int(disk.total * 0.05)),
         )
+        probed_gpu_memory = query_single_gpu_memory_bytes()
+        gpu_memory_override = os.getenv("ANKORA_RESOURCE_GPU_MEMORY_TOTAL_BYTES") is not None
+        gpu_memory_total: int | None
+        if gpu_memory_override:
+            gpu_memory_total = _nonnegative_environment_int(
+                "ANKORA_RESOURCE_GPU_MEMORY_TOTAL_BYTES", 0
+            )
+        else:
+            gpu_memory_total = probed_gpu_memory[0] if probed_gpu_memory is not None else None
+        default_gpu_reserve = (
+            512 * _MIB if gpu_memory_total is not None and gpu_memory_total >= 2 * _GIB else 0
+        )
+        gpu_memory_reserve = _nonnegative_environment_int(
+            "ANKORA_RESOURCE_GPU_MEMORY_RESERVE_BYTES",
+            default_gpu_reserve,
+        )
         return cls(
             cpu_threads=cpu_threads,
             gpu_slots=gpu_slots,
@@ -157,6 +190,17 @@ class ResourceArbiter:
             disk_reserve_bytes=disk_reserve,
             memory_available=lambda: int(psutil.virtual_memory().available),
             disk_free=lambda: int(shutil.disk_usage(probe_path).free),
+            gpu_memory_total_bytes=gpu_memory_total,
+            gpu_memory_reserve_bytes=gpu_memory_reserve,
+            gpu_memory_free=(
+                None
+                if gpu_memory_total is None or gpu_memory_override
+                else lambda: (
+                    sampled[1]
+                    if (sampled := query_single_gpu_memory_bytes()) is not None
+                    else None
+                )
+            ),
         )
 
     def validate(self, claim: ResourceClaim) -> None:
@@ -172,6 +216,15 @@ class ResourceArbiter:
                 "requested": claim.gpu_slots,
                 "capacity": self.gpu_slots,
             }
+        if claim.gpu_memory_bytes > 0 and self.gpu_memory_total_bytes is not None:
+            gpu_memory_capacity = max(
+                0, self.gpu_memory_total_bytes - self.gpu_memory_reserve_bytes
+            )
+            if claim.gpu_memory_bytes > gpu_memory_capacity:
+                impossible["gpu_memory_bytes"] = {
+                    "requested": claim.gpu_memory_bytes,
+                    "capacity": gpu_memory_capacity,
+                }
         memory_capacity = max(0, self.memory_total_bytes - self.memory_reserve_bytes)
         if claim.memory_bytes > memory_capacity:
             impossible["memory_bytes"] = {
@@ -257,15 +310,25 @@ class ResourceArbiter:
                     memory_bytes=claim.memory_bytes,
                     disk_bytes=claim.disk_bytes,
                     gpu_slots=claim.gpu_slots,
+                    gpu_memory_bytes=claim.gpu_memory_bytes,
                 )
                 for claim in self._active.values()
             ]
-            cpu_allocated, memory_reserved, disk_reserved, gpu_allocated = self._allocated()
+            (
+                cpu_allocated,
+                memory_reserved,
+                disk_reserved,
+                gpu_allocated,
+                gpu_memory_reserved,
+            ) = self._allocated()
             return ResourceSchedulerSnapshot(
                 cpu_threads_capacity=self.cpu_threads,
                 cpu_threads_allocated=cpu_allocated,
                 gpu_slots_capacity=self.gpu_slots,
                 gpu_slots_allocated=gpu_allocated,
+                gpu_memory_total_bytes=self.gpu_memory_total_bytes,
+                gpu_memory_reserve_bytes=self.gpu_memory_reserve_bytes,
+                gpu_memory_reserved_bytes=gpu_memory_reserved,
                 memory_reserve_bytes=self.memory_reserve_bytes,
                 memory_bytes_reserved=memory_reserved,
                 disk_path=str(self.disk_path),
@@ -276,22 +339,36 @@ class ResourceArbiter:
             )
 
     def _fits(self, claim: ResourceClaim) -> bool:
-        cpu, memory, disk, gpu = self._allocated()
+        cpu, memory, disk, gpu, gpu_memory = self._allocated()
         usable_memory = max(0, self._memory_available() - self.memory_reserve_bytes)
         usable_disk = max(0, self._disk_free() - self.disk_reserve_bytes)
+        gpu_memory_fits = True
+        if claim.gpu_memory_bytes > 0 and self.gpu_memory_total_bytes is not None:
+            sampled_free = (
+                self._gpu_memory_free() if self._gpu_memory_free is not None else None
+            )
+            base_vram = (
+                min(self.gpu_memory_total_bytes, sampled_free)
+                if sampled_free is not None
+                else self.gpu_memory_total_bytes
+            )
+            usable_vram = max(0, base_vram - self.gpu_memory_reserve_bytes)
+            gpu_memory_fits = gpu_memory + claim.gpu_memory_bytes <= usable_vram
         return (
             cpu + claim.cpu_threads <= self.cpu_threads
             and gpu + claim.gpu_slots <= self.gpu_slots
+            and gpu_memory_fits
             and memory + claim.memory_bytes <= usable_memory
             and disk + claim.disk_bytes <= usable_disk
         )
 
-    def _allocated(self) -> tuple[int, int, int, int]:
+    def _allocated(self) -> tuple[int, int, int, int, int]:
         return (
             sum(claim.cpu_threads for claim in self._active.values()),
             sum(claim.memory_bytes for claim in self._active.values()),
             sum(claim.disk_bytes for claim in self._active.values()),
             sum(claim.gpu_slots for claim in self._active.values()),
+            sum(claim.gpu_memory_bytes for claim in self._active.values()),
         )
 
     def _remove_waiter(self, ticket_id: str) -> None:
@@ -372,6 +449,32 @@ def autodock_gpu_claim(owner_id: str, *, ligand_count: int) -> ResourceClaim:
         memory_bytes=1024 * _MIB,
         disk_bytes=max(8 * _MIB, 8 * _MIB * ligand_count),
         gpu_slots=1,
+    )
+
+
+def gnina_claim(owner_id: str, parameters: GninaDockingParameters) -> ResourceClaim:
+    is_ensemble = parameters.cnn_model != "dense_1_3"
+    is_refinement = parameters.cnn_scoring == "refinement"
+    memory_bytes = (5 * _GIB) // 2 if (is_ensemble or is_refinement) else 2 * _GIB
+    if parameters.compute == "cuda":
+        gpu_slots = 1
+        if is_refinement and is_ensemble:
+            gpu_memory_bytes = 2 * _GIB
+        elif is_refinement or is_ensemble:
+            gpu_memory_bytes = (3 * _GIB) // 2
+        else:
+            gpu_memory_bytes = 1 * _GIB
+    else:
+        gpu_slots = 0
+        gpu_memory_bytes = 0
+    return ResourceClaim(
+        workload="gnina_job",
+        owner_id=owner_id,
+        cpu_threads=parameters.cpu_threads,
+        memory_bytes=memory_bytes,
+        disk_bytes=64 * _MIB,
+        gpu_slots=gpu_slots,
+        gpu_memory_bytes=gpu_memory_bytes,
     )
 
 

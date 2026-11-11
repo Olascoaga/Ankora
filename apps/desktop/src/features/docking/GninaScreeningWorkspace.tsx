@@ -5,6 +5,8 @@ import { ankoraApi } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
 import type {
   BindingSiteRecord,
+  GninaCnnModelSelector,
+  GninaCnnScoringMode,
   GninaDockingJobRecord,
   GninaDockingParameters,
   GninaHitRankingMetric,
@@ -20,7 +22,9 @@ import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
 import {
+  applyGninaParameterUpdate,
   defaultGninaParameters,
+  GNINA_CNN_MODEL_MEMBERS,
   GNINA_NUMERIC_FIELDS,
   gninaParametersValid,
 } from "./gninaParameters";
@@ -299,7 +303,7 @@ export function GninaScreeningWorkspace({
     value: GninaDockingParameters[K],
   ) {
     setAcknowledged(false);
-    setParameters((current) => ({ ...current, [name]: value }));
+    setParameters((current) => applyGninaParameterUpdate(current, name, value));
   }
 
   async function startCampaign() {
@@ -538,6 +542,12 @@ export function GninaScreeningWorkspace({
             <small>{warning.message}</small>
           </div>
         ))}
+        {campaign?.warnings.filter((warning) => warning.code === "GNINA_SCREENING_REFINEMENT_DURATION_BUDGET").map((warning, index) => (
+          <div className="state-resolved-note" role="note" key={`${warning.code}-${index}`}>
+            <strong>Refinement duration budget · {warning.code}</strong>
+            <small>{warning.message}</small>
+          </div>
+        ))}
         {viewerSources.length ? (
           <MolecularViewer sources={viewerSources} selection={null} dockingBox={bindingSite.box} />
         ) : (
@@ -664,6 +674,82 @@ export function GninaScreeningWorkspace({
             </p>
           ) : null}
           <label className="numeric-field">
+            <span className="field-label">CNN scoring mode</span>
+            <select
+              aria-label="CNN scoring mode"
+              value={parameters.cnn_scoring}
+              disabled={controlsLocked}
+              onChange={(event) => updateParameter(
+                "cnn_scoring",
+                event.target.value as GninaCnnScoringMode,
+              )}
+            >
+              <option value="rescore">CNN rescore (empirical search + CNN rescoring)</option>
+              <option value="refinement">
+                CNN refinement (combined CNN + empirical gradients · CUDA)
+              </option>
+            </select>
+          </label>
+          <label className="numeric-field">
+            <span className="field-label">CNN model</span>
+            <select
+              aria-label="CNN model"
+              value={parameters.cnn_model}
+              disabled={controlsLocked}
+              onChange={(event) => updateParameter(
+                "cnn_model",
+                event.target.value as GninaCnnModelSelector,
+              )}
+            >
+              <option value="dense_1_3">dense_1_3 (single network)</option>
+              <option value="default_1_3_ensemble">
+                default_1_3_ensemble (3-model GNINA 1.3 KD ensemble)
+              </option>
+              <option value="default1.0">default1.0 (5-model GNINA 1.0 ensemble)</option>
+            </select>
+          </label>
+          {parameters.cnn_model !== "dense_1_3" ? (
+            <p className="field-note">
+              Built-in ensemble members ({GNINA_CNN_MODEL_MEMBERS[parameters.cnn_model].length}{" "}
+              networks
+              {parameters.cnn_model === "default_1_3_ensemble"
+                ? ", --cnn omitted"
+                : ", --cnn default1.0"}
+              ): {GNINA_CNN_MODEL_MEMBERS[parameters.cnn_model].join(", ")}. Requires verified
+              GNINA 1.3.3 executable identity.
+            </p>
+          ) : null}
+          {parameters.cnn_scoring === "refinement" && parameters.compute === "cpu" ? (
+            <div className="protonation-blocker" role="alert">
+              <strong>CNN refinement requires NVIDIA GPU · CUDA</strong>
+              <small>
+                CPU gradient refinement exceeds practical wall-clock budgets and is never
+                silently downgraded to rescore. Select NVIDIA GPU · CUDA or switch back to CNN
+                rescore.
+              </small>
+            </div>
+          ) : null}
+          {parameters.cnn_scoring === "refinement"
+          && parameters.compute === "cuda"
+          && parameters.timeout_minutes < 10 ? (
+            <div className="protonation-blocker" role="alert">
+              <strong>CNN refinement requires at least 10 minutes timeout / molecule</strong>
+              <small>
+                Increase Timeout / molecule (min) to 10 or more before launching CNN gradient
+                refinement.
+              </small>
+            </div>
+          ) : null}
+          {parameters.cnn_scoring === "refinement" ? (
+            <p className="field-note">
+              Refinement note: pose coordinates are locally optimized against combined 3D CNN and
+              empirical gradients (5–17× slower per ligand on CUDA than rescore). Minimized
+              affinity (kcal/mol) is evaluated on CNN-refined geometry where closer CNN-favored
+              contacts may cross steric repulsion, so it is not an independent empirical energy
+              check.
+            </p>
+          ) : null}
+          <label className="numeric-field">
             <span className="field-label">Hit ranking metric</span>
             <select
               aria-label="Hit ranking metric"
@@ -694,7 +780,7 @@ export function GninaScreeningWorkspace({
                 <input
                   aria-label={key === "timeout_minutes" ? "Timeout / molecule (min)" : label}
                   type="number"
-                  min={min}
+                  min={key === "timeout_minutes" && parameters.cnn_scoring === "refinement" ? 10 : min}
                   max={max}
                   step={step}
                   disabled={controlsLocked}
@@ -708,8 +794,8 @@ export function GninaScreeningWorkspace({
             ))}
           </div>
           <p className="field-note">
-            CNN rescoring · dense_1_3 · prepared PDBQT hydrogens preserved. One search
-            protocol is applied to every molecule in the selection.
+            CNN {parameters.cnn_scoring} · {parameters.cnn_model} · prepared PDBQT hydrogens
+            preserved. One search protocol is applied to every molecule in the selection.
           </p>
           <div className="state-resolved-note">
             <strong>One GNINA job at a time</strong>
@@ -833,7 +919,16 @@ export function GninaScreeningWorkspace({
             <dl className="docking-evidence">
               <div><dt>Engine</dt><dd>GNINA {campaign.tool.version}</dd></div>
               <div><dt>Executable</dt><dd><code>{campaign.tool.sha256.slice(0, 12)}…</code></dd></div>
-              <div><dt>Model</dt><dd>{campaign.request.parameters.cnn_model}</dd></div>
+              <div><dt>Scoring</dt><dd>{campaign.request.parameters.cnn_scoring}</dd></div>
+              <div>
+                <dt>Model</dt>
+                <dd>
+                  {campaign.request.parameters.cnn_model}
+                  {campaign.cnn_model_identity && campaign.cnn_model_identity.member_count > 1
+                    ? ` (${campaign.cnn_model_identity.member_names.join(", ")})`
+                    : ""}
+                </dd>
+              </div>
               <div>
                 <dt>Hit ranking</dt>
                 <dd>

@@ -51,6 +51,47 @@ def single_gpu_identity(device_index: int) -> str:
         ) from error
 
 
+def query_single_gpu_memory_bytes() -> tuple[int, int] | None:
+    """Return `(total_bytes, free_bytes)` when one unmapped NVIDIA GPU answers cleanly.
+
+    Returns `None` on Windows hosts without `nvidia-smi`, CPU-only hosts, MIG or
+    visibility-remapped hosts, or multi-GPU configurations so `ResourceArbiter`
+    degrades cleanly without enforcing unverifiable VRAM budgets.
+    """
+    if any(
+        key in os.environ for key in ("CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES")
+    ) or any(key.startswith("CUDA_MPS_") for key in os.environ):
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=uuid,mig.mode.current,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        lines = result.stdout.splitlines()
+        fields = [part.strip() for part in lines[0].split(",")] if len(lines) == 1 else []
+        if (
+            len(fields) != 4
+            or not re.fullmatch(r"GPU-[0-9a-fA-F-]{36}", fields[0])
+            or fields[1].lower() not in {"disabled", "[n/a]", "n/a"}
+        ):
+            return None
+        total_mib = int(fields[2])
+        free_mib = int(fields[3])
+        if total_mib < 1 or free_mib < 0 or free_mib > total_mib:
+            return None
+        mib = 1024 * 1024
+        return total_mib * mib, free_mib * mib
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
 class GninaGpuObserver:
     def __init__(self, executable: Path, directory: Path) -> None:
         self._executable = executable.resolve()

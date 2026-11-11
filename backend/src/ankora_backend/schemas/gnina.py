@@ -23,6 +23,10 @@ def is_canonical_uuid(value: str) -> bool:
         return False
 
 
+GninaCnnScoringMode = Literal["rescore", "refinement"]
+GninaCnnModelSelector = Literal["dense_1_3", "default_1_3_ensemble", "default1.0"]
+
+
 class GninaDockingParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -35,10 +39,25 @@ class GninaDockingParameters(BaseModel):
     num_modes: int = Field(default=9, ge=1, le=100)
     min_rmsd_filter_angstrom: float = Field(default=1.0, ge=0, le=20, allow_inf_nan=False)
     timeout_minutes: int = Field(default=360, ge=1, le=2880)
-    cnn_scoring: Literal["rescore"] = "rescore"
-    cnn_model: Literal["dense_1_3"] = "dense_1_3"
+    cnn_scoring: GninaCnnScoringMode = "rescore"
+    cnn_model: GninaCnnModelSelector = "dense_1_3"
     hydrogen_handling: Literal["prepared_pdbqt_no_add_no_strip"] = "prepared_pdbqt_no_add_no_strip"
     pose_sort_order: Literal["cnn_score_descending"] = "cnn_score_descending"
+
+    @model_validator(mode="after")
+    def guard_refinement_constraints(self) -> "GninaDockingParameters":
+        if self.cnn_scoring == "refinement":
+            if self.compute == "cpu":
+                raise ValueError(
+                    "cnn_scoring='refinement' requires compute='cuda'; CPU refinement is not "
+                    "supported because single-ligand CPU gradient refinement exceeds practical "
+                    "wall-clock budgets."
+                )
+            if self.timeout_minutes < 10:
+                raise ValueError(
+                    "cnn_scoring='refinement' requires timeout_minutes >= 10."
+                )
+        return self
 
 
 class GninaDockingRequest(BaseModel):
@@ -64,6 +83,28 @@ class GninaToolIdentity(BaseModel):
     version: str = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     architecture: Literal["x86_64"]
+
+
+class GninaCnnModelIdentity(BaseModel):
+    """Explicit built-in CNN model or ensemble provenance for one GNINA run."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    selector: GninaCnnModelSelector
+    cli_argument: str | None = None
+    member_names: tuple[str, ...] = Field(min_length=1)
+    member_count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_consistent_membership(self) -> "GninaCnnModelIdentity":
+        if self.member_count != len(self.member_names):
+            raise ValueError("member_count must equal len(member_names)")
+        if any(not name for name in self.member_names):
+            raise ValueError("member_names must not contain empty strings")
+        expected_cli = None if self.selector == "default_1_3_ensemble" else self.selector
+        if self.cli_argument != expected_cli:
+            raise ValueError("cli_argument must match the recorded CNN model selector")
+        return self
 
 
 class GninaPoseArtifact(BaseModel):
@@ -134,6 +175,7 @@ class GninaJobRecord(BaseModel):
     completed_at: datetime | None = None
     request: GninaDockingRequest
     tool: GninaToolIdentity
+    cnn_model_identity: GninaCnnModelIdentity | None = None
     box: BindingBox
     receptor_output_artifact_id: str = Field(min_length=1)
     receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

@@ -1,17 +1,22 @@
-import type { GninaDockingParameters } from "../../types/api";
+import type {
+  GninaCnnModelSelector,
+  GninaDockingParameters,
+} from "../../types/api";
 
 /**
  * The GNINA search protocol, shared by the single-ligand workspace and the
- * library campaign.
+ * library campaign (ADR-027 + ADR-028).
  *
  * A campaign applies one protocol to every molecule, and the backend contract
  * takes the single-job parameters unchanged, so there is deliberately nothing
  * campaign-shaped here - no concurrency setting in particular. The existing
  * GNINA service runs one job at a time.
  *
- * `cnn_scoring`, `cnn_model`, `hydrogen_handling` and `pose_sort_order` are
- * fixed to the recorded, validated policy of ADR-027 rather than offered as
- * knobs: each alternative needs its own recorded semantics first.
+ * `cnn_scoring` offers empirical+CNN rescoring (`rescore`) or combined 3D CNN +
+ * empirical gradient local optimization (`refinement`, CUDA-only, >= 10 min
+ * timeout). `cnn_model` offers single-network `dense_1_3` or the built-in
+ * ensembles `default_1_3_ensemble` (3 models, `--cnn` omitted) and `default1.0`
+ * (5 models, `--cnn default1.0`).
  */
 export function defaultGninaParameters(): GninaDockingParameters {
   return {
@@ -28,6 +33,34 @@ export function defaultGninaParameters(): GninaDockingParameters {
     hydrogen_handling: "prepared_pdbqt_no_add_no_strip",
     pose_sort_order: "cnn_score_descending",
   };
+}
+
+export const GNINA_CNN_MODEL_MEMBERS: Record<GninaCnnModelSelector, readonly string[]> = {
+  dense_1_3: ["dense_1_3"],
+  default_1_3_ensemble: [
+    "dense_1_3",
+    "dense_1_3_PT_KD_3",
+    "crossdock_default2018_KD_4",
+  ],
+  "default1.0": [
+    "dense",
+    "general_default2018_3",
+    "dense_3",
+    "crossdock_default2018",
+    "redock_default2018_2",
+  ],
+};
+
+export function applyGninaParameterUpdate<K extends keyof GninaDockingParameters>(
+  current: GninaDockingParameters,
+  name: K,
+  value: GninaDockingParameters[K],
+): GninaDockingParameters {
+  const next: GninaDockingParameters = { ...current, [name]: value };
+  if (name === "cnn_scoring" && value === "refinement" && next.timeout_minutes < 10) {
+    next.timeout_minutes = 10;
+  }
+  return next;
 }
 
 export type GninaNumericParameter =
@@ -57,6 +90,12 @@ export const GNINA_NUMERIC_FIELDS: readonly GninaNumericField[] = [
 ];
 
 export function gninaParametersValid(parameters: GninaDockingParameters): boolean {
+  if (parameters.cnn_scoring === "refinement") {
+    if (parameters.compute === "cpu") return false;
+    if (!Number.isFinite(parameters.timeout_minutes) || parameters.timeout_minutes < 10) {
+      return false;
+    }
+  }
   return GNINA_NUMERIC_FIELDS.every(({ key, min, max, step }) => {
     const value = parameters[key];
     if (!Number.isFinite(value) || value < min || value > max) return false;

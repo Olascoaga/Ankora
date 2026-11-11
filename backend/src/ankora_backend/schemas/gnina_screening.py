@@ -50,7 +50,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, DockingJobStatus
-from ankora_backend.schemas.gnina import GninaDockingParameters, GninaToolIdentity
+from ankora_backend.schemas.gnina import (
+    GninaCnnModelIdentity,
+    GninaDockingParameters,
+    GninaToolIdentity,
+)
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.warnings import StructuredWarning
 
@@ -303,6 +307,7 @@ class GninaScreeningCampaignRecord(BaseModel):
     request: GninaScreeningRequest
     hit_ranking_metric: GninaHitRankingMetric = "cnn_score"
     tool: GninaToolIdentity
+    cnn_model_identity: GninaCnnModelIdentity | None = None
     selection: GninaScreeningSelection
     receptor_output_artifact_id: str = Field(min_length=1)
     receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
