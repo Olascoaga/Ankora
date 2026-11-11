@@ -14,6 +14,7 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pose_interaction_store import PoseInteractionStore
@@ -27,12 +28,14 @@ from ankora_backend.schemas.pose_interactions import (
 )
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import ReceptorOutputStage
+from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
 from ankora_backend.services.result_catalog import (
     AUTODOCK4_BATCH,
     AUTODOCK4_JOB,
     AUTODOCK_GPU_BATCH,
     AUTODOCK_GPU_JOB,
     GNINA_JOB,
+    GNINA_SCREENING,
     VINA_BATCH,
     VINA_JOB,
 )
@@ -53,6 +56,7 @@ class _ResolvedPose:
     docking_receptor_sha256: str
     pose: PoseReference
     pose_path: Path
+    gnina_job_id: str | None = None
 
 
 class PoseInteractionService:
@@ -68,6 +72,7 @@ class PoseInteractionService:
         interaction_store: PoseInteractionStore,
         adapter: ProlifInteractionAdapter | None = None,
         gnina_store: GninaJobStore | None = None,
+        gnina_screening_store: GninaScreeningStore | None = None,
     ) -> None:
         self._docking = docking_store
         self._autodock4 = autodock4_store
@@ -78,6 +83,7 @@ class PoseInteractionService:
         self._interactions = interaction_store
         self._adapter = adapter or ProlifInteractionAdapter()
         self._gnina = gnina_store
+        self._gnina_screening = gnina_screening_store
 
     @classmethod
     def from_environment(cls) -> "PoseInteractionService":
@@ -90,6 +96,7 @@ class PoseInteractionService:
             ligand_store=LigandArtifactStore.from_environment(),
             interaction_store=PoseInteractionStore.from_environment(),
             gnina_store=GninaJobStore.from_environment(),
+            gnina_screening_store=GninaScreeningStore.from_environment(),
         )
 
     def list_poses(self, catalog_id: str, ligand_id: str) -> PoseInventory:
@@ -181,12 +188,12 @@ class PoseInteractionService:
         conformer_path = self._ligands.conformer_content_path(
             ligand_id, conformer.artifact.conformer_id
         )
-        if resolved.engine_key == GNINA_JOB:
+        if resolved.engine_key in (GNINA_JOB, GNINA_SCREENING):
             if self._gnina is None:
                 raise _failure(
                     "RESULT_CATALOG_ENGINE_UNKNOWN", "GNINA pose storage is unavailable."
                 )
-            gnina_job = self._gnina.load_job(resolved.record_id)
+            gnina_job = self._gnina.load_job(resolved.gnina_job_id or resolved.record_id)
             if (
                 preparation.artifact.sha256 != gnina_job.ligand_sha256
                 or conformer.artifact.sha256 != gnina_job.conformer_sha256
@@ -271,7 +278,7 @@ class PoseInteractionService:
         """
         resolved = self._resolve(catalog_id, ligand_id, pose_artifact_id)
         receptor_record = self._receptors.load_record(resolved.receptor_id)
-        if resolved.engine_key == GNINA_JOB:
+        if resolved.engine_key in (GNINA_JOB, GNINA_SCREENING):
             docking_output = next(
                 (
                     item
@@ -328,12 +335,25 @@ class PoseInteractionService:
             first_serial=_next_serial(receptor_lines),
         )
 
+        cnn_lines = (
+            [
+                f"REMARK   1 POSE CNN SCORE  {resolved.pose.cnn_score:.4f} (dimensionless)",
+                *(
+                    [f"REMARK   1 POSE CNN AFFIN  {resolved.pose.cnn_affinity_pk:.3f} pK"]
+                    if resolved.pose.cnn_affinity_pk is not None
+                    else []
+                ),
+            ]
+            if resolved.pose.cnn_score is not None
+            else []
+        )
         header = [
             "REMARK   1 Ankora ligand-receptor complex",
             f"REMARK   1 RESULT          {catalog_id}",
             f"REMARK   1 ENGINE          {_ascii(resolved.engine_label)}",
             f"REMARK   1 LIGAND          {ligand_id}",
             f"REMARK   1 POSE            {_ascii(resolved.pose.label)}",
+            *cnn_lines,
             f"REMARK   1 POSE VALUE      {resolved.pose.result_kcal_mol:.3f} kcal/mol"
             f" ({_ascii(resolved.pose.value_label)})",
             f"REMARK   1 POSE SHA256     {resolved.pose.sha256}",
@@ -364,6 +384,7 @@ class PoseInteractionService:
                 status_code=404,
                 details={"pose_artifact_id": pose_artifact_id},
             )
+        gnina_job_id = context.get("gnina_job_id")
         return _ResolvedPose(
             catalog_id=catalog_id,
             engine_key=engine_key,
@@ -375,7 +396,14 @@ class PoseInteractionService:
             docking_receptor_artifact_id=str(context["receptor_artifact_id"]),
             docking_receptor_sha256=str(context["receptor_sha256"]),
             pose=pose,
-            pose_path=self._pose_path(engine_key, record_id, ligand_id, pose_artifact_id),
+            pose_path=self._pose_path(
+                engine_key,
+                record_id,
+                ligand_id,
+                pose_artifact_id,
+                gnina_job_id=gnina_job_id,
+            ),
+            gnina_job_id=gnina_job_id,
         )
 
     def _native_poses(
@@ -414,6 +442,26 @@ class PoseInteractionService:
                 "receptor_artifact_id": record.receptor_output_artifact_id,
                 "receptor_sha256": record.receptor_sha256,
             }
+        if (
+            engine_key == GNINA_SCREENING
+            and self._gnina_screening is not None
+            and self._gnina is not None
+        ):
+            campaign = self._gnina_screening.load_campaign(record_id)
+            entry = _entry(campaign.entries, ligand_id)
+            if entry.status.value != "completed":
+                raise _failure(
+                    "RESULT_POSE_NOT_AVAILABLE", "GNINA screening entry is not complete."
+                )
+            job = verified_campaign_entry_job(store=self._gnina, campaign=campaign, entry=entry)
+            return [_gnina_pose(item, job.job_id) for item in job.poses], {
+                "engine_label": f"GNINA {campaign.tool.version}",
+                "ligand_preparation_id": _required(entry.ligand_preparation_id),
+                "receptor_id": campaign.request.receptor_id,
+                "receptor_artifact_id": campaign.receptor_output_artifact_id,
+                "receptor_sha256": campaign.receptor_sha256,
+                "gnina_job_id": job.job_id,
+            }
         if engine_key in (AUTODOCK4_BATCH, AUTODOCK_GPU_BATCH):
             store: Any = self._autodock4 if engine_key == AUTODOCK4_BATCH else self._gpu
             record = store.load_batch(record_id)
@@ -444,13 +492,23 @@ class PoseInteractionService:
             details={"engine_key": engine_key},
         )
 
-    def _pose_path(self, engine_key: str, record_id: str, ligand_id: str, artifact_id: str) -> Path:
+    def _pose_path(
+        self,
+        engine_key: str,
+        record_id: str,
+        ligand_id: str,
+        artifact_id: str,
+        *,
+        gnina_job_id: str | None = None,
+    ) -> Path:
         if engine_key == VINA_BATCH:
             return self._docking.batch_pose_content_path(record_id, ligand_id, artifact_id)
         if engine_key == VINA_JOB:
             return self._docking.pose_content_path(record_id, artifact_id)
         if engine_key == GNINA_JOB and self._gnina is not None:
             return self._gnina.pose_content_path(record_id, artifact_id)
+        if engine_key == GNINA_SCREENING and self._gnina is not None and gnina_job_id is not None:
+            return self._gnina.pose_content_path(gnina_job_id, artifact_id)
         if engine_key == AUTODOCK4_BATCH:
             return self._autodock4.batch_pose_content_path(record_id, ligand_id, artifact_id)
         if engine_key == AUTODOCK4_JOB:
