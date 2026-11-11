@@ -66,3 +66,37 @@ Require:
 
 Write create-only `evidence.json` files for both sub-runs even on failure, and
 never overwrite or retroactively edit criteria after observing outcomes.
+
+## Observed run: screening-api-cuda-01
+
+The isolated 11-compound NCI WSL CUDA screening completed through Ankora's HTTP
+API on `NVIDIA GeForce RTX 5050 Laptop GPU`. All 100 records of
+`nci_real_100.sdf` imported cleanly, the `demostracion` filter selected the
+exact 11 eligible molecules, all 11 conformers (`ETKDGv3` + `MMFF94s`) and
+`Meeko` PDBQTs prepared cleanly, and all 11 child GNINA 1.3.3 CUDA jobs
+succeeded serially without overlapping execution intervals. Every child job
+reported process-level GPU observation matching the enumerated physical GPU
+UUID, descending `CNNscore` pose ordering, and exact SHA-256 verification across
+every retrieved pose download. All active work leases and CPU/GPU allocations
+were released and the source project remained unchanged. Retained create-only
+`evidence.json` SHA-256:
+`9662bd482fa2a7c93fbf22ad5b9d22dc98b4c0aa0011d4c9774e898e30c3ddac`.
+
+## Observed run: screening-api-cuda-cancel-01 (harness query-parameter error)
+
+The first cancellation attempt failed in the test client harness with HTTP 422
+because `GET /api/v1/docking/gnina/screenings/{campaign_id}/entries` requires
+the `after_revision` query parameter. FastAPI shutdown cleanly terminated the
+running background worker, left zero GPU compute processes, and left the source
+project unchanged. The untouched create-only failure record is retained at
+`screening-api-cuda-cancel-01/evidence.json` with SHA-256
+`35966ba98c32510357780d9be10c5e7128679e93f7f8b267c023e55381663a3d`.
+
+### Predeclared follow-up (`screening-api-cuda-cancel-02`)
+
+Run the identical two-molecule active-GPU cancellation protocol in a new
+create-only directory (`screening-api-cuda-cancel-02`) via
+`scripts/validate_linux_gnina_screening_cuda_cancel.py`, passing
+`?after_revision=0` when polling campaign entries while preserving every
+acceptance criterion from Sub-run 2 unchanged.
+
