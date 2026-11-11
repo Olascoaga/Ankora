@@ -150,8 +150,9 @@ checking receptor, box and selection identities. The Results catalog, campaign
 export, interaction analysis and redocking are explicitly unavailable for the
 campaign as a whole. UI tests use synthetic records. The separately declared
 WSL CPU check in `LINUX_GNINA_SCREENING_SMOKE.md` completed with two real GNINA
-jobs on synthetic molecules. CUDA screening and a WSLg/native workstation
-visual check are still required.
+jobs on synthetic molecules. The separately declared 11-molecule NCI WSL CUDA screening and active-GPU
+mid-campaign cancellation checks in LINUX_GNINA_SCREENING_CUDA.md also
+completed. A WSLg and native Linux workstation visual check are still required.
 
 A library preflight now resolves every selected compound in selection order,
 retaining an explicit failure for missing or inconsistent source records and

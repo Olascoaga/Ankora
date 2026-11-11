@@ -100,3 +100,16 @@ create-only directory (`screening-api-cuda-cancel-02`) via
 `?after_revision=0` when polling campaign entries while preserving every
 acceptance criterion from Sub-run 2 unchanged.
 
+## Observed run: screening-api-cuda-cancel-02
+
+The active-GPU mid-campaign cancellation check completed cleanly. After the
+first child GNINA process was observed running on the enumerated NVIDIA GPU
+inside its job working directory, `POST .../cancel` transitioned the campaign to
+terminal `canceled` (`selected=2, succeeded=0, failed=0, canceled=2`). The first
+child job ended `canceled` without publishing poses and its GPU process exited;
+the second entry ended `canceled` without creating a child GNINA job; CPU and
+GPU allocations were released and the source project remained unchanged.
+Retained create-only `evidence.json` SHA-256:
+`461beaba3a75fa11a4cff711f6ca5e7e4ab9ba4ca0afd413d12b742ce57281dc`.
+
+
