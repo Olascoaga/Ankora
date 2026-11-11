@@ -330,3 +330,129 @@ def test_the_typed_api_executes_real_individual_and_group_operations(
     ]
     assert all(not path.exists() for path in locations.values())
     assert individual.json()["operation_id"] != group.json()["operation_id"]
+
+
+def test_gnina_screening_moves_campaign_child_jobs_and_interactions_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_gnina_catalog import _synthetic_screening_campaign
+
+    _, job_store, campaign_id, beta_job_id = _synthetic_screening_campaign(tmp_path, monkeypatch)
+    project = tmp_path / "projects" / "default"
+    analysis_id = str(uuid4())
+    export_id = str(uuid4())
+    _write_json(
+        project / "analysis" / "pose_interactions" / analysis_id / "record.json",
+        {"analysis_id": analysis_id, "catalog_id": f"gnina_screening:{campaign_id}"},
+    )
+    _write_json(
+        project / "exports" / export_id / "manifest.json",
+        {"source_kind": "gnina_screening", "source_id": campaign_id},
+    )
+
+    with TestClient(create_app()) as client:
+        # Direct removal of an owned child GNINA job must be refused.
+        child_refused = client.post(
+            "/api/v1/results/campaigns/trash",
+            json={
+                "catalog_ids": [f"gnina_job:{beta_job_id}"],
+                "acknowledge_removal": True,
+            },
+        )
+        assert child_refused.status_code == 409
+        assert child_refused.json()["code"] == "RESULT_TRASH_CHILD_OWNED"
+        assert (project / "results" / "gnina_jobs" / beta_job_id).is_dir()
+
+        response = client.post(
+            "/api/v1/results/campaigns/trash",
+            json={
+                "catalog_ids": [f"gnina_screening:{campaign_id}"],
+                "acknowledge_removal": True,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["interaction_analysis_count"] == 1
+        assert body["recoverable"] is True
+
+        assert not (project / "results" / "gnina_screening_campaigns" / campaign_id).exists()
+        assert not any((project / "results" / "gnina_jobs").glob("*"))
+        assert not (project / "analysis" / "pose_interactions" / analysis_id).exists()
+        assert (project / "exports" / export_id / "manifest.json").is_file()
+        assert client.get("/api/v1/results/campaigns?scoring_family=gnina").json()["total"] == 0
+
+        operation = project / "trash" / "result_campaigns" / body["operation_id"]
+        assert (operation / "campaigns" / "gnina_screening" / campaign_id).is_dir()
+        assert (
+            operation / "campaigns" / "gnina_screening_jobs" / campaign_id / beta_job_id
+        ).is_dir()
+
+
+def test_gnina_screening_trash_rolls_back_all_moves_on_replace_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    from test_gnina_catalog import _synthetic_screening_campaign
+
+    _, _, campaign_id, beta_job_id = _synthetic_screening_campaign(tmp_path, monkeypatch)
+    project = tmp_path / "projects" / "default"
+    real_replace = os.replace
+    calls = 0
+
+    def fail_on_second_move(src: os.PathLike[str] | str, dst: os.PathLike[str] | str) -> None:
+        nonlocal calls
+        src_path = Path(src)
+        # Allow manifest writes (`operation.json.tmp` -> `operation.json`) normally.
+        if src_path.name == "operation.json.tmp":
+            real_replace(src, dst)
+            return
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated mid-batch filesystem failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr("ankora_backend.services.result_deletion.os.replace", fail_on_second_move)
+    with TestClient(create_app()) as client:
+        failed = client.post(
+            "/api/v1/results/campaigns/trash",
+            json={
+                "catalog_ids": [f"gnina_screening:{campaign_id}"],
+                "acknowledge_removal": True,
+            },
+        )
+        assert failed.status_code == 500
+        assert failed.json()["code"] == "RESULT_TRASH_FAILED"
+        assert failed.json()["details"]["rolled_back"] is True
+
+    # Both the campaign directory and every child GNINA job directory remain intact.
+    assert (project / "results" / "gnina_screening_campaigns" / campaign_id).is_dir()
+    assert (project / "results" / "gnina_jobs" / beta_job_id).is_dir()
+
+
+def test_corrupted_terminal_gnina_screening_campaign_remains_trashable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_gnina_catalog import _synthetic_screening_campaign
+
+    _, job_store, campaign_id, beta_job_id = _synthetic_screening_campaign(tmp_path, monkeypatch)
+    job_store.output_path(beta_job_id, "pose_1.pdbqt").write_bytes(b"corrupted pose bytes")
+    project = tmp_path / "projects" / "default"
+
+    with TestClient(create_app()) as client:
+        # Catalog projection fails closed on integrity...
+        assert (
+            client.get(f"/api/v1/results/campaigns/gnina_screening/{campaign_id}").status_code
+            == 409
+        )
+        # ...yet the scientist can still move the damaged terminal campaign to Trash.
+        trashed = client.post(
+            "/api/v1/results/campaigns/trash",
+            json={
+                "catalog_ids": [f"gnina_screening:{campaign_id}"],
+                "acknowledge_removal": True,
+            },
+        )
+        assert trashed.status_code == 200
+        assert not (project / "results" / "gnina_screening_campaigns" / campaign_id).exists()
+        assert not (project / "results" / "gnina_jobs" / beta_job_id).exists()

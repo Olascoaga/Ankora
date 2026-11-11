@@ -9,6 +9,7 @@ inputs and independently useful export bundles deliberately stay in place.
 
 import json
 import os
+import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,8 +20,11 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
+    ResultMode,
+    ScoringFamily,
     TrashedResultCampaign,
     TrashResultCampaignsRequest,
     TrashResultCampaignsResponse,
@@ -38,6 +42,7 @@ _RESULT_DIRECTORIES = {
     "autodock_gpu_job": "autodock_gpu_jobs",
     "autodock_gpu_batch": "autodock_gpu_batches",
     "gnina_job": "gnina_jobs",
+    "gnina_screening": "gnina_screening_campaigns",
 }
 
 
@@ -83,7 +88,7 @@ class ResultDeletionService:
             # Resolve every record before moving any of them. One missing or
             # active result rejects the complete group rather than producing a
             # partial deletion that the user did not ask for.
-            entries = [self._catalog.get_campaign(item) for item in request.catalog_ids]
+            entries = [self._resolve_entry(item) for item in request.catalog_ids]
             active = [entry for entry in entries if entry.status not in _TERMINAL_STATUSES]
             if active:
                 raise AnkoraDomainError(
@@ -97,9 +102,10 @@ class ResultDeletionService:
             operation_id = str(uuid4())
             trashed_at = datetime.now(UTC)
             operation_dir = self._trash_root() / operation_id
-            moves = self._campaign_moves(entries, operation_dir)
-            interaction_moves = self._interaction_moves(set(request.catalog_ids), operation_dir)
-            validation_moves = self._validation_moves(set(request.catalog_ids), operation_dir)
+            moves, child_catalog_ids = self._campaign_moves(entries, operation_dir)
+            dependent_ids = set(request.catalog_ids) | child_catalog_ids
+            interaction_moves = self._interaction_moves(dependent_ids, operation_dir)
+            validation_moves = self._validation_moves(dependent_ids, operation_dir)
             moves.extend(interaction_moves)
             moves.extend(validation_moves)
 
@@ -167,8 +173,82 @@ class ResultDeletionService:
                 recoverable=True,
             )
 
-    def _campaign_moves(self, entries: list[CatalogEntry], operation_dir: Path) -> list[_Move]:
+    def _resolve_entry(self, catalog_id: str) -> CatalogEntry:
+        try:
+            entry = self._catalog.get_campaign(catalog_id)
+        except AnkoraDomainError as error:
+            if catalog_id.startswith("gnina_screening:") and error.code in {
+                "GNINA_SCREENING_JOB_MISMATCH",
+                "GNINA_POSE_INTEGRITY_FAILED",
+            }:
+                entry = self._fallback_gnina_screening_entry(catalog_id)
+            else:
+                raise
+        if entry.engine_key == "gnina_job":
+            self._refuse_owned_child_job(entry)
+        return entry
+
+    def _fallback_gnina_screening_entry(self, catalog_id: str) -> CatalogEntry:
+        record_id = self._uuid(catalog_id.partition(":")[2])
+        store = GninaScreeningStore(self._root)
+        progress = store.load_progress(record_id)
+        origin = store.original_selection(record_id)
+        return CatalogEntry(
+            catalog_id=catalog_id,
+            engine_key="gnina_screening",
+            record_id=record_id,
+            mode=ResultMode.SCREENING,
+            scoring_family=ScoringFamily.GNINA,
+            backend=origin.request.parameters.compute,
+            engine_label=f"GNINA {origin.tool.version}",
+            engine_version=origin.tool.version,
+            executable_sha256=origin.tool.sha256,
+            status=progress.status.value,
+            created_at=origin.created_at,
+            completed_at=progress.completed_at,
+            receptor_id=origin.request.receptor_id,
+            binding_site_id=origin.request.binding_site_id,
+            library_id=origin.request.library_id,
+            filter_run_id=origin.request.filter_run_id,
+            selected_count=progress.selected_count,
+            succeeded_count=progress.succeeded_count,
+            failed_count=progress.failed_count,
+            canceled_count=progress.canceled_count,
+        )
+
+    def _refuse_owned_child_job(self, entry: CatalogEntry) -> None:
+        record_id = self._uuid(entry.record_id)
+        record_path = self._safe(
+            self._project / "results" / "gnina_jobs" / record_id / "record.json"
+        )
+        if not record_path.is_file():
+            return
+        try:
+            data = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        owning = data.get("screening_campaign_id") if isinstance(data, dict) else None
+        if owning:
+            raise AnkoraDomainError(
+                code="RESULT_TRASH_CHILD_OWNED",
+                stage=_STAGE,
+                message=(
+                    "Remove the owning GNINA screening campaign rather than one of its "
+                    "molecule jobs."
+                ),
+                status_code=409,
+                details={
+                    "catalog_id": entry.catalog_id,
+                    "screening_campaign_id": str(owning),
+                },
+            )
+
+    def _campaign_moves(
+        self, entries: list[CatalogEntry], operation_dir: Path
+    ) -> tuple[list[_Move], set[str]]:
         moves: list[_Move] = []
+        child_catalog_ids: set[str] = set()
+        seen_sources: set[Path] = set()
         for entry in entries:
             directory_name = _RESULT_DIRECTORIES.get(entry.engine_key)
             if directory_name is None:
@@ -197,7 +277,54 @@ class ResultDeletionService:
                     identity=entry.catalog_id,
                 )
             )
-        return moves
+            seen_sources.add(source)
+            if entry.engine_key == "gnina_screening":
+                for job_id in self._gnina_screening_child_job_ids(record_id, source):
+                    child_source = self._safe(self._project / "results" / "gnina_jobs" / job_id)
+                    if not child_source.is_dir() or child_source in seen_sources:
+                        continue
+                    seen_sources.add(child_source)
+                    child_catalog_ids.add(f"gnina_job:{job_id}")
+                    moves.append(
+                        _Move(
+                            source=child_source,
+                            destination=(
+                                operation_dir
+                                / "campaigns"
+                                / "gnina_screening_jobs"
+                                / record_id
+                                / job_id
+                            ),
+                            category="campaign_child_job",
+                            identity=f"gnina_job:{job_id}",
+                        )
+                    )
+        return moves, child_catalog_ids
+
+    def _gnina_screening_child_job_ids(self, campaign_id: str, campaign_dir: Path) -> list[str]:
+        found: set[str] = set()
+        db_path = campaign_dir / "campaign_state.sqlite3"
+        if db_path.is_file():
+            try:
+                with sqlite3.connect(db_path) as connection:
+                    rows = connection.execute("SELECT payload_json FROM entries").fetchall()
+                for (raw,) in rows:
+                    payload = json.loads(str(raw))
+                    job_id = payload.get("gnina_job_id") if isinstance(payload, dict) else None
+                    if isinstance(job_id, str) and job_id:
+                        found.add(self._uuid(job_id))
+            except (sqlite3.Error, OSError, ValueError):
+                pass
+        jobs_root = self._project / "results" / "gnina_jobs"
+        if jobs_root.is_dir():
+            for record_path in sorted(jobs_root.glob("*/record.json")):
+                try:
+                    data = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if isinstance(data, dict) and data.get("screening_campaign_id") == campaign_id:
+                    found.add(self._uuid(record_path.parent.name))
+        return sorted(found)
 
     def _interaction_moves(self, catalog_ids: set[str], operation_dir: Path) -> list[_Move]:
         return self._dependent_moves(
