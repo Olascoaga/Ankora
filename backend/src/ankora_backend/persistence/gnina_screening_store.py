@@ -60,6 +60,7 @@ from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, Dock
 from ankora_backend.schemas.gnina import (
     GninaDockingRequest,
     GninaJobRecord,
+    GninaPoseResult,
     GninaToolIdentity,
     is_canonical_uuid,
 )
@@ -75,6 +76,7 @@ from ankora_backend.schemas.ligand_library_preparation import (
     LigandPreparationEntry,
     LigandPreparationStatus,
 )
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.gnina_screening_evidence import verified_screening_pose
 from ankora_backend.services.gnina_screening_preparation import verified_screening_preparation
 from ankora_backend.services.gnina_screening_selection import verified_screening_selection
@@ -506,6 +508,50 @@ class GninaScreeningStore:
                 summary["phase"] = DockingJobPhase.COMPLETE.value
                 summary["revision"] = int(summary["revision"]) + 1
                 summary["completed_at"] = self._latest_completion(entries)
+                request = GninaScreeningRequest.model_validate(summary["request"])
+                if (
+                    status is DockingJobStatus.COMPLETED
+                    and request.hit_ranking_metric == "cnn_vs"
+                ):
+                    nonpositive_ligands: list[str] = []
+                    min_cnn_affinity: float | None = None
+                    for entry in entries:
+                        if entry.status is not DockingJobStatus.COMPLETED:
+                            continue
+                        top_pose = self._verify_completed_job(campaign_id, summary, entry)
+                        if top_pose.cnn_affinity <= 0:
+                            nonpositive_ligands.append(entry.ligand_id)
+                            if (
+                                min_cnn_affinity is None
+                                or top_pose.cnn_affinity < min_cnn_affinity
+                            ):
+                                min_cnn_affinity = top_pose.cnn_affinity
+                    if nonpositive_ligands:
+                        existing_warnings = list(summary.get("warnings", []))
+                        if not any(
+                            isinstance(item, dict)
+                            and item.get("code")
+                            == WarningCode.GNINA_CNN_VS_NONPOSITIVE_AFFINITY.value
+                            for item in existing_warnings
+                        ):
+                            existing_warnings.append(
+                                StructuredWarning(
+                                    code=WarningCode.GNINA_CNN_VS_NONPOSITIVE_AFFINITY,
+                                    stage="gnina_screening",
+                                    message=(
+                                        "One or more completed molecules recorded non-positive "
+                                        "GNINA CNNaffinity (<= 0 pK); CNN_VS "
+                                        "(CNNscore × CNNaffinity) becomes zero or negative and "
+                                        "inverts CNNscore ordering among negative-pK predictions."
+                                    ),
+                                    details={
+                                        "nonpositive_count": len(nonpositive_ligands),
+                                        "ligand_ids": nonpositive_ligands[:25],
+                                        "min_cnn_affinity": min_cnn_affinity,
+                                    },
+                                ).model_dump(mode="json")
+                            )
+                            summary["warnings"] = existing_warnings
                 self._apply_exact_counters(database, summary)
                 self._write_summary(database, summary)
                 database.commit()
@@ -866,11 +912,11 @@ class GninaScreeningStore:
 
     def _verify_completed_job(
         self, campaign_id: str, summary: dict[str, Any], entry: GninaScreeningEntry
-    ) -> None:
+    ) -> GninaPoseResult:
         """Re-read the referenced job and refuse success unless it still matches.
 
-        The verified pose is a gate, not a payload: it is discarded here, and no
-        score, affinity or pose is written into campaign storage.
+        The verified pose is a gate, not a payload: no score, affinity or pose
+        is written into campaign entry storage.
         """
         job = self._matching_job(campaign_id, summary, entry)
         job_id = job.job_id
@@ -896,7 +942,7 @@ class GninaScreeningStore:
             parameters=request.parameters,
             acknowledge_inputs_and_scoring=True,
         )
-        verified_screening_pose(
+        pose = verified_screening_pose(
             store=self._jobs,
             job_id=job_id,
             expected_request=expected_request,
@@ -916,6 +962,7 @@ class GninaScreeningStore:
             or job.ligand_sha256 != entry.ligand_sha256
         ):
             raise self._job_mismatch(campaign_id, entry, "job inputs differ from the campaign")
+        return pose
 
     # --- sqlite -------------------------------------------------------------
 

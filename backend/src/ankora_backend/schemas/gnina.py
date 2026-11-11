@@ -76,6 +76,9 @@ class GninaPoseArtifact(BaseModel):
     size_bytes: int = Field(ge=1)
 
 
+GninaCnnVsSource = Literal["engine_emitted", "derived_from_recorded_axes"]
+
+
 class GninaPoseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,7 +86,16 @@ class GninaPoseResult(BaseModel):
     minimized_affinity_kcal_mol: float = Field(allow_inf_nan=False)
     cnn_score: float = Field(ge=0, le=1, allow_inf_nan=False)
     cnn_affinity: float = Field(allow_inf_nan=False)
+    cnn_vs: float | None = Field(default=None, allow_inf_nan=False)
+    cnn_vs_source: GninaCnnVsSource | None = None
+    cnn_affinity_variance: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     artifact: GninaPoseArtifact
+
+    @model_validator(mode="after")
+    def require_consistent_cnn_vs_provenance(self) -> "GninaPoseResult":
+        if (self.cnn_vs is None) != (self.cnn_vs_source is None):
+            raise ValueError("cnn_vs and cnn_vs_source must be recorded or omitted together")
+        return self
 
 
 class GninaExecutionEvidence(BaseModel):

@@ -31,6 +31,7 @@ from ankora_backend.schemas.docking import (
     DockingJobStatus,
 )
 from ankora_backend.schemas.gnina import (
+    GninaCnnVsSource,
     GninaDockingRequest,
     GninaExecutionEvidence,
     GninaJobRecord,
@@ -413,12 +414,21 @@ class GninaDockingService:
             for pose in parsed:
                 name = f"pose_{pose.mode}.pdbqt"
                 self._store.write_artifact(job_id, name, pose.pdbqt)
+                if pose.cnn_vs is not None:
+                    cnn_vs = pose.cnn_vs
+                    cnn_vs_source: GninaCnnVsSource = "engine_emitted"
+                else:
+                    cnn_vs = pose.cnn_score * pose.cnn_affinity
+                    cnn_vs_source = "derived_from_recorded_axes"
                 results.append(
                     GninaPoseResult(
                         mode=pose.mode,
                         minimized_affinity_kcal_mol=pose.minimized_affinity_kcal_mol,
                         cnn_score=pose.cnn_score,
                         cnn_affinity=pose.cnn_affinity,
+                        cnn_vs=cnn_vs,
+                        cnn_vs_source=cnn_vs_source,
+                        cnn_affinity_variance=pose.cnn_affinity_variance,
                         artifact=GninaPoseArtifact(
                             artifact_id=str(uuid4()),
                             mode=pose.mode,

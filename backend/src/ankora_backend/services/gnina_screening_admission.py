@@ -94,6 +94,7 @@ def admit_screening(
         phase=DockingJobPhase.QUEUED,
         created_at=now,
         request=request,
+        hit_ranking_metric=request.hit_ranking_metric,
         tool=GninaToolIdentity(
             version=installation.version, sha256=installation.sha256, architecture="x86_64"
         ),

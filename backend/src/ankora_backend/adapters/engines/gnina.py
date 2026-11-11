@@ -66,6 +66,8 @@ class GninaPdbqtPose:
     cnn_score: float
     cnn_affinity: float
     pdbqt: bytes
+    cnn_vs: float | None = None
+    cnn_affinity_variance: float | None = None
 
 
 def _error(code: str, message: str, **details: object) -> AnkoraDomainError:
@@ -308,6 +310,13 @@ def parse_gnina_sdf(content: bytes) -> list[GninaPose]:
         affinity = _value(mol, "minimizedAffinity")
         score = _value(mol, "CNNscore")
         cnn_affinity = _value(mol, "CNNaffinity")
+        cnn_variance = _value(mol, "CNNaffinity_variance", optional=True)
+        if cnn_variance is not None and cnn_variance < 0:
+            raise _error(
+                "GNINA_OUTPUT_INVALID",
+                "A GNINA pose has a negative CNNaffinity_variance.",
+                field="CNNaffinity_variance",
+            )
         assert affinity is not None and score is not None and cnn_affinity is not None
         poses.append(
             GninaPose(
@@ -316,11 +325,23 @@ def parse_gnina_sdf(content: bytes) -> list[GninaPose]:
                 score,
                 cnn_affinity,
                 _value(mol, "CNN_VS", optional=True),
-                _value(mol, "CNNaffinity_variance", optional=True),
+                cnn_variance,
                 record,
             )
         )
     return poses
+
+
+_REQUIRED_PDBQT_SCORES = frozenset({"minimizedAffinity", "CNNscore", "CNNaffinity"})
+_RECOGNIZED_PDBQT_SCORES = frozenset(
+    {
+        b"minimizedAffinity",
+        b"CNNscore",
+        b"CNNaffinity",
+        b"CNN_VS",
+        b"CNNaffinity_variance",
+    }
+)
 
 
 def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
@@ -352,11 +373,7 @@ def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
         block.append(line)
         if words and words[0] in {b"ATOM", b"HETATM"}:
             atom_count += 1
-        if (
-            len(words) >= 2
-            and words[0] == b"REMARK"
-            and words[1] in {b"minimizedAffinity", b"CNNscore", b"CNNaffinity"}
-        ):
+        if len(words) >= 2 and words[0] == b"REMARK" and words[1] in _RECOGNIZED_PDBQT_SCORES:
             name = words[1].decode("ascii")
             if name in scores or len(words) != 3:
                 raise _error(
@@ -370,12 +387,18 @@ def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
                 ) from error
             if not math.isfinite(value):
                 raise _error("GNINA_OUTPUT_INVALID", "GNINA has a non-finite score.", field=name)
+            if name == "CNNaffinity_variance" and value < 0:
+                raise _error(
+                    "GNINA_OUTPUT_INVALID",
+                    "GNINA has a negative CNNaffinity_variance.",
+                    field=name,
+                )
             scores[name] = value
         if words and words[0] == b"ENDMDL":
             if (
                 len(words) != 1
                 or atom_count == 0
-                or set(scores) != {"minimizedAffinity", "CNNscore", "CNNaffinity"}
+                or not _REQUIRED_PDBQT_SCORES.issubset(scores)
             ):
                 raise _error(
                     "GNINA_OUTPUT_INVALID", "GNINA pose has missing scores or atoms.", mode=mode
@@ -387,6 +410,8 @@ def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
                     cnn_score=scores["CNNscore"],
                     cnn_affinity=scores["CNNaffinity"],
                     pdbqt=b"".join(block),
+                    cnn_vs=scores.get("CNN_VS"),
+                    cnn_affinity_variance=scores.get("CNNaffinity_variance"),
                 )
             )
             block = None

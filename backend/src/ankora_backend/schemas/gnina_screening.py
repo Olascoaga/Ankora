@@ -114,14 +114,17 @@ class GninaScreeningSelection(BaseModel):
     manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+GninaHitRankingMetric = Literal["cnn_score", "cnn_vs"]
+
+
 class GninaScreeningRequest(BaseModel):
     """What the scientist asked for, with GNINA's own settings.
 
     The parameters are the single-job parameters unchanged. GNINA settings stay
     GNINA-specific, and one campaign applies one search protocol to every
-    molecule, so there is nothing campaign-shaped to add - including `compute`,
-    which stays an explicit choice because discovering a GPU does not authorize
-    a silent fallback.
+    molecule; `compute` stays an explicit choice because discovering a GPU does
+    not authorize a silent fallback, and `hit_ranking_metric` fixes how
+    between-ligand hit order is prioritized across the campaign.
     """
 
     model_config = ConfigDict(extra="forbid", revalidate_instances="always")
@@ -131,6 +134,7 @@ class GninaScreeningRequest(BaseModel):
     library_id: str = Field(min_length=1)
     filter_run_id: str = Field(min_length=1)
     parameters: GninaDockingParameters
+    hit_ranking_metric: GninaHitRankingMetric = "cnn_score"
     acknowledge_inputs_and_scoring: bool = False
 
     @model_validator(mode="after")
@@ -296,6 +300,7 @@ class GninaScreeningCampaignRecord(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     request: GninaScreeningRequest
+    hit_ranking_metric: GninaHitRankingMetric = "cnn_score"
     tool: GninaToolIdentity
     selection: GninaScreeningSelection
     receptor_output_artifact_id: str = Field(min_length=1)
@@ -338,6 +343,12 @@ class GninaScreeningCampaignRecord(BaseModel):
 
     @model_validator(mode="after")
     def reject_internal_contradictions(self) -> "GninaScreeningCampaignRecord":
+        if "hit_ranking_metric" not in self.model_fields_set:
+            self.hit_ranking_metric = self.request.hit_ranking_metric
+        elif self.hit_ranking_metric != self.request.hit_ranking_metric:
+            raise ValueError(
+                "the campaign hit_ranking_metric disagrees with request.hit_ranking_metric"
+            )
         if self.selection.library_id != self.request.library_id:
             raise ValueError("the pinned selection and the request name different libraries")
         if self.selection.filter_run_id != self.request.filter_run_id:
