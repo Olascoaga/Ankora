@@ -10,15 +10,28 @@ manifest, `README.txt`, `methods.md` report and portable ZIP.
   campaign or assessed repeatability.
 - **Screening campaign (`gnina_screening`):** Each CSV row is one selected
   molecule (`row = "molecule"`). Docked molecules are ranked `1..succeeded` by
-  descending top-pose `gnina_cnn_score` with exact ties broken by applied
-  selection order; preflight-refused and engine-failed molecules remain in the
-  table unranked (`rank` blank) in selection order with blank score columns and
-  their recorded failure codes.
+  the campaign's recorded `hit_ranking_metric` (`table.ranking_metric` in
+  `manifest.json`: `"gnina_cnn_score"` by default or `"gnina_cnn_vs"` when
+  `CNN_VS = CNNscore × CNNaffinity` prioritization is selected under `ADR-028`),
+  with exact ties broken by applied selection order; preflight-refused and
+  engine-failed molecules remain in the table unranked (`rank` blank) in
+  selection order with blank score columns and their recorded failure codes.
 
-In both forms, dimensionless `gnina_cnn_score` (0–1), predicted
-`gnina_cnn_affinity_pk` (pK) and `gnina_minimized_affinity_kcal_mol` (kcal/mol)
-remain three separate columns; none is measured affinity or evidence of
-biological activity, and none shares a scale with AutoDock Vina or AutoDock4.
+In both forms (`ankora_export_format = 4`), dimensionless `gnina_cnn_score`
+(0–1), predicted `gnina_cnn_affinity_pk` (pK), composite virtual-screening score
+`gnina_cnn_vs` (`CNNscore × CNNaffinity`, accompanied by `gnina_cnn_vs_source`
+and optional `gnina_cnn_affinity_variance`), and
+`gnina_minimized_affinity_kcal_mol` (kcal/mol) remain separate columns;
+historical pre-`ADR-028` records with `cnn_vs = None` export cleanly with blank
+`gnina_cnn_vs` cells rather than retroactive mutation, while any persisted
+`cnn_vs` value is verified against `cnn_score * cnn_affinity` or raw
+`REMARK CNN_VS` before bundle creation. When a `hit_ranking_metric = "cnn_vs"`
+campaign includes any completed molecule with `CNNaffinity <= 0` (`K_d >= 1 M`),
+the recorded `GNINA_CNN_VS_NONPOSITIVE_AFFINITY` warning is preserved in
+`manifest.json` (`warnings`) and `README.txt` to disclose negative-product sign
+inversion among negative-pK decoys. None of these quantities is measured
+affinity or evidence of biological activity, and none shares a scale with
+AutoDock Vina or AutoDock4.
 
 The single-job ZIP carries the recorded receptor, prepared ligand, conformer,
 original raw poses, each published pose, execution output, job record, and

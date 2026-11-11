@@ -159,6 +159,99 @@ it("updates GNINA screening progress and automatically reads each completed job"
   window.localStorage.clear();
 });
 
+it("submits CNN_VS hit ranking metric, sorts molecules by Top CNN_VS, and surfaces non-positive pK warning", async () => {
+  window.localStorage.clear();
+  const initial = screeningCampaign();
+  initial.request.hit_ranking_metric = "cnn_vs";
+  const first = { ...initial.entries[0], status: "completed", phase: "complete", gnina_job_id: "gnina-alpha", revision: 2 };
+  const second = { ...initial.entries[1], status: "completed", phase: "complete", gnina_job_id: "gnina-beta", revision: 3 };
+  const progress = {
+    campaign_id: initial.campaign_id,
+    engine: "gnina",
+    status: "completed",
+    phase: "complete",
+    revision: 4,
+    started_at: "2026-11-06T00:00:01Z",
+    completed_at: "2026-11-06T00:01:00Z",
+    selected_count: 2,
+    completed_count: 2,
+    succeeded_count: 2,
+    failed_count: 0,
+    canceled_count: 0,
+    warnings: [
+      {
+        code: "GNINA_CNN_VS_NONPOSITIVE_AFFINITY",
+        stage: "gnina_screening",
+        message: "Synthetic non-positive CNNaffinity warning for negative-pK decoys.",
+        details: { nonpositive_count: 1 },
+        recoverable: true,
+      },
+    ],
+  };
+  const alphaJob: GninaDockingJobRecord = {
+    ...gninaJob("completed"),
+    job_id: "gnina-alpha",
+    screening_campaign_id: initial.campaign_id,
+    poses: [
+      {
+        mode: 1,
+        cnn_score: 0.9,
+        cnn_affinity: 5.0,
+        cnn_vs: 4.5,
+        cnn_vs_source: "derived_from_recorded_axes",
+        minimized_affinity_kcal_mol: -9.0,
+        artifact: { artifact_id: "pose-alpha-1", mode: 1, filename: "pose_1.pdbqt", sha256: "e".repeat(64), size_bytes: 100 },
+      },
+    ],
+  };
+  const betaJob: GninaDockingJobRecord = {
+    ...gninaJob("completed"),
+    job_id: "gnina-beta",
+    screening_campaign_id: initial.campaign_id,
+    request: { ...gninaJob("completed").request, ligand_id: "ligand-second", ligand_preparation_id: "prep-ligand-second" },
+    poses: [
+      {
+        mode: 1,
+        cnn_score: 0.82,
+        cnn_affinity: 8.0,
+        cnn_vs: 6.56,
+        cnn_vs_source: "derived_from_recorded_axes",
+        minimized_affinity_kcal_mol: -3.5,
+        artifact: { artifact_id: "pose-beta-1", mode: 1, filename: "pose_1.pdbqt", sha256: "f".repeat(64), size_bytes: 100 },
+      },
+    ],
+  };
+  let submitted: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/docking/gnina/screenings") && init?.method === "POST") {
+      submitted = JSON.parse(String(init.body));
+      return json(initial, 202);
+    }
+    if (path.endsWith("/docking/gnina/screenings")) return json([]);
+    if (path.endsWith("/progress")) return json(progress);
+    if (path.includes("/entries?after_revision=")) return json([first, second]);
+    if (path.endsWith("/docking/gnina/jobs/gnina-alpha")) return json(alphaJob);
+    if (path.endsWith("/docking/gnina/jobs/gnina-beta")) return json(betaJob);
+    return new Response("", { status: 200 });
+  });
+
+  render(<DockingWorkspace receptor={receptor} bindingSite={bindingSite} ligand={ligand} ligandInput={ligandInput} libraryInput={libraryInput} tools={gninaTools} platform="linux" />);
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.change(screen.getByLabelText("Hit ranking metric"), { target: { value: "cnn_vs" } });
+  fireEvent.click(screen.getByText("Dock this exact applied selection with GNINA"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dock 2 prepared molecules" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Dock 2 prepared molecules" }));
+
+  expect(await screen.findByText("6.560", {}, { timeout: 4000 })).toBeInTheDocument();
+  expect(submitted).toMatchObject({ hit_ranking_metric: "cnn_vs" });
+  const moleculeButtons = screen.getAllByRole("button", { name: /Molecule (1|2)/ });
+  expect(moleculeButtons[0]).toHaveTextContent("Molecule 2");
+  expect(moleculeButtons[1]).toHaveTextContent("Molecule 1");
+  expect(screen.getByRole("alert")).toHaveTextContent("GNINA_CNN_VS_NONPOSITIVE_AFFINITY");
+  window.localStorage.clear();
+});
+
 it("loads terminal entry changes returned with screening cancellation", async () => {
   window.localStorage.clear();
   const initial = screeningCampaign();

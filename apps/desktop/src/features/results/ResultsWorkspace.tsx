@@ -584,7 +584,9 @@ function CampaignBrowser({
                 {entry.failed_count > 0 ? ` · ${entry.failed_count} failed` : ""}
               </span>
             </div>
-            {entry.scoring_family === "gnina" && entry.primary_cnn_score != null ? (
+            {entry.scoring_family === "gnina" && entry.hit_ranking_metric === "cnn_vs" && entry.primary_cnn_vs != null ? (
+              <p className="results-card-best"><strong>{formatScientificNumber(entry.primary_cnn_vs, 3)}</strong><small>top GNINA CNN_VS{entry.best_molecule ? ` · ${entry.best_molecule}` : ""}</small></p>
+            ) : entry.scoring_family === "gnina" && entry.primary_cnn_score != null ? (
               <p className="results-card-best"><strong>{formatScientificNumber(entry.primary_cnn_score, 4)}</strong><small>top GNINA CNN score{entry.best_molecule ? ` · ${entry.best_molecule}` : ""}</small></p>
             ) : entry.best_result_kcal_mol === null ? (
               <p className="results-card-best muted">No result was produced.</p>
@@ -598,6 +600,9 @@ function CampaignBrowser({
                 </small>
               </p>
             )}
+            {(entry.warnings ?? []).some((warning) => warning.code === "GNINA_CNN_VS_NONPOSITIVE_AFFINITY") ? (
+              <p className="results-card-warning">CNN_VS includes non-positive CNNaffinity (≤ 0 pK)</p>
+            ) : null}
             {entry.reproducibility.status !== "measured_reproducible" ? (
               <p className="results-card-warning">
                 {entry.reproducibility.status === "measured_variable"
@@ -657,6 +662,7 @@ function CompoundTable({ entry, onInspect }: {
 
   const clusterNative = entry.scoring_family === "autodock4";
   const gnina = entry.scoring_family === "gnina";
+  const gninaRankedByVs = gnina && entry.hit_ranking_metric === "cnn_vs";
 
   return (
     <section
@@ -715,7 +721,13 @@ function CompoundTable({ entry, onInspect }: {
               <th>Chemical state</th>
               {/* The engine's own column name, so it is never just "score". */}
               <th>{page?.value_label ?? "Result (kcal/mol)"}</th>
-              {gnina ? <><th>CNN affinity (pK)</th><th>Minimized affinity (kcal/mol)</th></> : null}
+              {gnina ? (
+                <>
+                  <th>{gninaRankedByVs ? "CNN score" : "CNN_VS"}</th>
+                  <th>CNN affinity (pK)</th>
+                  <th>Minimized affinity (kcal/mol)</th>
+                </>
+              ) : null}
               {clusterNative ? <th>Clusters</th> : <th>Poses</th>}
               {clusterNative ? <th>Top cluster runs</th> : null}
               <th>MW (g/mol)</th>
@@ -738,13 +750,13 @@ function CompoundTable({ entry, onInspect }: {
                   }
                 }}
               >
-                <td>{(gnina ? row.primary_cnn_score == null : row.best_result_kcal_mol === null) ? "—" : offset + index + 1}</td>
+                <td>{(gninaRankedByVs ? row.cnn_vs == null : gnina ? row.primary_cnn_score == null : row.best_result_kcal_mol === null) ? "—" : offset + index + 1}</td>
                 {/* Manifest order, kept beside the ranking that reordered it. */}
                 <td>{row.source_index + 1}</td>
                 <td>{row.name}</td>
                 <td>{row.chemical_state_id ? <><code>{row.chemical_state_id.slice(0, 10)}…</code><small>charge {row.chemical_state_formal_charge !== null && row.chemical_state_formal_charge !== undefined ? `${row.chemical_state_formal_charge >= 0 ? "+" : ""}${row.chemical_state_formal_charge}` : "not recorded"}</small></> : "Historical · not recorded"}</td>
-                <td>{formatScientificNumber(gnina ? row.primary_cnn_score ?? null : row.best_result_kcal_mol, gnina ? 4 : 2)}</td>
-                {gnina ? <><td>{formatScientificNumber(row.cnn_affinity_pk ?? null, 3)}</td><td>{formatScientificNumber(row.minimized_affinity_kcal_mol ?? null, 3)}</td></> : null}
+                <td>{formatScientificNumber(gninaRankedByVs ? row.cnn_vs ?? null : gnina ? row.primary_cnn_score ?? null : row.best_result_kcal_mol, gninaRankedByVs ? 3 : gnina ? 4 : 2)}</td>
+                {gnina ? <><td>{gninaRankedByVs ? formatScientificNumber(row.primary_cnn_score ?? null, 4) : row.cnn_vs != null ? formatScientificNumber(row.cnn_vs, 3) : "—"}</td><td>{formatScientificNumber(row.cnn_affinity_pk ?? null, 3)}</td><td>{formatScientificNumber(row.minimized_affinity_kcal_mol ?? null, 3)}</td></> : null}
                 <td>{(clusterNative ? row.cluster_count : row.pose_count) ?? "—"}</td>
                 {clusterNative ? <td>{row.top_cluster_runs ?? "—"}</td> : null}
                 <td>{formatScientificNumber(row.molecular_weight_g_mol, 1)}</td>
@@ -789,12 +801,28 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
         <dl className="docking-evidence">
           <div><dt>Mode</dt><dd>{entry.mode === "screening" ? "Screening" : "Single ligand"}</dd></div>
           <div><dt>Engine</dt><dd>{entry.engine_label}</dd></div>
+          {entry.hit_ranking_metric ? (
+            <div>
+              <dt>Hit ranking</dt>
+              <dd>{entry.hit_ranking_metric === "cnn_vs" ? "CNN_VS (CNNscore × CNNaffinity)" : "CNNscore"}</dd>
+            </div>
+          ) : null}
           <div><dt>Status</dt><dd>{entry.status}</dd></div>
           <div><dt>Started</dt><dd>{formatApplicationDateTime(entry.created_at)}</dd></div>
           {entry.completed_at
             ? <div><dt>Finished</dt><dd>{formatApplicationDateTime(entry.completed_at)}</dd></div>
             : null}
         </dl>
+        {(entry.warnings ?? []).length > 0 ? (
+          <div className="protonation-blocker" role="alert">
+            {(entry.warnings ?? []).map((warning, index) => (
+              <div key={`${warning.code}-${index}`}>
+                <strong>{warning.code}</strong>
+                <small>{warning.message}</small>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
       <section className="receptor-section">
         <div className="filter-heading"><span>Reproducibility</span></div>

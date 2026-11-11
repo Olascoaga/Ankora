@@ -54,6 +54,18 @@ VALUE_LABEL = {
     ScoringFamily.GNINA: "CNN score (higher ranks first)",
 }
 
+GNINA_CNN_VS_LABEL = "CNN_VS (higher ranks first)"
+
+
+def _value_label(entry: CatalogEntry) -> str:
+    if entry.scoring_family is ScoringFamily.GNINA and entry.hit_ranking_metric == "cnn_vs":
+        return GNINA_CNN_VS_LABEL
+    return VALUE_LABEL[entry.scoring_family]
+
+
+def _effective_cnn_vs(pose: GninaPoseResult) -> float:
+    return pose.cnn_vs if pose.cnn_vs is not None else pose.cnn_score * pose.cnn_affinity
+
 
 class ResultCatalogService:
     def __init__(
@@ -243,7 +255,7 @@ class ResultCatalogService:
             return CompoundPage(
                 catalog_id=catalog_id,
                 engine_label=entry.engine_label,
-                value_label=VALUE_LABEL[entry.scoring_family],
+                value_label=_value_label(entry),
                 rows=rows,
                 total=total,
                 offset=offset,
@@ -263,13 +275,26 @@ class ResultCatalogService:
                 or needle in (pair[1].canonical_smiles or "").casefold()
             ]
         if entry.scoring_family is ScoringFamily.GNINA:
-            indexed_rows.sort(
-                key=lambda pair: (
-                    pair[1].primary_cnn_score is None,
-                    -(pair[1].primary_cnn_score or 0.0),
-                    pair[0],
+            if entry.hit_ranking_metric == "cnn_vs":
+                indexed_rows.sort(
+                    key=lambda pair: (
+                        pair[1].cnn_vs is None,
+                        -(pair[1].cnn_vs if pair[1].cnn_vs is not None else 0.0),
+                        pair[0],
+                    )
                 )
-            )
+            else:
+                indexed_rows.sort(
+                    key=lambda pair: (
+                        pair[1].primary_cnn_score is None,
+                        -(
+                            pair[1].primary_cnn_score
+                            if pair[1].primary_cnn_score is not None
+                            else 0.0
+                        ),
+                        pair[0],
+                    )
+                )
         else:
             indexed_rows.sort(
                 key=lambda pair: (
@@ -284,7 +309,7 @@ class ResultCatalogService:
         return CompoundPage(
             catalog_id=catalog_id,
             engine_label=entry.engine_label,
-            value_label=VALUE_LABEL[entry.scoring_family],
+            value_label=_value_label(entry),
             rows=rows[offset : offset + limit],
             total=len(rows),
             offset=offset,
@@ -418,6 +443,7 @@ class ResultCatalogService:
                 ).model_copy(
                     update={
                         "primary_cnn_score": pose.cnn_score if pose else None,
+                        "cnn_vs": pose.cnn_vs if pose else None,
                         "cnn_affinity_pk": pose.cnn_affinity if pose else None,
                         "minimized_affinity_kcal_mol": pose.minimized_affinity_kcal_mol
                         if pose
@@ -583,6 +609,15 @@ class ResultCatalogService:
             failure_code=entry.failure.code if entry.failure else None,
             best_result_kcal_mol=None,
             primary_cnn_score=pose.cnn_score if pose else None,
+            cnn_vs=(
+                (
+                    _effective_cnn_vs(pose)
+                    if campaign.hit_ranking_metric == "cnn_vs"
+                    else pose.cnn_vs
+                )
+                if pose
+                else None
+            ),
             cnn_affinity_pk=pose.cnn_affinity if pose else None,
             minimized_affinity_kcal_mol=pose.minimized_affinity_kcal_mol if pose else None,
             pose_count=pose_count,
@@ -602,7 +637,12 @@ class ResultCatalogService:
                     store=job_store, campaign=record, entry=entry
                 )
                 top_pose = loaded_job.poses[0]
-                if best_pose is None or top_pose.cnn_score > best_pose.cnn_score:
+                is_better = best_pose is None or (
+                    _effective_cnn_vs(top_pose) > _effective_cnn_vs(best_pose)
+                    if record.hit_ranking_metric == "cnn_vs"
+                    else top_pose.cnn_score > best_pose.cnn_score
+                )
+                if is_better:
                     best_pose = top_pose
                     best_molecule = entry.name or self._inspect(entry.ligand_id)[0]
             elif entry.gnina_job_id is not None:
@@ -641,10 +681,21 @@ class ResultCatalogService:
             canceled_count=record.canceled_count,
             best_result_kcal_mol=None,
             primary_cnn_score=best_pose.cnn_score if best_pose else None,
+            primary_cnn_vs=(
+                (
+                    _effective_cnn_vs(best_pose)
+                    if record.hit_ranking_metric == "cnn_vs"
+                    else best_pose.cnn_vs
+                )
+                if best_pose
+                else None
+            ),
             cnn_affinity_pk=best_pose.cnn_affinity if best_pose else None,
             minimized_affinity_kcal_mol=(
                 best_pose.minimized_affinity_kcal_mol if best_pose else None
             ),
+            hit_ranking_metric=record.hit_ranking_metric,
+            warnings=list(record.warnings),
             best_molecule=best_molecule,
         )
 
@@ -762,6 +813,7 @@ class ResultCatalogService:
             failed_count=1 if record.status.value == "failed" else 0,
             canceled_count=1 if record.status.value == "canceled" else 0,
             primary_cnn_score=pose.cnn_score if pose else None,
+            primary_cnn_vs=pose.cnn_vs if pose else None,
             cnn_affinity_pk=pose.cnn_affinity if pose else None,
             minimized_affinity_kcal_mol=pose.minimized_affinity_kcal_mol if pose else None,
         )

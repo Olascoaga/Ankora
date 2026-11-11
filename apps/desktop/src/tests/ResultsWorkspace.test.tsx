@@ -869,3 +869,85 @@ it("opens M9 pose interactions from a multi-ligand GNINA screening molecule with
   );
   expect(within(panel).getByRole("button", { name: "Analyze this pose with ProLIF" })).toBeEnabled();
 });
+
+it("renders CNN_VS-ranked GNINA screening card, table columns, and sign-ambiguity alert", async () => {
+  const screeningEntry: CatalogEntry = {
+    ...baseEntry,
+    catalog_id: "gnina_screening:campaign-cnn-vs",
+    engine_key: "gnina_screening",
+    record_id: "campaign-cnn-vs",
+    mode: "screening",
+    scoring_family: "gnina",
+    backend: "cuda",
+    engine_label: "GNINA 1.3.3",
+    engine_version: "1.3.3",
+    executable_sha256: "3".repeat(64),
+    device_name: "GPU-synthetic-0",
+    selected_count: 2,
+    succeeded_count: 2,
+    failed_count: 0,
+    best_result_kcal_mol: null,
+    primary_cnn_score: 0.82,
+    primary_cnn_vs: 6.56,
+    cnn_affinity_pk: 8.0,
+    minimized_affinity_kcal_mol: -3.5,
+    hit_ranking_metric: "cnn_vs",
+    best_molecule: "Synthetic Beta",
+    warnings: [
+      {
+        code: "GNINA_CNN_VS_NONPOSITIVE_AFFINITY",
+        stage: "gnina_screening",
+        message: "Synthetic non-positive CNNaffinity sign-ambiguity warning.",
+        details: { nonpositive_count: 1 },
+        recoverable: true,
+      },
+    ],
+  };
+  const compounds: CompoundPage = {
+    catalog_id: screeningEntry.catalog_id,
+    engine_label: screeningEntry.engine_label,
+    value_label: "CNN_VS (higher ranks first)",
+    rows: [
+      {
+        ligand_id: "ligand-beta",
+        chemical_state_id: "state-beta",
+        chemical_state_formal_charge: 0,
+        source_index: 1,
+        name: "Synthetic Beta",
+        canonical_smiles: "CCN",
+        molecular_weight_g_mol: 45.08,
+        status: "completed",
+        failure_code: null,
+        best_result_kcal_mol: null,
+        primary_cnn_score: 0.82,
+        cnn_vs: 6.56,
+        cnn_affinity_pk: 8.0,
+        minimized_affinity_kcal_mol: -3.5,
+        pose_count: 1,
+        cluster_count: null,
+        top_cluster_runs: null,
+      },
+    ],
+    total: 1,
+    offset: 0,
+    limit: 100,
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/compounds")) return json(compounds);
+    return json({ entries: [screeningEntry], total: 1, offset: 0, limit: 25 });
+  });
+  render(<ResultsWorkspace />);
+  const card = (await screen.findByRole("list", { name: "Recorded results" })).querySelector('[role="listitem"]')!;
+  expect(card).toHaveTextContent("6.560");
+  expect(card).toHaveTextContent("top GNINA CNN_VS · Synthetic Beta");
+  expect(card).toHaveTextContent("CNN_VS includes non-positive CNNaffinity (≤ 0 pK)");
+
+  fireEvent.click(card);
+  const table = await screen.findByRole("region", { name: "Molecules in this result" });
+  expect(within(table).getByText("CNN_VS (higher ranks first)")).toBeInTheDocument();
+  expect(within(table).getByText("CNN score")).toBeInTheDocument();
+  expect(within(table).getByText("6.560")).toBeInTheDocument();
+  expect(within(table).getByText("0.8200")).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("GNINA_CNN_VS_NONPOSITIVE_AFFINITY");
+});

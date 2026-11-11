@@ -18,8 +18,11 @@ Two boundaries the shapes enforce:
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ankora_backend.schemas.warnings import StructuredWarning
 
 
 class ResultMode(StrEnum):
@@ -141,10 +144,14 @@ class CatalogEntry(BaseModel):
     canceled_count: int = Field(ge=0)
     # This engine's own best number, only ever meaningful beside `engine_label`.
     best_result_kcal_mol: float | None = None
-    # GNINA ranks by dimensionless CNNscore, not by its energy or pK value.
+    # GNINA ranks poses by dimensionless CNNscore; screening campaigns may
+    # prioritize compounds by CNNscore or CNN_VS (CNNscore * CNNaffinity).
     primary_cnn_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    primary_cnn_vs: float | None = Field(default=None, allow_inf_nan=False)
     cnn_affinity_pk: float | None = Field(default=None, allow_inf_nan=False)
     minimized_affinity_kcal_mol: float | None = Field(default=None, allow_inf_nan=False)
+    hit_ranking_metric: Literal["cnn_score", "cnn_vs"] | None = None
+    warnings: list[StructuredWarning] = Field(default_factory=list)
     best_molecule: str | None = None
 
 
@@ -206,6 +213,7 @@ class CompoundRow(BaseModel):
     failure_code: str | None = None
     best_result_kcal_mol: float | None = None
     primary_cnn_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    cnn_vs: float | None = Field(default=None, allow_inf_nan=False)
     cnn_affinity_pk: float | None = Field(default=None, allow_inf_nan=False)
     minimized_affinity_kcal_mol: float | None = Field(default=None, allow_inf_nan=False)
     # Vina counts poses; AutoDock counts clusters and the population of the top

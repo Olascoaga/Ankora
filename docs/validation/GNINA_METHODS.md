@@ -49,19 +49,27 @@ another engine's renderer:
 
 ## Score semantics
 
-The three quantities stay three quantities, each with its unit and direction:
+The GNINA quantities stay distinct, each with its own unit and direction:
 
 | Quantity | Unit | Direction | Role |
 |---|---|---|---|
-| CNN pose score | dimensionless, 0–1 | higher ranks earlier | the engine's ordering |
+| CNN pose score | dimensionless, 0–1 | higher ranks earlier | within-ligand pose ordering (and default screening ranking) |
 | CNN affinity | pK | higher is stronger predicted affinity | prediction |
-| Minimized affinity | kcal mol⁻¹ | more negative is more favourable | prediction |
+| CNN_VS (`CNNscore × CNNaffinity`) | pK-weighted | higher ranks earlier | optional campaign-level virtual-screening hit prioritization (`ADR-028`) |
+| Minimized affinity | kcal mol⁻¹ | more negative is more favourable | empirical energy prediction |
 
 The section states that the ranking did not use the minimized affinity, so the
-top-ranked pose need not be the lowest-energy one. All three are predictions of
-this engine for this pose. None is a measured binding affinity, none is evidence
-of biological activity, and none shares a scale with a Vina score or an
-AutoDock4 binding energy. No cross-engine pooling or joint ranking is produced.
+top-ranked pose or compound need not be the lowest-energy one. When a screening
+campaign records `hit_ranking_metric = "cnn_vs"`, Methods states explicitly that
+between-ligand prioritization used descending top-pose `CNN_VS = CNNscore × CNNaffinity`
+(while within-ligand modes remained ordered by `CNNscore`), reports all four
+quantities for the top-ranked compound, and discloses
+`GNINA_CNN_VS_NONPOSITIVE_AFFINITY` whenever any completed compound recorded
+`CNNaffinity <= 0` (`K_d >= 1 M`), where negative products invert `CNNscore`
+monotonicity among negative-pK decoys. None of these predictions is a measured
+binding affinity, none is evidence of biological activity, and none shares a
+scale with a Vina score or an AutoDock4 binding energy. No cross-engine pooling
+or joint ranking is produced.
 
 A CUDA observation is reported as confirming that the engine's own process was
 seen on the named device — not as proof that every neural-network operation

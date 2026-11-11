@@ -1211,3 +1211,340 @@ def test_gnina_screening_methods_renders_preserved_cuda_campaign_copy(
         assert "not independent proof that every neural-network operation" in markdown
         assert "doi:10.1186/s13321-021-00522-2" in markdown
         assert "Sunseri J" in markdown
+
+
+def test_gnina_screening_methods_cnn_vs_ranks_and_discloses_nonpositive_affinity(
+    tmp_path, monkeypatch
+) -> None:
+    """Under hit_ranking_metric='cnn_vs', Methods ranks by CNN_VS and discloses <= 0 pK."""
+    import json
+
+    from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
+    from ankora_backend.schemas.gnina_screening import (
+        GninaScreeningCampaignRecord,
+        GninaScreeningEntry,
+        GninaScreeningRequest,
+        GninaScreeningSelection,
+    )
+    from ankora_backend.schemas.ligands import (
+        LigandFilterDisposition,
+        LigandLibraryFilterPlan,
+        LigandMicrostatePlan,
+    )
+
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    job_store = GninaJobStore.from_environment()
+    screening_store = GninaScreeningStore.from_environment()
+    now = datetime(2026, 8, 26, 21, 0, tzinfo=UTC)
+
+    receptor_file = tmp_path / "receptor.pdbqt"
+    receptor_file.write_bytes(RECEPTOR_BYTES)
+
+    # Synthetic Alpha has higher CNNscore (0.92), Synthetic Beta has higher CNN_VS (0.84*8.0=6.72),
+    # and Synthetic Decoy has negative CNNaffinity (-0.4 pK).
+    specs = (
+        ("synthetic-lig-a", "Synthetic Alpha", 0, 0.92, 5.0, -9.4),
+        ("synthetic-lig-b", "Synthetic Beta", 1, 0.84, 8.0, -4.2),
+        ("synthetic-lig-d", "Synthetic Decoy", 2, 0.50, -0.4, -1.5),
+    )
+    campaign_id = screening_store.new_campaign_id()
+    parameters = GninaDockingParameters(compute="cuda", device_index=0)
+    request = GninaScreeningRequest(
+        receptor_id="synthetic-receptor",
+        binding_site_id="synthetic-site",
+        library_id="synthetic-library",
+        filter_run_id="synthetic-filter",
+        parameters=parameters,
+        hit_ranking_metric="cnn_vs",
+        acknowledge_inputs_and_scoring=True,
+    )
+
+    pdbqt_paths = {}
+    conf_paths = {}
+    pdbqt_shas = {}
+    conf_shas = {}
+    conf_ids = {}
+    entries = []
+    child_jobs = {}
+    for lig_id, label, idx, cnn_score, cnn_aff, energy in specs:
+        lig_path = tmp_path / f"{lig_id}.pdbqt"
+        conf_path = tmp_path / f"{lig_id}.sdf"
+        lig_bytes = f"synthetic {lig_id} pdbqt".encode()
+        conf_bytes = f"synthetic {lig_id} sdf".encode()
+        lig_path.write_bytes(lig_bytes)
+        conf_path.write_bytes(conf_bytes)
+        lig_sha = sha256(lig_bytes).hexdigest()
+        conf_sha = sha256(conf_bytes).hexdigest()
+        prep_id = f"prep-{lig_id}"
+        conf_id = f"conf-{lig_id}"
+        pdbqt_paths[prep_id] = lig_path
+        conf_paths[conf_id] = conf_path
+        pdbqt_shas[prep_id] = lig_sha
+        conf_shas[conf_id] = conf_sha
+        conf_ids[prep_id] = conf_id
+
+        pose_bytes = f"synthetic pose for {lig_id}".encode()
+        job = _job(
+            job_store,
+            screening_campaign_id=campaign_id,
+            parameters=parameters,
+            request=GninaDockingRequest(
+                receptor_id="synthetic-receptor",
+                binding_site_id="synthetic-site",
+                ligand_id=lig_id,
+                ligand_preparation_id=prep_id,
+                parameters=parameters,
+                acknowledge_inputs_and_scoring=True,
+            ),
+            ligand_sha256=lig_sha,
+            conformer_sha256=conf_sha,
+            execution=GninaExecutionEvidence(
+                command=["synthetic-gnina"],
+                exit_code=0,
+                stdout="",
+                stderr="",
+                gpu_process_observed=True,
+                gpu_observation="synthetic nvidia-smi",
+                requested_gpu_uuid="GPU-synthetic-0",
+                observed_gpu_uuid="GPU-synthetic-0",
+            ),
+            poses=[
+                GninaPoseResult(
+                    mode=1,
+                    cnn_score=cnn_score,
+                    cnn_affinity=cnn_aff,
+                    cnn_vs=cnn_score * cnn_aff,
+                    cnn_vs_source="derived_from_recorded_axes",
+                    minimized_affinity_kcal_mol=energy,
+                    artifact=GninaPoseArtifact(
+                        artifact_id="pose-1",
+                        mode=1,
+                        filename="pose_1.pdbqt",
+                        sha256=sha256(pose_bytes).hexdigest(),
+                        size_bytes=len(pose_bytes),
+                    ),
+                )
+            ],
+        )
+        job_store.create_job(job)
+        job_store.write_artifact(job.job_id, "receptor.pdbqt", RECEPTOR_BYTES)
+        job_store.write_artifact(job.job_id, "ligand.pdbqt", lig_bytes)
+        job_store.write_artifact(job.job_id, "conformer.sdf", conf_bytes)
+        job_store.write_artifact(job.job_id, "pose_1.pdbqt", pose_bytes)
+        child_jobs[lig_id] = job
+        entries.append(
+            GninaScreeningEntry(
+                ligand_id=lig_id,
+                chemical_state_id=f"state-{lig_id}",
+                source_index=idx,
+                name=label,
+                ligand_preparation_id=prep_id,
+                conformer_id=conf_id,
+                ligand_sha256=lig_sha,
+                conformer_sha256=conf_sha,
+                status=DockingJobStatus.QUEUED,
+                phase=DockingJobPhase.QUEUED,
+            )
+        )
+
+    plan = LigandLibraryFilterPlan()
+    microstate_plan = LigandMicrostatePlan()
+    summary_dict = {
+        "imported_count": 3,
+        "eligible_count": 3,
+        "excluded_count": 0,
+        "needs_decision_count": 0,
+        "pains_match_count": 0,
+        "brenk_match_count": 0,
+        "duplicate_count": 0,
+    }
+    eval_dicts = [
+        {
+            "ligand_id": item.ligand_id,
+            "state_id": item.chemical_state_id,
+            "record_index": item.source_index,
+            "disposition": LigandFilterDisposition.ELIGIBLE.value,
+        }
+        for item in entries
+    ]
+    manifest_payload = {
+        "filter_run_id": "synthetic-filter",
+        "library_id": "synthetic-library",
+        "created_at": now.isoformat(),
+        "rdkit_version": "2025.09.6",
+        "worker_count": 1,
+        "plan": plan.model_dump(mode="json"),
+        "microstate_plan": microstate_plan.model_dump(mode="json"),
+        "summary": summary_dict,
+        "selected_ligand_ids": [item.ligand_id for item in entries],
+        "evaluations": eval_dicts,
+    }
+    manifest_file = tmp_path / "filter_manifest_cnn_vs.json"
+    manifest_bytes = json.dumps(manifest_payload).encode("utf-8")
+    manifest_file.write_bytes(manifest_bytes)
+    manifest_sha = sha256(manifest_bytes).hexdigest()
+
+    filter_run_record = SimpleNamespace(
+        artifact=SimpleNamespace(
+            library_id="synthetic-library",
+            filter_run_id="synthetic-filter",
+            created_at=now,
+            size_bytes=len(manifest_bytes),
+            sha256=manifest_sha,
+        ),
+        rdkit_version="2025.09.6",
+        worker_count=1,
+        plan=plan,
+        microstate_plan=microstate_plan,
+        summary=SimpleNamespace(**summary_dict, model_dump=lambda mode="json": dict(summary_dict)),
+        selected_ligand_ids=[item.ligand_id for item in entries],
+        evaluations=[
+            SimpleNamespace(
+                ligand_id=item["ligand_id"],
+                state_id=item["state_id"],
+                record_index=item["record_index"],
+                disposition=LigandFilterDisposition.ELIGIBLE,
+                model_dump=lambda mode="json", row=item: dict(row),
+            )
+            for item in eval_dicts
+        ],
+    )
+    monkeypatch.setattr(
+        "ankora_backend.persistence.gnina_screening_store.verified_screening_selection",
+        lambda **_kwargs: filter_run_record,
+    )
+    monkeypatch.setattr(
+        GninaScreeningStore, "_verify_entry_preparation", lambda *_args, **_kwargs: None
+    )
+    first_job = child_jobs["synthetic-lig-a"]
+    screening_store.create_campaign(
+        GninaScreeningCampaignRecord(
+            campaign_id=campaign_id,
+            status=DockingJobStatus.QUEUED,
+            phase=DockingJobPhase.QUEUED,
+            created_at=now,
+            request=request,
+            tool=first_job.tool,
+            selection=GninaScreeningSelection(
+                library_id="synthetic-library",
+                filter_run_id="synthetic-filter",
+                manifest_artifact_id="synthetic-filter",
+                manifest_sha256=manifest_sha,
+            ),
+            receptor_output_artifact_id=RECEPTOR_ARTIFACT,
+            receptor_sha256=RECEPTOR_SHA,
+            box=first_job.box,
+            selected_count=3,
+            entries=entries,
+        )
+    )
+    for lig_id, child_job in child_jobs.items():
+        stored = screening_store.load_entry(campaign_id, lig_id)
+        assert stored is not None
+        running = screening_store.update_entry(
+            campaign_id,
+            stored.model_copy(
+                update={
+                    "status": DockingJobStatus.RUNNING,
+                    "phase": DockingJobPhase.DOCKING,
+                    "gnina_job_id": child_job.job_id,
+                    "started_at": now,
+                }
+            ),
+        )
+        screening_store.update_entry(
+            campaign_id,
+            running.model_copy(
+                update={
+                    "status": DockingJobStatus.COMPLETED,
+                    "phase": DockingJobPhase.COMPLETE,
+                    "completed_at": now,
+                }
+            ),
+        )
+    screening_store.finalize_campaign(campaign_id)
+
+    ligand_stub = SimpleNamespace(
+        load_library_record=lambda _lib_id: SimpleNamespace(
+            artifact=SimpleNamespace(
+                record_count=3,
+                filename="synthetic_lib.sdf",
+                format="sdf",
+            ),
+            imported_count=3,
+            failed_count=0,
+        ),
+        load_filter_run=lambda _lib_id, _run_id: filter_run_record,
+        filter_run_content_path=lambda _lib_id, _run_id: manifest_file,
+        load_pdbqt_record=lambda lig_id, prep_id: SimpleNamespace(
+            artifact=SimpleNamespace(
+                ligand_id=lig_id,
+                conformer_id=conf_ids[prep_id],
+                sha256=pdbqt_shas[prep_id],
+            ),
+            charge_model="gasteiger",
+            tool=SimpleNamespace(name="Meeko", version="0.7.1"),
+        ),
+        pdbqt_content_path=lambda _lig_id, prep_id: pdbqt_paths[prep_id],
+        load_conformer_record=lambda _lig_id, conf_id: SimpleNamespace(
+            artifact=SimpleNamespace(sha256=conf_shas[conf_id]),
+            minimization=SimpleNamespace(
+                embedding_method="ETKDGv3",
+                force_field="MMFF94s",
+                max_iterations=500,
+                random_seed=20260819,
+                conformer_pool_size=20,
+                independent_from_source_coordinates=True,
+            ),
+            provenance=SimpleNamespace(
+                input_artifacts=[f"state-{conf_id[5:]}"],
+                tool=SimpleNamespace(name="RDKit ETKDG/MMFF", version="2025.09.6"),
+            ),
+        ),
+        conformer_content_path=lambda _lig_id, conf_id: conf_paths[conf_id],
+        load_record=lambda lig_id: SimpleNamespace(
+            inspection=SimpleNamespace(
+                name=lig_id,
+                canonical_smiles="CCO",
+                molecular_weight_g_mol=46.07,
+                formal_charge=0,
+            ),
+            state=SimpleNamespace(state_id=f"state-{lig_id}"),
+        ),
+    )
+
+    catalog = ResultCatalogService(
+        docking_store=_Missing(),  # type: ignore[arg-type]
+        autodock4_store=_Missing(),  # type: ignore[arg-type]
+        autodock_gpu_store=_Missing(),  # type: ignore[arg-type]
+        binding_site_store=_Missing(),  # type: ignore[arg-type]
+        ligand_store=ligand_stub,  # type: ignore[arg-type]
+        gnina_store=job_store,
+        gnina_screening_store=screening_store,
+    )
+    service = MethodsReportService(
+        catalog=catalog,
+        structures=_structures(),  # type: ignore[arg-type]
+        receptors=SimpleNamespace(
+            load_record=lambda _: _receptor(),
+            content_path=lambda _rec, _art: receptor_file,
+        ),  # type: ignore[arg-type]
+        binding_sites=SimpleNamespace(load_record=lambda _: _site()),  # type: ignore[arg-type]
+        pockets=_Missing(),  # type: ignore[arg-type]
+        ligands=ligand_stub,  # type: ignore[arg-type]
+        maps=_Missing(),  # type: ignore[arg-type]
+        docking=_Missing(),  # type: ignore[arg-type]
+        autodock4=_Missing(),  # type: ignore[arg-type]
+        autodock_gpu=_Missing(),  # type: ignore[arg-type]
+        gnina=job_store,
+        gnina_screening=screening_store,
+    )
+    report = service.render(f"gnina_screening:{campaign_id}")
+    assert report.gaps == []
+    assert "descending top-pose `CNN_VS` (`CNNscore × CNNaffinity`)" in report.markdown
+    assert "The top-ranked compound (Synthetic Beta)" in report.markdown
+    assert "`CNN_VS` of 6.72" in report.markdown
+    assert "GNINA_CNN_VS_NONPOSITIVE_AFFINITY" in report.markdown
+    for forbidden in ("measured affinity of", "experimentally", "validated"):
+        assert forbidden not in report.markdown.lower()
+

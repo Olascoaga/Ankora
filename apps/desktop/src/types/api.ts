@@ -1026,11 +1026,17 @@ export interface GninaDockingRequest {
   acknowledge_inputs_and_scoring: boolean;
 }
 
+export type GninaCnnVsSource = "engine_emitted" | "derived_from_recorded_axes";
+export type GninaHitRankingMetric = "cnn_score" | "cnn_vs";
+
 export interface GninaPoseResult {
   mode: number;
   minimized_affinity_kcal_mol: number;
   cnn_score: number;
   cnn_affinity: number;
+  cnn_vs?: number | null;
+  cnn_vs_source?: GninaCnnVsSource | null;
+  cnn_affinity_variance?: number | null;
   artifact: { artifact_id: string; mode: number; filename: string; sha256: string; size_bytes: number };
 }
 
@@ -1110,6 +1116,7 @@ export interface GninaScreeningRequest {
   filter_run_id: string;
   /** The single-job parameters unchanged; GNINA settings stay GNINA-specific. */
   parameters: GninaDockingParameters;
+  hit_ranking_metric?: GninaHitRankingMetric;
   acknowledge_inputs_and_scoring: boolean;
 }
 
@@ -1127,6 +1134,7 @@ export interface GninaScreeningProgress {
   succeeded_count: number;
   failed_count: number;
   canceled_count: number;
+  warnings?: StructuredWarning[];
 }
 
 export interface GninaScreeningCampaignRecord {
@@ -1138,6 +1146,7 @@ export interface GninaScreeningCampaignRecord {
   started_at: string | null;
   completed_at: string | null;
   request: GninaScreeningRequest;
+  hit_ranking_metric?: GninaHitRankingMetric;
   tool: { version: string; sha256: string; architecture: "x86_64" };
   selection: GninaScreeningSelection;
   receptor_output_artifact_id: string;
@@ -2031,8 +2040,11 @@ export interface CatalogEntry {
   /** This engine's own best number, only meaningful beside `engine_label`. */
   best_result_kcal_mol: number | null;
   primary_cnn_score?: number | null;
+  primary_cnn_vs?: number | null;
   cnn_affinity_pk?: number | null;
   minimized_affinity_kcal_mol?: number | null;
+  hit_ranking_metric?: GninaHitRankingMetric | null;
+  warnings?: StructuredWarning[];
   best_molecule: string | null;
 }
 
@@ -2073,6 +2085,7 @@ export interface CompoundRow {
   failure_code: string | null;
   best_result_kcal_mol: number | null;
   primary_cnn_score?: number | null;
+  cnn_vs?: number | null;
   cnn_affinity_pk?: number | null;
   minimized_affinity_kcal_mol?: number | null;
   /** Vina counts poses; AutoDock counts clusters. Neither is fabricated. */

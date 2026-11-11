@@ -469,7 +469,7 @@ def test_a_campaign_export_indexes_and_zips_its_existing_m9_evidence(
     exported_manifest = json.loads(
         (Path(str(exported["directory"])) / "manifest.json").read_text(encoding="utf-8")
     )
-    assert exported_manifest["ankora_export_format"] == 3
+    assert exported_manifest["ankora_export_format"] == 4
     assert exported_manifest["source_kind"] == "vina_batch"
     assert exported_manifest["source_id"] == "synthetic-batch"
     assert exported_manifest["bundle"] == {

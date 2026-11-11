@@ -7,6 +7,7 @@ import type {
   BindingSiteRecord,
   GninaDockingJobRecord,
   GninaDockingParameters,
+  GninaHitRankingMetric,
   GninaPoseResult,
   GninaScreeningCampaignRecord,
   GninaScreeningEntry,
@@ -51,7 +52,7 @@ interface GninaScreeningWorkspaceProps {
 
 const TERMINAL = new Set(["completed", "failed", "canceled"]);
 
-type EntrySortKey = "selection" | "name" | "cnn_score" | "status";
+type EntrySortKey = "selection" | "name" | "cnn_score" | "cnn_vs" | "status";
 type SortDirection = "ascending" | "descending";
 
 export function GninaScreeningWorkspace({
@@ -63,6 +64,7 @@ export function GninaScreeningWorkspace({
   onActivityChange,
 }: GninaScreeningWorkspaceProps) {
   const [parameters, setParameters] = useState<GninaDockingParameters>(defaultGninaParameters);
+  const [hitRankingMetric, setHitRankingMetric] = useState<GninaHitRankingMetric>("cnn_score");
   const [acknowledged, setAcknowledged] = useState(false);
   const [campaign, setCampaign] = useState<GninaScreeningCampaignRecord | null>(null);
   const [jobs, setJobs] = useState<Record<string, GninaDockingJobRecord>>({});
@@ -182,8 +184,12 @@ export function GninaScreeningWorkspace({
         const mismatch = describeInputMismatch(record, receptor, bindingSite, libraryInput);
         if (mismatch) throw new Error(mismatch);
         revisionRef.current = record.revision;
+        const metric = campaignRankingMetric(record);
         setCampaign(record);
         setParameters(record.request.parameters);
+        setHitRankingMetric(metric);
+        setSortKey(metric === "cnn_vs" ? "cnn_vs" : "selection");
+        setSortDirection(metric === "cnn_vs" ? "descending" : "ascending");
       })
       .catch((reason: unknown) => {
         if (!disposed) {
@@ -213,8 +219,12 @@ export function GninaScreeningWorkspace({
       const mismatch = describeInputMismatch(record, receptor, bindingSite, libraryInput);
       if (mismatch) throw new Error(mismatch);
       revisionRef.current = record.revision;
+      const metric = campaignRankingMetric(record);
       setCampaign(record);
       setParameters(record.request.parameters);
+      setHitRankingMetric(metric);
+      setSortKey(metric === "cnn_vs" ? "cnn_vs" : "selection");
+      setSortDirection(metric === "cnn_vs" ? "descending" : "ascending");
       setJobs({});
       setJobErrors({});
       setSelectedLigandId(null);
@@ -304,6 +314,7 @@ export function GninaScreeningWorkspace({
         library_id: libraryInput.library_id,
         filter_run_id: libraryInput.filter_run_id,
         parameters,
+        hit_ranking_metric: hitRankingMetric,
         acknowledge_inputs_and_scoring: true,
       });
       try {
@@ -312,7 +323,10 @@ export function GninaScreeningWorkspace({
         /* the campaign is still recorded by the backend */
       }
       revisionRef.current = next.revision;
+      const metric = campaignRankingMetric(next);
       setCampaign(next);
+      setSortKey(metric === "cnn_vs" ? "cnn_vs" : "selection");
+      setSortDirection(metric === "cnn_vs" ? "descending" : "ascending");
       setJobs({});
       setJobErrors({});
       setSelectedLigandId(null);
@@ -440,9 +454,9 @@ export function GninaScreeningWorkspace({
       return;
     }
     setSortKey(nextKey);
-    // GNINA ranks poses by descending CNN score, so that is the direction a
-    // score column starts in; everything else reads naturally ascending.
-    setSortDirection(nextKey === "cnn_score" ? "descending" : "ascending");
+    // GNINA ranks poses by descending CNN score (and hits by descending CNN_VS),
+    // so score columns start descending; everything else reads naturally ascending.
+    setSortDirection(nextKey === "cnn_score" || nextKey === "cnn_vs" ? "descending" : "ascending");
   }
 
   const topPoseFor = (entry: GninaScreeningEntry): GninaPoseResult | null => {
@@ -518,6 +532,12 @@ export function GninaScreeningWorkspace({
             </details>
           </div>
         ) : null}
+        {campaign?.warnings.filter((warning) => warning.code === "GNINA_CNN_VS_NONPOSITIVE_AFFINITY").map((warning, index) => (
+          <div className="protonation-blocker" role="alert" key={`${warning.code}-${index}`}>
+            <strong>CNN_VS sign-ambiguity warning · {warning.code}</strong>
+            <small>{warning.message}</small>
+          </div>
+        ))}
         {viewerSources.length ? (
           <MolecularViewer sources={viewerSources} selection={null} dockingBox={bindingSite.box} />
         ) : (
@@ -641,6 +661,28 @@ export function GninaScreeningWorkspace({
               device visibility remapping. Every molecule is checked against the observed
               process and device before its poses are published, and a requested GPU is never
               silently replaced by the CPU.
+            </p>
+          ) : null}
+          <label className="numeric-field">
+            <span className="field-label">Hit ranking metric</span>
+            <select
+              aria-label="Hit ranking metric"
+              value={hitRankingMetric}
+              disabled={controlsLocked}
+              onChange={(event) => {
+                setAcknowledged(false);
+                setHitRankingMetric(event.target.value as GninaHitRankingMetric);
+              }}
+            >
+              <option value="cnn_score">CNN pose score (CNNscore, 0–1)</option>
+              <option value="cnn_vs">Virtual screening score (CNN_VS = CNNscore × CNNaffinity)</option>
+            </select>
+          </label>
+          {hitRankingMetric === "cnn_vs" ? (
+            <p className="field-note">
+              CNN_VS prioritizes library compounds by weighting mode-1 pose confidence (CNNscore)
+              by predicted affinity (CNNaffinity, pK), while keeping within-ligand poses (mode 1..N)
+              ordered by descending CNNscore.
             </p>
           ) : null}
           <div className="docking-parameter-grid">
@@ -792,6 +834,14 @@ export function GninaScreeningWorkspace({
               <div><dt>Engine</dt><dd>GNINA {campaign.tool.version}</dd></div>
               <div><dt>Executable</dt><dd><code>{campaign.tool.sha256.slice(0, 12)}…</code></dd></div>
               <div><dt>Model</dt><dd>{campaign.request.parameters.cnn_model}</dd></div>
+              <div>
+                <dt>Hit ranking</dt>
+                <dd>
+                  {campaignRankingMetric(campaign) === "cnn_vs"
+                    ? "CNN_VS (CNNscore × CNNaffinity)"
+                    : "CNNscore"}
+                </dd>
+              </div>
               <div><dt>Compute</dt><dd>{campaign.request.parameters.compute.toUpperCase()}</dd></div>
               <div><dt>Workers</dt><dd>{campaign.worker_count}</dd></div>
               <div><dt>Succeeded</dt><dd>{campaign.succeeded_count} / {campaign.selected_count}</dd></div>
@@ -953,6 +1003,7 @@ function CampaignResults({
               <SortHeader label="#" sortKey="selection" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
               <SortHeader label="Molecule" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
               <SortHeader label="Top CNN score (dimensionless)" sortKey="cnn_score" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
+              <SortHeader label="Top CNN_VS (CNNscore × pK)" sortKey="cnn_vs" activeKey={sortKey} direction={sortDirection} onSort={onSort} />
               <th title="GNINA's predicted affinity for the same pose, as a pK. Higher predicts stronger affinity. Not a measured affinity.">
                 CNN affinity (pK)
               </th>
@@ -988,6 +1039,7 @@ function CampaignResults({
                       </button>
                     </td>
                     <td>{top ? formatScientificNumber(top.cnn_score, 4) : "—"}</td>
+                    <td>{top ? formatScientificNumber(effectivePoseCnnVs(top), 3) : "—"}</td>
                     <td>{top ? formatScientificNumber(top.cnn_affinity, 3) : "—"}</td>
                     <td>
                       {top ? formatScientificNumber(top.minimized_affinity_kcal_mol, 3) : "—"}
@@ -1003,7 +1055,7 @@ function CampaignResults({
                   </tr>
                   {expanded ? (
                     <tr className="pose-expansion">
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         {entry.failure ? (
                           <p className="protonation-blocker" role="note">
                             <strong>{entry.failure.code}</strong> · {entry.failure.message}
@@ -1030,6 +1082,7 @@ function CampaignResults({
                                 <tr>
                                   <th>Pose</th>
                                   <th>CNN score</th>
+                                  <th>CNN_VS</th>
                                   <th>CNN affinity (pK)</th>
                                   <th>Minimized affinity (kcal/mol)</th>
                                   <th>Artifact SHA-256</th>
@@ -1055,6 +1108,7 @@ function CampaignResults({
                                         </button>
                                       </td>
                                       <td>{formatScientificNumber(pose.cnn_score, 4)}</td>
+                                      <td>{formatScientificNumber(effectivePoseCnnVs(pose), 3)}</td>
                                       <td>{formatScientificNumber(pose.cnn_affinity, 3)}</td>
                                       <td>
                                         {formatScientificNumber(pose.minimized_affinity_kcal_mol, 3)}
@@ -1120,6 +1174,7 @@ function applyProgress(
     succeeded_count: progress.succeeded_count,
     failed_count: progress.failed_count,
     canceled_count: progress.canceled_count,
+    warnings: progress.warnings ?? current.warnings,
     entries,
   };
 }
@@ -1189,6 +1244,15 @@ function entryLabel(entry: GninaScreeningEntry): string {
   return entry.name ?? `Ligand ${entry.ligand_id.slice(0, 8)}…`;
 }
 
+function campaignRankingMetric(record: GninaScreeningCampaignRecord): GninaHitRankingMetric {
+  return record.hit_ranking_metric ?? record.request.hit_ranking_metric ?? "cnn_score";
+}
+
+function effectivePoseCnnVs(pose: GninaPoseResult | null): number | null {
+  if (!pose) return null;
+  return pose.cnn_vs ?? (pose.cnn_score * pose.cnn_affinity);
+}
+
 function sortValue(
   entry: GninaScreeningEntry,
   key: Exclude<EntrySortKey, "selection">,
@@ -1196,6 +1260,7 @@ function sortValue(
 ): number | string | null {
   if (key === "name") return entryLabel(entry);
   if (key === "status") return entryStatusLabel(entry);
+  if (key === "cnn_vs") return effectivePoseCnnVs(topPoseFor(entry));
   return topPoseFor(entry)?.cnn_score ?? null;
 }
 

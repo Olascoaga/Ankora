@@ -40,6 +40,7 @@ selection manifest, campaign records and per-molecule child job artifacts.
 import csv
 import io
 import json
+import math
 import os
 import shutil
 import zipfile
@@ -106,6 +107,9 @@ _HEADER_GNINA_POSES = [
     "ligand_id",
     "gnina_cnn_score",
     "gnina_cnn_affinity_pk",
+    "gnina_cnn_vs",
+    "gnina_cnn_vs_source",
+    "gnina_cnn_affinity_variance",
     "gnina_minimized_affinity_kcal_mol",
     "pose_artifact_id",
     "pose_filename",
@@ -113,12 +117,15 @@ _HEADER_GNINA_POSES = [
 ]
 
 # A multi-ligand GNINA screening campaign keeps every selected molecule in one
-# library table while preserving all three GNINA axes separately alongside the
-# verified top-pose artifact and linked child job identity.
+# library table while preserving GNINA axes separately alongside the verified
+# top-pose artifact and linked child job identity.
 _HEADER_GNINA_SCREENING = [
     *_HEADER_COMMON,
     "gnina_cnn_score",
     "gnina_cnn_affinity_pk",
+    "gnina_cnn_vs",
+    "gnina_cnn_vs_source",
+    "gnina_cnn_affinity_variance",
     "gnina_minimized_affinity_kcal_mol",
     "top_pose_artifact_id",
     "top_pose_sha256",
@@ -164,6 +171,8 @@ class ExportedCampaign:
     row_kind: str = "molecule"
     pose_count: int | None = None
     ligand_id: str | None = None
+    ranking_metric: str | None = None
+    warnings: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,9 +280,24 @@ def manifest(
 ) -> str:
     """Everything needed to know what the table is, and to ask for it again."""
     moment = exported_at or datetime.now(UTC)
+    table_payload: dict[str, Any] = {
+        "file": "results.csv",
+        "row": campaign.row_kind,
+        "columns": (
+            _HEADER_GNINA_POSES
+            if campaign.row_kind == "pose"
+            else (
+                _HEADER_GNINA_SCREENING
+                if campaign.engine == "GNINA"
+                else [*_HEADER_COMMON, campaign.value_column]
+            )
+        ),
+    }
+    if campaign.ranking_metric is not None:
+        table_payload["ranking_metric"] = campaign.ranking_metric
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
-        "ankora_export_format": 3 if bundle_identity is not None else 2,
+        "ankora_export_format": 4 if bundle_identity is not None else 2,
         "source_kind": source_kind,
         "source_id": source_id,
         "engine": {
@@ -290,22 +314,12 @@ def manifest(
         "inputs": _campaign_inputs(campaign),
         "protocol": campaign.parameters,
         "counts": _campaign_counts(campaign),
-        "table": {
-            "file": "results.csv",
-            "row": campaign.row_kind,
-            "columns": (
-                _HEADER_GNINA_POSES
-                if campaign.row_kind == "pose"
-                else (
-                    _HEADER_GNINA_SCREENING
-                    if campaign.engine == "GNINA"
-                    else [*_HEADER_COMMON, campaign.value_column]
-                )
-            ),
-        },
+        "table": table_payload,
         "recorded_evidence": (evidence or _empty_evidence()).manifest_payload(),
         "scientific_notes": _scientific_notes(campaign),
     }
+    if campaign.warnings:
+        payload["warnings"] = campaign.warnings
     if bundle_identity is not None:
         payload["bundle"] = bundle_identity.manifest_payload()
     if source_files:
@@ -372,15 +386,22 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "where higher indicates stronger predicted binding."
             ),
             (
+                "gnina_cnn_vs is CNNscore * CNNaffinity (recorded with "
+                "gnina_cnn_vs_source and blank on pre-ADR-028 records), while "
+                "gnina_cnn_affinity_variance is populated only when emitted by "
+                "the GNINA binary and left blank otherwise. Within-ligand poses "
+                "remain ordered by descending gnina_cnn_score."
+            ),
+            (
                 "gnina_minimized_affinity_kcal_mol is the minimized affinity "
                 "from GNINA's empirical scoring function, in kcal/mol. GNINA "
                 "did not rank by it, so the top-ranked pose is not necessarily "
                 "the one with the lowest recorded energy."
             ),
             (
-                "All three are predictions of this engine for this pose. None "
-                "is an experimentally measured binding affinity and none is "
-                "evidence of biological activity."
+                "All of these GNINA quantities are predictions of this engine "
+                "for this pose. None is an experimentally measured binding "
+                "affinity and none is evidence of biological activity."
             ),
             (
                 "None of these values shares a scale with a Vina score or an "
@@ -394,17 +415,32 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
             ),
         ]
     if campaign.engine == "GNINA":
-        return [
+        ranked_by_cnn_vs = campaign.ranking_metric == "gnina_cnn_vs"
+        notes = [
             (
                 "gnina_cnn_score is dimensionless, bounded between 0 and 1, and "
-                "is the primary order in which docked molecules are ranked here "
-                "(descending top-pose CNNscore, with exact ties broken by "
-                "applied selection order). It is not an energy and has no "
-                "kcal/mol interpretation."
+                + (
+                    "orders poses within each individual ligand job; for this "
+                    "campaign, between-molecule hit order is set by descending "
+                    "top-pose gnina_cnn_vs (CNNscore * CNNaffinity), with exact "
+                    "ties broken by applied selection order. "
+                    if ranked_by_cnn_vs
+                    else "is the primary order in which docked molecules are ranked here "
+                    "(descending top-pose CNNscore, with exact ties broken by "
+                    "applied selection order). "
+                )
+                + "It is not an energy and has no kcal/mol interpretation."
             ),
             (
                 "gnina_cnn_affinity_pk is the top pose's predicted affinity in "
                 "pK units, where higher indicates stronger predicted binding."
+            ),
+            (
+                "gnina_cnn_vs is the top pose's virtual-screening score "
+                "(CNNscore * CNNaffinity, recorded with gnina_cnn_vs_source and "
+                "blank on pre-ADR-028 records); gnina_cnn_affinity_variance is "
+                "populated only when emitted by the GNINA binary and left blank "
+                "otherwise."
             ),
             (
                 "gnina_minimized_affinity_kcal_mol is the top pose's minimized "
@@ -414,9 +450,9 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "energy."
             ),
             (
-                "All three are computational predictions of this engine. None "
-                "is an experimentally measured binding affinity and none is "
-                "evidence of biological activity."
+                "All of these GNINA quantities are computational predictions of "
+                "this engine. None is an experimentally measured binding affinity "
+                "and none is evidence of biological activity."
             ),
             (
                 "None of these values shares a scale with a Vina score or an "
@@ -430,6 +466,17 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "recorded failure codes."
             ),
         ]
+        for warning in campaign.warnings:
+            if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
+                notes.append(
+                    "Warning (GNINA_CNN_VS_NONPOSITIVE_AFFINITY): one or more "
+                    "completed molecules recorded non-positive predicted "
+                    "CNNaffinity (<= 0 pK, K_d >= 1 M), where CNN_VS = "
+                    "CNNscore * CNNaffinity becomes zero or negative and inverts "
+                    "CNNscore monotonicity among negative-pK decoys."
+                )
+                break
+        return notes
     return [
         (
             f"{campaign.value_column} is this engine's own measure. It is a "
@@ -504,22 +551,30 @@ def readme(
     ]
     if campaign.row_kind == "pose":
         lines += [
-            "The three score columns are three different quantities and are not",
+            "The GNINA score columns represent distinct quantities and are not",
             "interchangeable: gnina_cnn_score is dimensionless (0-1) and is the",
             "order GNINA ranked by; gnina_cnn_affinity_pk is a predicted pK;",
+            "gnina_cnn_vs is CNNscore * CNNaffinity (with gnina_cnn_vs_source);",
             "gnina_minimized_affinity_kcal_mol is in kcal/mol and did not set",
             "the ranking, so the top pose need not have the lowest energy.",
-            "All three are predictions of this engine for this pose. None is an",
-            "experimentally measured affinity, and none shares a scale with a",
+            "All of these are predictions of this engine for this pose. None is",
+            "an experimentally measured affinity, and none shares a scale with a",
             "Vina score or an AutoDock4 binding energy.",
             "",
         ]
     elif campaign.engine == "GNINA":
+        ranking_clause = (
+            "while between-molecule ranking is set by descending gnina_cnn_vs "
+            "(CNNscore * CNNaffinity, ties broken by selection order);"
+            if campaign.ranking_metric == "gnina_cnn_vs"
+            else "and sets the descending molecule ranking (ties broken by selection order);"
+        )
         lines += [
-            "The three score columns are three different quantities and are not",
-            "interchangeable: gnina_cnn_score is dimensionless (0-1) and sets",
-            "the descending molecule ranking (ties broken by selection order);",
-            "gnina_cnn_affinity_pk is the top pose's predicted pK;",
+            "The GNINA score columns represent distinct quantities and are not",
+            "interchangeable: gnina_cnn_score is dimensionless (0-1)",
+            f"{ranking_clause}",
+            "gnina_cnn_affinity_pk is the top pose's predicted pK; gnina_cnn_vs",
+            "is CNNscore * CNNaffinity (with gnina_cnn_vs_source);",
             "gnina_minimized_affinity_kcal_mol is in kcal/mol and did not set",
             "the ranking, so the top-ranked molecule need not have the lowest",
             "energy. Undocked molecules follow unranked in selection order with",
@@ -528,6 +583,16 @@ def readme(
             "Vina score or an AutoDock4 binding energy.",
             "",
         ]
+        for warning in campaign.warnings:
+            if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
+                lines += [
+                    "WARNING (GNINA_CNN_VS_NONPOSITIVE_AFFINITY): one or more completed",
+                    "molecules recorded CNNaffinity <= 0 pK (K_d >= 1 M), where CNN_VS",
+                    "becomes zero or negative and inverts CNNscore monotonicity among",
+                    "negative-pK decoys.",
+                    "",
+                ]
+                break
     else:
         lines += [
             f"The column '{campaign.value_column}' is this engine's own measure: a",
@@ -734,6 +799,13 @@ def from_gnina_job(
                 "ligand_id": record.request.ligand_id,
                 "gnina_cnn_score": _number(pose.cnn_score),
                 "gnina_cnn_affinity_pk": _number(pose.cnn_affinity),
+                "gnina_cnn_vs": _number(pose.cnn_vs) if pose.cnn_vs is not None else "",
+                "gnina_cnn_vs_source": pose.cnn_vs_source or "",
+                "gnina_cnn_affinity_variance": (
+                    _number(pose.cnn_affinity_variance)
+                    if pose.cnn_affinity_variance is not None
+                    else ""
+                ),
                 "gnina_minimized_affinity_kcal_mol": _number(pose.minimized_affinity_kcal_mol),
                 "pose_artifact_id": pose.artifact.artifact_id,
                 "pose_filename": pose.artifact.filename,
@@ -745,7 +817,7 @@ def from_gnina_job(
         engine_version=record.tool.version,
         backend=record.request.parameters.compute,
         # Named so it can never be read as the one value column a screening
-        # table has; the real axes are three separate columns.
+        # table has; the real axes are separate columns.
         value_column="gnina_minimized_affinity_kcal_mol",
         reproducibility=reproducibility or ReproducibilityAssessment(),
         receptor_id=record.request.receptor_id,
@@ -761,6 +833,7 @@ def from_gnina_job(
         row_kind="pose",
         pose_count=len(record.poses),
         ligand_id=record.request.ligand_id,
+        ranking_metric="gnina_cnn_score",
     )
 
 
@@ -796,6 +869,10 @@ def _inspect_screening_ligand(
     )
 
 
+def _pose_cnn_vs_for_ranking(pose: Any) -> float:
+    return float(pose.cnn_vs if pose.cnn_vs is not None else pose.cnn_score * pose.cnn_affinity)
+
+
 def from_gnina_screening(
     record: GninaScreeningCampaignRecord,
     *,
@@ -804,12 +881,14 @@ def from_gnina_screening(
     ligand_store: LigandArtifactStore | None = None,
     reproducibility: ReproducibilityAssessment | None = None,
 ) -> ExportedCampaign:
-    """One multi-ligand GNINA screening campaign, keeping three axes separate.
+    """One multi-ligand GNINA screening campaign, keeping GNINA axes separate.
 
-    Docked molecules are ranked by descending top-pose `CNNscore` with exact
-    ties broken by applied selection order. Preflight-refused or failed
-    molecules stay in the table unranked (`rank` blank) in selection order.
+    Docked molecules are ranked by the campaign's `hit_ranking_metric`
+    (descending top-pose `CNNscore` or `CNN_VS`) with exact ties broken by
+    applied selection order. Preflight-refused or failed molecules stay in the
+    table unranked (`rank` blank) in selection order.
     """
+    rank_by_cnn_vs = record.hit_ranking_metric == "cnn_vs"
     indexed: list[tuple[int, GninaScreeningEntry, GninaJobRecord | None]] = [
         (order, entry, completed_jobs.get(entry.ligand_id))
         for order, entry in enumerate(record.entries)
@@ -817,7 +896,13 @@ def from_gnina_screening(
     indexed.sort(
         key=lambda item: (
             item[2] is None,
-            -item[2].poses[0].cnn_score if item[2] is not None else 0.0,
+            (
+                -_pose_cnn_vs_for_ranking(item[2].poses[0])
+                if rank_by_cnn_vs
+                else -item[2].poses[0].cnn_score
+            )
+            if item[2] is not None
+            else 0.0,
             item[0],
         )
     )
@@ -843,6 +928,15 @@ def from_gnina_screening(
                     "failure_message": failure.message if failure else "",
                     "gnina_cnn_score": _number(top_pose.cnn_score),
                     "gnina_cnn_affinity_pk": _number(top_pose.cnn_affinity),
+                    "gnina_cnn_vs": (
+                        _number(top_pose.cnn_vs) if top_pose.cnn_vs is not None else ""
+                    ),
+                    "gnina_cnn_vs_source": top_pose.cnn_vs_source or "",
+                    "gnina_cnn_affinity_variance": (
+                        _number(top_pose.cnn_affinity_variance)
+                        if top_pose.cnn_affinity_variance is not None
+                        else ""
+                    ),
                     "gnina_minimized_affinity_kcal_mol": _number(
                         top_pose.minimized_affinity_kcal_mol
                     ),
@@ -865,6 +959,9 @@ def from_gnina_screening(
                     "failure_message": failure.message if failure else "",
                     "gnina_cnn_score": "",
                     "gnina_cnn_affinity_pk": "",
+                    "gnina_cnn_vs": "",
+                    "gnina_cnn_vs_source": "",
+                    "gnina_cnn_affinity_variance": "",
                     "gnina_minimized_affinity_kcal_mol": "",
                     "top_pose_artifact_id": "",
                     "top_pose_sha256": "",
@@ -878,12 +975,13 @@ def from_gnina_screening(
         if job.execution is not None and job.execution.observed_gpu_uuid is not None:
             observed_gpus.add(job.execution.observed_gpu_uuid)
     device_name = next(iter(observed_gpus)) if len(observed_gpus) == 1 else None
+    ranking_column = "gnina_cnn_vs" if rank_by_cnn_vs else "gnina_cnn_score"
 
     return ExportedCampaign(
         engine="GNINA",
         engine_version=record.tool.version,
         backend=record.request.parameters.compute,
-        value_column="gnina_cnn_score",
+        value_column=ranking_column,
         reproducibility=reproducibility or ReproducibilityAssessment(),
         receptor_id=record.request.receptor_id,
         receptor_sha256=record.receptor_sha256,
@@ -896,6 +994,7 @@ def from_gnina_screening(
         filter_run_id=record.request.filter_run_id,
         parameters={
             **record.request.parameters.model_dump(mode="json"),
+            "hit_ranking_metric": record.hit_ranking_metric,
             "worker_count": record.worker_count,
         },
         executable_sha256=record.tool.sha256,
@@ -904,6 +1003,8 @@ def from_gnina_screening(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=rows,
+        ranking_metric=ranking_column,
+        warnings=[warning.model_dump(mode="json") for warning in record.warnings],
     )
 
 
@@ -1253,6 +1354,8 @@ def _verify_gnina_source(record: GninaJobRecord, store: GninaJobStore) -> dict[s
         or item.cnn_score != pose.cnn_score
         or item.cnn_affinity != pose.cnn_affinity
         or item.minimized_affinity_kcal_mol != pose.minimized_affinity_kcal_mol
+        or item.cnn_affinity_variance != pose.cnn_affinity_variance
+        or not _raw_cnn_vs_matches(item, pose)
         or sha256(item.pdbqt).hexdigest() != pose.artifact.sha256
         or len(item.pdbqt) != pose.artifact.size_bytes
         for item, pose in zip(raw, record.poses, strict=False)
@@ -1261,6 +1364,24 @@ def _verify_gnina_source(record: GninaJobRecord, store: GninaJobStore) -> dict[s
             record.job_id, "raw_poses.pdbqt", "Raw output differs from published poses."
         )
     return preserved
+
+
+def _raw_cnn_vs_matches(raw_pose: Any, published_pose: Any) -> bool:
+    if published_pose.cnn_vs is None:
+        return raw_pose.cnn_vs is None
+    if published_pose.cnn_vs_source == "engine_emitted":
+        return bool(raw_pose.cnn_vs is not None and raw_pose.cnn_vs == published_pose.cnn_vs)
+    if published_pose.cnn_vs_source == "derived_from_recorded_axes":
+        return bool(
+            raw_pose.cnn_vs is None
+            and math.isclose(
+                published_pose.cnn_vs,
+                published_pose.cnn_score * published_pose.cnn_affinity,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+        )
+    return False
 
 
 def _source_incomplete(job_id: str, filename: str, message: str) -> AnkoraDomainError:

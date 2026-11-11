@@ -253,6 +253,7 @@ class GninaScreeningProgress(BaseModel):
     succeeded_count: int = Field(ge=0)
     failed_count: int = Field(ge=0)
     canceled_count: int = Field(ge=0)
+    warnings: list[StructuredWarning] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def keep_counts_bounded(self) -> "GninaScreeningProgress":
@@ -339,6 +340,7 @@ class GninaScreeningCampaignRecord(BaseModel):
             succeeded_count=self.succeeded_count,
             failed_count=self.failed_count,
             canceled_count=self.canceled_count,
+            warnings=list(self.warnings),
         )
 
     @model_validator(mode="after")

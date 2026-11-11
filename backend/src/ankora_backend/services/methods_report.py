@@ -666,9 +666,21 @@ class MethodsReportService:
             "the minimized affinity, so the top-ranked pose is not necessarily the one "
             "with the lowest recorded energy."
         )
+        top_cnn_vs = getattr(top, "cnn_vs", None)
+        if top_cnn_vs is not None:
+            vs_origin = (
+                "emitted directly by GNINA"
+                if getattr(top, "cnn_vs_source", None) == "engine_emitted"
+                else "derived from the recorded CNN pose score and CNN affinity axes"
+            )
+            draft.say(
+                f"Ankora also recorded a virtual-screening score (`CNN_VS = CNNscore × "
+                f"CNNaffinity`, {vs_origin}) of {top_cnn_vs:g} for the top-ranked pose; "
+                "within-ligand pose ordering remained descending CNN pose score."
+            )
         draft.say(
-            "All three quantities are predictions of this engine for this pose. None is a "
-            "measured binding affinity and none is evidence of biological activity."
+            "All of these GNINA quantities are predictions of this engine for this pose. "
+            "None is a measured binding affinity and none is evidence of biological activity."
         )
         draft.say(
             "They come from GNINA's own empirical function and convolutional model, and "
@@ -1158,6 +1170,7 @@ class MethodsReportService:
             draft.say("")
             return
 
+        rank_by_cnn_vs = getattr(campaign, "hit_ranking_metric", "cnn_score") == "cnn_vs"
         ranked_completed: list[tuple[int, Any, Any]] = []
         for selection_index, item in enumerate(campaign.entries):
             if _text(item.status) != "completed":
@@ -1165,40 +1178,112 @@ class MethodsReportService:
             job = verified_jobs.get(item.ligand_id)
             if job is not None and job.poses:
                 ranked_completed.append((selection_index, item, job.poses[0]))
-        ranked_completed.sort(key=lambda row: (-row[2].cnn_score, row[0]))
+        if rank_by_cnn_vs:
+            ranked_completed.sort(
+                key=lambda row: (
+                    -(
+                        row[2].cnn_vs
+                        if getattr(row[2], "cnn_vs", None) is not None
+                        else row[2].cnn_score * row[2].cnn_affinity
+                    ),
+                    row[0],
+                )
+            )
+        else:
+            ranked_completed.sort(key=lambda row: (-row[2].cnn_score, row[0]))
         _, best_item, best_pose = ranked_completed[0]
         best_label = best_item.name or best_item.ligand_id
+        best_cnn_vs = getattr(best_pose, "cnn_vs", None)
 
+        if rank_by_cnn_vs:
+            effective_best_vs = (
+                best_cnn_vs
+                if best_cnn_vs is not None
+                else best_pose.cnn_score * best_pose.cnn_affinity
+            )
+            draft.say(
+                "Completed compounds are prioritized across the campaign by descending "
+                "top-pose `CNN_VS` (`CNNscore × CNNaffinity`), with exact ties broken by "
+                "applied selection order, while poses within each individual ligand job "
+                "remain ordered by descending CNN pose score. The CNN pose score is "
+                "dimensionless and bounded between 0 and 1; `CNN_VS` weights that pose "
+                "confidence by predicted affinity in pK units. Neither is an energy in "
+                "kcal/mol."
+            )
+            draft.say(
+                "Ankora records each underlying GNINA quantity separately alongside `CNN_VS`:"
+            )
+            draft.say(
+                "- the CNN affinity prediction, in pK units, where a higher value means a "
+                "stronger predicted affinity;"
+            )
+            draft.say(
+                "- the minimized affinity from GNINA's empirical scoring function, in "
+                "kcal mol⁻¹, where a more negative value means a more favourable predicted "
+                "interaction."
+            )
+            draft.say(
+                f"The top-ranked compound ({best_label}) had a top-pose `CNN_VS` of "
+                f"{effective_best_vs:g} (CNN pose score {best_pose.cnn_score:g} and "
+                f"predicted CNN affinity {best_pose.cnn_affinity:g} pK) and a minimized "
+                f"affinity of {best_pose.minimized_affinity_kcal_mol:g} kcal mol⁻¹. "
+                "Campaign ranking did not use the minimized affinity, so the highest-ranked "
+                "compound is not necessarily the one with the lowest recorded energy."
+            )
+            nonpositive_count = sum(
+                1 for _, _, pose in ranked_completed if pose.cnn_affinity <= 0.0
+            )
+            has_sign_warning = nonpositive_count > 0 or any(
+                str(getattr(warning, "code", "")) == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY"
+                for warning in getattr(campaign, "warnings", ())
+            )
+            if has_sign_warning:
+                draft.say(
+                    f"Sign-ambiguity note (`GNINA_CNN_VS_NONPOSITIVE_AFFINITY`): "
+                    f"{nonpositive_count} completed compound"
+                    f"{'s' if nonpositive_count != 1 else ''} recorded a non-positive "
+                    "top-pose CNN affinity (`<= 0 pK`, corresponding to predicted "
+                    "dissociation above 1 M). Where `CNNaffinity <= 0`, `CNN_VS = CNNscore × "
+                    "CNNaffinity` becomes zero or negative and inverts `CNNscore` monotonicity "
+                    "among negative-pK decoys, so negative `CNN_VS` tail rankings should not "
+                    "be interpreted without inspecting `CNNscore` and `CNNaffinity` separately."
+                )
+        else:
+            draft.say(
+                "Completed compounds are ranked by descending top-pose CNN pose score, with "
+                "ties broken by selection order. The CNN pose score is dimensionless and "
+                "bounded between 0 and 1; a higher value ranks a compound earlier. It is not "
+                "an energy and has no kcal/mol interpretation."
+            )
+            draft.say(
+                "Ankora records two further quantities for each completed compound's top pose "
+                "and keeps them distinct from that ranking and from each other:"
+            )
+            draft.say(
+                "- the CNN affinity prediction, in pK units, where a higher value means a "
+                "stronger predicted affinity;"
+            )
+            draft.say(
+                "- the minimized affinity from GNINA's empirical scoring function, in "
+                "kcal mol⁻¹, where a more negative value means a more favourable predicted "
+                "interaction."
+            )
+            draft.say(
+                f"The top-ranked compound ({best_label}) had a top-pose CNN pose score of "
+                f"{best_pose.cnn_score:g}, a predicted CNN affinity of "
+                f"{best_pose.cnn_affinity:g} pK, and a minimized affinity of "
+                f"{best_pose.minimized_affinity_kcal_mol:g} kcal mol⁻¹. Campaign ranking did "
+                "not use the minimized affinity, so the highest-ranked compound is not "
+                "necessarily the one with the lowest recorded energy."
+            )
+            if best_cnn_vs is not None:
+                draft.say(
+                    f"Ankora also recorded a top-pose `CNN_VS` (`CNNscore × CNNaffinity`) of "
+                    f"{best_cnn_vs:g} for {best_label}."
+                )
         draft.say(
-            "Completed compounds are ranked by descending top-pose CNN pose score, with "
-            "ties broken by selection order. The CNN pose score is dimensionless and "
-            "bounded between 0 and 1; a higher value ranks a compound earlier. It is not "
-            "an energy and has no kcal/mol interpretation."
-        )
-        draft.say(
-            "Ankora records two further quantities for each completed compound's top pose "
-            "and keeps them distinct from that ranking and from each other:"
-        )
-        draft.say(
-            "- the CNN affinity prediction, in pK units, where a higher value means a "
-            "stronger predicted affinity;"
-        )
-        draft.say(
-            "- the minimized affinity from GNINA's empirical scoring function, in "
-            "kcal mol⁻¹, where a more negative value means a more favourable predicted "
-            "interaction."
-        )
-        draft.say(
-            f"The top-ranked compound ({best_label}) had a top-pose CNN pose score of "
-            f"{best_pose.cnn_score:g}, a predicted CNN affinity of "
-            f"{best_pose.cnn_affinity:g} pK, and a minimized affinity of "
-            f"{best_pose.minimized_affinity_kcal_mol:g} kcal mol⁻¹. Campaign ranking did "
-            "not use the minimized affinity, so the highest-ranked compound is not "
-            "necessarily the one with the lowest recorded energy."
-        )
-        draft.say(
-            "All three quantities are computational predictions of this engine. None is a "
-            "measured binding affinity and none is evidence of biological activity."
+            "All of these GNINA quantities are computational predictions of this engine. "
+            "None is a measured binding affinity and none is evidence of biological activity."
         )
         draft.say(
             "They come from GNINA's own empirical function and convolutional model, and "
