@@ -188,4 +188,12 @@ def test_api_executes_synthetic_campaign_and_preserves_gnina_scores(
             ).read_bytes()
             == raw
         )
-        assert client.get("/api/v1/results/campaigns?scoring_family=gnina").json()["total"] == 0
+        catalog = client.get("/api/v1/results/campaigns?scoring_family=gnina").json()
+        assert catalog["total"] == 1
+        assert catalog["entries"][0]["catalog_id"] == f"gnina_screening:{campaign_id}"
+        assert (
+            client.get("/api/v1/results/campaigns?scoring_family=gnina&mode=single_ligand").json()[
+                "total"
+            ]
+            == 0
+        )
