@@ -91,8 +91,7 @@ The backend now implements explicit retry-as-new for a campaign reconciled with
 `GNINA_SCREENING_CAMPAIGN_INTERRUPTED`: after the scientist acknowledges a new
 immutable attempt, the recorded request is readmitted as a new campaign with a
 new identity; the interrupted record and its files are only read. A linked
-child job still cannot be retried on its own. Synthetic tests cover these paths;
-the activity-panel action belongs to the next unit.
+child job still cannot be retried on its own. Synthetic backend and startup recovery-panel tests cover these paths.
 
 A single GNINA job may also carry its owning screening campaign's canonical
 UUID, recorded before execution and immutable in the single-job store. A

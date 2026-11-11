@@ -26,6 +26,7 @@ function noSavedReceptor(): Response {
 it.each([
   ["vina_batch", "AutoDock Vina screening"],
   ["gnina_job", "GNINA job"],
+  ["gnina_screening", "GNINA screening"],
 ])("shows and explicitly retries interrupted %s", async (kind, label) => {
   const interruptedId = "00000000-0000-0000-0000-000000000091";
   const newId = "00000000-0000-0000-0000-000000000092";
@@ -41,8 +42,8 @@ it.each([
           work_kind: kind,
           work_id: interruptedId,
           previous_status: "running",
-          interrupted_entry_count: kind === "vina_batch" ? 3 : 0,
-          completed_entry_count: kind === "vina_batch" ? 7 : 0,
+          interrupted_entry_count: kind === "gnina_job" ? 0 : 3,
+          completed_entry_count: kind === "gnina_job" ? 0 : 7,
           last_heartbeat_at: "2026-09-05T11:59:00Z",
           previous_owner_instance_id: "backend-instance",
         }],
@@ -85,30 +86,6 @@ it.each([
   expect(JSON.parse(String(retryRequest?.init?.body))).toEqual({
     acknowledge_new_immutable_attempt: true,
   });
-});
-
-it("shows an interrupted GNINA screening without offering an unavailable retry", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = String(input);
-    if (url.endsWith("/receptors/latest")) return noSavedReceptor();
-    const payload = url.endsWith("/work/recovery") ? {
-      reconciled_at: "2026-09-05T12:00:00Z",
-      items: [{
-        work_kind: "gnina_screening", work_id: "00000000-0000-0000-0000-000000000091",
-        previous_status: "running", interrupted_entry_count: 2, completed_entry_count: 1,
-        last_heartbeat_at: null, previous_owner_instance_id: null,
-      }],
-    } : url.endsWith("/health") ? health : url.endsWith("/system/resources") ? resources
-      : url.endsWith("/system") ? system : tools;
-    return new Response(JSON.stringify(payload), {
-      status: 200, headers: { "Content-Type": "application/json" },
-    });
-  });
-  render(<App />);
-  expect(await screen.findByText("GNINA screening")).toBeInTheDocument();
-  expect(screen.getByText("1 completed molecule preserved · 2 interrupted")).toBeInTheDocument();
-  expect(screen.getByText(/Retrying this screening is not available yet/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Retry as new" })).not.toBeInTheDocument();
 });
 
 it("does not offer an individual retry for a job owned by a GNINA screening", async () => {
