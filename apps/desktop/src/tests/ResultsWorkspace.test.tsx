@@ -681,3 +681,92 @@ it("returns to the catalog in one step from an open analysis", async () => {
     screen.queryByRole("region", { name: "Pose interactions for Compound 288" }),
   ).not.toBeInTheDocument();
 });
+
+it("displays a multi-ligand GNINA screening campaign without kcal/mol pooling", async () => {
+  const screeningEntry: CatalogEntry = {
+    ...baseEntry,
+    catalog_id: "gnina_screening:campaign-1",
+    engine_key: "gnina_screening",
+    record_id: "campaign-1",
+    mode: "screening",
+    scoring_family: "gnina",
+    backend: "cuda",
+    engine_label: "GNINA 1.3.3",
+    engine_version: "1.3.3",
+    executable_sha256: "3".repeat(64),
+    device_name: "GPU-synthetic-0",
+    selected_count: 3,
+    succeeded_count: 2,
+    failed_count: 1,
+    best_result_kcal_mol: null,
+    primary_cnn_score: 0.939,
+    cnn_affinity_pk: 6.17,
+    minimized_affinity_kcal_mol: -2.681,
+    best_molecule: "Synthetic Beta",
+  };
+  const compounds: CompoundPage = {
+    catalog_id: screeningEntry.catalog_id,
+    engine_label: screeningEntry.engine_label,
+    value_label: "CNN score (higher ranks first)",
+    rows: [
+      {
+        ligand_id: "ligand-beta",
+        chemical_state_id: "state-beta-1234",
+        chemical_state_formal_charge: 0,
+        source_index: 1,
+        name: "Synthetic Beta",
+        canonical_smiles: "CCN",
+        molecular_weight_g_mol: 45.1,
+        status: "completed",
+        failure_code: null,
+        best_result_kcal_mol: null,
+        primary_cnn_score: 0.939,
+        cnn_affinity_pk: 6.17,
+        minimized_affinity_kcal_mol: -2.681,
+        pose_count: 2,
+        cluster_count: null,
+        top_cluster_runs: null,
+      },
+      {
+        ligand_id: "ligand-unprepared",
+        chemical_state_id: "state-unprepared",
+        chemical_state_formal_charge: null,
+        source_index: 2,
+        name: "Synthetic Unprepared",
+        canonical_smiles: null,
+        molecular_weight_g_mol: null,
+        status: "failed",
+        failure_code: "GNINA_SCREENING_LIGAND_NOT_PREPARED",
+        best_result_kcal_mol: null,
+        primary_cnn_score: null,
+        cnn_affinity_pk: null,
+        minimized_affinity_kcal_mol: null,
+        pose_count: 0,
+        cluster_count: null,
+        top_cluster_runs: null,
+      },
+    ],
+    total: 2,
+    offset: 0,
+    limit: 100,
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/compounds")) return json(compounds);
+    return json({ entries: [screeningEntry], total: 1, offset: 0, limit: 25 });
+  });
+  render(<ResultsWorkspace />);
+  const card = (await screen.findByRole("list", { name: "Recorded results" })).querySelector('[role="listitem"]')!;
+  expect(card).toHaveTextContent("Screening");
+  expect(card).toHaveTextContent("2/3 docked · 1 failed");
+  expect(card).toHaveTextContent("0.9390");
+  expect(card).toHaveTextContent("top GNINA CNN score · Synthetic Beta");
+  expect(card).not.toHaveTextContent("kcal/mol");
+
+  fireEvent.click(card);
+  const table = await screen.findByRole("region", { name: "Molecules in this result" });
+  expect(within(table).getByText("CNN score (higher ranks first)")).toBeInTheDocument();
+  expect(within(table).getByText("CNN affinity (pK)")).toBeInTheDocument();
+  expect(within(table).getByText("Minimized affinity (kcal/mol)")).toBeInTheDocument();
+  expect(within(table).getByText("GNINA_SCREENING_LIGAND_NOT_PREPARED")).toBeInTheDocument();
+});

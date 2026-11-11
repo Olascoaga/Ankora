@@ -758,12 +758,10 @@ export function GninaScreeningWorkspace({
         <section className="receptor-section" aria-label="Unavailable campaign actions">
           <div className="filter-heading"><span>Not available for a campaign</span></div>
           <p className="field-note">
-            These exist for a single-ligand GNINA job launched from the single-ligand
-            workspace. This view does not offer them for a campaign, and nothing here should
-            be read as providing them:
+            Recorded campaigns appear in the Results catalog under the GNINA CNN score family.
+            These single-ligand or Vina/AutoDock4 actions are still not offered for a campaign:
           </p>
           <ul className="field-note">
-            <li>Results catalog: a GNINA campaign is not projected into it.</li>
             <li>Export: there is no multi-ligand GNINA campaign bundle.</li>
             <li>Pose interaction analysis: not offered from a campaign entry.</li>
             <li>Redocking validation: no campaign entry point exists.</li>
@@ -771,8 +769,8 @@ export function GninaScreeningWorkspace({
             <li>Engine comparison: GNINA is not part of it.</li>
           </ul>
           <p className="field-note">
-            An interrupted campaign is reconciled by the backend at startup and is not
-            resumed or retried here.
+            An interrupted campaign is reconciled by the backend at startup and can be retried
+            only as a new campaign from the startup recovery panel.
           </p>
         </section>
         {history.length ? (

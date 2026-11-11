@@ -17,8 +17,15 @@ from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
+from ankora_backend.schemas.docking import DockingJobStatus
+from ankora_backend.schemas.gnina import GninaJobRecord, GninaPoseResult
+from ankora_backend.schemas.gnina_screening import (
+    GninaScreeningCampaignRecord,
+    GninaScreeningEntry,
+)
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
     CatalogPage,
@@ -27,6 +34,7 @@ from ankora_backend.schemas.results_catalog import (
     ResultMode,
     ScoringFamily,
 )
+from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
 from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "results_catalog"
@@ -34,6 +42,7 @@ _STAGE = "results_catalog"
 VINA_BATCH = "vina_batch"
 AUTODOCK4_BATCH = "autodock4_batch"
 AUTODOCK_GPU_BATCH = "autodock_gpu_batch"
+GNINA_SCREENING = "gnina_screening"
 VINA_JOB = "vina_job"
 AUTODOCK4_JOB = "autodock4_job"
 AUTODOCK_GPU_JOB = "autodock_gpu_job"
@@ -56,6 +65,7 @@ class ResultCatalogService:
         binding_site_store: BindingSiteArtifactStore,
         ligand_store: LigandArtifactStore,
         gnina_store: GninaJobStore | None = None,
+        gnina_screening_store: GninaScreeningStore | None = None,
     ) -> None:
         self._docking_store = docking_store
         self._autodock4_store = autodock4_store
@@ -63,6 +73,7 @@ class ResultCatalogService:
         self._binding_site_store = binding_site_store
         self._ligand_store = ligand_store
         self._gnina_store = gnina_store
+        self._gnina_screening_store = gnina_screening_store
         self._reproducibility = ReproducibilityService(
             docking_store=docking_store,
             autodock4_store=autodock4_store,
@@ -78,6 +89,7 @@ class ResultCatalogService:
             binding_site_store=BindingSiteArtifactStore.from_environment(),
             ligand_store=LigandArtifactStore.from_environment(),
             gnina_store=GninaJobStore.from_environment(),
+            gnina_screening_store=GninaScreeningStore.from_environment(),
         )
 
     # --- listing ----------------------------------------------------------
@@ -174,6 +186,17 @@ class ResultCatalogService:
             except (AnkoraDomainError, OSError):
                 continue
             entries.extend(project(record) for record in job_records)
+        if self._gnina_screening_store is not None:
+            campaign_ids: list[str] = []
+            with suppress(AnkoraDomainError, OSError):
+                campaign_ids = self._gnina_screening_store.list_campaign_ids()
+            for campaign_id in campaign_ids:
+                with suppress(AnkoraDomainError, OSError):
+                    entries.append(
+                        self._from_gnina_screening(
+                            self._gnina_screening_store.load_campaign(campaign_id)
+                        )
+                    )
         if self._gnina_store is not None:
             with suppress(AnkoraDomainError, OSError):
                 entries.extend(
@@ -227,34 +250,37 @@ class ResultCatalogService:
                 limit=limit,
             )
 
-        rows = self._rows(engine_key, record_id)
+        indexed_rows = list(enumerate(self._rows(engine_key, record_id)))
 
         if status is not None:
-            rows = [row for row in rows if row.status == status]
+            indexed_rows = [pair for pair in indexed_rows if pair[1].status == status]
         if search:
             needle = search.casefold()
-            rows = [
-                row
-                for row in rows
-                if needle in row.name.casefold()
-                or needle in (row.canonical_smiles or "").casefold()
+            indexed_rows = [
+                pair
+                for pair in indexed_rows
+                if needle in pair[1].name.casefold()
+                or needle in (pair[1].canonical_smiles or "").casefold()
             ]
         if entry.scoring_family is ScoringFamily.GNINA:
-            rows.sort(
-                key=lambda row: (
-                    row.primary_cnn_score is None,
-                    -(row.primary_cnn_score or 0.0),
-                    row.source_index,
+            indexed_rows.sort(
+                key=lambda pair: (
+                    pair[1].primary_cnn_score is None,
+                    -(pair[1].primary_cnn_score or 0.0),
+                    pair[0],
                 )
             )
         else:
-            rows.sort(
-                key=lambda row: (
-                    row.best_result_kcal_mol is None,
-                    row.best_result_kcal_mol if row.best_result_kcal_mol is not None else 0.0,
-                    row.source_index,
+            indexed_rows.sort(
+                key=lambda pair: (
+                    pair[1].best_result_kcal_mol is None,
+                    pair[1].best_result_kcal_mol
+                    if pair[1].best_result_kcal_mol is not None
+                    else 0.0,
+                    pair[1].source_index,
                 )
             )
+        rows = [pair[1] for pair in indexed_rows]
         return CompoundPage(
             catalog_id=catalog_id,
             engine_label=entry.engine_label,
@@ -331,6 +357,10 @@ class ResultCatalogService:
             return self._from_autodock4_job(self._autodock4_store.load_job(record_id))
         if engine_key == AUTODOCK_GPU_JOB:
             return self._from_gpu_job(self._autodock_gpu_store.load_job(record_id))
+        if engine_key == GNINA_SCREENING and self._gnina_screening_store is not None:
+            return self._from_gnina_screening(
+                self._gnina_screening_store.load_campaign(record_id)
+            )
         if engine_key == GNINA_JOB and self._gnina_store is not None:
             return self._from_gnina_job(self._gnina_store.load_job(record_id))
         raise self._unknown(engine_key)
@@ -355,6 +385,12 @@ class ResultCatalogService:
             return [
                 self._autodock_row(entry)
                 for entry in self._autodock_gpu_store.load_batch(record_id).entries
+            ]
+        if engine_key == GNINA_SCREENING and self._gnina_screening_store is not None:
+            campaign = self._gnina_screening_store.load_campaign(record_id)
+            return [
+                self._gnina_screening_row(campaign, index, entry)
+                for index, entry in enumerate(campaign.entries)
             ]
         # A single-ligand job is a one-row table. Presenting it through the same
         # shape means the interface has one results table, not two.
@@ -488,7 +524,129 @@ class ResultCatalogService:
             record.inspection.molecular_weight_g_mol,
         )
 
+    def _inspect_screening_entry(
+        self, entry: GninaScreeningEntry
+    ) -> tuple[str, str | None, float | None, int | None]:
+        try:
+            record = self._ligand_store.load_record(entry.ligand_id)
+        except (AnkoraDomainError, OSError, ValueError):
+            return entry.name or entry.ligand_id, None, None, None
+        inspection = record.inspection
+        if entry.chemical_state_id is not None and (
+            record.state is None or entry.chemical_state_id != record.state.state_id
+        ):
+            with suppress(AnkoraDomainError, OSError, ValueError):
+                inspection = self._ligand_store.load_state_inspection(
+                    entry.ligand_id, entry.chemical_state_id
+                )
+        return (
+            entry.name or record.inspection.name,
+            inspection.canonical_smiles,
+            inspection.molecular_weight_g_mol,
+            inspection.formal_charge,
+        )
+
+    def _gnina_job_store(self) -> GninaJobStore:
+        if self._gnina_store is not None:
+            return self._gnina_store
+        if self._gnina_screening_store is not None:
+            return self._gnina_screening_store.jobs
+        raise self._unknown(GNINA_SCREENING)
+
+    def _gnina_screening_row(
+        self,
+        campaign: GninaScreeningCampaignRecord,
+        selection_order: int,
+        entry: GninaScreeningEntry,
+    ) -> CompoundRow:
+        name, smiles, weight, charge = self._inspect_screening_entry(entry)
+        pose: GninaPoseResult | None = None
+        pose_count: int | None = 0 if entry.is_terminal else None
+        if entry.status is DockingJobStatus.COMPLETED:
+            job = verified_campaign_entry_job(
+                store=self._gnina_job_store(), campaign=campaign, entry=entry
+            )
+            pose = job.poses[0]
+            pose_count = len(job.poses)
+        return CompoundRow(
+            ligand_id=entry.ligand_id,
+            parent_compound_id=entry.ligand_id,
+            chemical_state_id=entry.chemical_state_id,
+            chemical_state_formal_charge=charge,
+            source_index=(
+                entry.source_index if entry.source_index is not None else selection_order
+            ),
+            name=name,
+            canonical_smiles=smiles,
+            molecular_weight_g_mol=weight,
+            status=entry.status.value,
+            failure_code=entry.failure.code if entry.failure else None,
+            best_result_kcal_mol=None,
+            primary_cnn_score=pose.cnn_score if pose else None,
+            cnn_affinity_pk=pose.cnn_affinity if pose else None,
+            minimized_affinity_kcal_mol=pose.minimized_affinity_kcal_mol if pose else None,
+            pose_count=pose_count,
+        )
+
     # --- one projection per kind of record --------------------------------
+
+    def _from_gnina_screening(self, record: GninaScreeningCampaignRecord) -> CatalogEntry:
+        job_store = self._gnina_job_store()
+        best_pose: GninaPoseResult | None = None
+        best_molecule: str | None = None
+        observed_gpus: set[str] = set()
+        for entry in record.entries:
+            loaded_job: GninaJobRecord | None = None
+            if entry.status is DockingJobStatus.COMPLETED:
+                loaded_job = verified_campaign_entry_job(
+                    store=job_store, campaign=record, entry=entry
+                )
+                top_pose = loaded_job.poses[0]
+                if best_pose is None or top_pose.cnn_score > best_pose.cnn_score:
+                    best_pose = top_pose
+                    best_molecule = entry.name or self._inspect(entry.ligand_id)[0]
+            elif entry.gnina_job_id is not None:
+                with suppress(AnkoraDomainError, OSError):
+                    loaded_job = job_store.load_job(entry.gnina_job_id)
+            if (
+                loaded_job is not None
+                and loaded_job.execution is not None
+                and loaded_job.execution.observed_gpu_uuid is not None
+            ):
+                observed_gpus.add(loaded_job.execution.observed_gpu_uuid)
+        device_name = next(iter(observed_gpus)) if len(observed_gpus) == 1 else None
+        return CatalogEntry(
+            catalog_id=f"{GNINA_SCREENING}:{record.campaign_id}",
+            engine_key=GNINA_SCREENING,
+            record_id=record.campaign_id,
+            mode=ResultMode.SCREENING,
+            scoring_family=ScoringFamily.GNINA,
+            backend=record.request.parameters.compute,
+            engine_label=f"GNINA {record.tool.version}",
+            engine_version=record.tool.version,
+            executable_sha256=record.tool.sha256,
+            device_name=device_name,
+            status=record.status.value,
+            created_at=record.created_at,
+            completed_at=record.completed_at,
+            receptor_id=record.request.receptor_id,
+            binding_site_id=record.request.binding_site_id,
+            box=record.box.model_dump(mode="json"),
+            library_id=record.selection.library_id,
+            filter_run_id=record.selection.filter_run_id,
+            selection_manifest_sha256=record.selection.manifest_sha256,
+            selected_count=record.selected_count,
+            succeeded_count=record.succeeded_count,
+            failed_count=record.failed_count,
+            canceled_count=record.canceled_count,
+            best_result_kcal_mol=None,
+            primary_cnn_score=best_pose.cnn_score if best_pose else None,
+            cnn_affinity_pk=best_pose.cnn_affinity if best_pose else None,
+            minimized_affinity_kcal_mol=(
+                best_pose.minimized_affinity_kcal_mol if best_pose else None
+            ),
+            best_molecule=best_molecule,
+        )
 
     def _from_vina_batch(self, record: Any) -> CatalogEntry:
         best, molecule = _best(record.entries, _pose_best)

@@ -1,15 +1,20 @@
 """Synthetic GNINA catalog records: score axes never become kcal/mol."""
 
+import shutil
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ankora_backend.api.app import create_app
+from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.schemas.binding_sites import BindingBox
-from ankora_backend.schemas.docking import DockingJobPhase, DockingJobStatus
+from ankora_backend.schemas.docking import DockingFailure, DockingJobPhase, DockingJobStatus
 from ankora_backend.schemas.gnina import (
     GninaDockingParameters,
     GninaDockingRequest,
@@ -18,6 +23,13 @@ from ankora_backend.schemas.gnina import (
     GninaPoseArtifact,
     GninaPoseResult,
     GninaToolIdentity,
+)
+from ankora_backend.schemas.gnina_screening import (
+    GninaScreeningCampaignRecord,
+    GninaScreeningEntry,
+    GninaScreeningPreflightCode,
+    GninaScreeningRequest,
+    GninaScreeningSelection,
 )
 
 
@@ -198,3 +210,301 @@ def test_catalog_orders_gnina_jobs_by_time_not_cnn_score(tmp_path, monkeypatch):
         entries = client.get("/api/v1/results/campaigns?scoring_family=gnina").json()["entries"]
         assert [entry["record_id"] for entry in entries] == [newer.job_id, older.job_id]
         assert [entry["primary_cnn_score"] for entry in entries] == [0.8, 0.9]
+
+
+def _synthetic_screening_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[GninaScreeningStore, GninaJobStore, str, str]:
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    screening_store = GninaScreeningStore.from_environment()
+    job_store = screening_store.jobs
+    campaign_id = screening_store.new_campaign_id()
+    now = datetime.now(UTC)
+    receptor_bytes = b"synthetic receptor pdbqt\n"
+    receptor_sha = sha256(receptor_bytes).hexdigest()
+    tool = GninaToolIdentity(version="1.3.3", sha256="a" * 64, architecture="x86_64")
+    box = BindingBox(center_x=1, center_y=2, center_z=3, size_x=10, size_y=12, size_z=14)
+    request = GninaScreeningRequest(
+        receptor_id="synthetic-receptor",
+        binding_site_id="synthetic-site",
+        library_id="synthetic-library",
+        filter_run_id="synthetic-filter",
+        parameters=GninaDockingParameters(compute="cuda"),
+        acknowledge_inputs_and_scoring=True,
+    )
+    entries = [
+        GninaScreeningEntry(
+            ligand_id="synthetic-alpha",
+            chemical_state_id="state-alpha",
+            source_index=4,
+            name="Synthetic Alpha",
+            ligand_preparation_id="prep-alpha",
+            ligand_sha256=sha256(b"ligand alpha").hexdigest(),
+            conformer_id="conf-alpha",
+            conformer_sha256=sha256(b"conformer alpha").hexdigest(),
+            status=DockingJobStatus.QUEUED,
+            phase=DockingJobPhase.QUEUED,
+        ),
+        GninaScreeningEntry(
+            ligand_id="synthetic-beta",
+            chemical_state_id="state-beta",
+            source_index=1,
+            name="Synthetic Beta",
+            ligand_preparation_id="prep-beta",
+            ligand_sha256=sha256(b"ligand beta").hexdigest(),
+            conformer_id="conf-beta",
+            conformer_sha256=sha256(b"conformer beta").hexdigest(),
+            status=DockingJobStatus.QUEUED,
+            phase=DockingJobPhase.QUEUED,
+        ),
+        GninaScreeningEntry(
+            ligand_id="synthetic-unprepared",
+            chemical_state_id="state-unprepared",
+            source_index=None,
+            name=None,
+            status=DockingJobStatus.FAILED,
+            phase=DockingJobPhase.COMPLETE,
+            completed_at=now,
+            failure=DockingFailure(
+                code=GninaScreeningPreflightCode.LIBRARY_RECORD_MISSING,
+                message="synthetic missing library record",
+            ),
+        ),
+    ]
+    record = GninaScreeningCampaignRecord(
+        campaign_id=campaign_id,
+        status=DockingJobStatus.QUEUED,
+        phase=DockingJobPhase.QUEUED,
+        created_at=now,
+        request=request,
+        tool=tool,
+        selection=GninaScreeningSelection(
+            library_id="synthetic-library",
+            filter_run_id="synthetic-filter",
+            manifest_artifact_id="synthetic-filter",
+            manifest_sha256="e" * 64,
+        ),
+        receptor_output_artifact_id="receptor-pdbqt",
+        receptor_sha256=receptor_sha,
+        box=box,
+        selected_count=3,
+        completed_count=1,
+        failed_count=1,
+        entries=entries,
+    )
+    selection_stub = SimpleNamespace(
+        artifact=SimpleNamespace(sha256="e" * 64, filter_run_id="synthetic-filter"),
+        selected_ligand_ids=[item.ligand_id for item in entries],
+        evaluations=[
+            SimpleNamespace(
+                ligand_id=item.ligand_id,
+                state_id=item.chemical_state_id,
+                record_index=item.source_index,
+            )
+            for item in entries
+        ],
+    )
+    monkeypatch.setattr(
+        "ankora_backend.persistence.gnina_screening_store.verified_screening_selection",
+        lambda **_kwargs: selection_stub,
+    )
+    monkeypatch.setattr(
+        GninaScreeningStore,
+        "_verify_entry_preparation",
+        lambda *_args, **_kwargs: None,
+    )
+    screening_store.create_campaign(record)
+
+    # Deliberately discordant: Beta has higher CNNscore (0.93) and weaker kcal/mol (-3.2)
+    # than Alpha (0.72, -9.4 kcal/mol), proving catalog projection ranks by CNNscore.
+    specs = (
+        ("synthetic-alpha", "prep-alpha", b"ligand alpha", b"conformer alpha", 0.72, 6.1, -9.4),
+        ("synthetic-beta", "prep-beta", b"ligand beta", b"conformer beta", 0.93, 7.8, -3.2),
+    )
+    beta_job_id = ""
+    for ligand_id, prep_id, lig_bytes, conf_bytes, cnn_score, cnn_aff, energy in specs:
+        pose_bytes = f"synthetic pose {ligand_id}".encode()
+        job_id = job_store.new_job_id()
+        if ligand_id == "synthetic-beta":
+            beta_job_id = job_id
+        job = GninaJobRecord(
+            job_id=job_id,
+            screening_campaign_id=campaign_id,
+            status=DockingJobStatus.COMPLETED,
+            phase=DockingJobPhase.COMPLETE,
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            request=GninaDockingRequest(
+                receptor_id="synthetic-receptor",
+                binding_site_id="synthetic-site",
+                ligand_id=ligand_id,
+                ligand_preparation_id=prep_id,
+                parameters=request.parameters,
+                acknowledge_inputs_and_scoring=True,
+            ),
+            tool=tool,
+            box=box,
+            receptor_output_artifact_id="receptor-pdbqt",
+            receptor_sha256=receptor_sha,
+            ligand_sha256=sha256(lig_bytes).hexdigest(),
+            conformer_sha256=sha256(conf_bytes).hexdigest(),
+            execution=GninaExecutionEvidence(
+                command=["synthetic-gnina"],
+                exit_code=0,
+                stdout="",
+                stderr="",
+                gpu_process_observed=True,
+                gpu_observation="nvidia_smi_compute_apps_observed",
+                requested_gpu_uuid="GPU-synthetic-0",
+                observed_gpu_uuid="GPU-synthetic-0",
+            ),
+            poses=[
+                GninaPoseResult(
+                    mode=1,
+                    cnn_score=cnn_score,
+                    cnn_affinity=cnn_aff,
+                    minimized_affinity_kcal_mol=energy,
+                    artifact=GninaPoseArtifact(
+                        artifact_id=f"pose-{ligand_id}-1",
+                        mode=1,
+                        filename="pose_1.pdbqt",
+                        sha256=sha256(pose_bytes).hexdigest(),
+                        size_bytes=len(pose_bytes),
+                    ),
+                )
+            ],
+        )
+        job_store.create_job(job)
+        job_store.write_artifact(job_id, "receptor.pdbqt", receptor_bytes)
+        job_store.write_artifact(job_id, "ligand.pdbqt", lig_bytes)
+        job_store.write_artifact(job_id, "conformer.sdf", conf_bytes)
+        job_store.write_artifact(job_id, "pose_1.pdbqt", pose_bytes)
+
+        stored_entry = screening_store.load_entry(campaign_id, ligand_id)
+        assert stored_entry is not None
+        running = screening_store.update_entry(
+            campaign_id,
+            stored_entry.model_copy(
+                update={
+                    "status": DockingJobStatus.RUNNING,
+                    "phase": DockingJobPhase.DOCKING,
+                    "gnina_job_id": job_id,
+                    "started_at": now,
+                }
+            ),
+        )
+        screening_store.update_entry(
+            campaign_id,
+            running.model_copy(
+                update={
+                    "status": DockingJobStatus.COMPLETED,
+                    "phase": DockingJobPhase.COMPLETE,
+                    "completed_at": now,
+                }
+            ),
+        )
+    screening_store.finalize_campaign(campaign_id)
+    return screening_store, job_store, campaign_id, beta_job_id
+
+
+def test_gnina_screening_projects_into_catalog_ranked_by_cnn_score(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, campaign_id, _ = _synthetic_screening_campaign(tmp_path, monkeypatch)
+    with TestClient(create_app()) as client:
+        page = client.get("/api/v1/results/campaigns?scoring_family=gnina&mode=screening").json()
+        assert page["total"] == 1
+        entry = page["entries"][0]
+        assert entry["catalog_id"] == f"gnina_screening:{campaign_id}"
+        assert entry["engine_key"] == "gnina_screening"
+        assert entry["mode"] == "screening"
+        assert entry["scoring_family"] == "gnina"
+        assert entry["backend"] == "cuda"
+        assert entry["device_name"] == "GPU-synthetic-0"
+        assert entry["selected_count"] == 3
+        assert entry["succeeded_count"] == 2
+        assert entry["failed_count"] == 1
+        assert entry["best_result_kcal_mol"] is None
+        assert entry["primary_cnn_score"] == 0.93
+        assert entry["cnn_affinity_pk"] == 7.8
+        assert entry["minimized_affinity_kcal_mol"] == -3.2
+        assert entry["best_molecule"] == "Synthetic Beta"
+
+        compounds = client.get(
+            f"/api/v1/results/campaigns/gnina_screening/{campaign_id}/compounds"
+        ).json()
+        assert compounds["value_label"] == "CNN score (higher ranks first)"
+        assert [row["ligand_id"] for row in compounds["rows"]] == [
+            "synthetic-beta",
+            "synthetic-alpha",
+            "synthetic-unprepared",
+        ]
+        assert [row["primary_cnn_score"] for row in compounds["rows"]] == [0.93, 0.72, None]
+        assert [row["minimized_affinity_kcal_mol"] for row in compounds["rows"]] == [
+            -3.2,
+            -9.4,
+            None,
+        ]
+        assert all(row["best_result_kcal_mol"] is None for row in compounds["rows"])
+        assert (
+            compounds["rows"][2]["failure_code"]
+            == GninaScreeningPreflightCode.LIBRARY_RECORD_MISSING
+        )
+
+
+def test_gnina_screening_catalog_fails_closed_when_child_pose_is_tampered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, job_store, campaign_id, beta_job_id = _synthetic_screening_campaign(tmp_path, monkeypatch)
+    original_pose = job_store.output_path(beta_job_id, "pose_1.pdbqt").read_bytes()
+    job_store.output_path(beta_job_id, "pose_1.pdbqt").write_bytes(b"tampered pose bytes")
+    with TestClient(create_app()) as client:
+        detail = client.get(f"/api/v1/results/campaigns/gnina_screening/{campaign_id}")
+        assert detail.status_code == 409
+        assert detail.json()["code"] == "GNINA_POSE_INTEGRITY_FAILED"
+        compounds = client.get(
+            f"/api/v1/results/campaigns/gnina_screening/{campaign_id}/compounds"
+        )
+        assert compounds.status_code == 409
+        assert compounds.json()["code"] == "GNINA_POSE_INTEGRITY_FAILED"
+
+        job_store.output_path(beta_job_id, "pose_1.pdbqt").write_bytes(original_pose)
+        job_store.output_path(beta_job_id, "ligand.pdbqt").write_bytes(b"tampered ligand bytes")
+        drifted = client.get(f"/api/v1/results/campaigns/gnina_screening/{campaign_id}")
+        assert drifted.status_code == 409
+        assert drifted.json()["code"] == "GNINA_SCREENING_JOB_MISMATCH"
+
+
+def test_recorded_cuda_campaign_projects_into_catalog_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_data = (
+        Path(__file__).resolve().parents[2]
+        / "logs/linux-gnina-investigation/v1.3.3/screening-api-cuda-01/data"
+    )
+    if not source_data.is_dir():
+        pytest.skip("Local recorded GNINA CUDA screening evidence is not present in this checkout.")
+    isolated_data = tmp_path / "isolated-data"
+    shutil.copytree(source_data, isolated_data)
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(isolated_data))
+    with TestClient(create_app()) as client:
+        page = client.get("/api/v1/results/campaigns?scoring_family=gnina&mode=screening").json()
+        assert page["total"] == 1
+        entry = page["entries"][0]
+        assert entry["engine_key"] == "gnina_screening"
+        assert entry["succeeded_count"] == 11
+        assert entry["best_result_kcal_mol"] is None
+        assert entry["best_molecule"] == "NCI-68"
+        assert entry["primary_cnn_score"] == pytest.approx(0.939, abs=1e-4)
+        compounds = client.get(
+            f"/api/v1/results/campaigns/gnina_screening/{entry['record_id']}/compounds"
+        ).json()
+        assert compounds["total"] == 11
+        assert compounds["rows"][0]["name"] == "NCI-68"
+        assert compounds["rows"][1]["name"] == "NCI-76"
+        assert compounds["rows"][0]["primary_cnn_score"] > compounds["rows"][1]["primary_cnn_score"]
+        assert (
+            compounds["rows"][0]["minimized_affinity_kcal_mol"]
+            > compounds["rows"][1]["minimized_affinity_kcal_mol"]
+        )
