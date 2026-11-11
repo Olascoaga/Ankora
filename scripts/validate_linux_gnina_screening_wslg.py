@@ -29,12 +29,17 @@ EXPECTED_SOURCE_EVIDENCE_SHA256 = (
     "9662bd482fa2a7c93fbf22ad5b9d22dc98b4c0aa0011d4c9774e898e30c3ddac"
 )
 RUN_DIR = REPO_ROOT / "logs/linux-gnina-investigation/v1.3.3/wslg-screening-ui-03"
-PYTHON_BIN = Path("/home/samael/Ankora/.venv/bin/python")
-NODE_BIN_DIR = Path("/home/samael/.nvm/versions/node/v24.19.0/bin")
-CARGO_BIN_DIR = Path("/home/samael/.cargo/bin")
+HOME_DIR = Path.home()
+PYTHON_BIN = Path(os.environ.get("ANKORA_PYTHON_BIN") or HOME_DIR / "Ankora/.venv/bin/python")
+NODE_BIN_DIR = Path(
+    os.environ.get("ANKORA_NODE_BIN_DIR") or HOME_DIR / ".nvm/versions/node/v24.19.0/bin"
+)
+CARGO_BIN_DIR = Path(os.environ.get("ANKORA_CARGO_BIN_DIR") or HOME_DIR / ".cargo/bin")
 TAURI_DRIVER = CARGO_BIN_DIR / "tauri-driver"
-WEBKIT_DRIVER = Path("/usr/bin/WebKitWebDriver")
-DESKTOP_BINARY = Path("/home/samael/Ankora-linux-target/debug/ankora-desktop")
+WEBKIT_DRIVER = Path(os.environ.get("ANKORA_WEBKIT_DRIVER") or "/usr/bin/WebKitWebDriver")
+DESKTOP_BINARY = Path(
+    os.environ.get("ANKORA_DESKTOP_BINARY") or HOME_DIR / "Ankora-linux-target/debug/ankora-desktop"
+)
 PORTS = {"api": 8765, "web": 1420, "webdriver": 4444, "native_webdriver": 4445}
 
 _LOOPBACK_HEX = {

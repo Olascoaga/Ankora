@@ -1,4 +1,4 @@
-# GNINA WSLg native desktop screening check — predeclared
+# GNINA WSLg native desktop screening check — completed
 
 ## Protocol
 
@@ -107,3 +107,38 @@ Run the identical WSLg interactive protocol in create-only directory
 active `Cancel campaign` control disappears (terminal campaign status
 `completed`) and all 11 compound rows display read numeric scores before
 auditing the table, Mol* WebGL 2.0 context, and `1280×800` / `960×680` layouts.
+
+## Observed run: wslg-screening-ui-03 (passed)
+
+Executed `2026-11-11T18:20:28Z`–`2026-11-11T18:21:55Z` against `ankora-desktop`
+(`wry` `0.55.1`, `platformName == "linux"`, `acceptInsecureCerts == False`) over
+WSLg (`DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`) with loopback-only listeners on
+`127.0.0.1:8765`, `127.0.0.1:1420`, `127.0.0.1:4444`, and `127.0.0.1:4445`.
+
+- Through real UI controls, reopened the prepared `1HSG` receptor
+  (`da4cf4adb8d1…`), hydrated the applied 11-molecule `demostracion` selection
+  from `nci_real_100.sdf` (`manifest_sha256` `344751ca9a12b4ed…`), defined the
+  `MK1` co-crystallized binding box (`24.9 × 20.2 × 18.6 Å`), selected
+  `GNINA · screening` on `NVIDIA GPU · CUDA` (`RTX 5050`, `GPU-4fec5c6f-e22d-45ac-5898-743b25fe83b6`,
+  `CPU threads = 2`, `Seed = 20261029`, `Exhaustiveness = 1`,
+  `Maximum poses = 2`), acknowledged the scoring notice, and completed all
+  `11 / 11` molecules (`0 failed`, `0 canceled`).
+- Table headers and compound rows rendered separate `Top CNN score (dimensionless) ↓`,
+  `CNN affinity (pK)`, and `Minimized affinity (kcal/mol)` columns ordered by
+  descending `CNNscore` (`NCI-68` `0.9390` / `6.170 pK` / `-2.681 kcal/mol`
+  ranked above `NCI-76` `0.9162` / `4.880 pK` / `-8.809 kcal/mol`). Expanding
+  `NCI-68` listed `Pose 1` (`0.9390`) above `Pose 2` (`0.8063`) and loaded
+  `Pose 1` into the 1HSG binding box in Mol* (`WebKit WebGL` / `WebGL 2.0`,
+  `contextLost == False`).
+- Both `1280×800` (`canvas 700×336`, `docScrollWidth == 1280`) and `960×680`
+  (`canvas 488×336`, `docScrollWidth == 960`) satisfied zero document overflow,
+  zero JS/unhandled-rejection/CSP errors, and native PNG screenshot capture
+  (`1280-running.png`, `1280-viewer-and-inspector.png`,
+  `1280-campaign-results.png`, `960-viewer-and-inspector.png`,
+  `960-campaign-results.png`).
+- Teardown closed all four ports, left zero GPU compute processes, and preserved
+  the source tree digest (`9b79465d38e419dd58d8b98ba49e61b87ec19ad4ca92cc6f31ddaec57bb2167b`).
+  Retained create-only `wslg-screening-ui-03/evidence.json` SHA-256:
+  `4beff8a8bc9e792428ed72f8d5ad39a280fed45c7e8dffe2b0afbbcf173d5c54`.
+- Boundary: WSL2/WSLg desktop GUI verification only; bare-metal Linux
+  workstation acceptance (ADR-026 Gate 3) remains separate work.
