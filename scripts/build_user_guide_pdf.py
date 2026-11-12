@@ -22,10 +22,27 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "docs" / "USER_GUIDE.md"
 TARGET = ROOT / "docs" / "Ankora-User-Guide.pdf"
 PDF_WAIT_SECONDS = 30.0
+GITHUB_REPO_URL = "https://github.com/Olascoaga/Ankora"
+LINUX_RC_PATH_MARKERS = (
+    "PLATFORM_STATUS",
+    "LINUX_",
+    "GNINA_",
+    "ADR-026",
+    "ADR-027",
+    "ADR-028",
+    "ADR-029",
+)
 
 
 def find_browser() -> pathlib.Path | None:
-    for name in ("msedge", "chrome", "chromium"):
+    for name in (
+        "msedge",
+        "microsoft-edge",
+        "google-chrome",
+        "chrome",
+        "chromium",
+        "chromium-browser",
+    ):
         found = shutil.which(name)
         if found:
             return pathlib.Path(found)
@@ -45,16 +62,16 @@ def find_browser() -> pathlib.Path | None:
 CSS = """
 @page { size: A4; margin: 18mm 16mm 18mm 16mm;
   @bottom-center { content: "Ankora · 7AQF / RV2 · " counter(page);
-    font: 8pt "Segoe UI", sans-serif; color:#5a6b78; } }
+    font: 8pt "Segoe UI", sans-serif; color:#52606d; } }
 @page:first { @bottom-center { content: none; } }
-:root { --ink:#15202b; --muted:#5a6b78; --line:#d7dee4; --accent:#0d7a5f; --soft:#f4f7f8; }
+:root { --ink:#16191f; --muted:#52606d; --line:#d5dce2; --accent:#8a5a19; --soft:#f5f6f8; }
 * { box-sizing: border-box; }
 body { margin:0; color:var(--ink); background:#fff;
   font: 10.5pt/1.58 "Segoe UI", -apple-system, system-ui, sans-serif; }
 h1 { font-size: 23pt; margin: 0 0 4pt; letter-spacing:-.01em; }
 h2 { font-size: 14pt; margin: 20pt 0 6pt; padding-top: 6pt;
   border-top: 1px solid var(--line); page-break-after: avoid; }
-h3 { font-size: 11.5pt; margin: 13pt 0 4pt; color:#0b3b30; page-break-after: avoid; }
+h3 { font-size: 11.5pt; margin: 13pt 0 4pt; color:#27323f; page-break-after: avoid; }
 p { margin: 0 0 7pt; }
 a { color: var(--accent); text-decoration: none; }
 ul, ol { margin: 0 0 8pt; padding-left: 17pt; }
@@ -197,10 +214,10 @@ def convert(markdown: str) -> str:
 def build_pdf(source: pathlib.Path, target: pathlib.Path, browser: pathlib.Path) -> None:
     cover = (
         '<div class="cover"><h1>Ankora</h1>'
-        '<div class="sub">User guide - version 0.1.0 &middot; Windows</div>'
-        '<p>Private beta &middot; illustrated edition &middot; 9 October 2026</p>'
+        '<div class="sub">User guide - version 0.1.0 &middot; Windows 11 &amp; Linux x86_64 RC</div>'
+        '<p>Private beta &amp; release candidate &middot; illustrated edition &middot; 12 November 2026</p>'
         '<div class="meta">A guided docking campaign, from a PDB accession to a '
-        'citable record.<br>SERPINE1 / PAI-1 &middot; PDB 7AQF &middot; RV2'
+        'citable record.<br>SERPINE1 / PAI-1 &middot; PDB 7AQF &middot; RV2 &middot; GNINA 1.3.3 on Linux'
         '<br>MIT licence &middot; github.com/Olascoaga/Ankora</div></div>'
     )
     body = convert(source.read_text(encoding="utf-8"))
@@ -211,7 +228,32 @@ def build_pdf(source: pathlib.Path, target: pathlib.Path, browser: pathlib.Path)
             raise ValueError("Guide image must exist inside the documentation directory")
         return f'src="{html_mod.escape(path.as_uri(), quote=True)}"'
 
+    doc_root = (
+        ROOT.resolve()
+        if source.resolve().is_relative_to(ROOT.resolve())
+        else source.parent.resolve()
+    )
+
+    def public_link(match: re.Match[str]) -> str:
+        raw_href = html_mod.unescape(match.group(1))
+        if raw_href.startswith(("#", "http://", "https://", "mailto:")):
+            return match.group(0)
+        rel_part, sep, fragment = raw_href.partition("#")
+        target_doc = (source.parent / rel_part).resolve()
+        if not target_doc.is_relative_to(doc_root) or not target_doc.exists():
+            raise ValueError(f"Guide link target must exist inside the repository: {raw_href}")
+        repo_rel = target_doc.relative_to(doc_root).as_posix()
+        ref = (
+            "codex/linux-bootstrap"
+            if any(marker in repo_rel for marker in LINUX_RC_PATH_MARKERS)
+            else "main"
+        )
+        suffix = f"#{fragment}" if sep and fragment else ""
+        url = f"{GITHUB_REPO_URL}/blob/{ref}/{repo_rel}{suffix}"
+        return f'href="{html_mod.escape(url, quote=True)}"'
+
     body = re.sub(r'src="([^"]+)"', local_image, body)
+    body = re.sub(r'href="([^"]+)"', public_link, body)
     page = (
         "<!doctype html><html><head><meta charset='utf-8'>"
         f"<title>Ankora User Guide</title><style>{CSS}</style></head>"

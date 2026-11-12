@@ -54,6 +54,7 @@ def test_real_illustrated_guide_has_complete_sequential_figures(builder: ModuleT
 
 def test_guide_distinguishes_tutorial_and_validation_limitations() -> None:
     source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
     assert "Calculate RMSD and save validation" in source
     assert "symmetry-aware heavy-atom RMSD, computed in place" in source
     assert "Do not substitute Vina's inter-mode RMSD." in source
@@ -63,6 +64,62 @@ def test_guide_distinguishes_tutorial_and_validation_limitations() -> None:
     assert "8 residue/subtype groups" in source
     assert "13 / 17 contacts" in source
     assert "383.767" in source and "384.775" in source
+    assert "current UI reviews records rather than creating new ones" not in normalized
+    assert "GNINA `1.3.3`" in source
+    assert "Ankora_0.1.0_gnina-cuda12-pack.tar.zst" in source
+    assert "GNINA_CNN_VS_NONPOSITIVE_AFFINITY" in source
+    assert "0009-0008-5522-7938" in source
+
+
+def test_published_user_guide_pdf_is_complete_and_free_of_local_uris() -> None:
+    pdf = ROOT / "docs" / "Ankora-User-Guide.pdf"
+    payload = pdf.read_bytes()
+    assert payload.startswith(b"%PDF-")
+    assert payload.rstrip().endswith(b"%%EOF")
+    assert len(payload) > 1_000_000
+    for forbidden in (b"file://", b"wsl.localhost", b"/home/", b"Users/"):
+        assert forbidden not in payload
+    uris = re.findall(rb"/URI\s*\(([^)]+)\)", payload)
+    assert uris
+    assert all(uri.startswith(b"https://") for uri in uris)
+
+
+def test_relative_markdown_links_are_rewritten_to_public_github_urls(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    docs_dir = tmp_path / "docs"
+    (docs_dir / "validation").mkdir(parents=True)
+    (docs_dir / "validation" / "RECORD.md").write_text("# Record", encoding="utf-8")
+    (docs_dir / "validation" / "LINUX_SMOKE.md").write_text("# Smoke", encoding="utf-8")
+    source = docs_dir / "USER_GUIDE.md"
+    source.write_text(
+        "[Win](validation/RECORD.md) [Lin](validation/LINUX_SMOKE.md#top) [Sec](#sec)\n\n## Sec",
+        encoding="utf-8",
+    )
+    target = docs_dir / "guide.pdf"
+    captured_html = ""
+    synthetic_pdf = b"%PDF-1.7\nsynthetic test only\n%%EOF\n"
+
+    def run(command: list[str], **kwargs: object) -> None:
+        nonlocal captured_html
+        html_uri = command[-1]
+        assert html_uri.startswith("file://")
+        staged_dir = next(docs_dir.glob("ankora-guide-*"))
+        captured_html = (staged_dir / "guide.html").read_text(encoding="utf-8")
+        output = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
+        Path(output).write_bytes(synthetic_pdf)
+
+    monkeypatch.setattr(builder.subprocess, "run", run)
+    builder.build_pdf(source, target, tmp_path / "browser.exe")
+    base = "https://github.com/Olascoaga/Ankora/blob"
+    assert f'href="{base}/main/validation/RECORD.md"' in captured_html
+    assert f'href="{base}/codex/linux-bootstrap/validation/LINUX_SMOKE.md#top"' in captured_html
+    assert 'href="#sec"' in captured_html
+
+    bad_source = docs_dir / "BAD.md"
+    bad_source.write_text("[Missing](validation/MISSING.md)", encoding="utf-8")
+    with pytest.raises(ValueError, match="Guide link target"):
+        builder.build_pdf(bad_source, target, tmp_path / "browser.exe")
 
 
 def test_print_layout_bounds_portrait_images(builder: ModuleType) -> None:

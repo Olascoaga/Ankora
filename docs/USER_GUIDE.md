@@ -1,6 +1,6 @@
 # Ankora - User guide
 
-**Version 0.1.0 · Windows · Private beta · Illustrated edition, 2026-10-09**
+**Version 0.1.0 · Windows 11 Beta & Linux x86_64 Release Candidate · Illustrated edition, 2026-11-12**
 
 This guide walks one complete docking campaign from a PDB accession to an
 exported, citable record. It uses **7AQF and RV2 throughout**, real application
@@ -46,9 +46,11 @@ for.
 
 ## 1. What Ankora is, and what it is not
 
-Ankora is a Windows workbench that runs **AutoDock Vina**, **AutoDock4** and
-**AutoDock-GPU** through a guided interface, and records what it did precisely
-enough to write your Methods section afterwards.
+Ankora is a local desktop workbench for **Windows 11 x64** (`private_beta`) and
+**Linux x86_64** (`release_candidate`, Ubuntu 24.04 LTS reference) that runs
+**AutoDock Vina `1.2.7`**, **AutoDock4 `4.2.6`**, **AutoDock-GPU `1.6`** and—on
+Linux—**GNINA `1.3.3`** through a guided interface, and records what it did
+precisely enough to write your Methods section afterwards.
 
 It does not implement a new scoring function or a new search algorithm. The
 numbers come from the engines you already know. What Ankora adds is everything
@@ -64,42 +66,74 @@ rather than filling the gap with a reasonable default.
 
 ## 2. Before you start
 
-**Target platform:** Windows 11 x64.
+**Supported platforms:** **Windows 11 x64** (`private_beta`) and **Linux x86_64**
+(`release_candidate`, Ubuntu 24.04 LTS reference; awaiting final bare-metal
+physical workstation attestation under Gate `D6`). macOS is out of scope for
+v0.1. See the [Platform & Engine Status matrix](product/PLATFORM_STATUS.md) for
+the full capability breakdown.
 
 **Required community experience:** install Ankora and start the supported
-workflow. The complete installer must supply Python, preparation tools, Vina,
-AutoGrid4, AutoDock4, AutoDock-GPU, P2Rank and its private Java runtime. No
-separate tool installation, terminal commands or path configuration should be
+workflow. Self-contained offline packaging supplies Python 3.12, preparation
+tools (`RDKit`, `PDBFixer`/`OpenMM`, `PDB2PQR`/`PROPKA`, `Meeko`,
+`Dimorphite-DL`, `ProLIF`), `AutoDock Vina 1.2.7`, `AutoGrid4`/`AutoDock4 4.2.6`,
+`AutoDock-GPU 1.6`, and `P2Rank 2.5.1` with its private Temurin Java 21 runtime.
+No separate Conda environment, terminal commands or manual path configuration are
 required. See the
-[complete-installer contract](https://github.com/Olascoaga/Ankora/blob/main/docs/architecture/ADR/ADR-024-complete-scientific-installer.md).
+[complete-installer contract](https://github.com/Olascoaga/Ankora/blob/main/docs/architecture/ADR/ADR-024-complete-scientific-installer.md)
+and the [Linux modular offline distribution contract](architecture/ADR/ADR-029-linux-offline-distribution.md).
 
-**Private-beta candidate:** complete packaging includes the independent docking
-engines, P2Rank, private Java and offline WebView2 as well as the Python tools.
-See the [current installed acceptance record](validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md).
-Signing and wider community acceptance remain distinct release gates. The manual
-captures demonstrate the workflow; installation evidence is recorded separately.
+**Distribution status:** Windows packaging includes the bundled Core engines,
+P2Rank, private Java and offline WebView2 (see the
+[Windows installed acceptance record](validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md)
+and [slim installer record](validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)).
+Linux packaging passes clean-room offline verification on WSL2/WSLg with real
+CUDA GPU execution ([Linux offline package smoke](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md)),
+with physical non-WSL workstation attestation tracked separately in
+[Gate `D6`](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md). Code signing and
+public release authorization remain distinct gates. The 7AQF/RV2 captures in
+this guide come from the verified Windows tutorial project; installation
+evidence is recorded separately.
 
 ### Installing
 
-The Windows artifact is named `Ankora_0.1.0_x64-setup.exe`. Use only the exact
-candidate supplied for review, with its matching checksum and release notes.
-This guide does not assert that a signed public download is already available.
+- **Windows 11 x64 (`private_beta`):** Install `Ankora_0.1.0_x64-setup.exe`
+  (`407.16 MiB` slim offline NSIS installer, paired with
+  `Ankora_0.1.0_x64-sources-companion.zip`). Use only the exact candidate
+  supplied for review, with its matching SHA-256 checksum. This guide does not
+  assert that a signed public download is already available.
+- **Linux x86_64 (`release_candidate`):** Install the double-click Debian
+  package `Ankora_0.1.0_amd64.deb` (`272.34 MiB`) on Ubuntu 24.04 LTS
+  derivatives, or extract the zero-`sudo` portable bundle
+  `Ankora_0.1.0_linux_x86_64.tar.zst` (`313.97 MiB`, paired with
+  `Ankora_0.1.0_linux-sources-companion.zip`) and launch `ankora-desktop`. Both
+  carry the complete `10/10` Core scientific payload offline.
+- **Linux 1-click offline GNINA CUDA 12.8 pack (optional):** Because
+  `GNINA 1.3.3` and its isolated CUDA 12.8 / cuDNN 9 user-space libraries weigh
+  `2.55 GiB` (`2,610.34 MiB`), they are distributed as a separate hash-locked
+  archive (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`). Open **Tools → Scientific
+  tool readiness**, click **Import offline GNINA pack…**, and select the
+  `.tar.zst` file: Ankora verifies every SHA-256 digest and installs the
+  toolchain into your per-user data directory with **zero `sudo` and zero
+  terminal commands**, scoping `LD_LIBRARY_PATH` strictly to GNINA child
+  processes (`11/11` tools ready).
 
-> **Candidate security status.** The last recorded installer candidate was
-> unsigned. Windows or institutional policy may block it. Do not disable
-> security controls to install Ankora; ask the maintainer for a verified,
-> signed release or an approved testing arrangement.
+> **Candidate security status.** Current private-beta and release-candidate
+> artifacts are unsigned. Operating-system or institutional policy may block
+> unsigned installers. Do not disable security controls to install Ankora; ask
+> the maintainer for a verified hash, signed release or approved testing
+> arrangement.
 
 After installation, open **Tools → Scientific tool readiness** to
-inspect available tools. Finding the AutoDock-GPU executable does not establish
-GPU compatibility: execution also requires a supported device and driver.
+inspect available tools. Finding `AutoDock-GPU` or `GNINA` on disk does not
+establish GPU compatibility: GPU execution also requires a supported graphics
+device and host vendor driver (`OpenCL` on Windows; `NVIDIA` kernel driver for
+`CUDA 12` on Linux, since user-space packages never install kernel drivers).
 CPU docking remains the path for machines without suitable GPU hardware;
-choosing a different engine must remain explicit. The complete candidate
-resolves its bundled tools automatically without manual path configuration.
+choosing a different engine or compute backend always remains explicit.
 
 ![Figure 1. Readiness with the packaged scientific runtime.](images/guide01-readiness.jpg)
 
-*Figure 1. All ten supported tools are detected in the isolated tutorial runtime. The eleventh entry is GNINA, explicitly deferred, not an installation failure. Executable discovery alone does not prove GPU compatibility.*
+*Figure 1. All ten Core tools are detected in the isolated Windows tutorial runtime, where the eleventh entry (GNINA) remains explicitly deferred rather than an installation failure. On Linux x86_64, importing the offline GNINA CUDA 12.8 pack transitions GNINA 1.3.3 to ready (11/11). Executable discovery alone does not prove GPU compatibility.*
 
 ### The workbench
 
@@ -487,6 +521,39 @@ illustrate interpretation; they are not a matched-input engine benchmark.
 > binding energy come from different scoring functions. Ankora will show them
 > side by side and will never merge them into a combined ranking.
 
+### 5.4 On Linux: GNINA 1.3.3 CNN scoring, refinement and ensembles
+
+On **Linux x86_64** (once `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` is imported
+or `GNINA 1.3.3` is detected), Step **5 · Docking** also offers **GNINA `1.3.3`**
+for both **Single ligand** and **Virtual screening** ([ADR-027](architecture/ADR/ADR-027-linux-gnina.md),
+[ADR-028](architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md)).
+
+- **Prepared inputs preserved verbatim:** GNINA consumes your Meeko-prepared
+  receptor and ligand `.pdbqt` derivatives with `--addH 0 --stripH 0`, so the
+  protonation, tautomer and stereochemical decisions confirmed in §3–§4 are
+  never silently overwritten.
+- **CNN scoring modes:**
+  - `rescore` (**CPU or CUDA 12.8 GPU**, default): performs empirical Monte Carlo
+    sampling and local minimization, then evaluates each pose with the 3D CNN.
+  - `refinement` (**CUDA 12.8 GPU only**, requires `timeout >= 10` minutes):
+    optimizes ligand coordinates directly against combined 3D CNN and empirical
+    gradients. Ankora rejects CPU `refinement` fail-closed rather than silently
+    downgrading to `rescore` or switching compute backends. Because CNN-favoured
+    contacts can sit closer than Vina's hard steric wall, `minimizedAffinity`
+    (`kcal/mol`) on CNN-refined poses can be higher or positive and is **not**
+    an independent empirical energy check.
+- **Built-in CNN models (pinned to verified `GNINA 1.3.3` SHA-256):**
+  - `dense_1_3` (`1` model, default)
+  - `default_1_3_ensemble` (`3` knowledge-distilled GNINA 1.3 models:
+    `dense_1_3`, `dense_1_3_PT_KD_3`, `crossdock_default2018_KD_4`, invoked by
+    omitting `--cnn`)
+  - `default1.0` (`5` GNINA 1.0 models)
+- **Native CNN pose order and GPU verification:** Within every ligand, modes
+  `1..N` remain ordered by descending `CNNscore` and are never re-sorted by
+  `kcal/mol`. CUDA jobs enforce single-GPU VRAM reservations (`1.0`–`2.0 GiB`
+  via `ResourceArbiter`) and verify that `nvidia-smi` observed the GNINA process
+  on the expected GPU UUID without MIG/MPS remapping before publishing poses.
+
 ---
 
 ## 6. Validation: did the engine find the crystal pose?
@@ -505,7 +572,9 @@ we want to know whether the atoms are where the crystal says they are.
 
 1. Extract the crystal ligand from the original structure in **Ligand**, keeping
    its original reference. Prepare an independent docking conformer and run it
-   in **Docking · Single ligand** with Vina, AutoDock4 CPU or AutoDock-GPU.
+   in **Docking · Single ligand** with Vina, AutoDock4 CPU, AutoDock-GPU or
+   (on Linux) GNINA `1.3.3` (whose modes are evaluated in native descending
+   `CNNscore` order).
 2. Open **7 · Validation**. Choose the **completed individual result** to measure.
    This screen is available even after restarting without a loaded structure.
 3. Choose its **original crystallographic reference**. The list contains only
@@ -722,18 +791,26 @@ Markdown source, headings and table included.
 
 *Figure 17. Lower software-table rows and the beginning of the numbered references, with the copy control. Review tool-versus-worker version labels and citations before publication; a gap-free report still needs scientific editorial review.*
 
-The **campaign bundle** (also in step 8) is the portable version of the same
-idea: a ZIP with the manifest, results table, existing interaction analyses and
-saved figures where available, and an integrity index. Inspect the bundle's
-file list before using it as supplementary material; it is not a promise to
-include every raw pose from a campaign. Export the exact pose complex when
-you need that coordinate file.
+The **campaign bundle** (also in step 8, currently `ankora_export_format = 4`)
+is the portable version of the same idea: a fail-closed ZIP with `manifest.json`,
+`results.csv`, `README.txt`, `methods.md`, existing interaction analyses and
+saved figures where available, and a SHA-256 integrity index across completed
+`Vina`, `AutoDock4 CPU`, `AutoDock-GPU` and (on Linux) `GNINA` screening
+campaigns. On Linux, GNINA single-ligand jobs also support portable evidence
+bundles preserving poses, separate CNN and empirical axes, interactions and
+redocking verdicts, while GNINA `Methods` reports cite Crossref-verified
+references (`McNutt et al., 2021` and `2025`), exact CNN ensemble member names,
+and `rescore` versus `refinement` semantics. Inspect the bundle's file list
+before using it as supplementary material; for screening campaigns it indexes
+summary and interaction evidence rather than every raw pose directory. Export
+the exact pose complex when you need that coordinate file.
 
 Step **8 · Export** also catalogs existing figures and coordinate complexes.
 Use **All**, **Campaign bundles**, **Figures** or **Complexes** to find the
-artifact you need. The current **Bundle a campaign** chooser is for completed
-screening campaigns: a single-ligand job can have saved figures/complexes without
-appearing in that chooser. Its Methods report remains available in Results.
+artifact you need. Single-ligand Vina and AutoDock jobs expose their saved
+figures/complexes here and their Methods report in **6 · Results**; completed
+screening campaigns (and Linux GNINA single jobs) can also be packaged as
+portable ZIP archives.
 
 ![Figure 18. Files recorded by the actual diagram export.](images/guide18-exported-files.jpg)
 
@@ -783,6 +860,14 @@ across targets, and it is not a prediction of activity.
 pose above a 0.45 Å one. Sampling and scoring are different problems and they
 fail separately.
 
+| Engine / metric | Reported units & direction | What it measures — and what it does not |
+|---|---|---|
+| **Vina score** (`Vina 1.2.7`) | `kcal/mol` (more negative ranks higher within Vina) | Empirical scoring-function estimate; not experimental ΔG, and its inter-mode RMSD bounds are not crystal RMSD. |
+| **AutoDock4 energy** (`4.2.6` CPU / `GPU 1.6`) | `kcal/mol` (more negative ranks higher within AutoDock4) | Semiempirical AMBER-based estimate over `AutoGrid4` maps; never pool numerically with Vina. Matched Vina and AutoDock4 CPU library campaigns can be compared only via rank order (Spearman ρ and Top-`N` overlap). |
+| **GNINA `CNNscore`** (Linux `1.3.3`) | Dimensionless `[0, 1]` (closer to `1.0` ranks higher) | 3D CNN pose-quality score governing within-ligand mode order (`1..N`); **not** a calibrated statistical probability. |
+| **GNINA `CNNaffinity`** (Linux `1.3.3`) | `pK` units (higher ranks higher) | 3D CNN predicted affinity on a log₁₀ dissociation scale; distinct from empirical `kcal/mol` and experimental Kd/Ki. |
+| **GNINA `CNN_VS`** (Linux `1.3.3`) | `CNNscore × CNNaffinity` (descending) | Screening hit-prioritization product (`ADR-028`) mitigating top-end `CNNscore` saturation across libraries. If any completed entry has `CNNaffinity <= 0`, Ankora records `GNINA_CNN_VS_NONPOSITIVE_AFFINITY` because negative `pK` values invert `CNNscore` monotonicity among weak decoys. |
+
 Practical consequences:
 
 - Do not compare a Vina score to an AutoDock4 binding energy.
@@ -809,7 +894,8 @@ Practical consequences:
 | **Molecule absent from 3D** | Read the viewer error first. A downloaded record can exist even when the renderer fails. Report a CSP/module error as a software defect; do not change chemical preparation to fix a rendering problem. |
 | **Many 3D lines but fewer 2D nodes** | Read atomic-contact and group counts, the interaction-type filter, and summary/all-atomic mode (§7.2). Multiplicities preserve contacts; nodes are not individual atom pairs. |
 | **A save control seems missing on a laptop** | Scroll the workspace and collapse or resize panels. Scrollbars inside the contact table do not move the export panels. |
-| **No validation is listed** | No validation record exists in this project. The current UI reviews records rather than creating new ones (§6.1). |
+| **No validation is listed** | No validation record exists in this project yet. Open **7 · Validation**, select a completed individual Vina, AutoDock4 CPU/GPU or (on Linux) GNINA job and its preserved crystallographic reference from the same structure, and press **Calculate RMSD and save validation** (§6.1). |
+| **GNINA unavailable on Linux** | Open **Tools → Scientific tool readiness** and import `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` (zero `sudo` required). On Windows, GNINA remains intentionally deferred. |
 
 Logs live beside the project data; the **Provenance** panel in the status bar
 shows every command Ankora issued, with its arguments.
@@ -896,6 +982,18 @@ by giving every process the entire budget. For example, a 15-thread budget
 with 15 concurrent ligands allocates one thread to each. This is an illustrative
 configuration, not a measured speed-up or a required setting for your machine.
 
+For **AutoDock4 CPU**, Ankora runs a bounded pool of single-core processes over
+one shared immutable `AutoGrid4` map set; **AutoDock-GPU** executes one
+`--filelist` GPU batch over that map set so parallel GPU kernels do not compete
+across separate OS processes. On Linux, **GNINA virtual screening** executes
+prepared selection entries sequentially (`1` active job at a time with
+transactional SQLite state, cancellation and startup recovery), ranking
+completed compounds by descending `CNNscore` or `CNN_VS` (`hit_ranking_metric`)
+while keeping within-ligand modes in `CNNscore` order. When you run both **Vina**
+and **AutoDock4 CPU** library campaigns against the exact same receptor,
+finalized box and applied selection manifest, **6 · Results** can evaluate
+Spearman rank correlation and Top-`N` overlap without merging their score scales.
+
 The progress strip reports **completed / running / queued / succeeded / failed**.
 Finished compounds appear incrementally in the sortable results table. The
 current-best banner identifies the lowest score **within that campaign**;
@@ -914,7 +1012,8 @@ virtual-screening validation.
 ## Citing Ankora
 
 If Ankora contributed to published work, cite it using the metadata in
-`CITATION.cff` at the repository root, naming the version that produced your
+`CITATION.cff` at the repository root (author: Samael Olascoaga, ORCID
+`https://orcid.org/0009-0008-5522-7938`), naming the version that produced your
 results. Cite the scientific tools separately - the Methods section Ankora
 generates lists them with their references.
 

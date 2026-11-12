@@ -53,6 +53,7 @@ def _stage_minimal_repo(tmp_path: Path) -> Path:
         dst = repo / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, dst)
+    (repo / "docs/USER_GUIDE.md").write_text("# Synthetic User Guide\n", encoding="utf-8")
     return repo
 
 

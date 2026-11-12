@@ -18,6 +18,7 @@ VALIDATION_INDEX_PATH = PurePosixPath("docs/validation/INDEX.md")
 CORE_LINK_CHECKED_DOCS = (
     PLATFORM_MD_PATH,
     DOCS_PORTAL_PATH,
+    PurePosixPath("docs/USER_GUIDE.md"),
     PurePosixPath("docs/product/PRODUCT_DEFINITION.md"),
     PurePosixPath("docs/product/SCOPE.md"),
     PurePosixPath("docs/scientific/REDOCKING_VALIDATION.md"),
@@ -358,7 +359,9 @@ def verify_all(root: Path, *, write: bool = False) -> tuple[int, int]:
             )
 
     for doc_rel in CORE_LINK_CHECKED_DOCS:
-        check_markdown_links_and_paths(root, doc_rel, require_links=(doc_rel in {PLATFORM_MD_PATH, DOCS_PORTAL_PATH}))
+        check_markdown_links_and_paths(
+            root, doc_rel, require_links=(doc_rel in {PLATFORM_MD_PATH, DOCS_PORTAL_PATH})
+        )
     indexed_count = check_validation_index_completeness(root)
     return len(data["platforms"]), indexed_count
 
