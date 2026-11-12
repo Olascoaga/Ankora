@@ -2,6 +2,84 @@
 
 All notable project changes are recorded here.
 
+## Platform status matrix, documentation portal, and citation reconciliation - 2026-11-12
+
+- Add machine-readable `docs/product/PLATFORM_STATUS.json`, generated
+  `PLATFORM_STATUS.md`, task-oriented `docs/README.md`, and complete 128-record
+  `docs/validation/INDEX.md`, enforced by `scripts/check_platform_docs.py` and
+  `backend/tests/test_platform_docs.py`.
+- Reconcile product, scientific-policy, architecture, and Linux maintainer
+  documentation with completed `ADR-026`–`ADR-029` implementation while keeping
+  frozen `VALIDATION_STATUS.json` reference benchmarks untouched and bare-metal
+  Linux workstation Gate `D6` explicit.
+- Add author ORCID (`0009-0008-5522-7938`) and multi-platform / 4-engine
+  metadata to `CITATION.cff`.
+
+## Modular offline Linux distribution, 1-click GNINA pack, and Ubuntu 24.04 CI (`ADR-029`) - 2026-11-11
+
+- Implement the two-tier offline Linux `x86_64` packaging pipeline (`ADR-029`):
+  slim PyInstaller Python `3.12.13` backend (`build_linux_backend.py`) with
+  monotonic `/proc/<pid>/stat` parent watchdog, multi-arch static-`cudart`
+  CUDA 12 `AutoDock-GPU 1.6` (`build_linux_autodock_gpu.py`), Core scientific
+  payload and 700-component GPL/LGPL source companion
+  (`stage_linux_scientific_payload.py`, `complete_linux_legal.py`), double-click
+  `Ankora_0.1.0_amd64.deb` (`272.34 MiB`) and zero-`sudo` portable
+  `Ankora_0.1.0_linux_x86_64.tar.zst` (`313.97 MiB`) (`build_linux_installer.py`).
+- Add `build_linux_gnina_pack.py` and zero-`sudo` 1-click GUI/API pack import
+  (`POST /api/v1/tools/gnina-pack/import`) for
+  `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` (`2.55 GiB`: `gnina 1.3.3` + `17`
+  CUDA `12.8` and cuDNN `9.25` user-space `.so` libraries, zero host driver
+  libraries), installed under `<app_local_data_dir>/toolchains/gnina-1.3.3-cuda12/`
+  with child-only `LD_LIBRARY_PATH` / `LD_LIBRARY_PATH_ORIG` isolation.
+- Verify `.deb`, `.tar.zst`, `10/10` Core -> `11/11` post-import tools, CPU/CUDA
+  `rescore`, and CUDA `refinement` (`default_1_3_ensemble`) in clean-room smoke
+  `D4` (`docs/validation/LINUX_OFFLINE_PACKAGE_SMOKE.md`), publish the
+  bare-metal workstation attestation protocol `D6`
+  (`docs/validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md`), and add the
+  `verify-linux` (`ubuntu-24.04`) GitHub Actions CI lane.
+
+## GNINA `CNN_VS` hit prioritization, CUDA `refinement`, built-in ensembles, and VRAM arbiter (`ADR-028`) - 2026-11-11
+
+- Persist `cnn_vs` (`CNNscore * CNNaffinity`) with explicit `cnn_vs_source`
+  provenance and optional `cnn_affinity_variance` (only when emitted), add
+  per-campaign `hit_ranking_metric` (`cnn_score` or `cnn_vs`) across screening
+  UI, `Results` catalog, `Methods`, and `Export` format `4`, and emit
+  `GNINA_CNN_VS_NONPOSITIVE_AFFINITY` when `CNN_VS` ranks molecules with
+  `CNNaffinity <= 0`.
+- Support CUDA-only `cnn_scoring = "refinement"` (`timeout_minutes >= 10`,
+  explicit non-independent `minimizedAffinity` reporting) and built-in CNN
+  ensembles (`dense_1_3` 1-model default, `default_1_3_ensemble` 3-model KD
+  ensemble omitting `--cnn`, and `default1.0` 5-model ensemble) pinned to
+  verified `GNINA 1.3.3` SHA-256 (`docs/validation/LINUX_GNINA_CNN_MODES.md`,
+  `LINUX_GNINA_REFINEMENT_CUDA.md`, `LINUX_GNINA_SCREENING_CNN_VS.md`).
+- Extend `ResourceArbiter` with `gpu_memory_bytes` single-GPU VRAM admission via
+  `nvidia-smi` while keeping non-VRAM workloads unchanged.
+
+## GNINA virtual screening, Results/Interactions/Methods/Export parity, and example library - 2026-11-06 to 2026-11-11
+
+- Deliver sequential project-scoped `gnina_screening` campaigns on Linux (`CPU`
+  and single-GPU `CUDA`) with pinned selection-manifest verification,
+  transactional SQLite per-entry state, orphan-job reconciliation, active GPU
+  cancellation, retry-as-new recovery, and native WSLg desktop UI verification
+  (`docs/validation/LINUX_GNINA_SCREENING_SMOKE.md`,
+  `LINUX_GNINA_SCREENING_CUDA.md`, `LINUX_GNINA_SCREENING_WSLG.md`).
+- Integrate `gnina_screening` into the durable `Results` catalog, exact-pose
+  `ProLIF` interactions and complex PDB export, Crossref-verified GNINA citation
+  (`10.1186/s13321-021-00522-2`) and campaign `Methods` report, portable
+  multi-ligand `Export` bundles, and atomic project `Trash`.
+- Add traceable 100-compound 2D example screening library with explicit
+  stereochemical review cases under `resources/examples/real_screening_library_100`.
+
+## GNINA redocking desktop UI and single-job portable export - 2026-11-04
+
+- Expose completed Linux `GNINA` single jobs in the **Validation** desktop UI
+  and verify in-place crystallographic RMSD measurement in native CNN pose order
+  against `1HSG / MK1` (`docs/validation/LINUX_GNINA_REDOCKING.md`).
+- Implement portable export bundles for completed `GNINA` single jobs with
+  preserved raw engine outputs, `methods.md`, verified input/pose hashes, and
+  path-traversal archive guards (`docs/validation/GNINA_EXPORT.md`,
+  `LINUX_GNINA_EXPORT.md`).
+
 ## GNINA single-job redocking validation (backend) - 2026-11-04
 
 - Admit a completed GNINA single job as a source of the existing redocking

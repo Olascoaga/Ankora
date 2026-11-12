@@ -30,6 +30,19 @@ def _stage_minimal_repo(tmp_path: Path) -> Path:
         "docs/README.md",
         "docs/product/PLATFORM_STATUS.json",
         "docs/product/PLATFORM_STATUS.md",
+        "docs/product/PRODUCT_DEFINITION.md",
+        "docs/product/SCOPE.md",
+        "docs/scientific/REDOCKING_VALIDATION.md",
+        "docs/architecture/ARCHITECTURE.md",
+        "docs/DEVELOPMENT_LINUX.md",
+        "docs/design/UX_FOUNDATION.md",
+        "docs/design/STARTUP_SCREEN.md",
+        "docs/DEVELOPMENT.md",
+        "docs/architecture/ADR/ADR-026-linux-port-and-native-acceptance.md",
+        "docs/architecture/ADR/ADR-029-linux-offline-distribution.md",
+        "docs/validation/GNINA_REDOCKING.md",
+        "docs/validation/LINUX_GNINA_REDOCKING.md",
+        "docs/validation/LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md",
         "docs/validation/INDEX.md",
         "docs/validation/VALIDATION_STATUS.md",
         "docs/validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md",
@@ -88,7 +101,10 @@ def test_checker_detects_stale_rendered_platform_markdown(
         "- [b](PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)\n"
         "- [c](PRIVATE_BETA_INSTALLER_2026-10-15.md)\n"
         "- [d](LINUX_OFFLINE_PACKAGE_SMOKE.md)\n"
-        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n",
+        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n"
+        "- [f](GNINA_REDOCKING.md)\n"
+        "- [g](LINUX_GNINA_REDOCKING.md)\n"
+        "- [h](LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)\n",
         encoding="utf-8",
     )
     checker.verify_all(repo, write=False)
@@ -111,7 +127,10 @@ def test_checker_rejects_unindexed_validation_record_and_broken_links(
         "- [b](PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)\n"
         "- [c](PRIVATE_BETA_INSTALLER_2026-10-15.md)\n"
         "- [d](LINUX_OFFLINE_PACKAGE_SMOKE.md)\n"
-        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n",
+        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n"
+        "- [f](GNINA_REDOCKING.md)\n"
+        "- [g](LINUX_GNINA_REDOCKING.md)\n"
+        "- [h](LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)\n",
         encoding="utf-8",
     )
     (repo / "docs/validation/SYNTHETIC_NEW_RECORD.md").write_text("# Synthetic\n", encoding="utf-8")

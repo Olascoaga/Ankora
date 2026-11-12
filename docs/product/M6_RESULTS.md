@@ -8,16 +8,23 @@
 
 ## Purpose
 
-The Linux GNINA single-job projection extends this catalog with a separate
-dimensionless CNNscore family. Its top pose is the first recorded CNN-ranked
-pose, with CNNaffinity (pK) and minimized affinity (kcal/mol) shown separately.
-Scores from different engines are not compared. GNINA single-job poses may be
-reopened and analyzed with ProLIF against the recorded inputs. A GNINA-specific
-Methods report is available, and the backend redocking measurement accepts a
-completed GNINA single job in the engine's own CNN order, with repeatability
-recorded as not assessed. A completed single job can be exported with its
-preserved evidence; GNINA library screening is not yet implemented. See ADR-027
-for the evidence and device restrictions.
+The Linux `GNINA 1.3.3` projection (`ADR-027`, `ADR-028`) extends this catalog
+for both single-ligand jobs (`gnina_job`) and multi-ligand virtual-screening
+campaigns (`gnina_screening`) under a separate dimensionless CNN scoring family.
+Within any ligand, poses preserve GNINA's descending `CNNscore` order, displaying
+`CNNscore`, `CNNaffinity` (`pK`), `CNN_VS` (`CNNscore * CNNaffinity`), optional
+`CNNaffinity_variance` (when emitted), and `minimizedAffinity` (`kcal/mol`) as
+distinct fields. Multi-ligand `gnina_screening` campaigns prioritize completed
+molecules by their recorded `hit_ranking_metric` (`cnn_score` or `cnn_vs`, ties
+broken by applied `selection_order`) and surface structured warnings such as
+`GNINA_CNN_VS_NONPOSITIVE_AFFINITY` when `CNN_VS` is active and a completed pose
+carries `CNNaffinity <= 0`. Scores from different engines are never pooled.
+GNINA single-job and screening poses reopen in Mol\* and support exact-pose
+`ProLIF` interaction analysis, DOI-cited GNINA `Methods` reports, single-job
+redocking validation in native CNN mode order, portable `Export` bundles
+(`ankora_export_format = 4`), and atomic project `Trash`. Cross-engine Spearman
+rank comparison (`EngineComparisonService`) remains scoped to compatible
+AutoDock Vina and AutoDock4 CPU library campaigns.
 
 M5 already displays results while a docking job is being configured or
 monitored. M6 is not another docking screen. It is the durable project-level
@@ -60,6 +67,8 @@ M6 reads the records already owned by the execution services:
 - AutoGrid map-set identity where applicable;
 - AutoDock4 CPU single jobs and library batches;
 - AutoDock-GPU single jobs and `--filelist` library campaigns;
+- Linux GNINA 1.3.3 single jobs (`gnina_job`) and sequential screening campaigns
+  (`gnina_screening` with incremental SQLite campaign state);
 - immutable receptor, binding-site, ligand, conformer, PDBQT, library, and
   selection-manifest records referenced by those jobs;
 - raw command/parameter files, stdout/stderr, GLG/DLG, hashes, warnings,

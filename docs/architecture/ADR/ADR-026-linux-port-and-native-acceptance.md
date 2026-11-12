@@ -2,6 +2,8 @@
 
 Status: accepted, 2026-10-28.
 
+> **Current status note (2026-11-12):** Gates 1–3 below—together with Linux `GNINA 1.3.3` single-ligand and screening integration ([ADR-027](ADR-027-linux-gnina.md), [ADR-028](ADR-028-gnina-cnn-vs-refinement-ensemble.md)), modular `.deb`/`.tar.zst` + 1-click offline GNINA CUDA 12.8 packaging ([ADR-029](ADR-029-linux-offline-distribution.md)), clean-room WSL2/WSLg package smoke (`D4`), and the Ubuntu 24.04 CI lane (`verify-linux`)—are implemented and verified in source. Gate 4 (bare-metal physical Linux workstation attestation, `ADR-029` Gate `D6`) remains the pending final release gate; see [`PLATFORM_STATUS.md`](../../product/PLATFORM_STATUS.md).
+
 ## Decision
 
 Extend the existing application to Linux. Develop on Ubuntu 24.04 in WSL2,

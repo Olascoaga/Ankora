@@ -2,6 +2,8 @@
 
 Status: accepted by the scientist, 2026-10-29.
 
+> **Current status note (2026-11-12):** Several incremental subsections below preserve historical milestone states from `2026-10-29` through `2026-11-11`. Full Linux `GNINA 1.3.3` support—including the single-ligand and multi-ligand screening desktop UIs, redocking Validation UI, `ProLIF` pose interactions, Crossref-cited `Methods`, Export v4, `CNN_VS` hit prioritization, CUDA `refinement`, built-in CNN ensembles ([ADR-028](ADR-028-gnina-cnn-vs-refinement-ensemble.md)), and the 1-click offline GNINA CUDA 12.8 runtime pack ([ADR-029](ADR-029-linux-offline-distribution.md))—is now implemented in source. Bare-metal physical Linux workstation attestation (`ADR-029` Gate `D6`) remains pending; see [`PLATFORM_STATUS.md`](../../product/PLATFORM_STATUS.md).
+
 ## Decision
 
 Add GNINA as a distinct docking engine in the Linux edition of Ankora. GNINA

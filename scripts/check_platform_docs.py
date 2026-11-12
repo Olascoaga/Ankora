@@ -15,6 +15,15 @@ PLATFORM_JSON_PATH = PurePosixPath("docs/product/PLATFORM_STATUS.json")
 PLATFORM_MD_PATH = PurePosixPath("docs/product/PLATFORM_STATUS.md")
 DOCS_PORTAL_PATH = PurePosixPath("docs/README.md")
 VALIDATION_INDEX_PATH = PurePosixPath("docs/validation/INDEX.md")
+CORE_LINK_CHECKED_DOCS = (
+    PLATFORM_MD_PATH,
+    DOCS_PORTAL_PATH,
+    PurePosixPath("docs/product/PRODUCT_DEFINITION.md"),
+    PurePosixPath("docs/product/SCOPE.md"),
+    PurePosixPath("docs/scientific/REDOCKING_VALIDATION.md"),
+    PurePosixPath("docs/architecture/ARCHITECTURE.md"),
+    PurePosixPath("docs/DEVELOPMENT_LINUX.md"),
+)
 
 ALLOWED_DISTRIBUTION_STATUSES = {
     "private_beta",
@@ -272,7 +281,9 @@ def render_platform_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def check_markdown_links_and_paths(root: Path, doc_rel: PurePosixPath) -> set[Path]:
+def check_markdown_links_and_paths(
+    root: Path, doc_rel: PurePosixPath, *, require_links: bool = True
+) -> set[Path]:
     doc_path = _resolve_repo_path(root, str(doc_rel))
     if not doc_path.is_file():
         raise PlatformDocsError(f"Required documentation file is missing: {doc_rel}")
@@ -282,7 +293,7 @@ def check_markdown_links_and_paths(root: Path, doc_rel: PurePosixPath) -> set[Pa
 
     targets = re.findall(r"\]\(([^)\s]+)\)", content)
     targets += re.findall(r'(?:src|href)="([^"]+)"', content)
-    if not targets:
+    if require_links and not targets:
         raise PlatformDocsError(f"{doc_rel} contains no links")
 
     resolved_targets: set[Path] = set()
@@ -346,8 +357,8 @@ def verify_all(root: Path, *, write: bool = False) -> tuple[int, int]:
                 "run `python scripts/check_platform_docs.py --write`."
             )
 
-    check_markdown_links_and_paths(root, PLATFORM_MD_PATH)
-    check_markdown_links_and_paths(root, DOCS_PORTAL_PATH)
+    for doc_rel in CORE_LINK_CHECKED_DOCS:
+        check_markdown_links_and_paths(root, doc_rel, require_links=(doc_rel in {PLATFORM_MD_PATH, DOCS_PORTAL_PATH}))
     indexed_count = check_validation_index_completeness(root)
     return len(data["platforms"]), indexed_count
 

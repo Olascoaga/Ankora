@@ -1,190 +1,157 @@
-# Linux port work plan
+# Linux Development and Offline Packaging Guide
 
-For WSL or native Linux development, activate the project environment and run
-`npm run tauri:dev:linux`. The Linux Tauri launcher respects Cargo on `PATH` and,
-if it is absent there, checks the Rust installation in `${CARGO_HOME:-$HOME/.cargo}/bin`.
-It does not install Rust or change the user's shell configuration. In an existing
-checkout without this launcher, run `source "$HOME/.cargo/env"` before starting.
-In WSL Ubuntu, the fallback was checked with a PATH lacking Cargo: the real
-`cargo metadata --no-deps --format-version 1` succeeded through the launcher.
-Synthetic launcher tests cover an existing PATH entry, a custom Cargo home,
-missing Cargo, and argument forwarding. This check does not test WSLg display.
+This guide covers source development, hash-locked scientific environments, external tool discovery, modular offline packaging (`ADR-029`), clean-room verification (`D4`), bare-metal workstation attestation (`D6`), and continuous integration (`verify-linux`) for the **Linux `x86_64`** edition of Ankora (Ubuntu 24.04 LTS reference baseline).
 
-The scientist authorized the Linux port on 2026-10-28. See ADR-026.
+For current platform and engine distribution status, see [`docs/product/PLATFORM_STATUS.md`](product/PLATFORM_STATUS.md). For Windows development and NSIS packaging, see [`docs/DEVELOPMENT.md`](DEVELOPMENT.md).
 
-## Source baseline
+---
 
-The independent Linux checkout starts from public-lineage commit `e233788`.
-The accepted working Obsidian UI is carried into Linux as a separate source
-snapshot, preserving the Windows checkout and its uncommitted work. The snapshot
-contains only the eight existing UI/design files; Windows installer experiments,
-private memory, build products and scientific projects are excluded.
+## 1. Current Linux Scope and Release Boundary
 
-## Initial unit — development bootstrap
+- **Implemented in source (`ADR-026`–`ADR-029`):** Full `M1–M9` desktop workflow (`Tauri v2` + `WebKitGTK 4.1` + `Python 3.12.13` FastAPI backend) across **AutoDock Vina `1.2.7`**, **AutoGrid4 / AutoDock4 `4.2.6` (CPU)**, **AutoDock-GPU `1.6` (CUDA 12)**, and Linux-only **GNINA `1.3.3`** (single-ligand and sequential virtual screening on `CPU` or single-GPU `CUDA 12.8`, `rescore` and CUDA-only `refinement`, built-in `dense_1_3`, `default_1_3_ensemble`, and `default1.0` CNN models, `CNNscore` and `CNN_VS` hit prioritization, redocking Validation UI, `ProLIF` interactions, `Methods`, Export v4, and recoverable `Trash`).
+- **Distribution status (`release_candidate`):** Core offline `.deb` (`272.34 MiB`), zero-`sudo` portable `.tar.zst` (`313.97 MiB`), corresponding-sources companion `.zip` (`390.77 MiB`), and the 1-click GUI-imported offline GNINA CUDA 12.8 pack (`2.55 GiB` / `2,610.34 MiB`) pass clean-room verification under WSL2/WSLg (`D4`, [`LINUX_OFFLINE_PACKAGE_SMOKE.md`](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md)). Final public Linux release sign-off awaits bare-metal physical Linux workstation execution (`D6`, [`LINUX_NATIVE_WORKSTATION_PROTOCOL.md`](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md)).
 
-- **Claude / backend:** implement a Linux development launcher and focused tests.
-  Own `scripts/dev_linux.py`, `backend/tests/test_linux_dev.py` and
-  `docs/validation/LINUX_BACKEND_BOOTSTRAP.md`. Select an explicit or project
-  Python interpreter, verify API identity/readiness, fail clearly on occupied
-  ports, retain startup errors, and clean up only owned subprocesses on exit.
-  Launch commands as arrays, bind localhost, keep existing chemistry unchanged.
-- **Gemini / desktop:** own `apps/desktop/package.json`, Linux Tauri configuration,
-  platform-specific Rust compatibility, focused configuration/Rust tests and
-  `docs/validation/LINUX_DESKTOP_BOOTSTRAP.md`. Add explicit Linux development
-  commands consuming Claude's launcher. Preserve Windows commands/configuration,
-  installed backend behavior, CSP and current appearance. No Linux installer
-  claim in this unit.
-- **Codex / review:** owns this plan, ADR, policy, environment setup and integration
-  evidence. Review each diff and relevant tests before integration. Resolve
-  shared-file changes sequentially. No automatic pushes or co-author trailers.
+---
 
-The launcher interface is `python3 ../../scripts/dev_linux.py` from the desktop
-package directory. It owns a backend plus `npm run dev` from the repository root,
-using the existing API port 8765 and frontend port 1420. Python selection:
-`ANKORA_PYTHON_PATH`, active non-base Conda, project `.venv`, or a named
-`ankora-dev` environment; an invalid explicit selection must fail clearly.
-Do not silently reuse another running backend or kill unrelated listeners.
+## 2. System Prerequisites (Ubuntu 24.04 LTS / WSL2 with WSLg)
 
-## Acceptance
+Install the native GTK/WebKitGTK desktop headers, Rust build essentials, and archive utilities:
 
-1. Linux frontend tests, type check and production build pass on the carried UI.
-2. Launcher tests prove startup/readiness, collision handling and owned cleanup.
-3. Linux Rust formatting/tests/check or build passes with real GTK/WebKit deps.
-4. A real Tauri window opens through WSLg; an imported tracked structure fixture
-   is visible in Mol*. Record actual rendering/runtime, screenshots and errors.
-5. Confirm the Windows checkout has exactly its original dirty-file set and
-   preserved source bytes. Record any checks not executed rather than claiming
-   Windows packaging or native workstation acceptance.
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  build-essential \
+  dpkg-dev \
+  libayatana-appindicator3-dev \
+  libgtk-3-dev \
+  librsvg2-dev \
+  libssl-dev \
+  libwebkit2gtk-4.1-dev \
+  libxdo-dev \
+  patchelf \
+  pkg-config \
+  zstd
+```
 
-## Later units
+Also install:
+- **Node.js 22 LTS** (`node`, `npm`)
+- **Rust stable toolchain** (`rustup`, `cargo`, `clippy`, `rustfmt`)
+- **Miniforge3** (`conda`, Linux `x86_64` — never reuse Windows executables mounted under `/mnt/c`)
 
-Scientific Linux parity and lock, CPU engines and cancellation, independent GPU
-acceptance, then complete offline packaging and native workstation validation.
-Each bounded completed unit gets relevant tests, tracked evidence and a small
-commit. Private coordination logs and memory stay ignored.
+---
 
-## Scientific foundation update — 2026-10-28
+## 3. Locked Scientific Environment Setup
 
-The second bounded unit now has native discovery, a Linux scientific environment
-lock/verifier and owned-session process cancellation, integrated from isolated
-Claude/Gemini branches after coordinator review. Public PR lineage begins at
-`e705ff6`; the unrelated unpublished manual commit from the original local source
-snapshot is excluded. Windows development files remain preserved.
+Create the isolated Linux Conda environment from the SHA-256-locked specification and install the hash-locked Python wheels without re-resolving transitive dependencies:
 
-See [the coordinator's scientific review](validation/LINUX_SCIENTIFIC_FOUNDATION_REVIEW.md)
-for exact accepted checks, raw-evidence manifest identity and known failures.
-Environment identity and preparation smoke are accepted for this bounded unit;
-the complete Linux parity/release gate remains open. Native P2Rank execution,
-the recorded portability failures, real CPU docking/redocking, independent GPU
-acceptance and complete Linux packaging still require their own evidence.
+```bash
+conda create -n ankora-dev --file environment/linux-64.conda.lock --yes
+conda activate ankora-dev
+export PYTHONNOUSERSITE=1
 
-## AutoDock-GPU development — WSL2
+python -m pip install --require-hashes --only-binary=:all: -r requirements/linux-py312.lock
+python -m pip install --no-deps --no-build-isolation -e backend
+python -m pip check
+python scripts/verify_linux_environment_lock.py --runtime
+npm ci
+```
 
-Linux development now discovers executable x86-64 ELF AutoDock-GPU binaries
-named `autodock_gpu_128wi`, `autodock_gpu_64wi` or `autodock_gpu` on PATH,
-in a versioned `~/tools/autodock-gpu-1.6/bin` directory, or at an explicit
-`ANKORA_AUTODOCK_GPU_PATH`. An explicit path is authoritative; an invalid
-one is not silently replaced by a different installation. Discovery only
-reads the executable's identity; a docking request separately probes the
-engine version and device. A compatible GPU driver and the binary's native
-runtime libraries must already be available to the backend.
+> **Packaging isolation rule:** Never install `requirements/linux-packaging.lock` (`pyinstaller`, build-only `setuptools`) into `ankora-dev`; `scripts/build_linux_backend.py` creates a dedicated packaging virtual environment so runtime metadata stays byte-faithful to `linux-py312.lock`.
 
-The locally compiled AutoDock-GPU 1.6 CUDA binary was tested on WSL2 with an
-RTX 5050 through the actual API, including a two-molecule campaign and
-cancellation after the process was observed in GPU compute. See
-[the recorded engineering checks](validation/LINUX_AUTODOCK_GPU_CAMPAIGN_AND_CANCEL.md).
-Restart a running development session after changing its executable or
-environment. If the scheduler is busy, device preflight returns an explicit
-busy message; retry when active or queued work has finished.
+---
 
-These checks do not establish compatibility for other GPU architectures,
-CUDA/OpenCL builds or drivers, cancellation of an uninterruptible process,
-the packaged runtime, or a native Linux workstation. Linux distribution and
-native workstation acceptance remain open; no existing Windows binary is used
-as a Linux engine.
+## 4. Running Ankora in Source Development
 
-## GNINA development — Linux only
+From the repository root with `ankora-dev` active:
 
-The scientist authorized GNINA as a Linux-only engine; see
-[ADR-027](architecture/ADR/ADR-027-linux-gnina.md). The official 1.3.3 CUDA
-12.8 binary was checksum-verified and exercised on the WSL RTX 5050. A backend
-engine boundary now probes Linux executable version and hash, builds explicit
-`rescore` commands using `dense_1_3` and prepared PDBQT inputs, and parses
-ranked SDF/PDBQT poses and separate CNN/empirical scores. PDBQT poses can be
-checked against the prepared conformer using Meeko. See the
-[initial run](validation/LINUX_GNINA_INITIAL_SMOKE.md) and
-[topology and adapter checks](validation/LINUX_GNINA_TOPOLOGY_SMOKE.md).
+```bash
+npm run tauri:dev:linux
+```
 
-This is **not yet an application-level GNINA feature**: no GNINA job API,
-durable service, result catalog or docking UI is wired. The backend adapter
-alone does not verify that a requested CUDA run used the GPU. Next integrate
-resource arbitration, observed device evidence, cancellation, work recovery,
-project-scoped persistence and a single-ligand API before enabling the UI;
-library screening and cross-platform result review follow separately.
-GNINA is not enabled on native Windows. The 2 GB executable used for
-development is local and ignored by Git, not part of a distributable bundle.
-Native workstation, driver/library identity and licensing checks remain open.
+How the Linux development session works:
+- `apps/desktop/scripts/tauri-linux.mjs` locates `cargo` on `PATH` or `${CARGO_HOME:-$HOME/.cargo}/bin` without mutating shell dotfiles.
+- `scripts/dev_linux.py` selects a native Linux Python interpreter in strict priority order: explicit `ANKORA_PYTHON_PATH` (failing closed if invalid or pointing to a Windows PE binary), active non-`base` Conda prefix, project `.venv`, or named `ankora-dev` Conda environment.
+- It starts `ankora_backend` on `127.0.0.1:8765` with `--parent-pid` supervision and `npm run dev` on `127.0.0.1:1420`, refusing to reuse or kill foreign listeners on occupied ports and terminating all owned session subprocesses cleanly on exit (`SIGINT`/`SIGTERM`).
 
-## Offline Linux Packaging, One-Click GNINA Pack & Ubuntu 24.04 CI (ADR-029)
+---
 
-The historical bootstrap/development notes above are preserved for lineage. Under
-[ADR-028](architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md) and
-[ADR-029](architecture/ADR/ADR-029-linux-offline-distribution.md), Linux GNINA
-single-ligand and screening workflows (`CNN_VS`, `CNNscore`, `rescore`, CUDA
-`refinement`, built-in CNN ensembles, M9 ProLIF interactions, redocking,
-Methods, and campaign Export v4) and modular offline Linux distribution are
-implemented:
+## 5. External Tool Discovery in Source Development
 
-1. **Core Offline Linux Installer (`D0`–`D3`):**
-   - `scripts/build_linux_backend.py` freezes the slim Python 3.12.13 scientific
-     backend via PyInstaller inside an isolated packaging virtual environment
-     without mutating the locked Conda prefix.
-   - `scripts/build_linux_autodock_gpu.py` compiles a multi-architecture CUDA 12
-     (`sm_75`..`sm_120`, static `cudart`) AutoDock-GPU 1.6 binary free of host
-     driver libraries.
-   - `scripts/stage_linux_scientific_payload.py` and
-     `scripts/complete_linux_legal.py` stage Vina 1.2.7, AutoGrid4/AutoDock4
-     4.2.6, AutoDock-GPU 1.6, Temurin OpenJDK 21, P2Rank 2.5.1 (`default` +
-     `alphafold` models), the 700-component legal inventory/notices, and the
-     corresponding-sources companion ZIP (`Ankora_0.1.0_linux-sources-companion.zip`).
-   - `scripts/build_linux_installer.py` builds `Ankora_0.1.0_amd64.deb` (primary
-     double-click Debian/Ubuntu/Mint/Pop!_OS package) and
-     `Ankora_0.1.0_linux_x86_64.tar.zst` (portable zero-`sudo` archive).
+End users of packaged `.deb` / `.tar.zst` builds receive bundled Core tools automatically. When running from source (`ANKORA_APP_MODE != "packaged"`), Ankora discovers native Linux `x86_64` ELF binaries without executing them during discovery:
 
-2. **One-Click Offline GNINA CUDA 12 Pack (`D2b`–`D3`):**
-   - `scripts/build_linux_gnina_pack.py` packages `gnina 1.3.3` alongside its 17
-     required CUDA 12.8 and cuDNN 9.25 user-space `.so` runtime libraries,
-     `gnina-pack.json`, and NVIDIA/GPL legal notices into
-     `Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, explicitly excluding host driver
-     libraries (`libcuda.so*`, `libnvidia-ml.so*`, `libnvidia-ptxjitcompiler.so*`).
-   - End users import the `.tar.zst` pack directly from the **Tools** tab inside
-     Ankora (`POST /api/v1/tools/gnina-pack/import`) into
-     `<app_local_data_dir>/toolchains/gnina-1.3.3-cuda12/` with zero `sudo`,
-     zero terminal commands, and scoped `LD_LIBRARY_PATH` isolation on GNINA
-     subprocesses only.
+| Tool | Explicit env override (authoritative) | Conventional fallback locations | Notes |
+| --- | --- | --- | --- |
+| **AutoDock Vina `1.2.7`** | `ANKORA_VINA_PATH` | `PATH`, `~/tools/autodock-vina-*` | Verified with `--version` at job launch. |
+| **AutoGrid4 / AutoDock4 `4.2.6`** | `ANKORA_AUTOGRID4_PATH`, `ANKORA_AUTODOCK4_PATH` | `PATH`, `~/tools/autodock-*` | Enforces `14` ligand / `20` receptor atom-type limits. |
+| **P2Rank `2.5.1`** | `ANKORA_P2RANK_PATH` (+ `JAVA_HOME` Java 17–23) | `~/tools/p2rank_*` | Reads version metadata without executing Java during scan. |
+| **AutoDock-GPU `1.6`** | `ANKORA_AUTODOCK_GPU_PATH` | `PATH`, `~/tools/autodock-gpu-1.6/bin` (`autodock_gpu_128wi`, `autodock_gpu_64wi`, `autodock_gpu`) | Requires compatible host GPU driver; preflight coordinates FIFO device probes via `ResourceArbiter` (`AUTODOCK_GPU_PROBE_RESOURCES_BUSY` / HTTP 409 when busy). |
+| **GNINA `1.3.3`** | `ANKORA_GNINA_PATH` | `PATH`, `~/tools/gnina-*`, or GUI-imported `<app_local_data_dir>/toolchains/gnina-1.3.3-cuda12/` | Pinned to official `1.3.3` SHA-256 `3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172` for built-in ensemble provenance (`ADR-028`). |
 
-3. **Clean-Room Package Smoke (`D4`) & Bare-Metal Workstation Gate (`D6`):**
-   - `scripts/smoke_linux_package.py` verifies both `.deb` and `.tar.zst`
-     artifacts end-to-end under a sanitized user environment (`HOME`, `PATH`
-     stripped of developer toolchains); see
-     [LINUX_OFFLINE_PACKAGE_SMOKE.md](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md).
-   - WSL2/WSLg acceptance does **not** substitute for bare-metal Linux release
-     acceptance ([ADR-026](architecture/ADR/ADR-026-linux-port-and-native-acceptance.md)
-     Gate 3). On a physical non-WSL Linux x86_64 workstation with an NVIDIA GPU,
-     run the single-command attestation protocol documented in
-     [LINUX_NATIVE_WORKSTATION_PROTOCOL.md](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md):
-     ```bash
-     python3 scripts/smoke_linux_package.py \
-       --native-workstation-attestation \
-       --gnina-pack /path/to/Ankora_0.1.0_gnina-cuda12-pack.tar.zst
-     ```
+Restart a running development session after changing tool paths or environment variables, or click **Rescan tools** in **Tools -> Scientific tools**.
 
-4. **Ubuntu 24.04 GitHub Actions CI (`D5`):**
-   - `.github/workflows/ci.yml` defines `verify-linux` (`ubuntu-24.04`) alongside
-     `verify` (`windows-latest`), enforcing `environment/linux-64.conda.lock`,
-     `requirements/linux-py312.lock`, `requirements/linux-packaging.lock`,
-     `scripts/verify_linux_environment_lock.py --runtime`, the SHA-256-anchored
-     cross-OS primary metrics diagnostic
-     ([LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md](validation/LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)),
-     backend `pytest`/`ruff`/`mypy`, frontend `vitest`/`tsc`/`vite build`, Rust
-     `fmt`/`clippy`/`test`, and `npm run tauri:build:linux`.
+---
+
+## 6. Building Offline Linux Packages & the 1-Click GNINA Pack (`ADR-029`)
+
+The modular Linux release pipeline ([`ADR-029`](architecture/ADR/ADR-029-linux-offline-distribution.md)) produces self-contained offline Core installers alongside an optional 1-click GNINA CUDA 12.8 pack:
+
+1. **Freeze slim Python 3.12.13 backend:** `python scripts/build_linux_backend.py` (compiles `ankora-backend` via PyInstaller in an isolated packaging venv and verifies frozen module bytecode parity).
+2. **Compile multi-arch CUDA 12 AutoDock-GPU:** `python scripts/build_linux_autodock_gpu.py` (`sm_75`..`sm_120`, linked against static `libcudart_static.a` with zero bundled host driver libraries).
+3. **Stage Core scientific payload & 700-component legal companion:** `python scripts/stage_linux_scientific_payload.py` and `python scripts/complete_linux_legal.py` (stages Vina `1.2.7`, AutoGrid4/AutoDock4 `4.2.6`, AutoDock-GPU `1.6`, Temurin OpenJDK `21.0.12.1+1`, P2Rank `2.5.1` with `default` and `alphafold` models, third-party notices, and `Ankora_0.1.0_linux-sources-companion.zip`).
+4. **Build Core `.deb` and zero-`sudo` portable `.tar.zst`:** `python scripts/build_linux_installer.py` (emits `Ankora_0.1.0_amd64.deb` for double-click installation on Ubuntu/Debian/Mint/Pop!\_OS and `Ankora_0.1.0_linux_x86_64.tar.zst` for unprivileged user-space extraction).
+5. **Build 1-click offline GNINA CUDA 12.8 pack:** `python scripts/build_linux_gnina_pack.py` (bundles `gnina 1.3.3` + `17` redistributable CUDA `12.8` and cuDNN `9.25` user-space `.so` libraries + NVIDIA/GPL notices + `gnina-pack.json` into `Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, strictly excluding `libcuda.so*`, `libnvidia-ml.so*`, and `libnvidia-ptxjitcompiler.so*`).
+
+End users import `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` directly inside **Tools -> Scientific tools** (or **Docking -> GNINA**) with zero `sudo` and zero terminal commands; Ankora verifies every SHA-256 entry, installs into `<app_local_data_dir>/toolchains/gnina-1.3.3-cuda12/`, and scopes the pack's `lib/` directory via `LD_LIBRARY_PATH` exclusively to `gnina` child processes (`LD_LIBRARY_PATH_ORIG` restores the host environment cleanly outside PyInstaller's `_internal/`).
+
+---
+
+## 7. Clean-Room Smoke (`D4`), Bare-Metal Gate (`D6`) & Ubuntu 24.04 CI (`D5`)
+
+### Clean-room package smoke (`D4`)
+
+Run `python scripts/smoke_linux_package.py` to test `.deb` and `.tar.zst` cold start, loopback binding, the `10/10` Core scientific adapter matrix, 1-click GNINA pack import (`11/11` tools), CPU/CUDA `rescore` and CUDA `refinement` (`default_1_3_ensemble`) runs, and persistence across package removal under a sanitized `PATH`/`HOME`/`XDG_DATA_HOME`. Recorded WSL2/WSLg evidence: [`LINUX_OFFLINE_PACKAGE_SMOKE.md`](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md).
+
+### Bare-metal native Linux workstation attestation (`D6`)
+
+WSL2/WSLg execution uses Microsoft's `/usr/lib/wsl/lib` driver bridge and does **not** substitute for physical workstation acceptance ([`ADR-026`](architecture/ADR/ADR-026-linux-port-and-native-acceptance.md) Gate 4). On a physical non-WSL `x86_64` Linux workstation with an NVIDIA GPU (`driver >= 570.x` recommended), execute [`LINUX_NATIVE_WORKSTATION_PROTOCOL.md`](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md):
+
+```bash
+/usr/bin/python3 scripts/smoke_linux_package.py \
+  --native-workstation-attestation \
+  --gnina-pack ./Ankora_0.1.0_gnina-cuda12-pack.tar.zst
+```
+
+### Local test suite & Ubuntu 24.04 CI (`verify-linux`)
+
+`.github/workflows/ci.yml` runs `verify-linux` (`ubuntu-24.04`) alongside `verify` (`windows-latest`). Locally, run the exact CI checks:
+
+```bash
+python scripts/check_public_paths.py
+python scripts/check_public_validation_status.py
+python scripts/check_platform_docs.py
+python scripts/verify_linux_environment_lock.py --runtime
+python -m pytest backend/tests/test_screening_benchmark_primary_metrics_diagnostic.py
+python -m pytest backend \
+  --deselect tests/test_screening_benchmark_protocol.py::test_primary_vina_metrics_reproduce_from_the_closed_campaign \
+  --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_sensitivity_plan_is_deterministic_and_loss_preserving \
+  --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_sensitivity_plan_rejects_post_freeze_factor_tampering \
+  --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_recorded_sensitivity_plan_reproduces_exactly \
+  --deselect "tests/test_screening_benchmark_sensitivity_plan.py::test_historical_verification_rejects_changed_source_bytes[microstate_schema_path]" \
+  --deselect "tests/test_screening_benchmark_sensitivity_plan.py::test_historical_verification_rejects_changed_source_bytes[microstate_service_path]"
+python -m ruff check backend
+python -m mypy --config-file backend/pyproject.toml backend/src
+npm run test:frontend
+npm run typecheck
+npm run build
+cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+```
+
+> **Note on the 6 deselected Windows BEDROC checks:** Frozen Windows LIT-PCBA BEDROC floating-point outputs differ at `<= 4 ULP` (`<= 8.33e-17`) under Linux `glibc` `libm` (`expm1`). Ankora preserves the frozen Windows manifests untouched and runs the SHA-256-anchored diagnostic in [`LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md`](validation/LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md) instead of loosening strict Windows reproduction.
+
+---
+
+## 8. Historical Bootstrap Lineage
+
+The Linux port was authorized on `2026-10-28` (`ADR-026`) starting from public-lineage commit `e705ff6` while keeping the Windows development checkout isolated. Sequential milestones—development launcher (`LINUX_BACKEND_BOOTSTRAP.md`), WebKitGTK desktop shell (`LINUX_DESKTOP_BOOTSTRAP.md`), scientific runtime lock & process lifetime (`LINUX_SCIENTIFIC_FOUNDATION_REVIEW.md`), native P2Rank & Vina execution, CUDA AutoDock-GPU campaign & cancellation (`LINUX_AUTODOCK_GPU_CAMPAIGN_AND_CANCEL.md`), GNINA single-ligand and screening integration (`LINUX_GNINA_INITIAL_SMOKE.md`, `LINUX_GNINA_TOPOLOGY_SMOKE.md`, `LINUX_GNINA_CNN_MODES.md`, `LINUX_GNINA_REFINEMENT_CUDA.md`, `LINUX_GNINA_SCREENING_CNN_VS.md`), and offline packaging (`LINUX_OFFLINE_PACKAGE_SMOKE.md`)—are indexed in full under [`docs/validation/INDEX.md`](validation/INDEX.md).
