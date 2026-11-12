@@ -362,10 +362,14 @@ def discover_java_home(
     """Resolve a Java home suitable for P2Rank without launching Java."""
     if getattr(sys, "frozen", False):
         java = bundled_tool("java")
-        if java is None or not _windows_host():
+        if java is None:
             return None
         home = java[0].parent.parent
-        return home if _is_p2rank_compatible_java_home(home) else None
+        if _windows_host():
+            return home if _is_p2rank_compatible_java_home(home) else None
+        if sys.platform.startswith("linux") and _is_native_executable(java[0]):
+            return home.resolve() if _is_native_p2rank_java_home(home) else None
+        return None
     if not _windows_host():
         return _discover_native_java_home(
             configured_home, path_lookup=path_lookup, candidate_homes=candidate_homes
@@ -388,21 +392,32 @@ def discover_java_home(
 
 
 def _bundled_discovery(name: str) -> DiscoveredTool:
-    if not _windows_host():
-        # The private payload is a Windows inventory; a frozen Linux payload is
-        # not implemented, so nothing in it is reported as Linux-supported.
-        return DiscoveredTool(available=False, path=None)
     found = bundled_tool(name)
     if found is None:
         return DiscoveredTool(available=False, path=None)
     path, version = found
-    return DiscoveredTool(
-        available=True,
-        path=str(path),
-        version=version,
-        architecture=_read_pe_architecture(path),
-        sha256=_file_sha256(path),
-    )
+    if _windows_host():
+        return DiscoveredTool(
+            available=True,
+            path=str(path),
+            version=version,
+            architecture=_read_pe_architecture(path),
+            sha256=_file_sha256(path),
+        )
+    if sys.platform.startswith("linux"):
+        if not _is_native_executable(path):
+            return DiscoveredTool(available=False, path=None)
+        arch = _read_elf_architecture(path)
+        if name in {"vina", "autogrid4", "autodock4", "autodock_gpu"} and arch != "x86_64":
+            return DiscoveredTool(available=False, path=None)
+        return DiscoveredTool(
+            available=True,
+            path=str(path),
+            version=version,
+            architecture=arch,
+            sha256=_file_sha256(path),
+        )
+    return DiscoveredTool(available=False, path=None)
 
 
 def _portable_p2rank_candidate_directories(home: Path) -> tuple[Path, ...]:

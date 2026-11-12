@@ -166,3 +166,47 @@ def test_linux_packaging_lock_pins_hashes_and_excludes_windows_only_packages() -
     }
     for name, version in linux_pins.items():
         assert version == win_pins[name]
+
+
+def test_extract_archive_materializes_safe_intra_archive_symlinks_and_rejects_escapes(
+    tmp_path: Path,
+) -> None:
+    import io
+    import tarfile
+
+    good_tar = tmp_path / "good.tar.gz"
+    with tarfile.open(good_tar, "w:gz") as tf:
+        base_bytes = b"GNU GPL v2 with Classpath Exception\n"
+        reg = tarfile.TarInfo("jre/legal/java.base/LICENSE")
+        reg.size = len(base_bytes)
+        reg.mode = 0o644
+        tf.addfile(reg, io.BytesIO(base_bytes))
+
+        sym = tarfile.TarInfo("jre/legal/java.xml/LICENSE")
+        sym.type = tarfile.SYMTYPE
+        sym.linkname = "../java.base/LICENSE"
+        tf.addfile(sym)
+
+    extracted = tmp_path / "out-good"
+    linux_payload.extract_archive(good_tar, extracted, prefix="jre")
+    materialized = extracted / "legal/java.xml/LICENSE"
+    assert materialized.is_file()
+    assert not materialized.is_symlink()
+    assert materialized.read_bytes() == base_bytes
+
+    for label, linkname in (
+        ("escape", "../../../etc/passwd"),
+        ("absolute", "/etc/passwd"),
+        ("dangling", "../java.base/MISSING"),
+    ):
+        bad_tar = tmp_path / f"bad-{label}.tar.gz"
+        with tarfile.open(bad_tar, "w:gz") as tf:
+            reg = tarfile.TarInfo("jre/legal/java.base/LICENSE")
+            reg.size = 4
+            tf.addfile(reg, io.BytesIO(b"ok\n\n"))
+            sym = tarfile.TarInfo("jre/legal/java.xml/LICENSE")
+            sym.type = tarfile.SYMTYPE
+            sym.linkname = linkname
+            tf.addfile(sym)
+        with pytest.raises(ValueError, match="symlink"):
+            linux_payload.extract_archive(bad_tar, tmp_path / f"out-{label}", prefix="jre")

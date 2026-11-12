@@ -59,9 +59,7 @@ def execute_p2rank(*, receptor_pdb_path: Path, output_dir: Path) -> tuple[ToolEx
         "0",
     ]
     if getattr(sys, "frozen", False):
-        if not discovery._windows_host():
-            # Discovery already rejects the Windows payload elsewhere; never build
-            # a `java.exe` classpath command for a frozen non-Windows backend.
+        if not (discovery._windows_host() or sys.platform.startswith("linux")):
             raise AnkoraDomainError(
                 code="SCIENTIFIC_TOOL_UNAVAILABLE",
                 stage="pocket_detection",
@@ -69,14 +67,14 @@ def execute_p2rank(*, receptor_pdb_path: Path, output_dir: Path) -> tuple[ToolEx
                 status_code=422,
                 details={"tool": "P2Rank", "executable": "prank"},
             )
-        # Same heap/classpath/main class as upstream prank.bat, without cmd's
-        # special-character expansion (installation paths can contain spaces/&).
+        # Same heap/classpath/main class as upstream prank.bat / prank, without
+        # shell special-character expansion (installation paths can contain spaces/&).
         install = Path(discovered.path).parent
-        executable = str(java_home / "bin" / "java.exe")
+        executable = str(java_executable(java_home))
         arguments = [
             "-Xmx2048m",
             "-cp",
-            f"{install / 'bin/p2rank.jar'};{install / 'bin/lib/*'}",
+            f"{install / 'bin/p2rank.jar'}{os.pathsep}{install / 'bin/lib/*'}",
             "cz.siret.prank.program.Main",
             *arguments,
         ]

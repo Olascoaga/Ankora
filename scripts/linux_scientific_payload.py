@@ -210,6 +210,37 @@ def acquire(entry: dict[str, Any], cache: Path = CACHE, *, offline: bool = False
     return destination
 
 
+def _resolve_intra_archive_symlink(
+    member_rel: PurePosixPath,
+    linkname: str,
+    *,
+    selected_prefix: PurePosixPath | None,
+) -> PurePosixPath:
+    if not linkname or "\\" in linkname or ":" in linkname:
+        raise ValueError(f"Unsafe TAR symlink target: {member_rel} -> {linkname}")
+    link_path = PurePosixPath(linkname)
+    if link_path.is_absolute():
+        raise ValueError(f"Absolute TAR symlink rejected: {member_rel} -> {linkname}")
+    stack = list(member_rel.parent.parts)
+    min_depth = len(selected_prefix.parts) if selected_prefix is not None else 0
+    for part in linkname.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if len(stack) <= min_depth:
+                raise ValueError(f"Escaping TAR symlink rejected: {member_rel} -> {linkname}")
+            stack.pop()
+        else:
+            safe_relative(part)
+            stack.append(part)
+    if not stack:
+        raise ValueError(f"Empty TAR symlink target: {member_rel} -> {linkname}")
+    resolved = PurePosixPath(*stack)
+    if selected_prefix is not None and not resolved.is_relative_to(selected_prefix):
+        raise ValueError(f"Escaping TAR symlink rejected: {member_rel} -> {linkname}")
+    return resolved
+
+
 def extract_archive(
     archive: Path,
     destination: Path,
@@ -217,7 +248,7 @@ def extract_archive(
     prefix: str = "",
     include: tuple[str, ...] | None = None,
 ) -> None:
-    """Create-only extraction rejecting symlinks, special files, and duplicates."""
+    """Create-only extraction materializing only safe intra-archive regular-file symlinks."""
     if destination.exists():
         raise FileExistsError(f"Extraction is create-only: {destination}")
     selected_prefix = safe_relative(prefix) if prefix else None
@@ -260,21 +291,44 @@ def extract_archive(
                     shutil.copyfileobj(src, dst)
     else:
         with tarfile.open(archive) as tar_source:
+            members = tar_source.getmembers()
+            regular_by_rel: dict[PurePosixPath, tarfile.TarInfo] = {}
+            for tar_member in members:
+                if tar_member.isfile():
+                    regular_by_rel[safe_relative(tar_member.name)] = tar_member
+
             tar_plan: list[tuple[tarfile.TarInfo, Path, int]] = []
-            for tar_member in tar_source.getmembers():
-                # OpenJDK JRE tarballs ship regular files + relative intra-JRE symlinks
-                # only if JDK; JRE lib/server may have regular files only, but reject
-                # anything non-regular/non-dir to stay fail-closed.
+            for tar_member in members:
+                member_rel = safe_relative(tar_member.name)
                 path = target(tar_member.name)
-                if not tar_member.isfile() and not tar_member.isdir():
+                if tar_member.isfile():
+                    if path is not None:
+                        exec_mode = 0o755 if (tar_member.mode & 0o111) else 0o644
+                        tar_plan.append((tar_member, path, exec_mode))
+                elif tar_member.isdir():
+                    continue
+                elif tar_member.issym():
+                    resolved_rel = _resolve_intra_archive_symlink(
+                        member_rel,
+                        tar_member.linkname,
+                        selected_prefix=selected_prefix,
+                    )
+                    target_member = regular_by_rel.get(resolved_rel)
+                    if target_member is None:
+                        raise ValueError(
+                            f"TAR symlink does not target an intra-archive regular file: "
+                            f"{tar_member.name} -> {tar_member.linkname}"
+                        )
+                    if path is not None:
+                        exec_mode = 0o755 if (target_member.mode & 0o111) else 0o644
+                        tar_plan.append((target_member, path, exec_mode))
+                else:
                     raise ValueError(f"Non-regular TAR member: {tar_member.name}")
-                if path and tar_member.isfile():
-                    exec_mode = 0o755 if (tar_member.mode & 0o111) else 0o644
-                    tar_plan.append((tar_member, path, exec_mode))
+
             destination.mkdir(parents=True)
-            for tar_member, path, exec_mode in tar_plan:
+            for source_member, path, exec_mode in tar_plan:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                stream = tar_source.extractfile(tar_member)
+                stream = tar_source.extractfile(source_member)
                 assert stream is not None
                 with stream as src, path.open("xb") as dst:
                     shutil.copyfileobj(src, dst)
