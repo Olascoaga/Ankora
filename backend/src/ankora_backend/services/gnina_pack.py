@@ -1086,6 +1086,12 @@ def gnina_subprocess_environment(
     svc.verify_installed_pack()
     lib_dir = str((svc.install_dir / "lib").resolve(strict=True))
     env = dict(os.environ if base_environment is None else base_environment)
-    existing_ld = env.get("LD_LIBRARY_PATH", "").strip()
+    if base_environment is None and getattr(sys, "frozen", False):
+        # PyInstaller's Linux bootloader points LD_LIBRARY_PATH at _internal/ and
+        # preserves the caller's original path in LD_LIBRARY_PATH_ORIG. Never leak
+        # _internal/'s Conda shared libraries into the external GNINA binary.
+        existing_ld = env.get("LD_LIBRARY_PATH_ORIG", "").strip()
+    else:
+        existing_ld = env.get("LD_LIBRARY_PATH", "").strip()
     env["LD_LIBRARY_PATH"] = f"{lib_dir}:{existing_ld}" if existing_ld else lib_dir
     return env

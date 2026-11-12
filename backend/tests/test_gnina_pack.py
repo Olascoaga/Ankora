@@ -208,7 +208,9 @@ def test_embedded_gnina_pack_spec_matches_tracked_lockfile() -> None:
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-only GNINA offline pack")
-def test_zstd_streaming_import_and_isolated_ld_library_path(tmp_path: Path) -> None:
+def test_zstd_streaming_import_and_isolated_ld_library_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     spec, files = _make_synthetic_spec()
     archive = _write_tar_zst(tmp_path / "synthetic-pack.tar.zst", spec=spec, files=files)
     toolchains = tmp_path / "toolchains"
@@ -242,6 +244,20 @@ def test_zstd_streaming_import_and_isolated_ld_library_path(tmp_path: Path) -> N
     )
     assert env is not None
     assert env["LD_LIBRARY_PATH"] == f"{service.install_dir / 'lib'}:/opt/existing"
+
+    # Frozen PyInstaller bootloader sets LD_LIBRARY_PATH=_internal and LD_LIBRARY_PATH_ORIG.
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/pyinstaller/_internal")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib/wsl/lib")
+    frozen_env = gnina_subprocess_environment(exe_path, service=service)
+    assert frozen_env is not None
+    assert frozen_env["LD_LIBRARY_PATH"] == f"{service.install_dir / 'lib'}:/usr/lib/wsl/lib"
+
+    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
+    frozen_clean_env = gnina_subprocess_environment(exe_path, service=service)
+    assert frozen_clean_env is not None
+    assert frozen_clean_env["LD_LIBRARY_PATH"] == str((service.install_dir / "lib").resolve())
+    monkeypatch.delattr(sys, "frozen", raising=False)
 
     # Non-pack executables in developer mode leave environment untouched (None).
     other_exe = tmp_path / "other-gnina"

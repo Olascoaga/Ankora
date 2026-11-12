@@ -82,6 +82,29 @@ def test_parent_process_alive_detects_zombie_and_pid_reuse_and_reparenting(
         is False
     )
 
+    # Linux monotonic /proc/<pid>/stat starttime ticks survive wall-clock / NTP jumps!
+    monkeypatch.setattr(psutil, "Process", lambda _pid: FakeProc(psutil.STATUS_RUNNING, 9999.0))
+    monkeypatch.setattr(backend_entry, "_read_linux_proc_starttime_ticks", lambda _pid: 123456)
+    assert (
+        backend_entry._parent_process_alive(
+            4242,
+            expected_create_time=1000.0,
+            was_direct_parent=False,
+            expected_starttime_ticks=123456,
+        )
+        is True
+    )
+    monkeypatch.setattr(backend_entry, "_read_linux_proc_starttime_ticks", lambda _pid: 789012)
+    assert (
+        backend_entry._parent_process_alive(
+            4242,
+            expected_create_time=1000.0,
+            was_direct_parent=False,
+            expected_starttime_ticks=123456,
+        )
+        is False
+    )
+
 
 def test_resolve_backend_port_defaults_to_8765_and_validates_bounds(
     monkeypatch: pytest.MonkeyPatch,

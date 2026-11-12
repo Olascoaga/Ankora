@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import cast
 
 import psutil
@@ -62,13 +63,38 @@ def _worker(name: str) -> Worker:
     return cast(Worker, main)
 
 
-def _capture_parent_identity(parent_pid: int) -> tuple[float | None, bool]:
+def _read_linux_proc_starttime_ticks(pid: int) -> int | None:
+    """Return immutable kernel boot-tick starttime from /proc/<pid>/stat on Linux.
+
+    Unlike psutil.Process.create_time() (which adds mutable /proc/stat btime and
+    therefore shifts on NTP, laptop suspend/resume, or WSL2 Hyper-V clock sync),
+    field 22 of /proc/<pid>/stat is monotonic for the lifetime of the process.
+    """
+    stat_path = Path(f"/proc/{pid}/stat")
+    try:
+        raw = stat_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rparen = raw.rfind(")")
+    if rparen == -1:
+        return None
+    fields = raw[rparen + 2 :].split()
+    if len(fields) < 20:
+        return None
+    try:
+        return int(fields[19])
+    except ValueError:
+        return None
+
+
+def _capture_parent_identity(parent_pid: int) -> tuple[float | None, bool, int | None]:
     getppid = getattr(os, "getppid", None)
     was_direct_parent = callable(getppid) and getppid() == parent_pid
+    starttime_ticks = _read_linux_proc_starttime_ticks(parent_pid)
     try:
-        return psutil.Process(parent_pid).create_time(), was_direct_parent
+        return psutil.Process(parent_pid).create_time(), was_direct_parent, starttime_ticks
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-        return None, was_direct_parent
+        return None, was_direct_parent, starttime_ticks
 
 
 def _parent_process_alive(
@@ -76,6 +102,7 @@ def _parent_process_alive(
     *,
     expected_create_time: float | None = None,
     was_direct_parent: bool = False,
+    expected_starttime_ticks: int | None = None,
 ) -> bool:
     getppid = getattr(os, "getppid", None)
     if was_direct_parent and callable(getppid) and getppid() != parent_pid:
@@ -86,7 +113,11 @@ def _parent_process_alive(
         proc = psutil.Process(parent_pid)
         if proc.status() == psutil.STATUS_ZOMBIE:
             return False
-        if (
+        if expected_starttime_ticks is not None:
+            current_ticks = _read_linux_proc_starttime_ticks(parent_pid)
+            if current_ticks is None or current_ticks != expected_starttime_ticks:
+                return False
+        elif (
             expected_create_time is not None
             and abs(proc.create_time() - expected_create_time) > 1.0
         ):
@@ -99,11 +130,12 @@ def _parent_process_alive(
 
 
 def _exit_when_parent_stops(parent_pid: int) -> None:
-    expected_create_time, was_direct_parent = _capture_parent_identity(parent_pid)
+    expected_create_time, was_direct_parent, expected_ticks = _capture_parent_identity(parent_pid)
     while _parent_process_alive(
         parent_pid,
         expected_create_time=expected_create_time,
         was_direct_parent=was_direct_parent,
+        expected_starttime_ticks=expected_ticks,
     ):
         time.sleep(0.5)
     os._exit(0)
