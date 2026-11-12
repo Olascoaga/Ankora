@@ -9,7 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(BackendRuntime::default());
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             if !cfg!(debug_assertions) {
                 let resource_dir = app.path().resource_dir()?;
                 let app_data_dir = app.path().app_local_data_dir()?;
