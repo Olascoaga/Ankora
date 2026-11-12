@@ -93,6 +93,7 @@ def test_linux_ci_locked_installs_diagnostics_and_gates_follow_strict_order() ->
         _index(steps, VERIFY_CONDA),
         _index(steps, "Reject private absolute paths"),
         _index(steps, "Verify public validation status"),
+        _index(steps, "Verify platform status and validation index"),
         _index(steps, "Install hash-locked Linux Python dependencies"),
         _index(steps, "Install backend source without resolving dependencies"),
         _index(steps, "Check installed Linux dependency consistency"),

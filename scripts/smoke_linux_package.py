@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """End-to-end clean-room offline Linux package smoke & bare-metal workstation attestation (ADR-029 D4/D6).
 
 Uses only the Python 3.12 standard library so it executes unmodified on a fresh

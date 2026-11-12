@@ -12,6 +12,7 @@ import os
 import sqlite3
 import threading
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -306,7 +307,7 @@ class ResultDeletionService:
         db_path = campaign_dir / "campaign_state.sqlite3"
         if db_path.is_file():
             try:
-                with sqlite3.connect(db_path) as connection:
+                with closing(sqlite3.connect(db_path)) as connection:
                     rows = connection.execute("SELECT payload_json FROM entries").fetchall()
                 for (raw,) in rows:
                     payload = json.loads(str(raw))
