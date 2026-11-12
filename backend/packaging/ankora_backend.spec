@@ -88,12 +88,71 @@ executable = EXE(
     entitlements_file=None,
 )
 
+_RETAINED_OPENMM_DATA = {
+    "amber14",
+    "implicit",
+    "amber14-all.xml",
+    "amber99sb.xml",
+    "amber99sbildn.xml",
+    "amber99sbnmr.xml",
+    "amber99obc.xml",
+    "bondDefinitions.xml",
+    "hydrogens.xml",
+    "pdbNames.xml",
+    "residues.xml",
+    "tip3p.xml",
+    "tip3pfb.xml",
+    "tip4pew.xml",
+    "tip4pfb.xml",
+    "tip5p.xml",
+    "spce.xml",
+    "opc.xml",
+    "opc3.xml",
+}
+_OMITTED_PROLIF_DATA = {
+    "top.pdb",
+    "traj.xtc",
+    "water_m2.pdb",
+    "water_m2.xtc",
+    "implicitHbond",
+    "vina",
+}
+
+
+def _retain_data(entry: tuple) -> bool:
+    rel = str(entry[0]).replace("\\", "/")
+    if rel.startswith(("_tcl_data/", "_tk_data/", "rdkit/Contrib/")):
+        return False
+    if rel.startswith("prolif/data/"):
+        sub = rel.removeprefix("prolif/data/").split("/", 1)[0]
+        if sub in _OMITTED_PROLIF_DATA:
+            return False
+    if rel.startswith("openmm/app/data/"):
+        sub = rel.removeprefix("openmm/app/data/").split("/", 1)[0]
+        if sub not in _RETAINED_OPENMM_DATA:
+            return False
+    if rel.startswith("MDAnalysis/") and rel.endswith((".c", ".cpp", ".h", ".pxd", ".pyx")):
+        return False
+    return True
+
+
+def _retain_binary(entry: tuple) -> bool:
+    rel = str(entry[0]).replace("\\", "/").lower()
+    if rel in {"tcl86t.dll", "tk86t.dll", "_tkinter.pyd"}:
+        return False
+    return True
+
+
+filtered_binaries = [item for item in analysis.binaries if _retain_binary(item)]
+filtered_datas = [item for item in analysis.datas if _retain_data(item)]
+
 bundle = COLLECT(
     executable,
-    analysis.binaries,
-    analysis.datas,
+    filtered_binaries,
+    filtered_datas,
     strip=False,
     upx=False,
     upx_exclude=[],
     name="ankora-backend",
 )
+

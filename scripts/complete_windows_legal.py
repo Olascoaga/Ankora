@@ -22,6 +22,7 @@ from scripts.validate_p2rank_variant import verify_tree
 from scripts.windows_scientific_payload import CACHE, safe_relative, sha256
 
 PAYLOAD_SHA256 = "e83f404b38e20345806c19e3e811d764d0e1c476324ddfdd544f7e36a52c6c7c"
+SLIM_PAYLOAD_SHA256 = "b118aefbdd23f7ce6bb28963ec92c0a3d47f9e92147e21b850820100df7f7b08"
 COMPANION_SHA256 = "be756aaa95624b078dff9cd0e99c0f520c92c952736caa2e9b52d9488eb9f5b8"
 GPU_SOURCE_SHA256 = "76f64f65988546d2c418e7769a27a6f452eaf55eedd2256031261ad0c3480a5e"
 VENDOR_FILES = {
@@ -270,10 +271,11 @@ def assemble(
 
 def verify_complete(output: Path, tools: Path) -> None:
     verify_tree(tools)
-    if sha256(tools / "payload.json") != PAYLOAD_SHA256:
+    payload_sha = sha256(tools / "payload.json")
+    if payload_sha not in {PAYLOAD_SHA256, SLIM_PAYLOAD_SHA256}:
         raise ValueError("Wrong scientific payload")
     manifest = json.loads((output / "COMPLETE_LEGAL_MANIFEST.json").read_text())
-    if manifest["scientific_payload_sha256"] != PAYLOAD_SHA256:
+    if manifest["scientific_payload_sha256"] != payload_sha:
         raise ValueError("Legal payload belongs to another runtime")
     actual = {
         p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()
@@ -287,13 +289,16 @@ def verify_complete(output: Path, tools: Path) -> None:
     inventory = json.loads(
         (output / "THIRD_PARTY_INVENTORY.json").read_text(encoding="utf-8")
     )
-    if inventory.get("scientific_payload_sha256") != PAYLOAD_SHA256:
+    if inventory.get("scientific_payload_sha256") != payload_sha:
         raise ValueError("Inventory belongs to another runtime")
     if inventory.get("excluded_external_tools") != ["GNINA"]:
         raise ValueError("Incorrect bundled capability declaration")
     if sha256(output / "SCIENTIFIC_SOURCE_COMPANION.json") != COMPANION_SHA256:
         raise ValueError("Installed source companion identity changed")
-    if (
+    if manifest.get("source_distribution") == "companion-archive":
+        if manifest.get("gpu_source_sha256") != GPU_SOURCE_SHA256:
+            raise ValueError("Installed GPU source identity changed")
+    elif (
         sha256(output / "sources/autodock-gpu-1.6-ankora-source.zip")
         != GPU_SOURCE_SHA256
     ):
