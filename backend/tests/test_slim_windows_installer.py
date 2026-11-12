@@ -17,7 +17,7 @@ SYNTHETIC_NSI = """!define OUTFILE "nsis-output.exe"
 Section "Install"
   ; Copy resources
     CreateDirectory "$INSTDIR\\backend"
-    File /a "/oname=backend\\old.txt" "C:\\old.txt"
+    File /a "/oname=backend\\old.txt" "build\\synthetic-old.txt"
 
   ; Copy external binaries
 SectionEnd

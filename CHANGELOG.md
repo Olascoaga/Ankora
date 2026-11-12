@@ -137,6 +137,20 @@ All notable project changes are recorded here.
   `docs/validation/GNINA_METHODS.md`; recorded real-data integration validation
   and a DOI-verified GNINA citation remain outstanding.
 
+## Illustrated manual refresh - 2026-10-21
+
+- Renew all twenty walkthrough figures in the current development interface,
+  keeping the original 7AQF/RV2 scientific records unchanged. Add the explicit
+  redocking creation form and clarify original-reference selection, RMSD
+  thresholds, sampling versus ranking and validation failures.
+- Update guided preparation, single-ligand controls, laptop navigation and
+  export-file availability guidance; distinguish historical examples from
+  current preparation instructions and installer acceptance.
+- Regenerate the illustrated PDF with a coordinated cover and print-friendly
+  pages; make relative documentation links portable public URLs, not local
+  browser paths. This documentation update does not rebuild an installer or publish
+  a website. See `docs/validation/USER_GUIDE_REFRESH_2026-10-21.md`.
+
 ## Slim installer with Anchoring - 2026-10-20
 
 - Rebuild the ~400 MB Option A private-beta installer (427 MB, SHA-256

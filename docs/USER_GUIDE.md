@@ -4,7 +4,9 @@
 
 This guide walks one complete docking campaign from a PDB accession to an
 exported, citable record. It uses **7AQF and RV2 throughout**, real application
-captures and a newly executed ligand-to-export tutorial. No figure is a mock-up.
+captures and a preserved ligand-to-export tutorial recorded on 9 October 2026.
+This edition reopens its exact records in the current interface; no figure is a
+mock-up and no docking or preparation was rerun to update the visuals.
 The prepared receptor and CPU/GPU redocking examples are preserved historical
 records; they were not recomputed just to obtain attractive screenshots.
 
@@ -16,9 +18,10 @@ that only showed a clean result would teach you nothing about what this tool is
 for.
 
 > **How to use this edition.** Follow the numbered actions, then use the tables
-> and figures to check your decisions. The new tutorial uses the current desktop
-> interface in a local browser with the packaged scientific runtime, in an
-> isolated copy of the reference project. It is not another clean-machine
+> and figures to check your decisions. This edition uses the current desktop
+> interface with an isolated copy of the recorded reference project. A read-only
+> capture layer reopens saved stages; it does not execute the preparation buttons.
+> It is not another clean-machine
 > installer test or a promise of identical results on your computer. Historical
 > examples come from the
 > [frozen SERPINE1 evidence matrix](https://github.com/Olascoaga/Ankora/blob/main/docs/validation/reference_cases/SERPINE1_7AQF_RV2.md).
@@ -85,14 +88,17 @@ and the [Linux modular offline distribution contract](architecture/ADR/ADR-029-l
 **Distribution status:** Windows packaging includes the bundled Core engines,
 P2Rank, private Java and offline WebView2 (see the
 [Windows installed acceptance record](validation/PRIVATE_BETA_INTERACTIONS_INSTALLER_2026-10-09.md)
-and [slim installer record](validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)).
-Linux packaging passes clean-room offline verification on WSL2/WSLg with real
-CUDA GPU execution ([Linux offline package smoke](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md)),
-with physical non-WSL workstation attestation tracked separately in
-[Gate `D6`](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md). Code signing and
-public release authorization remain distinct gates. The 7AQF/RV2 captures in
-this guide come from the verified Windows tutorial project; installation
-evidence is recorded separately.
+and [latest slim candidate record](validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)).
+That Windows slim candidate passed staged-payload checks; its new NSIS
+installation was not retested because the existing registered installation was
+deliberately preserved. Linux packaging passes clean-room offline verification
+on WSL2/WSLg with real CUDA GPU execution
+([Linux offline package smoke](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md)), with
+physical non-WSL workstation attestation tracked separately in
+[Gate `D6`](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md). Do not conflate
+source, staged-payload and installed-machine checks; code signing and public
+release authorization remain distinct gates. The manual captures demonstrate the
+workflow; installation evidence is recorded separately.
 
 ### Installing
 
@@ -133,7 +139,7 @@ choosing a different engine or compute backend always remains explicit.
 
 ![Figure 1. Readiness with the packaged scientific runtime.](images/guide01-readiness.jpg)
 
-*Figure 1. All ten Core tools are detected in the isolated Windows tutorial runtime, where the eleventh entry (GNINA) remains explicitly deferred rather than an installation failure. On Linux x86_64, importing the offline GNINA CUDA 12.8 pack transitions GNINA 1.3.3 to ready (11/11). Executable discovery alone does not prove GPU compatibility.*
+*Figure 1. Tool discovery in the isolated Windows documentation runtime. The eleven entries include ten supported Core tools and explicitly deferred GNINA (versions belong to this runtime, not automatically to every installed beta). On Linux x86_64, importing the offline GNINA CUDA 12.8 pack transitions GNINA 1.3.3 to ready (11/11). Executable discovery alone does not prove GPU compatibility.*
 
 ### The workbench
 
@@ -143,9 +149,30 @@ the **workspace** in the middle, and the **inspector** on the right. The status
 bar at the bottom shows machine load, warnings, provenance and background
 activity.
 
-Steps unlock as their inputs exist. You cannot dock before there is a receptor,
+Preparation and execution steps unlock as their inputs exist. You cannot dock before there is a receptor,
 a ligand and a box - not as a restriction, but because a docking run without
 those is not a defined experiment.
+
+Results, Validation and Export can reopen saved project evidence even when no
+structure is currently loaded. Validation measures a completed individual
+docking result; it does not start the search itself.
+
+### A quick route through your first project
+
+| Step | Before continuing |
+|---|---|
+| Structure | Confirm the correct entry, model, chains and source |
+| Receptor | Resolve structural decisions and review selected protonation states |
+| Ligand | Preserve the crystal reference separately from the prepared docking state |
+| Binding site | Preview, inspect and explicitly save the final search box |
+| Docking | Confirm the exact receptor, ligand state, site and engine protocol |
+| Validation | Measure a completed individual result against the original reference |
+| Results | Inspect the exact pose, chemical plausibility and interaction evidence |
+| Export | Check written files, Methods gaps, identities and sharing scope |
+
+For a virtual screen, start with library filtering and preparation in
+[§12](#12-from-one-ligand-to-virtual-screening). Do not mistake selecting a table
+row for selecting a whole library to dock.
 
 On a laptop, use the panel-collapse buttons to give the workspace more room, or
 drag a panel divider. **View** offers theme and density controls. Long interaction
@@ -193,9 +220,9 @@ points back at it by identity and hash.
 
 ### 3.2 Make the receptor
 
-**Current development workflow — three guided steps.** The source interface now
-opens in **Guided preparation**. This change is not yet in the previously
-distributed private-beta installer. The accepted historical receptor and Figure
+**Current workflow - three guided steps.** The interface opens in
+**Guided preparation**. Older installed betas may differ; check the exact build
+against its release notes. The accepted historical receptor and Figure
 3 below remain unchanged; they are not a new-method validation result.
 
 The original 7AQF all-17-repair plan now stops at ARG A:300's incompatible
@@ -296,7 +323,8 @@ Removing all problematic residues would change the protein and is not this plan.
 
 *Figure 3. The accepted historical receptor reopened in Prepared mode. Only chain A is present; 481 resolved waters and RV2 were removed from this derivative. Original mode retains them; Overlay compares both without modifying either record.*
 
-Press **Apply explicit preparation plan**. Ankora runs, in order: PDBFixer for
+**Historical execution, not an instruction to rerun an unchecked plan.** The
+accepted record ran, in order: PDBFixer for
 explicitly selected repairs, a restrained OpenMM relaxation
 (50.0 kcal mol⁻¹ Å⁻² positional restraint, at most 200 iterations), PDB2PQR with
 PROPKA for protonation, and Meeko to write the PDBQT.
@@ -304,6 +332,12 @@ PROPKA for protonation, and Meeko to write the PDBQT.
 Watch the **Activity** centre: each tool reports its own version, and each output
 is hashed as it is written. When it finishes the receptor is marked
 `docking_ready`.
+
+Only reopen this historical receptor if its actual saved record is available
+in your project; the screenshots do not supply a receptor file. A new project
+must complete its own preparation. If a required repair is blocked, stop and
+resolve the scientific issue rather than docking an unprepared original or
+removing residues solely to make the pipeline finish.
 
 The accepted receptor predates the current expanded protonation-review UI. It
 records PDB2PQR/PROPKA at pH 7.4 and the AMBER protocol, but must not be described
@@ -332,7 +366,8 @@ library - or, as here, **extract it from the crystal**.
 
 ### 4.1 Extract
 
-Choose **From the imported structure**, select `RV2 A:401`. Ankora extracts it
+Choose **Crystallographic** in **1 · Source**, select `RV2 A:401` and press
+**Extract RV2**. Ankora extracts it
 with its deposited 3D coordinates and assigns stereochemistry from those
 coordinates rather than guessing:
 
@@ -360,8 +395,8 @@ returns one candidate for RV2 at that pH:
 
 Ankora will not adopt it until you confirm. It is a different chemical state of
 the same parent compound - different hydrogen-bond donors, different Meeko
-atom typing, and in AutoDock4 a different electrostatic term. Confirm **Use these
-exact species and ionization settings**. A candidate is not a measured population
+atom typing, and in AutoDock4 a different electrostatic term. Confirm **Use
+exactly this species, ionization and settings**. A candidate is not a measured population
 or proof of the dominant bound state.
 
 > **If you retain the imported state**, the neutral RV2 state is prepared.
@@ -370,14 +405,14 @@ or proof of the dominant bound state.
 
 ### 4.3 Generate and minimize a conformer
 
-Open **Advanced options** and review the conformer protocol. For this tutorial,
+Open **Advanced settings** and review the conformer protocol. For this tutorial,
 leave **Minimize original geometry** off, use an independent pool of **20
 ETKDGv3 conformers**, seed **20260819**, **MMFF94s**, at most **500 iterations**.
 Press **Prepare ligand for docking**. The current single-ligand UI combines
 the confirmed chemical-state, embedding, minimization and PDBQT stages; you do
 not need three separate preparation buttons.
 
-Recorded on 9 October with RDKit 2025.09.6:
+Recorded on 9 October with RDKit 2025.09.6, reopened unchanged for this edition:
 
 | Check | Tutorial derivative |
 |---|---|
@@ -480,7 +515,7 @@ fabricated intra-molecule percentage. The run is cancellable, and if
 the machine stops mid-run the next launch preserves the interrupted attempt
 instead of pretending it never happened.
 
-**New tutorial result: 9 poses, best Vina score −7.073 kcal/mol.** This run
+**Preserved tutorial result: 9 poses, best Vina score −7.073 kcal/mol.** This run
 completed in about 37 seconds on the tutorial machine; that is an observation,
 not a performance promise. Scores for modes 1-9 were −7.073, −6.798, −6.715,
 −6.652, −6.543, −6.526, −6.473, −6.294 and −6.245 kcal/mol.
@@ -506,7 +541,8 @@ once (0.375 Å spacing, 58 × 54 × 52 grid intervals for this box, with one mor
 node along each axis) and can **reuse a compatible map set** for both backends.
 Reuse requires matching receptor, search geometry, atom types and map protocol.
 
-The frozen historical examples used different ligand states:
+The preserved Vina tutorial and the separate historical AutoDock4-family
+examples used different ligand states:
 
 | Engine | RV2 formal charge | Output | Best score (kcal/mol) |
 |---|---|---|---|
@@ -591,10 +627,33 @@ we want to know whether the atoms are where the crystal says they are.
    The independent validation record is saved and can be reopened in the
    inspector. A read error offers a retry, not an endless loading indicator.
 
+![Figure 9. Configure an explicit redocking measurement of a completed individual result.](images/guide20-redocking-setup.jpg)
+
+*Figure 9. Current Redocking creation form: the completed tutorial Vina result, original crystal RV2 reference and explicit 2.0 Å criterion are selected. The acknowledgement remains unchecked; no new RMSD verdict is generated for this capture.*
+
+The reference and docking input are different roles. Keep the original crystal
+extraction with its deposited coordinates, then prepare an independent state
+and conformer for docking. A minimized reference, a ligand aligned after
+docking or a molecule from another receptor coordinate frame cannot substitute
+for the experimental reference.
+
+| If the form cannot continue | What to check |
+|---|---|
+| Result missing | Same project, completed **individual** Vina/AutoDock4 CPU/GPU job; not a library campaign |
+| Reference list empty | Original 3D crystal extraction from the receptor's source structure; refresh after extraction |
+| Compatibility rejected | Correct molecule, original source identity, heavy-atom correspondence and intact file fingerprints |
+| Save button disabled | Result, reference, valid threshold and explicit acknowledgement are all required |
+
+A successful save creates another immutable validation record. Changing the
+threshold is a new measurement, not a reason to alter the earlier record or
+choose a cutoff after seeing which value would pass.
+
+### 6.2 Interpret the saved result
+
 Choose **7 · Validation**, then select a recorded validation in the inspector.
 Read its reference, threshold and per-pose RMSD table. The historical verdicts
 below used the different chemical states listed in §5.3 and a recorded 2.0 Å
-threshold. Neither this historical evidence set nor the new Vina tutorial
+threshold. Neither this historical evidence set nor the preserved Vina tutorial
 contains a Vina reference-RMSD verdict; a docking score cannot supply one.
 
 > **Do not substitute Vina's inter-mode RMSD.** Only the explicit comparison to
@@ -621,9 +680,9 @@ fail independently and they mean different things. A tool that reported only
 "RMSD = 3.139 Å, failed" would have hidden the fact that the search worked and
 the scoring function did not.
 
-![Figure 9. Historical CPU redocking with separate sampling and ranking verdicts.](images/guide09-redocking.jpg)
+![Figure 10. Historical CPU redocking with separate sampling and ranking verdicts.](images/guide09-redocking.jpg)
 
-*Figure 9. Preserved AutoDock4 CPU/neutral-RV2 evidence: top-1 RMSD 3.139 Å, best of top five 0.490 Å, best overall 0.454 Å. Sampling passed; ranking failed. This is not a validation of the new anionic Vina job.*
+*Figure 10. Preserved AutoDock4 CPU/neutral-RV2 evidence: top-1 RMSD 3.139 Å, best of top five 0.490 Å, best overall 0.454 Å. Sampling passed; ranking failed. This is not a validation of the anionic Vina tutorial job.*
 
 > **On reproducibility.** A seed alone does not establish reproducibility.
 > Read the exact-repeat evidence attached to the selected result. For example,
@@ -642,9 +701,9 @@ engine, receptor, site and counts. Click a card to open its molecules; double-cl
 also opens it. In a molecule table, click the compound to reveal its poses or
 AutoDock cluster/run members. Choose the exact mode or run you want to inspect.
 
-![Figure 10. Completed results in the isolated tutorial project.](images/guide08-results-catalog.jpg)
+![Figure 11. Completed results in the isolated tutorial project.](images/guide08-results-catalog.jpg)
 
-*Figure 10. The newest Vina card is the 9 October tutorial; the other visible Vina card is historical. The catalog is chronological, not a ranking across campaigns.*
+*Figure 11. The newest Vina card is the 9 October tutorial; the other visible Vina card is historical. The catalog is chronological, not a ranking across campaigns.*
 
 Use the **Mode** and **Scoring** filters to locate results. Within a campaign,
 search by name or SMILES, sort by column headings and use the horizontal scrollbar
@@ -659,10 +718,12 @@ Removal from active Results is not an irreversible scientific-data purge.
 
 ### 7.1 Analyze the exact pose
 
-Open **Pose interactions**, select **Mode 1** of the tutorial Vina job and press
-**Analyze this pose with ProLIF**. ProLIF 2.2.1 runs over that exact pose against the exact
+Open **Pose interactions** and select **Mode 1** of the tutorial Vina job. Read
+an existing entry in **Recorded analysis** if one is available. Otherwise press
+**Analyze this pose with ProLIF**; **Create another analysis** explicitly writes
+a new record rather than modifying the earlier one. ProLIF 2.2.1 runs over that exact pose against the exact
 prepared receptor, under the recorded profile `ankora-default-v1` (6.0 Å vicinity
-cutoff). The new Vina top-pose analysis has **17 atomic contacts, 5 contacting
+cutoff). The preserved Vina top-pose analysis has **17 atomic contacts, 5 contacting
 residues and 8 residue/subtype groups**. The historical top-pose record also has
 17 contacts but is a separate identity. Your own project starts without either
 analysis: analyze its own exact pose, and do not assume the count is unchanged
@@ -673,9 +734,9 @@ diagram drawn by Ankora, a contact table, and the pose in Mol* with the
 contacting residues focused. Clicking a contact in one highlights it in the
 others.
 
-![Figure 11. Linked 3D, 2D and table views of the new RV2 analysis.](images/guide11-interactions.jpg)
+![Figure 12. Linked 3D, 2D and table views of the preserved RV2 analysis.](images/guide11-interactions.jpg)
 
-*Figure 11. One structured analysis feeds all three views. Summary mode displays 8 representative contacts from 17 positioned atomic contacts; the table retains all matching contacts.*
+*Figure 12. One structured analysis feeds all three views. Summary mode displays 8 representative contacts from 17 positioned atomic contacts; the table retains all matching contacts.*
 
 ### 7.2 Read summary groups without losing contacts
 
@@ -684,9 +745,9 @@ one node, with **×N** for all its recorded atomic contacts. One shortest-distan
 contact, or your selected contact, represents the group in 2D and 3D. Grouping
 does not delete the underlying contacts.
 
-![Figure 12. Skeletal 2D RV2 diagram with distinct donor and acceptor groups.](images/guide12-diagram-detail.jpg)
+![Figure 13. Skeletal 2D RV2 diagram with distinct donor and acceptor groups.](images/guide12-diagram-detail.jpg)
 
-*Figure 12. THR A:120 has separate hydrogen-bond donor and acceptor groups. LYS A:122 has separate hydrophobic, acceptor and ionic groups. Colours are categories; exact subtypes are not merged just because they share a colour.*
+*Figure 13. THR A:120 has separate hydrogen-bond donor and acceptor groups. LYS A:122 has separate hydrophobic, acceptor and ionic groups. Colours are categories; exact subtypes are not merged just because they share a colour.*
 
 **All atom contacts** shows every matching positioned contact instead. The
 **Interaction type** menu filters the diagram, 3D lines and table together.
@@ -694,9 +755,9 @@ Read the numerator and denominator: filtered contacts versus all recorded
 contacts. In this example, hydrophobic-only mode shows **13 / 17 contacts** in
 **4 residue/subtype groups**; all-atomic mode displays all 13 lines.
 
-![Figure 13. Shared hydrophobic filter and all-atomic counts.](images/guide13-contact-filter.jpg)
+![Figure 14. Shared hydrophobic filter and all-atomic counts.](images/guide13-contact-filter.jpg)
 
-*Figure 13. Hydrophobic-only mode selects 13 of 17 contacts in 4 groups. The 3D heading confirms 13 displayed / 13 positioned contacts in all-atomic mode. These are not 13 independent bonds or favourable energetic contributions.*
+*Figure 14. Hydrophobic-only mode selects 13 of 17 contacts in 4 groups. The 3D heading confirms 13 displayed / 13 positioned contacts in all-atomic mode. These are not 13 independent bonds or favourable energetic contributions.*
 
 Click a node or table contact to focus it in 3D. **Center on interaction site**
 returns to the pocket; **Reset Zoom** may show the whole receptor. Summary can
@@ -715,9 +776,9 @@ directory. **Use the project** writes to the selected project's exports area.
 The browser-only capture environment cannot open the native folder chooser;
 the project destination was used and verified for this tutorial.
 
-![Figure 14. Save the 3D view or exact ligand-receptor PDB.](images/guide14-save-figures-pdb.jpg)
+![Figure 15. Save the 3D view or exact ligand-receptor PDB.](images/guide14-save-figures-pdb.jpg)
 
-*Figure 14. 3D supports raster output, not SVG. The separate Save PDB button in the ligand-receptor complex panel writes coordinates, not HTML, and does not rerun docking.*
+*Figure 15. 3D supports raster output, not SVG. The separate Save PDB button in the ligand-receptor complex panel writes coordinates, not HTML, and does not rerun docking.*
 
 The PDB contains the exact prepared receptor plus the selected pose, without
 minimization or superposition. It is suitable for inspecting coordinates in an
@@ -726,9 +787,9 @@ or a record of Meeko partial charges. In the tutorial, the file
 `ligand_receptor_complex.pdb` was actually written, **480,421 bytes**, hash
 `b9f17aba7bdc…`, with a neighbouring `complex.json` identity record.
 
-![Figure 15. Publication figure formats and dimensions.](images/guide15-save-diagram.jpg)
+![Figure 16. Publication figure formats and dimensions.](images/guide15-save-diagram.jpg)
 
-*Figure 15. The 2D save panel: SVG is the vector original; PNG, TIFF and PDF are raster alternatives. An 85 mm figure at 300 dpi was saved as 1004 × 692 pixels in the tutorial.*
+*Figure 16. The 2D save panel: SVG is the vector original; PNG, TIFF and PDF are raster alternatives. An 85 mm figure at 300 dpi was saved as 1004 × 692 pixels in the tutorial.*
 
 1. Choose the formats you need. Use **SVG** for editable vector 2D artwork;
    use raster formats for the 3D rendering.
@@ -783,13 +844,13 @@ these citations and the Methods text before including them in a manuscript.
 Press **Copy to clipboard** and paste into your manuscript. What you get is the
 Markdown source, headings and table included.
 
-![Figure 16. Methods generated from the new single-ligand Vina job.](images/guide16-methods.jpg)
+![Figure 17. Methods generated from the preserved single-ligand Vina job.](images/guide16-methods.jpg)
 
-*Figure 16. The tutorial's actual Methods report: no provenance gaps reported, eight cited software entries. The visible receptor paragraph and start of the box section derive from the selected job's provenance chain; the report also records the ligand protocol.*
+*Figure 17. The tutorial's actual Methods report: no provenance gaps reported, eight cited software entries. The visible receptor paragraph and start of the box section derive from the selected job's provenance chain; the report also records the ligand protocol.*
 
-![Figure 17. Software identities, references and copying the report.](images/guide17-methods-references.jpg)
+![Figure 18. Software identities, references and copying the report.](images/guide17-methods-references.jpg)
 
-*Figure 17. Lower software-table rows and the beginning of the numbered references, with the copy control. Review tool-versus-worker version labels and citations before publication; a gap-free report still needs scientific editorial review.*
+*Figure 18. The software table and start of the numbered references. Review tool-versus-worker version labels and citations before publication; a gap-free report still needs scientific editorial review. Copy to clipboard is a separate control below the preview.*
 
 The **campaign bundle** (also in step 8, currently `ankora_export_format = 4`)
 is the portable version of the same idea: a fail-closed ZIP with `manifest.json`,
@@ -812,9 +873,15 @@ figures/complexes here and their Methods report in **6 · Results**; completed
 screening campaigns (and Linux GNINA single jobs) can also be packaged as
 portable ZIP archives.
 
-![Figure 18. Files recorded by the actual diagram export.](images/guide18-exported-files.jpg)
+![Figure 19. Files recorded by the actual diagram export.](images/guide18-exported-files.jpg)
 
-*Figure 18. The Export catalog exposes the real SVG, PNG and figure manifest saved for RV2. The destination-path line is deliberately outside this crop; this edition contains no personal machine paths.*
+*Figure 19. The Export catalog lists the real SVG, PNG and figure manifest saved for RV2. The destination-path line is deliberately outside this crop; this edition contains no personal machine paths.*
+
+An export record does not relocate files. If an older export was saved outside
+the current project or its folder is no longer present, the catalog may list
+its filenames without offering file links. Restore access to that original
+folder or explicitly save a new export; do not treat the catalog entry alone
+as evidence that the files were copied into a new project.
 
 Before sending a bundle to collaborators, inspect the integrity index, file
 list and any remaining missing-evidence notices. Share the specific output
@@ -894,7 +961,9 @@ Practical consequences:
 | **Molecule absent from 3D** | Read the viewer error first. A downloaded record can exist even when the renderer fails. Report a CSP/module error as a software defect; do not change chemical preparation to fix a rendering problem. |
 | **Many 3D lines but fewer 2D nodes** | Read atomic-contact and group counts, the interaction-type filter, and summary/all-atomic mode (§7.2). Multiplicities preserve contacts; nodes are not individual atom pairs. |
 | **A save control seems missing on a laptop** | Scroll the workspace and collapse or resize panels. Scrollbars inside the contact table do not move the export panels. |
-| **No validation is listed** | No validation record exists in this project yet. Open **7 · Validation**, select a completed individual Vina, AutoDock4 CPU/GPU or (on Linux) GNINA job and its preserved crystallographic reference from the same structure, and press **Calculate RMSD and save validation** (§6.1). |
+| **No validation is listed** | No measurement has been saved in this project yet. Open **7 · Validation**, select a completed individual Vina, AutoDock4 CPU/GPU or (on Linux) GNINA job and its compatible original reference from the same structure, and press **Calculate RMSD and save validation** (§6.1). |
+| **Crystal reference is missing** | Extract the original 3D ligand from the same source structure and project. Minimized or unrelated structures are not eligible references. |
+| **Redocking rejects a fingerprint or molecule** | Check the exact preserved files, source identity and heavy-atom correspondence; do not overwrite an artifact or align the pose to force a pass. |
 | **GNINA unavailable on Linux** | Open **Tools → Scientific tool readiness** and import `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` (zero `sudo` required). On Windows, GNINA remains intentionally deferred. |
 
 Logs live beside the project data; the **Provenance** panel in the status bar
@@ -931,9 +1000,9 @@ screening campaign or performance benchmark was run for this guide**.
    selection**, then **Apply filtered subset**. This creates an immutable
    selection manifest including properties, rule results, exclusions and IDs.
 
-![Figure 19. Current default library-filter policy.](images/guide19-library-filters.jpg)
+![Figure 20. Current default library-filter policy.](images/guide19-library-filters.jpg)
 
-*Figure 19. Real controls from the illustrative 323-record import. Lipinski and Veber are required by default; Ghose/Muegge are informative, QED is rank-only, PAINS/Brenk flag for review, and duplicate repeats are excluded. This is a policy preview, not a completed filtering result.*
+*Figure 20. Real controls from the illustrative 323-record import. Lipinski and Veber are required by default; Ghose/Muegge are informative, QED is rank-only, PAINS/Brenk flag for review, and duplicate repeats are excluded. This is a policy preview, not a completed filtering result.*
 
 | Control | Default role | What to consider before changing it |
 |---|---|---|
@@ -1016,12 +1085,3 @@ If Ankora contributed to published work, cite it using the metadata in
 `https://orcid.org/0009-0008-5522-7938`), naming the version that produced your
 results. Cite the scientific tools separately - the Methods section Ankora
 generates lists them with their references.
-
-## Telling us what is wrong
-
-This guide and the software are both early. The most useful thing you can send
-back is the point at which you stopped, and why.
-
----
-
-*Ankora 0.1.0 · MIT licence · github.com/Olascoaga/Ankora*

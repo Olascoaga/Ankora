@@ -1,4 +1,4 @@
-# README image provenance
+# Documentation image provenance
 
 The README shows current development-UI captures of preserved scientific
 records. It does not imply that a previously distributed installer has changed.
@@ -54,7 +54,29 @@ started, and no saved record was changed.
 These images show the working development tree's Obsidian theme. README
 publication does not itself merge pending application-theme or packaging work.
 
-The earlier `guide03-receptor.jpg` and `guide06-binding-site.jpg` remain in the
-[illustrated user guide](../USER_GUIDE.md), but are no longer used by the README.
+The separate `guide*.jpg` figures belong to the
+[illustrated user guide](../USER_GUIDE.md), not to the README gallery.
 The README deliberately presents scientific workflows rather than a splash or
 theme feature tour. Historical preparation choices are not a universal recipe.
+
+## Illustrated guide refresh — 21 October 2026
+
+All twenty guide figures now show the current development interface. They
+reopen the real 9 October 7AQF/RV2 tutorial and separate historical redocking
+records in an isolated copy. Scientific execution requests replay the exact
+saved response or are blocked; no new preparation, docking, interaction
+analysis or RMSD verdict was generated. The live non-persistent binding-box
+preview is allowed. Tool discovery reports the actual documentation runtime,
+not a fabricated packaged environment. The library figure shows policy
+controls only; its automatic filter preview was blocked.
+
+`guide20-redocking-setup.jpg` is the current form with the completed Vina
+tutorial result, its original crystallographic reference and a 2 Å threshold.
+Confirmation remains unchecked. It is not a new validation result.
+`guide09-redocking.jpg` shows the separately preserved CPU validation.
+
+Cropping excludes personal destination paths; no screenshot pixels, atom
+contacts or scientific values were recoloured or rewritten. The original
+tutorial's 810 files were hash-checked unchanged before and after capture.
+The [refresh acceptance record](../validation/USER_GUIDE_REFRESH_2026-10-21.md)
+lists the figure hashes, input identities, PDF inspection and scope limits.

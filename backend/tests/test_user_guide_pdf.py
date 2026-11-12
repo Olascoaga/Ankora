@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import subprocess
@@ -39,7 +40,7 @@ def test_real_illustrated_guide_has_complete_sequential_figures(builder: ModuleT
     source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
     images = re.findall(r"!\[Figure (\d+)\.[^\]]+\]\((images/[^)]+)\)", source)
     captions = re.findall(r"^\*Figure (\d+)\.", source, re.MULTILINE)
-    assert [int(number) for number, _ in images] == list(range(1, 20))
+    assert [int(number) for number, _ in images] == list(range(1, 21))
     assert captions == [number for number, _ in images]
     assert "[Figure pending]" not in source
     assert "Review draft" not in source
@@ -49,22 +50,21 @@ def test_real_illustrated_guide_has_complete_sequential_figures(builder: ModuleT
         assert image.is_file()
         assert image.suffix == ".jpg"
         assert image.read_bytes().startswith(b"\xff\xd8\xff")
-    assert builder.convert(source).count("<figure>") == 19
+    assert builder.convert(source).count("<figure>") == 20
 
 
 def test_guide_distinguishes_tutorial_and_validation_limitations() -> None:
     source = (ROOT / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
-    normalized = " ".join(source.split())
+    assert "Current beta UI limitation" not in source
     assert "Calculate RMSD and save validation" in source
-    assert "symmetry-aware heavy-atom RMSD, computed in place" in source
-    assert "Do not substitute Vina's inter-mode RMSD." in source
-    assert "contains a Vina reference-RMSD verdict; a docking score cannot supply one." in source
+    assert "does **not** run docking again" in source
+    assert "acknowledgement remains unchecked" in source
+    assert "original crystallographic reference" in source
     assert "not a controlled comparison of engines" in source
     assert "17 atomic contacts, 5 contacting" in source
     assert "8 residue/subtype groups" in source
     assert "13 / 17 contacts" in source
     assert "383.767" in source and "384.775" in source
-    assert "current UI reviews records rather than creating new ones" not in normalized
     assert "GNINA `1.3.3`" in source
     assert "Ankora_0.1.0_gnina-cuda12-pack.tar.zst" in source
     assert "GNINA_CNN_VS_NONPOSITIVE_AFFINITY" in source
@@ -84,48 +84,39 @@ def test_published_user_guide_pdf_is_complete_and_free_of_local_uris() -> None:
     assert all(uri.startswith(b"https://") for uri in uris)
 
 
-def test_relative_markdown_links_are_rewritten_to_public_github_urls(
-    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    docs_dir = tmp_path / "docs"
-    (docs_dir / "validation").mkdir(parents=True)
-    (docs_dir / "validation" / "RECORD.md").write_text("# Record", encoding="utf-8")
-    (docs_dir / "validation" / "LINUX_SMOKE.md").write_text("# Smoke", encoding="utf-8")
-    source = docs_dir / "USER_GUIDE.md"
-    source.write_text(
-        "[Win](validation/RECORD.md) [Lin](validation/LINUX_SMOKE.md#top) [Sec](#sec)\n\n## Sec",
-        encoding="utf-8",
+def test_current_guide_figures_match_recorded_refresh_evidence() -> None:
+    evidence = (ROOT / "docs/validation/USER_GUIDE_REFRESH_2026-10-21.md").read_text(
+        encoding="utf-8"
     )
-    target = docs_dir / "guide.pdf"
-    captured_html = ""
-    synthetic_pdf = b"%PDF-1.7\nsynthetic test only\n%%EOF\n"
-
-    def run(command: list[str], **kwargs: object) -> None:
-        nonlocal captured_html
-        html_uri = command[-1]
-        assert html_uri.startswith("file://")
-        staged_dir = next(docs_dir.glob("ankora-guide-*"))
-        captured_html = (staged_dir / "guide.html").read_text(encoding="utf-8")
-        output = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
-        Path(output).write_bytes(synthetic_pdf)
-
-    monkeypatch.setattr(builder.subprocess, "run", run)
-    builder.build_pdf(source, target, tmp_path / "browser.exe")
-    base = "https://github.com/Olascoaga/Ankora/blob"
-    assert f'href="{base}/main/validation/RECORD.md"' in captured_html
-    assert f'href="{base}/codex/linux-bootstrap/validation/LINUX_SMOKE.md#top"' in captured_html
-    assert 'href="#sec"' in captured_html
-
-    bad_source = docs_dir / "BAD.md"
-    bad_source.write_text("[Missing](validation/MISSING.md)", encoding="utf-8")
-    with pytest.raises(ValueError, match="Guide link target"):
-        builder.build_pdf(bad_source, target, tmp_path / "browser.exe")
+    source = (ROOT / "docs/USER_GUIDE.md").read_text(encoding="utf-8")
+    images = re.findall(r"!\[Figure \d+\.[^\]]+\]\((images/[^)]+)\)", source)
+    for relative in images:
+        image = ROOT / "docs" / relative
+        assert f"`{image.name}`" in evidence
+        assert hashlib.sha256(image.read_bytes()).hexdigest() in evidence
 
 
 def test_print_layout_bounds_portrait_images(builder: ModuleType) -> None:
     assert "max-width: 100%" in builder.CSS
     assert "max-height: 170mm" in builder.CSS
     assert "page-break-inside: avoid" in builder.CSS
+
+
+def test_pdf_links_are_portable_public_urls(builder: ModuleType) -> None:
+    source = ROOT / "docs/USER_GUIDE.md"
+    rendered = builder.public_links(builder.convert(source.read_text(encoding="utf-8")), source)
+    assert 'href="#6-validation-did-the-engine-find-the-crystal-pose"' in rendered
+    assert (
+        'href="https://github.com/Olascoaga/Ankora/blob/main/docs/validation/'
+        'PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md"'
+    ) in rendered
+    assert 'href="file:' not in rendered
+
+
+@pytest.mark.parametrize("target", ["file:///private/guide.md", "../../../outside.md"])
+def test_pdf_rejects_private_or_escaping_links(builder: ModuleType, target: str) -> None:
+    with pytest.raises(ValueError, match="Guide link"):
+        builder.public_links(f'<a href="{target}">Synthetic link</a>', ROOT / "docs/USER_GUIDE.md")
 
 
 def test_duplicate_headings_and_html_are_escaped(builder: ModuleType) -> None:
