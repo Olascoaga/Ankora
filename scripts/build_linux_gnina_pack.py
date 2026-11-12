@@ -25,6 +25,7 @@ DEFAULT_CUDA_LICENSE = Path("/usr/share/doc/cuda-cudart-12-8/copyright")
 DEFAULT_CUDNN_LICENSE = Path("/usr/share/doc/libcudnn9-cuda-12/copyright")
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "build" / "linux-runtime"
 DEFAULT_PACK_FILENAME = "Ankora_0.1.0_gnina-cuda12-pack.tar.zst"
+DEFAULT_SPLIT_MIB = 1536
 
 GPL_SOURCE_OFFER_TEXT = """Ankora Offline GNINA 1.3.3 Pack — Source Code & License Notice
 ================================================================
@@ -174,7 +175,7 @@ def build_gnina_pack(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     pack_filename: str = DEFAULT_PACK_FILENAME,
     zstd_level: int = 3,
-    split_mib: int | None = None,
+    split_mib: int | None = DEFAULT_SPLIT_MIB,
 ) -> dict[str, Any]:
     lock: dict[str, Any] = json.loads(lock_path.read_text(encoding="utf-8"))
     forbidden_prefixes = tuple(lock["forbidden_driver_prefixes"])
@@ -318,8 +319,11 @@ def build_gnina_pack(
 
     temp_archive_path.replace(archive_path)
     archive_sha256, archive_size = _sha256_and_size(archive_path)
+    effective_split = split_mib if (split_mib is not None and split_mib > 0) else None
     parts = (
-        split_archive_parts(archive_path, split_mib=split_mib) if split_mib is not None else []
+        split_archive_parts(archive_path, split_mib=effective_split)
+        if effective_split is not None
+        else []
     )
     receipt = {
         "pack_id": lock["pack_id"],
@@ -328,6 +332,7 @@ def build_gnina_pack(
         "archive_size_bytes": archive_size,
         "archive_sha256": archive_sha256,
         "shared_library_count": len(resolved_libs),
+        **({"split_mib": effective_split} if effective_split is not None else {}),
         "parts": parts,
     }
     receipt_path = output_dir / "gnina-pack-manifest.json"
@@ -346,7 +351,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--pack-filename", default=DEFAULT_PACK_FILENAME)
     parser.add_argument("--zstd-level", type=int, default=3)
-    parser.add_argument("--split-mib", type=int, default=None)
+    parser.add_argument(
+        "--split-mib",
+        type=int,
+        default=DEFAULT_SPLIT_MIB,
+        help="Split pack into <2 GiB .partNN chunks of N MiB for GitHub Releases (0 disables).",
+    )
     args = parser.parse_args(argv)
 
     receipt = build_gnina_pack(

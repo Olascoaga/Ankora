@@ -116,9 +116,10 @@ workflow; installation evidence is recorded separately.
 - **Linux 1-click offline GNINA CUDA 12.8 pack (optional):** Because
   `GNINA 1.3.3` and its isolated CUDA 12.8 / cuDNN 9 user-space libraries weigh
   `2.55 GiB` (`2,610.34 MiB`), they are distributed as a separate hash-locked
-  archive (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`). Open **Tools → Scientific
-  tool readiness**, click **Import offline GNINA pack…**, and select the
-  `.tar.zst` file: Ankora verifies every SHA-256 digest and installs the
+  archive (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, distributed on GitHub
+  Releases as two `< 2 GiB` files `.part01` + `.part02`). Keep both parts in
+  the same folder, open **Tools → Scientific tool readiness**, click **Import
+  offline GNINA pack…**, and select `.part01` (or the single `.tar.zst` file): Ankora verifies every SHA-256 digest and installs the
   toolchain into your per-user data directory with **zero `sudo` and zero
   terminal commands**, scoping `LD_LIBRARY_PATH` strictly to GNINA child
   processes (`11/11` tools ready).

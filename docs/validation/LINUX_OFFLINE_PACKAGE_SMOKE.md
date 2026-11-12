@@ -38,6 +38,8 @@ release artifacts.
 | `Ankora_0.1.0_linux_x86_64.tar.zst` | `329,218,220` | `313.97` | `3390fdfa5075dd24b9b034acbfd908b462c5968b11402bc432e04b4a9bf8bd6b` |
 | `Ankora_0.1.0_linux-sources-companion.zip` | `409,749,819` | `390.77` | `881889e5151ce2adc16aa8594a2ef2d4c06ab1dbaa06f2282b1087c74745323b` |
 | `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` | `2,737,137,778` | `2,610.34` | `d9f1bb6496b621a5e8fc14b2eac1ca2566497630829a8e6682bc434f73ed70be` |
+| `Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01` | `1,610,612,736` | `1,536.00` | `1fda57990872851fb0b20bf8b12f36e6a03028ead611cd94d00f1b67aa328ff8` |
+| `Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part02` | `1,126,525,042` | `1,074.34` | `4ee73d1008634c51a023a67932b4c564fe1dbc1bc53d824e971de952d6cf5686` |
 
 Packaged ELF binary identities across both `.deb` and `.tar.zst` bundles:
 
@@ -111,3 +113,20 @@ Packaged ELF binary identities across both `.deb` and `.tar.zst` bundles:
   `/api/v1/tools` immediately reported `gnina 1.3.3` available without
   re-importing the `2.55 GiB` pack, and `/api/v1/results` preserved all `3`
   recorded GNINA jobs (`persisted_gnina_campaign_entries = 3`).
+
+### 5. GitHub Releases `< 2 GiB` split-part streaming import & rollback verification
+
+- Split `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` (`2,737,137,778` bytes) with
+  `--split-mib 1536` into two `< 2.0 GiB` release assets (`.part01`:
+  `1,610,612,736` bytes / `1,536.00 MiB`; `.part02`: `1,126,525,042` bytes /
+  `1,074.34 MiB`) recorded in `gnina-pack-manifest.json` and `SHA256SUMS.txt`.
+- **Missing-part guard:** Importing `.part01` with `.part02` absent failed
+  immediately before decompression with `GNINA_PACK_PARTS_INCOMPLETE`.
+- **Clean-room 2-part streaming import:** Importing `.part01` with `.part02`
+  present streamed and verified the full `2.55 GiB` archive in `122.775 s`,
+  installing `gnina 1.3.3` (`3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172`)
+  and all `17` CUDA `12.8` / cuDNN `9.25` shared libraries with zero temporary
+  concatenated copy on disk.
+- **Corrupted-part rollback & toolchain preservation:** Flipping `16` tail bytes
+  in `.part02` and re-importing failed cleanly with `GNINA_PACK_CORRUPT_ARCHIVE`
+  while preserving the existing installed toolchain (`verify_installed_pack(force_rehash=True)` passed).

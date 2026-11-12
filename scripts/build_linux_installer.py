@@ -335,7 +335,7 @@ def build_deb_package(
         f"Maintainer: Ankora Contributors <opensource@ankora.science>\n"
         f"Installed-Size: {installed_kib}\n"
         f"Depends: {depends}\n"
-        f"Homepage: https://github.com/ankora-science/ankora\n"
+        f"Homepage: https://github.com/Olascoaga/Ankora\n"
         f"Description: Scientist-controlled offline molecular docking workbench\n"
         f" Ankora is a local-first desktop workbench for explicit, inspectable,\n"
         f" and reproducible receptor preparation, ligand microstate curation,\n"
@@ -525,6 +525,14 @@ def build_linux_release(
         release_gnina_pack = release_dir / gnina_pack.name
         _link_or_copy(gnina_pack, release_gnina_pack)
         artifact_paths.append(release_gnina_pack)
+    for part_file in sorted(gnina_pack.parent.glob(f"{gnina_pack.name}.part*")):
+        if part_file.is_file():
+            release_part = release_dir / part_file.name
+            _link_or_copy(part_file, release_part)
+            artifact_paths.append(release_part)
+    gnina_manifest = gnina_pack.parent / "gnina-pack-manifest.json"
+    if gnina_manifest.is_file():
+        shutil.copy2(gnina_manifest, release_dir / gnina_manifest.name)
 
     artifacts_meta: list[dict[str, Any]] = []
     sha256_lines: list[str] = []

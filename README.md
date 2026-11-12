@@ -149,7 +149,7 @@ for packaged end-user distributions:
   integration, Python `3.12.13`, `Vina 1.2.7`, `AutoGrid4/AutoDock4 4.2.6`,
   multi-arch `CUDA 12` `AutoDock-GPU 1.6`, `Temurin OpenJDK 21`, and `P2Rank
   2.5.1` (`10/10` Core tools offline).
-- **Optional 1-click offline GNINA pack (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, `2.55 GiB`):**
+- **Optional 1-click offline GNINA pack (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, `2.55 GiB`; `.part01` + `.part02` `< 2 GiB` split on GitHub Releases):**
   contains `gnina 1.3.3` plus `17` redistributable `CUDA 12.8` and `cuDNN 9.25`
   user-space libraries. Import it directly inside **Tools → Scientific tools**
   with zero `sudo`, zero terminal commands, and isolated GNINA-only library

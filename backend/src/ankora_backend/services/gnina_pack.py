@@ -513,7 +513,7 @@ def _resolve_archive_parts(archive_path_raw: str) -> tuple[list[Path], str]:
         discovered.sort(key=lambda item: item[0])
         expected_indices = list(range(1, len(discovered) + 1))
         actual_indices = [idx for idx, _ in discovered]
-        if not discovered or actual_indices != expected_indices:
+        if len(discovered) < 2 or actual_indices != expected_indices:
             raise _pack_error(
                 "GNINA_PACK_PARTS_INCOMPLETE",
                 "Multi-part GNINA offline pack is missing one or more sequential .partNN files.",

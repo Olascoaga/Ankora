@@ -41,7 +41,7 @@
         "autodock_gpu",
         "gnina"
       ],
-      "offline_packaging": "Core double-click .deb (Ankora_0.1.0_amd64.deb, 272.34 MiB) + zero-sudo portable .tar.zst (313.97 MiB) + 1-click GUI-imported offline GNINA CUDA 12.8 pack (2.55 GiB / 2,610.34 MiB) + corresponding-sources companion ZIP (390.77 MiB)",
+      "offline_packaging": "Core double-click .deb (Ankora_0.1.0_amd64.deb, 272.34 MiB) + zero-sudo portable .tar.zst (313.97 MiB) + 1-click GUI-imported offline GNINA CUDA 12.8 pack (2.55 GiB / 2,610.34 MiB, split into < 2 GiB .part01 + .part02 for GitHub Releases) + corresponding-sources companion ZIP (390.77 MiB)",
       "engineering_evidence": "Automated Ubuntu 24.04 CI lane; 10/10 Core + 11/11 post-import clean-room package smoke under WSL2/WSLg with RTX 5050 CUDA execution (ADR-029 Gate D4)",
       "pending_release_gates": [
         "Bare-metal physical Linux x86_64 workstation attestation (ADR-026 Gate 4 / ADR-029 Gate D6)",

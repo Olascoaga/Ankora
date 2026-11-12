@@ -283,10 +283,22 @@ def test_multipart_split_archive_import_and_missing_part_rejection(tmp_path: Pat
     assert status.installed is True
 
     # Removing part01 leaves a gap [2] != [1], failing closed.
+    # Removing part02 (final part missing, leaving only [1]) also fails closed
+    # immediately and preserves the already-installed verified toolchain.
+    part2_saved = part2.read_bytes()
+    part2.unlink()
+    with pytest.raises(AnkoraDomainError) as exc_missing_tail:
+        service.import_pack(str(part1))
+    assert exc_missing_tail.value.code == "GNINA_PACK_PARTS_INCOMPLETE"
+    assert service.status().installed is True
+
+    # Removing part01 leaves a gap [2] != [1], failing closed while keeping installed pack.
+    part2.write_bytes(part2_saved)
     part1.unlink()
     with pytest.raises(AnkoraDomainError) as exc_info:
         service.import_pack(str(part2))
     assert exc_info.value.code == "GNINA_PACK_PARTS_INCOMPLETE"
+    assert service.status().installed is True
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-only GNINA offline pack")

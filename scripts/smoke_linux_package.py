@@ -14,6 +14,7 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import socket
@@ -107,6 +108,37 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def resolve_gnina_pack_sha256_and_parts(pack_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    match = re.match(r"^(?P<stem>.+)\.part(?P<idx>\d{2,4})$", pack_path.name)
+    if match is None:
+        return sha256_file(pack_path), []
+    stem = match.group("stem")
+    width = len(match.group("idx"))
+    parts_meta: list[dict[str, Any]] = []
+    stream_digest = hashlib.sha256()
+    index = 1
+    while True:
+        part = pack_path.parent / f"{stem}.part{index:0{width}d}"
+        if not part.is_file():
+            break
+        part_digest = hashlib.sha256()
+        size = 0
+        with part.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                stream_digest.update(chunk)
+                part_digest.update(chunk)
+                size += len(chunk)
+        parts_meta.append(
+            {"filename": part.name, "size_bytes": size, "sha256": part_digest.hexdigest()}
+        )
+        index += 1
+    if len(parts_meta) < 2:
+        raise FileNotFoundError(
+            f"Incomplete multi-part GNINA pack next to {pack_path}; expected at least .part01 and .part02."
+        )
+    return stream_digest.hexdigest(), parts_meta
 
 
 def is_wsl_kernel() -> bool:
@@ -829,6 +861,13 @@ def run_wsl_or_cleanroom_package_smoke(
             if k.endswith("_linux_x86_64.tar.zst")
         )
         gnina_pack = next(
+            (
+                Path(v["path"])
+                for k, v in rel_info["verified_artifacts"].items()
+                if k.endswith("_gnina-cuda12-pack.tar.zst.part01")
+            ),
+            None,
+        ) or next(
             Path(v["path"])
             for k, v in rel_info["verified_artifacts"].items()
             if k.endswith("_gnina-cuda12-pack.tar.zst")
@@ -1052,13 +1091,15 @@ def run_native_workstation_attestation(
         allow_wsl_driver_path=False,
     )
 
+    pack_stream_sha256, pack_parts_meta = resolve_gnina_pack_sha256_and_parts(gnina_pack_path)
     attestation: dict[str, Any] = {
         "schema_version": 1,
         "mode": "native_linux_workstation_attestation",
         "started_at": datetime.now(UTC).isoformat(),
         "host_kernel": platform.platform(),
         "is_wsl": False,
-        "gnina_pack_sha256": sha256_file(gnina_pack_path),
+        "gnina_pack_sha256": pack_stream_sha256,
+        **({"gnina_pack_parts": pack_parts_meta} if pack_parts_meta else {}),
         "status": "failed",
     }
     desktop_proc: subprocess.Popen[bytes] | None = None
@@ -1154,7 +1195,7 @@ def main(argv: list[str] | None = None) -> int:
         "--gnina-pack",
         type=Path,
         default=None,
-        help="Path to Ankora_0.1.0_gnina-cuda12-pack.tar.zst (required with --native-workstation-attestation if not in --release-dir).",
+        help="Path to Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01 or .tar.zst (required with --native-workstation-attestation if not in --release-dir).",
     )
     parser.add_argument("--keep-temp", action="store_true")
     args = parser.parse_args(argv)
@@ -1167,10 +1208,12 @@ def main(argv: list[str] | None = None) -> int:
         ).resolve()
         pack = args.gnina_pack
         if pack is None:
-            candidates = sorted(args.release_dir.glob("*_gnina-cuda12-pack.tar.zst"))
+            candidates = sorted(args.release_dir.glob("*_gnina-cuda12-pack.tar.zst.part01")) or sorted(
+                args.release_dir.glob("*_gnina-cuda12-pack.tar.zst")
+            )
             if not candidates:
                 raise SystemExit(
-                    "Pass --gnina-pack /path/to/Ankora_0.1.0_gnina-cuda12-pack.tar.zst"
+                    "Pass --gnina-pack /path/to/Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01 (or .tar.zst)"
                 )
             pack = candidates[0]
         result = run_native_workstation_attestation(

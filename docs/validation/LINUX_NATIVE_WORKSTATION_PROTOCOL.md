@@ -32,9 +32,10 @@ workstation:
    notices).
 2. `Ankora_0.1.0_linux_x86_64.tar.zst` — Zero-`sudo` portable offline archive
    for shared university/HPC workstations.
-3. `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` — Optional offline GNINA `1.3.3` +
-   CUDA `12.8` + cuDNN `9.25` runtime pack (`17` user-space shared libraries,
-   NVIDIA/GPL notices, and SHA-256 manifest).
+3. `Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01` + `.part02` (from GitHub
+   Releases, each `< 2.0 GiB`) or single-file `Ankora_0.1.0_gnina-cuda12-pack.tar.zst`
+   — Optional offline GNINA `1.3.3` + CUDA `12.8` + cuDNN `9.25` runtime pack
+   (`17` user-space shared libraries, NVIDIA/GPL notices, and SHA-256 manifest).
 4. `Ankora_0.1.0_linux-sources-companion.zip` — Corresponding GPL/LGPL source
    archive companion.
 5. `SHA256SUMS.txt` and `linux-release-manifest.json`.
@@ -74,7 +75,7 @@ offline operation is attested directly.
    available, while `GNINA` is initially not installed.
 3. Click **Import offline GNINA pack...** (in **Tools -> Scientific tools** or
    inside **Docking -> GNINA**) and select
-   `Ankora_0.1.0_gnina-cuda12-pack.tar.zst` in the native file dialog.
+   `Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01` (with `.part02` in the same folder, or single-file `.tar.zst`) in the native file dialog.
 4. Confirm `GNINA 1.3.3` transitions immediately to **Installed / Ready**
    without restarting Ankora or setting `PATH` / `LD_LIBRARY_PATH`.
 5. Close Ankora before running the automated attestation harness in Step 4 so
@@ -88,7 +89,7 @@ Python 3.12 interpreter:
 ```bash
 /usr/bin/python3 scripts/smoke_linux_package.py \
   --native-workstation-attestation \
-  --gnina-pack ./Ankora_0.1.0_gnina-cuda12-pack.tar.zst
+  --gnina-pack ./Ankora_0.1.0_gnina-cuda12-pack.tar.zst.part01
 ```
 
 What this command enforces automatically:
