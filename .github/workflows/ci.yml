@@ -184,3 +184,168 @@ jobs:
 
       - name: Build native Tauri application
         run: npm run tauri:build
+
+  verify-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Ubuntu 24.04 native desktop and packaging packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            dpkg-dev \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config \
+            zstd
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Create isolated Linux Conda environment
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/miniforge3.sh"
+          miniforge_dir="$RUNNER_TEMP/miniforge3"
+          conda_env="$RUNNER_TEMP/ankora-linux-ci"
+          curl -fsSL --retry 3 \
+            https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+            -o "$installer"
+          bash "$installer" -b -p "$miniforge_dir"
+          rm -f "$installer"
+          "$miniforge_dir/bin/conda" create \
+            --prefix "$conda_env" \
+            --file environment/linux-64.conda.lock \
+            --yes
+          echo "CONDA_PREFIX=$conda_env" >> "$GITHUB_ENV"
+          echo "PYTHONNOUSERSITE=1" >> "$GITHUB_ENV"
+          echo "$conda_env/bin" >> "$GITHUB_PATH"
+
+      - name: Verify the isolated Linux Conda environment
+        shell: python
+        run: |
+          import importlib.metadata
+          import os
+          import site
+          import sys
+          from pathlib import Path
+
+          prefix = Path(os.environ["CONDA_PREFIX"]).resolve()
+          if Path(sys.prefix).resolve() != prefix or not (prefix / "conda-meta").is_dir():
+              sys.exit(f"python on PATH is not the isolated Conda prefix: {sys.executable}")
+          if sys.version_info[:3] != (3, 12, 13):
+              sys.exit(f"Expected CPython 3.12.13 from lock, found {sys.version}")
+          if site.ENABLE_USER_SITE:
+              sys.exit("User site-packages must be disabled in the isolated Conda environment.")
+          distributions = list(importlib.metadata.distributions())
+          outside = sorted(
+              f"{dist.metadata['Name']} at {dist.locate_file('')}"
+              for dist in distributions
+              if not Path(str(dist.locate_file(""))).resolve().is_relative_to(prefix)
+          )
+          if outside:
+              sys.exit(f"Distributions outside the isolated Conda prefix are visible: {outside}")
+          names = sorted(f"{dist.metadata['Name']}=={dist.version}" for dist in distributions)
+          print(f"Isolated Conda interpreter {sys.executable}; {names}")
+
+      - name: Reject private absolute paths
+        run: python scripts/check_public_paths.py
+
+      - name: Verify public validation status
+        run: python scripts/check_public_validation_status.py
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install hash-locked Linux Python dependencies
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements/linux-py312.lock"
+
+      - name: Install backend source without resolving dependencies
+        run: python -m pip install --no-deps --no-build-isolation -e backend
+
+      - name: Check installed Linux dependency consistency
+        run: python -m pip check
+
+      - name: Verify Linux environment locks and active runtime
+        run: python scripts/verify_linux_environment_lock.py --runtime
+
+      # Verify packaging wheels in an isolated venv so build-only setuptools/pyinstaller
+      # pins never overwrite the locked Conda runtime metadata verified above.
+      - name: Verify isolated Linux packaging lock
+        run: |
+          set -euo pipefail
+          pkg_venv="$RUNNER_TEMP/ankora-linux-packaging-venv"
+          python -m venv "$pkg_venv"
+          "$pkg_venv/bin/python" -m pip install --require-hashes --only-binary=:all: -r requirements/linux-packaging.lock
+          "$pkg_venv/bin/python" -m pip check
+
+      # The 6 strict Windows-frozen BEDROC reproduction checks differ at <= 4 ULP on Linux
+      # glibc libm (docs/validation/LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md). Keep the
+      # strict verifier untouched for Windows CI, run the SHA-256-anchored Linux diagnostic
+      # gate explicitly, and deselect only those 6 documented historical Windows nodeids.
+      - name: Run cross-platform primary metrics diagnostic
+        run: python -m pytest backend/tests/test_screening_benchmark_primary_metrics_diagnostic.py
+
+      - name: Run Linux backend tests
+        run: >-
+          python -m pytest backend
+          --deselect tests/test_screening_benchmark_protocol.py::test_primary_vina_metrics_reproduce_from_the_closed_campaign
+          --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_sensitivity_plan_is_deterministic_and_loss_preserving
+          --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_sensitivity_plan_rejects_post_freeze_factor_tampering
+          --deselect tests/test_screening_benchmark_sensitivity_plan.py::test_recorded_sensitivity_plan_reproduces_exactly
+          --deselect "tests/test_screening_benchmark_sensitivity_plan.py::test_historical_verification_rejects_changed_source_bytes[microstate_schema_path]"
+          --deselect "tests/test_screening_benchmark_sensitivity_plan.py::test_historical_verification_rejects_changed_source_bytes[microstate_service_path]"
+
+      - name: Lint backend and Linux packaging scripts
+        run: >-
+          python -m ruff check backend
+          scripts/linux_scientific_payload.py
+          scripts/build_linux_backend.py
+          scripts/build_linux_autodock_gpu.py
+          scripts/stage_linux_scientific_payload.py
+          scripts/complete_linux_legal.py
+          scripts/build_linux_gnina_pack.py
+          scripts/build_linux_installer.py
+          scripts/smoke_linux_package.py
+          scripts/verify_linux_environment_lock.py
+
+      - name: Type-check backend
+        run: python -m mypy --config-file backend/pyproject.toml backend/src
+
+      - name: Run frontend tests
+        run: npm run test:frontend
+
+      - name: Type-check frontend
+        run: npm run typecheck
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint native Linux shell
+        run: cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test native Linux shell
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Build native Linux Tauri application
+        run: npm run tauri:build:linux

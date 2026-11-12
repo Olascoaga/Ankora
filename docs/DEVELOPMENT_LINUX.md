@@ -124,3 +124,67 @@ library screening and cross-platform result review follow separately.
 GNINA is not enabled on native Windows. The 2 GB executable used for
 development is local and ignored by Git, not part of a distributable bundle.
 Native workstation, driver/library identity and licensing checks remain open.
+
+## Offline Linux Packaging, One-Click GNINA Pack & Ubuntu 24.04 CI (ADR-029)
+
+The historical bootstrap/development notes above are preserved for lineage. Under
+[ADR-028](architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md) and
+[ADR-029](architecture/ADR/ADR-029-linux-offline-distribution.md), Linux GNINA
+single-ligand and screening workflows (`CNN_VS`, `CNNscore`, `rescore`, CUDA
+`refinement`, built-in CNN ensembles, M9 ProLIF interactions, redocking,
+Methods, and campaign Export v4) and modular offline Linux distribution are
+implemented:
+
+1. **Core Offline Linux Installer (`D0`–`D3`):**
+   - `scripts/build_linux_backend.py` freezes the slim Python 3.12.13 scientific
+     backend via PyInstaller inside an isolated packaging virtual environment
+     without mutating the locked Conda prefix.
+   - `scripts/build_linux_autodock_gpu.py` compiles a multi-architecture CUDA 12
+     (`sm_75`..`sm_120`, static `cudart`) AutoDock-GPU 1.6 binary free of host
+     driver libraries.
+   - `scripts/stage_linux_scientific_payload.py` and
+     `scripts/complete_linux_legal.py` stage Vina 1.2.7, AutoGrid4/AutoDock4
+     4.2.6, AutoDock-GPU 1.6, Temurin OpenJDK 21, P2Rank 2.5.1 (`default` +
+     `alphafold` models), the 700-component legal inventory/notices, and the
+     corresponding-sources companion ZIP (`Ankora_0.1.0_linux-sources-companion.zip`).
+   - `scripts/build_linux_installer.py` builds `Ankora_0.1.0_amd64.deb` (primary
+     double-click Debian/Ubuntu/Mint/Pop!_OS package) and
+     `Ankora_0.1.0_linux_x86_64.tar.zst` (portable zero-`sudo` archive).
+
+2. **One-Click Offline GNINA CUDA 12 Pack (`D2b`–`D3`):**
+   - `scripts/build_linux_gnina_pack.py` packages `gnina 1.3.3` alongside its 17
+     required CUDA 12.8 and cuDNN 9.25 user-space `.so` runtime libraries,
+     `gnina-pack.json`, and NVIDIA/GPL legal notices into
+     `Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, explicitly excluding host driver
+     libraries (`libcuda.so*`, `libnvidia-ml.so*`, `libnvidia-ptxjitcompiler.so*`).
+   - End users import the `.tar.zst` pack directly from the **Tools** tab inside
+     Ankora (`POST /api/v1/tools/gnina-pack/import`) into
+     `<app_local_data_dir>/toolchains/gnina-1.3.3-cuda12/` with zero `sudo`,
+     zero terminal commands, and scoped `LD_LIBRARY_PATH` isolation on GNINA
+     subprocesses only.
+
+3. **Clean-Room Package Smoke (`D4`) & Bare-Metal Workstation Gate (`D6`):**
+   - `scripts/smoke_linux_package.py` verifies both `.deb` and `.tar.zst`
+     artifacts end-to-end under a sanitized user environment (`HOME`, `PATH`
+     stripped of developer toolchains); see
+     [LINUX_OFFLINE_PACKAGE_SMOKE.md](validation/LINUX_OFFLINE_PACKAGE_SMOKE.md).
+   - WSL2/WSLg acceptance does **not** substitute for bare-metal Linux release
+     acceptance ([ADR-026](architecture/ADR/ADR-026-linux-port-and-native-acceptance.md)
+     Gate 3). On a physical non-WSL Linux x86_64 workstation with an NVIDIA GPU,
+     run the single-command attestation protocol documented in
+     [LINUX_NATIVE_WORKSTATION_PROTOCOL.md](validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md):
+     ```bash
+     python3 scripts/smoke_linux_package.py \
+       --native-workstation-attestation \
+       --gnina-pack /path/to/Ankora_0.1.0_gnina-cuda12-pack.tar.zst
+     ```
+
+4. **Ubuntu 24.04 GitHub Actions CI (`D5`):**
+   - `.github/workflows/ci.yml` defines `verify-linux` (`ubuntu-24.04`) alongside
+     `verify` (`windows-latest`), enforcing `environment/linux-64.conda.lock`,
+     `requirements/linux-py312.lock`, `requirements/linux-packaging.lock`,
+     `scripts/verify_linux_environment_lock.py --runtime`, the SHA-256-anchored
+     cross-OS primary metrics diagnostic
+     ([LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md](validation/LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)),
+     backend `pytest`/`ruff`/`mypy`, frontend `vitest`/`tsc`/`vite build`, Rust
+     `fmt`/`clippy`/`test`, and `npm run tauri:build:linux`.
