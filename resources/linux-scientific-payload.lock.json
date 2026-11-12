@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "platform": "linux-x86_64",
+  "artifacts": [
+    {
+      "id": "vina",
+      "version": "1.2.7",
+      "filename": "vina_1.2.7_linux_x86_64",
+      "url": "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.7/vina_1.2.7_linux_x86_64",
+      "sha256": "f31f774f723bba7bbe6e9d1c47577020eea9a8da16424284c043d22593570644",
+      "size_bytes": 4056088,
+      "role": "runtime",
+      "license": "Apache-2.0",
+      "source_id": "vina-source"
+    },
+    {
+      "id": "vina-source",
+      "version": "1.2.7",
+      "filename": "vina-source.zip",
+      "url": "https://github.com/ccsb-scripps/AutoDock-Vina/archive/refs/tags/v1.2.7.zip",
+      "sha256": "08143c35ee5a5a538c5100874df801c4432011f09799cdc5f328da4a887fbede",
+      "size_bytes": 46657326,
+      "role": "source",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "autodocksuite",
+      "version": "4.2.6",
+      "filename": "autodocksuite-linux.tar",
+      "url": "https://autodock.scripps.edu/wp-content/uploads/sites/56/2021/10/autodocksuite-4.2.6-x86_64Linux2.tar",
+      "sha256": "d9f8bada0b0618da1b2c9e58aa65188bbde3ef5c36d278b7b8657169502cbb03",
+      "size_bytes": 743424,
+      "role": "runtime",
+      "license": "GPL-2.0-or-later",
+      "source_id": "autodocksuite-source"
+    },
+    {
+      "id": "autodocksuite-source",
+      "version": "4.2.6",
+      "filename": "autodocksuite-source.tar.gz",
+      "url": "https://autodock.scripps.edu/wp-content/uploads/sites/56/2021/10/autodocksuite-4.2.6-src.tar.gz",
+      "sha256": "4b24ce4baf216a5e1a6a79bb664eeed684aed17cede64ff0061aa1bcc17874c4",
+      "size_bytes": 35438010,
+      "role": "source",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "id": "autodock-gpu-source",
+      "version": "1.6",
+      "filename": "autodock-gpu-source.zip",
+      "url": "https://github.com/ccsb-scripps/AutoDock-GPU/archive/refs/tags/v1.6.zip",
+      "sha256": "840959163266bd570a27ff274b9d4208252b293dc77b90e114f631215c963e38",
+      "size_bytes": 18642284,
+      "role": "source",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later"
+    },
+    {
+      "id": "p2rank",
+      "version": "2.5.1",
+      "filename": "p2rank.tar.gz",
+      "url": "https://github.com/rdk/p2rank/releases/download/2.5.1/p2rank_2.5.1.tar.gz",
+      "sha256": "d243f2d9036ac053fefb9407b5fe1c85f4fe077c519fd975ac585e995feab274",
+      "size_bytes": 275625956,
+      "role": "runtime",
+      "license": "MIT",
+      "source_id": "p2rank-source",
+      "dependency_review": "The MIT label describes P2Rank itself, not all of its bundled JAR dependencies. Those require their own inventory and source/notice fulfillment."
+    },
+    {
+      "id": "p2rank-source",
+      "version": "2.5.1",
+      "filename": "p2rank-source.zip",
+      "url": "https://github.com/rdk/p2rank/archive/refs/tags/2.5.1.zip",
+      "sha256": "cad17d3051f4d0ad29b6126f6a59ca36569cdb6c4e09cc4bb296e6c667ba72ce",
+      "size_bytes": 256433483,
+      "role": "source",
+      "license": "MIT"
+    },
+    {
+      "id": "p2rank-biojava-source",
+      "version": "7.2.2-rdk.1",
+      "filename": "p2rank-biojava-49c633ad-source.zip",
+      "url": "https://github.com/rdk/biojava/archive/49c633adae29f9fea58395b4c896e478b677e899.zip",
+      "sha256": "b7a632f0294be51354691fd9f06c19470050c9a3248dd171f8c3f756de7bd63b",
+      "size_bytes": 19354981,
+      "role": "source",
+      "license": "LGPL-2.1; see per-file notices"
+    },
+    {
+      "id": "p2rank-fasterforest-source",
+      "version": "2.5.2",
+      "filename": "p2rank-fasterforest-246546ac-source.zip",
+      "url": "https://github.com/rdk/FasterForest/archive/246546ac8c184c16dc2f432e8d1d5256776e0b7d.zip",
+      "sha256": "37d85101334a0db47157bc6e7a91c8cc99467bca3390272d25854e9135afcd13",
+      "size_bytes": 820425,
+      "role": "source",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "id": "p2rank-molecularsurface-source",
+      "version": "1.0",
+      "filename": "p2rank-molecularsurface-207cc34d-source.zip",
+      "url": "https://github.com/rdk/FasterMolecularSurface/archive/207cc34debc41f50bab1d879d08da88da9309763.zip",
+      "sha256": "16fb905859431e1634bd95f9805407cbbc89086d33b52501f23fa8ee9f9dcc53",
+      "size_bytes": 83378,
+      "role": "source",
+      "license": "LGPL-2.1; see per-file notices"
+    },
+    {
+      "id": "java",
+      "version": "21.0.12.1+1",
+      "filename": "java-linux.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+      "sha256": "2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500",
+      "size_bytes": 52059408,
+      "role": "runtime",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source_id": "java-source"
+    },
+    {
+      "id": "java-source",
+      "version": "21.0.12.1+1",
+      "filename": "java-source.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz",
+      "sha256": "573057d03584ae793fb7ec9a14c76d826d9187a53efeefd99da47403a5308234",
+      "size_bytes": 115126841,
+      "role": "source",
+      "license": "GPL-2.0-with-classpath-exception"
+    },
+    {
+      "id": "gnina",
+      "version": "1.3.3",
+      "filename": "gnina.cuda12.8.static",
+      "url": "https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static",
+      "sha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
+      "size_bytes": 2056131000,
+      "role": "addon-runtime",
+      "license": "Apache-2.0 OR GPL-2.0-only (links OpenBabel GPL-2.0-only)",
+      "source_id": "gnina-source",
+      "extra_source_ids": ["openbabel-source"]
+    },
+    {
+      "id": "gnina-source",
+      "version": "1.3.3",
+      "filename": "gnina-source.tar.gz",
+      "url": "https://github.com/gnina/gnina/archive/refs/tags/v1.3.3.tar.gz",
+      "sha256": "fffc36d6b4a665dcdfbac9f3ff94ee844b3fde95f076d4e460256e1c72ff16ed",
+      "size_bytes": 128498959,
+      "role": "source",
+      "license": "Apache-2.0 OR GPL-2.0-only"
+    },
+    {
+      "id": "openbabel-source",
+      "version": "3.1.1",
+      "filename": "openbabel-source.tar.gz",
+      "url": "https://github.com/openbabel/openbabel/archive/refs/tags/openbabel-3-1-1.tar.gz",
+      "sha256": "c97023ac6300d26176c97d4ef39957f06e68848d64f1a04b0b284ccff2744f02",
+      "size_bytes": 36688499,
+      "role": "source",
+      "license": "GPL-2.0-only"
+    }
+  ]
+}

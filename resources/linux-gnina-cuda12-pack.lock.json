@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "pack_id": "gnina-1.3.3-cuda12.8-cudnn9.25-linux-x86_64",
+  "platform": "linux-x86_64",
+  "gnina_version": "1.3.3",
+  "executable": {
+    "relative_path": "bin/gnina",
+    "size_bytes": 2056131000,
+    "sha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
+    "license": "Apache-2.0 OR GPL-2.0-only",
+    "corresponding_source_ids": ["gnina-source", "openbabel-source"]
+  },
+  "forbidden_driver_prefixes": [
+    "libcuda.so",
+    "libnvidia-ml.so",
+    "libnvidia-ptxjitcompiler.so"
+  ],
+  "shared_libraries": [
+    {
+      "soname": "libcudart.so.12",
+      "filename": "libcudart.so.12.8.90",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA Runtime: libcudart.so)",
+      "size_bytes": 728800,
+      "sha256": "c3a75b33af334a3486d197dbd1584a2985183ba4688d237a2be5f2f679329920"
+    },
+    {
+      "soname": "libcusparse.so.12",
+      "filename": "libcusparse.so.12.5.8.93",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA Sparse Matrix Library: libcusparse.so)",
+      "size_bytes": 386594784,
+      "sha256": "10bf811463c0c67bfe6f1016878392687664bc77fbfeed3130f3a0ecf2b0559f"
+    },
+    {
+      "soname": "libcufft.so.11",
+      "filename": "libcufft.so.11.3.3.83",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA FFT Library: libcufft.so)",
+      "size_bytes": 278678584,
+      "sha256": "db7a606984097fdb7ad04f4bd09ade30b493e7cb360bb400037ff634dc208425"
+    },
+    {
+      "soname": "libcublas.so.12",
+      "filename": "libcublas.so.12.8.5.5",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA BLAS Library: libcublas.so)",
+      "size_bytes": 116388640,
+      "sha256": "18a5df540d156e9aff0363776fefab7884b614f122847b51c3eb1da772048e5c"
+    },
+    {
+      "soname": "libcublasLt.so.12",
+      "filename": "libcublasLt.so.12.8.5.5",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA BLAS Library: libcublasLt.so)",
+      "size_bytes": 751775824,
+      "sha256": "974927b9af78cadc0412ea3ab296da791af02c2dd0de5a35b5f0fbb8dc5d0a4d"
+    },
+    {
+      "soname": "libcusolver.so.11",
+      "filename": "libcusolver.so.11.7.3.90",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (CUDA Linear Solver Library: libcusolver.so)",
+      "size_bytes": 241587952,
+      "sha256": "6e8b369baedbd20064e35fa3da5b3e0254959b0f81f9b1d6ee595199d5493b61"
+    },
+    {
+      "soname": "libnvJitLink.so.12",
+      "filename": "libnvJitLink.so.12.8.93",
+      "family": "cuda-12.8",
+      "redistribution_clause": "NVIDIA CUDA SDK License Agreement Section 2.6 Attachment A (NVIDIA JIT Linking Library: libnvJitLink.so)",
+      "size_bytes": 94101392,
+      "sha256": "0369e6867d44b800437de4e146d72c65afc6c75adf677a15c2ecd8e6a7ac135f"
+    },
+    {
+      "soname": "libcudnn.so.9",
+      "filename": "libcudnn.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so)",
+      "size_bytes": 129240,
+      "sha256": "4f2e3feb0fc0448f7a1997c10a5fcb14cd5e5a72aff9d7c27c8ae68e56e88da3"
+    },
+    {
+      "soname": "libcudnn_adv.so.9",
+      "filename": "libcudnn_adv.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 270760120,
+      "sha256": "bc12a7d6e837ff8589ccdf37ba8ea928d7c5e174aebf8f94b4de5f50e546819f"
+    },
+    {
+      "soname": "libcudnn_cnn.so.9",
+      "filename": "libcudnn_cnn.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 3705712,
+      "sha256": "87740ddcda7ebe8db1518cc30abd0a53bcf8b93dbffe08d32f0c14efe43135ff"
+    },
+    {
+      "soname": "libcudnn_engines_precompiled.so.9",
+      "filename": "libcudnn_engines_precompiled.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 576465888,
+      "sha256": "c3eabb963610e07dcff2feb79049e3a82587019b86ba37d1a3839fe939f86428"
+    },
+    {
+      "soname": "libcudnn_engines_runtime_compiled.so.9",
+      "filename": "libcudnn_engines_runtime_compiled.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 40171728,
+      "sha256": "7595b2201c6201ce3e112dc75c32fc27710564965ea89f1640866c7769fdce67"
+    },
+    {
+      "soname": "libcudnn_engines_tensor_ir.so.9",
+      "filename": "libcudnn_engines_tensor_ir.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 10464,
+      "sha256": "ed39f9e3a9b1b82a661e9ccc88395201fa19cf35eff67255008af9c0301a8560"
+    },
+    {
+      "soname": "libcudnn_ext.so.9",
+      "filename": "libcudnn_ext.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 1994200,
+      "sha256": "5829f761a09d6cebcbc102ab22d54ccb026c72f4ac244c9c4864bd9900809720"
+    },
+    {
+      "soname": "libcudnn_graph.so.9",
+      "filename": "libcudnn_graph.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 113679896,
+      "sha256": "0fb28e041532ef4a9e17cfc99525d5647efce13916f32a902ab0ca01cea216c8"
+    },
+    {
+      "soname": "libcudnn_heuristic.so.9",
+      "filename": "libcudnn_heuristic.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 59141648,
+      "sha256": "368aba313690902cc60a3c4114487dffa46cfa73ec45bc81a8e8ef490767a3de"
+    },
+    {
+      "soname": "libcudnn_ops.so.9",
+      "filename": "libcudnn_ops.so.9.25.0",
+      "family": "cudnn-9.25",
+      "redistribution_clause": "NVIDIA cuDNN Supplement Chapter 8, Section 2 (runtime files .so; loaded via dlopen)",
+      "size_bytes": 106704448,
+      "sha256": "03ac6f2a688f8926dfcba08f54335f086898f44eed8cd3c126bf8d02c6b40414"
+    }
+  ],
+  "license_documents": [
+    {
+      "id": "nvidia-cuda-12.8-eula",
+      "relative_path": "licenses/NVIDIA_CUDA_12_8_EULA.txt",
+      "size_bytes": 63021,
+      "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07"
+    },
+    {
+      "id": "nvidia-cudnn-9-supplement",
+      "relative_path": "licenses/NVIDIA_CUDNN_9_LICENSE.txt",
+      "size_bytes": 29574,
+      "sha256": "295a1b7118d3417f5d6a943e5f87b59e2a0631fb277129c3b15dee6248adc7cf"
+    }
+  ]
+}

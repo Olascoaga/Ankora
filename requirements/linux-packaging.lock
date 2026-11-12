@@ -1,0 +1,11 @@
+--only-binary=:all:
+--require-hashes
+
+# Build-only dependencies for producing the bundled Linux x86_64 backend in an
+# isolated packaging virtual environment. Do not install into the locked
+# ankora-dev Conda prefix verified by scripts/verify_linux_environment_lock.py.
+altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
+packaging==26.2 --hash=sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+pyinstaller==6.22.2 --hash=sha256:9622686ecc5d5fa492fe6cde29d47df9dd41138cff8177be9f901ca3260f2096
+pyinstaller-hooks-contrib==2026.7 --hash=sha256:24257a04c7a5a7a034cf28e39dcee20fbeeb9f043076729480f2e1b69904408a
+setuptools==83.0.0 --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
