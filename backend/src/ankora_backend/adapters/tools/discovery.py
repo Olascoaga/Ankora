@@ -103,6 +103,14 @@ def discover_tool(
         available = discover_python_package(distribution, module).available
         return DiscoveredTool(available=available, path=sys.executable if available else None)
     if not _windows_host():
+        if tool_name == "gnina":
+            from ankora_backend.services.gnina_pack import (
+                discover_verified_packaged_gnina,
+                packaged_gnina_mode,
+            )
+
+            if packaged_gnina_mode():
+                return discover_verified_packaged_gnina()
         located_native = _native_candidate(
             _NATIVE_CONSOLE_NAMES.get(tool_name, (tool_name,)),
             configured_path,
@@ -110,6 +118,14 @@ def discover_tool(
             candidate_directories=candidate_directories,
         )
         if located_native is None:
+            if (
+                tool_name == "gnina"
+                and configured_path is None
+                and os.getenv("ANKORA_TOOLCHAINS_DIR")
+            ):
+                from ankora_backend.services.gnina_pack import discover_verified_packaged_gnina
+
+                return discover_verified_packaged_gnina()
             return DiscoveredTool(available=False, path=None)
         return DiscoveredTool(available=True, path=str(located_native.resolve()))
     candidate: Path | None = None

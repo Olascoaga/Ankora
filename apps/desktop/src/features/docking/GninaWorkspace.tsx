@@ -24,6 +24,7 @@ import {
   GNINA_NUMERIC_FIELDS,
   gninaParametersValid,
 } from "./gninaParameters";
+import { GninaOfflinePackControl } from "./GninaOfflinePackControl";
 
 interface Props {
   receptor: ReceptorPreparationRecord;
@@ -33,11 +34,12 @@ interface Props {
   tools: ToolsResponse | null;
   modeSwitch: ReactNode;
   onActivityChange?: (activity: WorkspaceActivity | null) => void;
+  onToolsRefresh?: () => Promise<void> | void;
 }
 
 const terminal = new Set(["completed", "failed", "canceled"]);
 
-export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, tools, modeSwitch, onActivityChange }: Props) {
+export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, tools, modeSwitch, onActivityChange, onToolsRefresh }: Props) {
   const [parameters, setParameters] = useState<GninaDockingParameters>(defaultGninaParameters);
   const [acknowledged, setAcknowledged] = useState(false);
   const [job, setJob] = useState<GninaDockingJobRecord | null>(null);
@@ -145,7 +147,8 @@ export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, too
     <aside className="inspector docking-inspector" aria-label="GNINA setup inspector">
       <div className="inspector-heading"><span className="section-label">Docking experiment</span><h2>GNINA</h2><p className="inspector-subtitle">One prepared ligand and one finalized search space. Completed and recorded GNINA jobs appear in the Results catalog and can also be reopened here on this device.</p></div>
       <section className="receptor-section"><div className="filter-heading"><span>1 · Scientific inputs</span></div><div className={receptorPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Receptor PDBQT</strong><small>{receptorPdbqt?.filename ?? "Prepare the receptor first."}</small></div><div className={!bindingSite.stale ? "state-resolved-note" : "protonation-blocker"}><strong>Binding site</strong><small>{bindingSite.stale ? "The binding site is stale." : `${bindingSite.box.size_x} × ${bindingSite.box.size_y} × ${bindingSite.box.size_z} Å`}</small></div><div className={ligandPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Ligand PDBQT</strong><small>{ligandPdbqt?.artifact.filename ?? "Prepare the selected ligand first."}</small></div></section>
-      <section className="receptor-section"><div className="filter-heading"><span>2 · Engine & search</span></div><div className={tools?.gnina.available ? "state-resolved-note" : "protonation-blocker"}><strong>GNINA 1.3.3</strong><small>{tools?.gnina.available ? "Detected; version and executable identity are checked at launch." : "Configure the Linux GNINA executable and rescan tools."}</small></div>
+      <section className="receptor-section"><div className="filter-heading"><span>2 · Engine & search</span></div><div className={tools?.gnina.available ? "state-resolved-note" : "protonation-blocker"}><strong>GNINA 1.3.3</strong><small>{tools?.gnina.available ? "Detected; version and executable identity are checked at launch." : "Import the offline GNINA pack below or configure a Linux GNINA executable and rescan tools."}</small></div>
+        <GninaOfflinePackControl gnina={tools?.gnina} disabled={active} onToolsRefresh={onToolsRefresh} />
         <label className="numeric-field"><span className="field-label">Compute</span><select aria-label="Compute" value={parameters.compute} disabled={active} onChange={(event) => update("compute", event.target.value as "cpu" | "cuda")}><option value="cpu">CPU</option><option value="cuda">NVIDIA GPU · CUDA</option></select></label>
         {parameters.compute === "cuda" ? <p className="field-note">CUDA currently requires one identifiable NVIDIA GPU, device 0, without MIG or device visibility remapping. Ankora checks the process and device before publishing results.</p> : null}
         <label className="numeric-field"><span className="field-label">CNN scoring mode</span><select aria-label="CNN scoring mode" value={parameters.cnn_scoring} disabled={active} onChange={(event) => update("cnn_scoring", event.target.value as GninaCnnScoringMode)}><option value="rescore">CNN rescore (empirical search + CNN rescoring)</option><option value="refinement">CNN refinement (combined CNN + empirical gradients · CUDA)</option></select></label>

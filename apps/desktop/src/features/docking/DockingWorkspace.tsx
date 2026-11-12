@@ -43,6 +43,7 @@ interface DockingWorkspaceProps {
   tools: ToolsResponse | null;
   platform?: string | null;
   onActivityChange?: (activity: WorkspaceActivity | null) => void;
+  onToolsRefresh?: () => Promise<void> | void;
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "canceled"]);

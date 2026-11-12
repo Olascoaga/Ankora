@@ -40,6 +40,7 @@ _ORIGIN_GUARDED_PATHS = {
     # brace - the consequence of getting it wrong is a file somewhere else on
     # the scientist's disk.
     "/api/v1/results/figures",
+    "/api/v1/tools/gnina-pack/import",
 }
 
 

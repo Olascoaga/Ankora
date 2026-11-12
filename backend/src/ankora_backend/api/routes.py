@@ -64,6 +64,7 @@ from ankora_backend.schemas.engine_comparison import EngineComparison
 from ankora_backend.schemas.exports import ExportKind, ExportPage
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
 from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord
+from ankora_backend.schemas.gnina_pack import GninaPackStatus, ImportGninaPackRequest
 from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
     GninaScreeningEntry,
@@ -166,6 +167,7 @@ from ankora_backend.services.engine_comparison import EngineComparisonService
 from ankora_backend.services.export_catalog import ExportCatalogService
 from ankora_backend.services.figure_export import FigureExportService
 from ankora_backend.services.gnina_docking import GninaDockingService
+from ankora_backend.services.gnina_pack import GninaPackService
 from ankora_backend.services.gnina_screening_service import GninaScreeningService
 from ankora_backend.services.ligand_extraction import extract_crystallographic_ligand
 from ankora_backend.services.ligand_filtering import (
@@ -370,7 +372,13 @@ def tools() -> ToolsResponse:
     p2rank = discover_p2rank(os.getenv("ANKORA_P2RANK_PATH"))
     return ToolsResponse(
         vina=ToolStatus(available=vina.available, path=vina.path, version=vina.version),
-        gnina=ToolStatus(available=gnina.available, path=gnina.path, version=gnina.version),
+        gnina=ToolStatus(
+            available=gnina.available,
+            path=gnina.path,
+            version=gnina.version,
+            architecture=gnina.architecture,
+            sha256=gnina.sha256,
+        ),
         autogrid4=ToolStatus(
             available=autogrid4.available,
             path=autogrid4.path,
@@ -417,6 +425,16 @@ def tools() -> ToolsResponse:
         ),
         p2rank=ToolStatus(available=p2rank.available, path=p2rank.path, version=p2rank.version),
     )
+
+
+@router.get("/tools/gnina-pack/status", response_model=GninaPackStatus)
+def gnina_pack_status() -> GninaPackStatus:
+    return GninaPackService().status()
+
+
+@router.post("/tools/gnina-pack/import", response_model=GninaPackStatus)
+def import_gnina_pack(payload: ImportGninaPackRequest) -> GninaPackStatus:
+    return GninaPackService().import_pack(payload.archive_path)
 
 
 @router.post("/structures/import", response_model=StructureRecord, status_code=201)

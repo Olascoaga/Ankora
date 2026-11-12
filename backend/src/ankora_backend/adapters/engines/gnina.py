@@ -32,6 +32,7 @@ from ankora_backend.schemas.gnina import (
     GninaCnnModelSelector,
     GninaDockingParameters,
 )
+from ankora_backend.services.gnina_pack import gnina_subprocess_environment
 
 Chem: Any = import_module("rdkit.Chem")
 _STAGE = "gnina_docking"
@@ -128,12 +129,17 @@ def probe_gnina() -> GninaInstallation:
             "GNINA_EXECUTABLE_INVALID", "GNINA requires a native Linux x86-64 ELF executable."
         )
     digest = _sha256_executable(path)
+    env = gnina_subprocess_environment(path)
+    probe_kwargs: dict[str, Any] = {}
+    if env is not None:
+        probe_kwargs["environment"] = env
     execution = run_tool(
         executable=str(path),
         arguments=["--version"],
         cwd=path.parent,
         stage=_STAGE,
         timeout_seconds=30,
+        **probe_kwargs,
     )
     match = _VERSION_PATTERN.search(f"{execution.stdout}\n{execution.stderr}")
     if execution.exit_code != 0 or match is None:
@@ -280,7 +286,8 @@ def execute_gnina(
     """
     if not _linux_host():
         raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition of Ankora.")
-    if _sha256_executable(Path(installation.executable)) != installation.sha256:
+    exe_path = Path(installation.executable)
+    if _sha256_executable(exe_path) != installation.sha256:
         raise _error(
             "GNINA_IDENTITY_CHANGED", "The GNINA executable changed after it was inspected."
         )
@@ -288,6 +295,10 @@ def execute_gnina(
         raise _error(
             "GNINA_OUTPUT_EXISTS", "The GNINA output already exists; it cannot be overwritten."
         )
+    env = gnina_subprocess_environment(exe_path)
+    exec_kwargs: dict[str, Any] = {}
+    if env is not None:
+        exec_kwargs["environment"] = env
     return run_cancellable_tool(
         executable=installation.executable,
         arguments=build_gnina_arguments(
@@ -301,6 +312,7 @@ def execute_gnina(
         stage=_STAGE,
         cancel_event=cancel_event,
         timeout_seconds=parameters.timeout_minutes * 60,
+        **exec_kwargs,
     )
 
 

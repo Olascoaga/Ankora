@@ -17,6 +17,7 @@ import type {
   ExportPage,
   PocketDetectionReport,
   GenerateLigandConformerRequest,
+  GninaPackStatus,
   HealthResponse,
   GninaDockingJobRecord,
   GninaDockingRequest,
@@ -24,6 +25,7 @@ import type {
   GninaScreeningEntry,
   GninaScreeningProgress,
   GninaScreeningRequest,
+  ImportGninaPackRequest,
   LigandConformerRecord,
   LigandChemicalStateRecord,
   LigandLocator,
@@ -197,6 +199,13 @@ export const ankoraApi = {
     ),
   system: (signal?: AbortSignal): Promise<SystemResponse> => getJson<SystemResponse>("/system", signal),
   tools: (signal?: AbortSignal): Promise<ToolsResponse> => getJson<ToolsResponse>("/tools", signal),
+  gninaPackStatus: (signal?: AbortSignal): Promise<GninaPackStatus> =>
+    getJson<GninaPackStatus>("/tools/gnina-pack/status", signal),
+  importGninaPack: (request: ImportGninaPackRequest): Promise<GninaPackStatus> =>
+    requestJson<GninaPackStatus>("/tools/gnina-pack/import", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
   importLigand: (file: File): Promise<LigandRecord> => {
     const form = new FormData();
     form.append("file", file);

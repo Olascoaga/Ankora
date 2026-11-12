@@ -28,6 +28,7 @@ import {
   GNINA_NUMERIC_FIELDS,
   gninaParametersValid,
 } from "./gninaParameters";
+import { GninaOfflinePackControl } from "./GninaOfflinePackControl";
 
 /**
  * A GNINA campaign over one applied filter selection, on Linux only.
@@ -52,6 +53,7 @@ interface GninaScreeningWorkspaceProps {
   tools: ToolsResponse | null;
   modeSwitch?: ReactNode;
   onActivityChange?: (activity: WorkspaceActivity | null) => void;
+  onToolsRefresh?: () => Promise<void> | void;
 }
 
 const TERMINAL = new Set(["completed", "failed", "canceled"]);
@@ -66,6 +68,7 @@ export function GninaScreeningWorkspace({
   tools,
   modeSwitch,
   onActivityChange,
+  onToolsRefresh,
 }: GninaScreeningWorkspaceProps) {
   const [parameters, setParameters] = useState<GninaDockingParameters>(defaultGninaParameters);
   const [hitRankingMetric, setHitRankingMetric] = useState<GninaHitRankingMetric>("cnn_score");
@@ -644,9 +647,14 @@ export function GninaScreeningWorkspace({
             <small>
               {tools?.gnina.available
                 ? "Detected; version and executable identity are checked by the backend at launch."
-                : "Configure the Linux GNINA executable and rescan tools."}
+                : "Import the offline GNINA pack below or configure a Linux GNINA executable and rescan tools."}
             </small>
           </div>
+          <GninaOfflinePackControl
+            gnina={tools?.gnina}
+            disabled={controlsLocked}
+            onToolsRefresh={onToolsRefresh}
+          />
           <label className="numeric-field">
             <span className="field-label">Compute</span>
             <select

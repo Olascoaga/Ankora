@@ -6,6 +6,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SplashScreen } from "../components/SplashScreen";
 import { BindingSiteWorkspace } from "../features/binding-site/BindingSiteWorkspace";
 import { DockingWorkspace } from "../features/docking/DockingWorkspace";
+import { GninaOfflinePackControl } from "../features/docking/GninaOfflinePackControl";
 import { RedockingWorkspace } from "../features/validation/RedockingWorkspace";
 import { ExportWorkspace } from "../features/export/ExportWorkspace";
 import { ResultsWorkspace } from "../features/results/ResultsWorkspace";
@@ -661,7 +662,7 @@ export function App() {
         ? <ResultsWorkspace />
         : activeStep === "Validation"
         ? <RedockingWorkspace key={activeProject.project_id} />
-        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} platform={state.system?.platform} onActivityChange={setWorkspaceActivity} /> : <>
+        : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} platform={state.system?.platform} onActivityChange={setWorkspaceActivity} onToolsRefresh={refreshTools} /> : <>
       <section className="workspace" aria-label="Structure workspace">
         <div className="workspace-heading">
           <div><span className="eyebrow">01 / Structure</span><h2>{structure?.metadata.title ?? "Inspect before transforming"}</h2></div>
@@ -790,6 +791,7 @@ export function App() {
             {activityTab === "tools" ? <div className="tools-activity-view">
               <div className="tools-activity-toolbar"><div><strong>Backend scientific environment</strong><span>Python {state.system?.python_version ?? "—"} · {state.system?.python_environment ?? "unknown environment"}</span></div><button type="button" disabled={toolsRefreshing} onClick={() => void refreshTools()}><AppIcon name="tools" />{toolsRefreshing ? "Scanning…" : "Rescan tools"}</button></div>
               <div className="activity-tools"><ToolSummary name="PDBFixer" status={state.tools?.pdbfixer} /><ToolSummary name="PDB2PQR" status={state.tools?.pdb2pqr} /><ToolSummary name="PROPKA" status={state.tools?.propka} /><ToolSummary name="Meeko receptor" status={state.tools?.meeko} /><ToolSummary name="Meeko ligand" status={state.tools?.meeko_ligand} /><ToolSummary name="AutoDock Vina" status={state.tools?.vina} /><ToolSummary name="AutoGrid4" status={state.tools?.autogrid4} /><ToolSummary name="AutoDock4 CPU" status={state.tools?.autodock4} /><ToolSummary name="AutoDock-GPU" status={state.tools?.autodock_gpu} /><ToolSummary name={state.system?.platform === "linux" ? "GNINA · Linux" : "GNINA · deferred"} status={state.tools?.gnina} /><ToolSummary name="P2Rank" status={state.tools?.p2rank} /></div>
+              {state.system?.platform === "linux" ? <GninaOfflinePackControl gnina={state.tools?.gnina} disabled={toolsRefreshing} onToolsRefresh={refreshTools} /> : null}
             </div> : null}
             {activityTab === "about" ? <div className="activity-about"><div className="brand-mark"><AppIcon name="molecule" /></div><div><strong>Ankora 0.1.0</strong><p>Native Windows workbench for explicit, inspectable, and reproducible molecular docking.</p></div></div> : null}
           </div>

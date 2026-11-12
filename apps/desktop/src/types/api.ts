@@ -33,6 +33,23 @@ export interface ToolsResponse {
   p2rank: ToolStatus;
 }
 
+export interface ImportGninaPackRequest {
+  archive_path: string;
+}
+
+export interface GninaPackStatus {
+  supported: boolean;
+  installed: boolean;
+  pack_id: string;
+  gnina_version: string;
+  install_dir?: string | null;
+  executable_path?: string | null;
+  executable_sha256?: string | null;
+  shared_library_count: number;
+  imported_at?: string | null;
+  verification_error?: string | null;
+}
+
 export type StructureFormat = "pdb" | "mmcif";
 export type StructureSource = "local" | "rcsb" | "alphafold";
 export type HeterogenKind = "ligand" | "water" | "metal" | "other";

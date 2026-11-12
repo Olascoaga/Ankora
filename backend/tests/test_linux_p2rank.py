@@ -173,7 +173,7 @@ def test_incompatible_explicit_java_is_a_missing_dependency(
     assert excinfo.value.details["dependency"] == "Java 17-23"
 
 
-def test_frozen_backend_never_runs_p2rank_on_linux(
+def test_frozen_backend_uses_posix_java_classpath_on_linux(
     installation: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _forbid_execution(monkeypatch)
@@ -184,17 +184,31 @@ def test_frozen_backend_never_runs_p2rank_on_linux(
             receptor_pdb_path=installation["receptor"], output_dir=installation["output"]
         )
 
-    # Even if a payload were reported, no Windows classpath command is built.
+    # ADR-029: when frozen Linux discovers bundled P2Rank + bundled Java 21, it builds
+    # a direct `bin/java` command with POSIX `:` classpath (never `java.exe` or `;`).
+    captured: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> ToolExecution:
+        captured.update(kwargs)
+        return ToolExecution(command=[], exit_code=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(pocket_detection, "run_tool", capture)
     monkeypatch.setattr(
         pocket_detection,
         "discover_p2rank",
         lambda _: DiscoveredTool(True, str(installation["launcher"]), "2.5.1"),
     )
     monkeypatch.setattr(pocket_detection, "discover_java_home", lambda _: installation["java_home"])
-    with pytest.raises(AnkoraDomainError, match="packaged P2Rank runtime is not available"):
-        pocket_detection.execute_p2rank(
-            receptor_pdb_path=installation["receptor"], output_dir=installation["output"]
-        )
+    _, version = pocket_detection.execute_p2rank(
+        receptor_pdb_path=installation["receptor"], output_dir=installation["output"]
+    )
+    assert version == "2.5.1"
+    assert captured["executable"] == str(installation["java_home"] / "bin" / "java")
+    args = captured["arguments"]
+    assert isinstance(args, list)
+    p2rank_home = installation["launcher"].resolve().parent
+    cp_value = str(args[args.index("-cp") + 1])
+    assert cp_value == f"{p2rank_home / 'bin' / 'p2rank.jar'}:{p2rank_home / 'bin' / 'lib' / '*'}"
 
 
 def test_native_call_keeps_stage_cwd_and_timeout(
