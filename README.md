@@ -260,6 +260,9 @@ If you use Ankora in published work, cite the exact version or commit and the
 scientific tools executed; repository citation metadata is in
 [`CITATION.cff`](CITATION.cff). Exported `Methods` sections state only what the
 campaign records support and flag missing information explicitly for review.
+Manuscript reviewers and readers can verify any exported campaign bundle or folder
+without installing Ankora via the standard-library verifier
+`python scripts/verify_export_bundle.py <bundle.zip>`.
 
 Ankora's code is licensed under [MIT](LICENSE). Bundled third-party components
 retain their own licenses, notices and corresponding-source obligations;

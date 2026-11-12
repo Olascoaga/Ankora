@@ -230,6 +230,19 @@ class CampaignBundleIdentity:
         }
 
 
+def _table_columns(campaign: ExportedCampaign) -> list[str]:
+    if campaign.row_kind == "pose":
+        return list(_HEADER_GNINA_POSES)
+    if campaign.engine == "GNINA":
+        return list(_HEADER_GNINA_SCREENING)
+    columns = [*_HEADER_COMMON, campaign.value_column]
+    if campaign.engine != "AutoDock Vina":
+        # Cluster population describes sampling concentration within this
+        # execution; it is not evidence that a separate execution will match.
+        columns += ["clusters", "top_cluster_runs"]
+    return columns
+
+
 def results_csv(campaign: ExportedCampaign) -> str:
     """One row per selected molecule, in the engine's own ranking order.
 
@@ -239,28 +252,7 @@ def results_csv(campaign: ExportedCampaign) -> str:
     A single job's table is one row per pose instead, and carries none of the
     library columns: it is a different kind of table and says so in its header.
     """
-    if campaign.row_kind == "pose":
-        buffer = io.StringIO()
-        writer = csv.DictWriter(
-            buffer,
-            fieldnames=_HEADER_GNINA_POSES,
-            extrasaction="ignore",
-            lineterminator="\n",
-        )
-        writer.writeheader()
-        for row in campaign.rows:
-            writer.writerow(row)
-        return buffer.getvalue()
-
-    if campaign.engine == "GNINA":
-        columns = list(_HEADER_GNINA_SCREENING)
-    else:
-        columns = [*_HEADER_COMMON, campaign.value_column]
-        if campaign.engine != "AutoDock Vina":
-            # Cluster population describes sampling concentration within this
-            # execution; it is not evidence that a separate execution will match.
-            columns += ["clusters", "top_cluster_runs"]
-
+    columns = _table_columns(campaign)
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
@@ -284,15 +276,7 @@ def manifest(
     table_payload: dict[str, Any] = {
         "file": "results.csv",
         "row": campaign.row_kind,
-        "columns": (
-            _HEADER_GNINA_POSES
-            if campaign.row_kind == "pose"
-            else (
-                _HEADER_GNINA_SCREENING
-                if campaign.engine == "GNINA"
-                else [*_HEADER_COMMON, campaign.value_column]
-            )
-        ),
+        "columns": _table_columns(campaign),
     }
     if campaign.ranking_metric is not None:
         table_payload["ranking_metric"] = campaign.ranking_metric
