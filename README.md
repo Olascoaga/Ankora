@@ -4,22 +4,25 @@
 
 # Ankora
 
-[![Windows CI](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml)
-[![Status: private beta](https://img.shields.io/badge/status-private%20beta-dfa45a?style=flat-square&labelColor=16191f)](#installation)
-[![Platform: Windows 11 x64](https://img.shields.io/badge/platform-Windows%2011%20x64-789bb0?style=flat-square&labelColor=16191f)](#installation)
+[![CI](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml/badge.svg)](https://github.com/Olascoaga/Ankora/actions/workflows/ci.yml)
+[![Status: private beta · Linux RC](https://img.shields.io/badge/status-private%20beta%20%C2%B7%20Linux%20RC-dfa45a?style=flat-square&labelColor=16191f)](#installation)
+[![Platforms: Windows 11 x64 | Linux x86_64](https://img.shields.io/badge/platforms-Windows%2011%20x64%20%7C%20Linux%20x86__64-789bb0?style=flat-square&labelColor=16191f)](#installation)
 [![License: MIT](https://img.shields.io/badge/license-MIT-dfa45a?style=flat-square&labelColor=16191f)](LICENSE)
 
 **Molecular docking, with the scientist in control.**
 
-Ankora is an open-source desktop workbench for molecular docking and virtual
-screening. Go from a structure and a compound library to inspectable poses,
-interaction diagrams and exportable evidence—without stitching together
-separate command-line tools.
+Ankora is a local-first open-source desktop workbench for molecular docking and
+virtual screening on **Windows 11 x64** and **Linux x86\_64**. Go from a crystal
+or predicted structure and a compound library to inspectable poses, in-place
+redocking verdicts, interaction diagrams, literal `Methods` prose, and portable
+campaign bundles—without stitching together opaque scripts or surrendering
+chemical decisions to hidden defaults.
 
-Chemical decisions stay visible. Imported files stay unchanged. Every derivative
-and calculation carries its inputs, parameters, tool identity and raw outputs.
+Imported structures and libraries stay immutable. Every protonation, repair,
+microstate, search-box, and engine choice is explicit, hashed with SHA-256, and
+linked to raw tool outputs.
 
-**[Official website](https://olascoaga.github.io/ankora-website/) · [User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Installation](#installation) · [Scientific evidence](#scientific-validation-status) · [For developers](docs/DEVELOPMENT.md)**
+**[Official website](https://olascoaga.github.io/ankora-website/) · [Docs portal](docs/README.md) · [User guide](docs/USER_GUIDE.md) · [Illustrated PDF](docs/Ankora-User-Guide.pdf) · [Platform matrix](docs/product/PLATFORM_STATUS.md) · [Evidence index](docs/validation/INDEX.md) · [Installation](#installation)**
 
 [![A preserved 7AQF pose: linked 3D view, skeletal 2D diagram and recorded contact table](docs/images/readme-obsidian-interactions.jpg)](docs/images/readme-obsidian-interactions.jpg)
 
@@ -27,43 +30,50 @@ and calculation carries its inputs, parameters, tool identity and raw outputs.
 7AQF analysis read-only: 20 recorded atomic contacts, not a new calculation.
 Contacts describe geometry—not measured affinity. [Capture provenance](docs/images/README.md).*
 
-## From structure to evidence
+## From structure to citable evidence
 
 | Workspace | What you can do |
 | --- | --- |
-| **Structure** | Import PDB/mmCIF, fetch from RCSB or AlphaFold DB, and inspect chains, components and structural issues. |
-| **Receptor** | Follow guided chain, component and structural-issue decisions; review protonation proposals, then create receptor PDBQT. Advanced controls and exact failure evidence remain available. |
-| **Ligands** | Inspect one compound or import multi-molecule SDF/SD-style MOL/SMILES libraries. Review molecular properties, chemical states and filtering before independent 3D preparation and minimization. |
-| **Binding site** | Define an editable search box from the full protein, a reference ligand, selected residues, manual coordinates or a P2Rank pocket. Move and resize it directly in the viewer. |
-| **Docking** | Run a single ligand or a prepared library, with explicit engine settings, bounded resource allocation, live molecule-level progress and preserved failures. |
-| **Results** | Browse campaigns, sort compounds, inspect poses or clusters, compare rankings without combining incompatible scores, and move selected campaigns to recoverable Trash. |
-| **Validation** | Create a saved redocking validation from a completed individual Vina or AutoDock4 CPU/GPU result and its compatible crystallographic reference. Inspect sampling and ranking separately with symmetry-aware, in-place heavy-atom RMSD. |
-| **Export** | Save figures, exact ligand–receptor PDB complexes, record-derived Methods and portable screening campaign bundles. |
+| **Structure** | Import local `PDB`/`mmCIF` or fetch from RCSB PDB and AlphaFold DB; inspect chains, heterogens, waters, alternate locations, and missing atoms before creating any derivative. |
+| **Receptor** | Step through guided chain, component, and topology-guarded side-chain repair decisions (`topology_guard_v3`), review `PROPKA`/`PDB2PQR` protonation proposals, and generate `Meeko` receptor `PDBQT` with full failure diagnostics. |
+| **Ligands** | Prepare one compound or screen up to 10,000-record `SDF`/`MOL`/`SMILES` libraries with explicit stereochemistry and physiological-pH microstate selection (`ADR-016`), rule/alert evaluation, independent `ETKDGv3`/`MMFF94s` minimization, and `Meeko` `PDBQT` creation. |
+| **Binding site** | Define an editable Cartesian box from co-crystallized ligands, selected residues, `P2Rank 2.5.1` pockets, manual coordinates, or acknowledged blind whole-protein coverage—translating and resizing directly in 3D. |
+| **Docking** | Execute single-ligand runs or library campaigns across **AutoDock Vina**, **AutoDock4 CPU**, **AutoDock-GPU**, and (on Linux) **GNINA**, governed by a unified CPU/GPU/RAM/VRAM resource arbiter with preserved row-level failures. |
+| **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, and manage records with atomic recoverable `Trash`. |
+| **Validation** | Compute symmetry-aware, **in-place** heavy-atom RMSD (never superposed) from completed individual Vina, AutoDock4 CPU/GPU, or Linux GNINA jobs against an immutable crystallographic extraction, separating **sampling** from **ranking** verdicts. |
+| **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` format 4). |
 
 ### Prepare libraries deliberately
 
-- Preview **Lipinski, Veber, Ghose, Muegge and QED**, with **PAINS/Brenk**
-  alerts and duplicate findings. Rules and alerts inform an explicit selection;
-  they do not establish biological activity.
-- Inspect molecular weight, SMILES, charge, stereochemistry and components.
-  Resolve ambiguous chemistry through visible choices, including optional
-  bounded protonation/tautomer microstate enumeration.
-- Generate independent **ETKDGv3 conformers**, minimize with **MMFF**, and
-  prepare converged structures with **Meeko**. Keep the imported reference intact.
-- Process independent molecules with bounded multicore workers. Docking shares
-  an explicit CPU/GPU/memory budget instead of silently oversubscribing the machine.
+- Preview **Lipinski, Veber, Ghose, Muegge and QED**, alongside **PAINS/Brenk**
+  structural alerts and chemical-identity duplicates, before locking an
+  immutable selection manifest. Rules and alerts inform explicit curation; they
+  do not establish biological activity.
+- Enumerate bounded protonation/tautomer candidates (`Dimorphite-DL` / `RDKit`)
+  as unranked options and commit one explicit microstate per retained parent.
+- Generate independent **ETKDGv3 conformers**, minimize with **MMFF94s**, and
+  prepare converged molecules with **Meeko** while keeping imported coordinates
+  untouched and retaining non-converged or engine-incompatible molecules in the
+  campaign denominator.
 
 ### Choose the engine, keep its meaning
 
-| Engine | Execution | Important distinction |
+| Engine | Platforms & execution | Result model & scientific boundary |
 | --- | --- | --- |
-| **AutoDock Vina 1.2.7** | CPU · single ligand or library | Vina poses and scores retain their own scoring scale. |
-| **AutoDock4 4.2.6** | CPU · single ligand or library | AutoGrid4 maps are preserved and reusable; review native DLG clusters and runs. |
-| **AutoDock-GPU 1.6** | Optional OpenCL GPU · single ligand or library | Uses the AutoDock4 scoring family with a different search protocol. GPU runs are not assumed bitwise reproducible. |
+| **AutoDock Vina `1.2.7`** | Windows & Linux · CPU single or concurrent worker pool | Pose-native modes ordered by empirical Vina score (`kcal/mol`) with inter-mode RMSD bounds and `27,000 Å³` search-volume guardrails. |
+| **AutoDock4 `4.2.6` (CPU)** | Windows & Linux · CPU single or library | Native `DLG` clusters and runs over immutable, reusable `AutoGrid4 4.2.6` affinity maps (`14` ligand / `20` receptor atom-type preflight). |
+| **AutoDock-GPU `1.6`** | Windows (`OpenCL`) & Linux (`CUDA 12`) · Single or `--filelist` library | Accelerates the AutoDock4 scoring family over shared `AutoGrid4` maps using a stochastic parallel search protocol (not assumed bitwise reproducible). |
+| **GNINA `1.3.3`** | **Linux `x86_64` only** · `CPU` or `CUDA 12.8` single or sequential library screening | CNN-ordered poses carrying separate `CNNscore` (`[0, 1]`), `CNNaffinity` (`pK`), `CNN_VS` (`CNNscore × CNNaffinity`) hit prioritization, `rescore` or CUDA-only `refinement`, and built-in `dense_1_3` (1-model default), `default_1_3_ensemble` (3 KD models), and `default1.0` (5 models). Deferred on native Windows. |
 
-GNINA is deferred, not a supported engine in this beta. Scores from different
-scoring functions are not interchangeable, and a lower docking score is not
-proof of stronger experimental affinity.
+Scores from different scoring functions live on incompatible scales and are
+**never** averaged or combined into a consensus number, nor is a computational
+score proof of experimental affinity. For compatible **AutoDock Vina** and
+**AutoDock4 (CPU)** library campaigns sharing the exact receptor, finalized
+binding site, and selection manifest, Ankora reports **Spearman rank
+correlation (`ρ`) and Top-`N` overlap** without pooling scores; GNINA remains in
+its separate CNN catalog family. Under GNINA `refinement`, `minimizedAffinity`
+is evaluated on geometry jointly optimized with CNN and empirical gradients and
+is explicitly documented as non-independent (`docs/scientific/DOCKING_POLICY.md`).
 
 ## A workbench you can inspect
 
@@ -89,45 +99,72 @@ graph makes stale inputs and their affected derivatives visible.
 ### Validate the pose, not just its score
 
 Redocking validation measures **existing saved poses**; it does not start another
-docking run. Select a completed individual result, its compatible original
-crystallographic reference and an explicit RMSD threshold. Ankora verifies
-preserved inputs and coordinate identity before saving the validation.
+docking run. Select a completed individual Vina, AutoDock4 CPU/GPU, or Linux
+GNINA result, its compatible original crystallographic reference, and an
+explicit RMSD threshold. Ankora verifies preserved inputs and coordinate
+identity before saving the validation.
 
-Sampling (was a reference-like pose found?) and ranking (was it ranked first?)
-are separate outcomes. Poses are **not superposed** before placement is judged.
-Library campaigns are not individual redocking inputs, and a successful
-redocking result does not validate prospective affinity prediction.
-See the [current workflow correction](docs/validation/REDOCKING_WORKFLOW_2026-10-20.md).
+Sampling (was a reference-like pose found?) and ranking (was it ranked first, in
+the engine's own native pose order?) are separate outcomes. Poses are **not
+superposed** before placement is judged. Library campaigns are not individual
+redocking inputs, and a successful redocking result does not validate
+prospective affinity prediction. See the
+[redocking validation policy](docs/scientific/REDOCKING_VALIDATION.md) and
+[workflow record](docs/validation/REDOCKING_WORKFLOW_2026-10-20.md).
 
 ## Installation
 
-**Current distribution: private beta for Windows 11 x64.** The source is public;
-there is not yet a public installer release. Invited testers receive the complete
-installer and its checksum through the beta distribution channel.
+**Current distribution status:** **Windows 11 x64 (`private_beta`)** and **Linux
+`x86_64` (`release_candidate`, Ubuntu 24.04 LTS reference)**. The source is
+public; there is not yet a signed public installer release on GitHub Releases.
+See the machine-verified [platform status matrix](docs/product/PLATFORM_STATUS.md)
+for exact artifact sizes, hashes, and open release gates. macOS is out of scope.
 
 **Which version am I seeing?** This README describes current source development.
-Compare your installer/build identity with the [changelog](CHANGELOG.md) when
-reporting a bug; source changes do not update an installed beta automatically.
+Compare your package build identity with the [changelog](CHANGELOG.md) when
+reporting an issue; source commits do not update an installed build automatically.
 
-1. Obtain the reviewed beta installer and verify its SHA-256 checksum.
-2. Run the installer and follow the setup steps.
-3. Open Ankora, check **Scientific tools**, and start with the
-   [7AQF/RV2 walkthrough](docs/USER_GUIDE.md).
+**No separate Python, Conda, Java or scientific-tool installation is required**
+for packaged end-user distributions:
 
-**No separate Python, Conda, Java or scientific-tool installation is required.**
-The complete installer includes the scientific Python runtime, receptor/ligand
-preparation tools, supported docking engines, P2Rank, a private Java runtime and
-offline WebView2. RCSB/AlphaFold downloads require internet access; preparation
-and docking execute locally.
+### Windows 11 x64 — Private Beta (`ADR-024`)
 
-GPU docking additionally needs compatible OpenCL hardware and its vendor
-driver. Ankora does not install GPU drivers or silently replace CPU execution.
-Linux and macOS are not accepted release platforms yet.
+- **Complete offline installer (`Ankora_0.1.0_x64-setup.exe`, `407.16 MiB`):**
+  bundles Python `3.12.13`, receptor/ligand preparation tools, `AutoDock Vina
+  1.2.7`, `AutoGrid4 / AutoDock4 4.2.6`, `AutoDock-GPU 1.6` (`OpenCL`), `P2Rank
+  2.5.1` with private Java `21`, and offline `WebView2`.
+- Verify the SHA-256 checksum, install, open **Tools → Scientific tools**, and
+  follow the [7AQF/RV2 walkthrough](docs/USER_GUIDE.md).
+- The beta installer is **unsigned**; follow your institution's security policy
+  and never disable OS protections to install it. See
+  [slim installer evidence](docs/validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)
+  and [full installer acceptance](docs/validation/PRIVATE_BETA_INSTALLER_2026-10-15.md).
 
-The beta installer is **unsigned**. Follow your institution's software policy;
-do not disable system security to install it. Signing, broader clean-machine
-acceptance and hardware coverage remain public-release gates. See the
-[latest installer acceptance record](docs/validation/PRIVATE_BETA_INSTALLER_2026-10-15.md).
+### Linux `x86_64` — Release Candidate (`ADR-029`, awaiting bare-metal Gate `D6`)
+
+- **Core double-click package (`Ankora_0.1.0_amd64.deb`, `272.34 MiB`)** for
+  Ubuntu 24.04 LTS, Debian, Linux Mint, and Pop!\_OS, or **zero-`sudo` portable
+  archive (`Ankora_0.1.0_linux_x86_64.tar.zst`, `313.97 MiB`)** for shared lab
+  workstations without administrator rights. Both bundle `WebKitGTK` desktop
+  integration, Python `3.12.13`, `Vina 1.2.7`, `AutoGrid4/AutoDock4 4.2.6`,
+  multi-arch `CUDA 12` `AutoDock-GPU 1.6`, `Temurin OpenJDK 21`, and `P2Rank
+  2.5.1` (`10/10` Core tools offline).
+- **Optional 1-click offline GNINA pack (`Ankora_0.1.0_gnina-cuda12-pack.tar.zst`, `2.55 GiB`):**
+  contains `gnina 1.3.3` plus `17` redistributable `CUDA 12.8` and `cuDNN 9.25`
+  user-space libraries. Import it directly inside **Tools → Scientific tools**
+  with zero `sudo`, zero terminal commands, and isolated GNINA-only library
+  loading (`11/11` tools ready without restart; persists across `.deb` upgrades).
+- **Release boundary:** Clean-room offline execution and RTX 5050 CUDA smoke
+  passed under WSL2/WSLg ([`LINUX_OFFLINE_PACKAGE_SMOKE.md`](docs/validation/LINUX_OFFLINE_PACKAGE_SMOKE.md));
+  final Linux release acceptance requires executing the 1-command physical
+  workstation attestation in [`LINUX_NATIVE_WORKSTATION_PROTOCOL.md`](docs/validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md)
+  (Gate `D6`).
+
+GPU execution on either OS requires compatible hardware and the host OS vendor
+driver (`OpenCL` on Windows; `NVIDIA` driver `>= 570.x` recommended for CUDA
+12.8 on Linux). Ankora never bundles kernel GPU drivers and never falls back
+silently from requested GPU execution to CPU. Public RCSB/AlphaFold fetches
+require internet access; all preparation, docking, and analysis run locally.
 
 ## Traceability is part of the workflow
 
@@ -162,16 +199,23 @@ not imply a matched-input comparison between engines.
 
 | Start here | Purpose |
 | --- | --- |
-| [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full 7AQF/RV2 walkthrough, with 19 real figures and scientific cautions. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) | Frozen cases, completed evidence and known gaps. |
-| [Development and packaging](docs/DEVELOPMENT.md) | Source setup, scientific environment locks, tests and installer maintenance. |
-| [Architecture decisions](docs/architecture/ADR) | Scientific and engineering contracts. |
-| [Changelog](CHANGELOG.md) | Implemented changes and their verification boundaries. |
+| [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
+| [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
+| [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 128-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, and Linux/GNINA engineering smokes. |
+| [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
+| [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
+| [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-029`). |
+| [Changelog](CHANGELOG.md) | Chronological log of verified scientific and engineering changes. |
 
 ## Build from source
 
-For contributors—not required for installing the beta. On a Windows development
-machine with the [native prerequisites](docs/DEVELOPMENT.md#prerequisites):
+For contributors—not required for installing packaged distributions. Source
+development also requires configuring external docking and pocket tools unless
+imported via the Linux GNINA pack; packaged installers bundle Core tools for end
+users.
+
+**Windows 11 PowerShell** ([prerequisites & locked setup](docs/DEVELOPMENT.md#prerequisites)):
 
 ```powershell
 git clone https://github.com/Olascoaga/Ankora.git
@@ -182,25 +226,40 @@ conda activate ankora-dev
 npm.cmd run tauri:dev
 ```
 
-Source development also requires configuring the external docking and pocket
-tools; the complete installer bundles them for end users. See the
-[developer guide](docs/DEVELOPMENT.md) for discovery and the locked release environment.
-Run the verification suite with `.\scripts\test.ps1`.
+**Linux `x86_64` Bash — Ubuntu 24.04 LTS / WSL2** ([prerequisites & locked setup](docs/DEVELOPMENT_LINUX.md#2-system-prerequisites-ubuntu-2404-lts--wsl2-with-wslg)):
 
-Built with **Tauri 2 / Rust**, **React / TypeScript**, **Mol\*** and a
-**Python / FastAPI** scientific backend. The frontend never launches scientific
-executables directly.
+```bash
+git clone https://github.com/Olascoaga/Ankora.git
+cd Ankora
+conda create -n ankora-dev --file environment/linux-64.conda.lock --yes
+conda activate ankora-dev
+export PYTHONNOUSERSITE=1
+python -m pip install --require-hashes --only-binary=:all: -r requirements/linux-py312.lock
+python -m pip install --no-deps --no-build-isolation -e backend
+npm ci
+npm run tauri:dev:linux
+```
+
+Run the Windows verification suite with `.\scripts\test.ps1` or follow the
+exact Linux CI verification commands in
+[`docs/DEVELOPMENT_LINUX.md`](docs/DEVELOPMENT_LINUX.md#local-test-suite--ubuntu-2404-ci-verify-linux).
+
+Built with **Tauri 2 / Rust** (`WebView2` on Windows, `WebKitGTK` on Linux),
+**React / TypeScript**, **Mol\*** and a **Python 3.12 / FastAPI** scientific
+backend. The frontend never launches scientific executables directly.
 
 ## Feedback, citation and license
 
 Found a problem? [Open an issue](https://github.com/Olascoaga/Ankora/issues)
-with the Ankora version, Windows version, engine and steps to reproduce.
-Remove personal paths and confidential compounds from shared evidence.
+with the Ankora version or commit, OS and GPU driver version, engine, and steps
+to reproduce. Remove personal paths and confidential compounds from shared
+evidence.
 
-Created by **Samael Olascoaga**. If you use Ankora in published work, cite the
-exact version or commit and the scientific tools used; repository citation
-metadata is in [CITATION.cff](CITATION.cff). Exported Methods state what the
-campaign records support and flag missing information for review.
+Created by **Samael Olascoaga** ([ORCID `0009-0008-5522-7938`](https://orcid.org/0009-0008-5522-7938)).
+If you use Ankora in published work, cite the exact version or commit and the
+scientific tools executed; repository citation metadata is in
+[`CITATION.cff`](CITATION.cff). Exported `Methods` sections state only what the
+campaign records support and flag missing information explicitly for review.
 
 Ankora's code is licensed under [MIT](LICENSE). Bundled third-party components
 retain their own licenses, notices and corresponding-source obligations;
