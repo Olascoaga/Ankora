@@ -70,7 +70,7 @@ Adopt a **two-tier modular offline Linux distribution** (`Option A`) targeting
      Agreement Section `2.6 Attachment A`), all 10 cuDNN 9.25.0 runtime `.so`
      libraries including `dlopen()` sub-libraries (redistributable under NVIDIA
      cuDNN Supplement Chapter 8, `2. Distribution`), verbatim NVIDIA CUDA/cuDNN
-     license notices, and a signed `gnina-pack.json` SHA-256 manifest.
+     license notices, and a hash-locked `gnina-pack.json` SHA-256 manifest.
    - **Never bundles host kernel-driver libraries** (`libcuda.so*`,
      `libnvidia-ml.so*`), which must always come from the host OS GPU driver.
 

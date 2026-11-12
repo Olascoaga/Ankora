@@ -42,3 +42,6 @@ memory/
 .claude/
 /CLAUDE.md
 /docs/validation/AUDIT_ADVERSARIAL.md
+build/pytest-tmp/
+build/test-runs/
+docs/design/proposals/
