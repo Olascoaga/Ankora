@@ -402,7 +402,7 @@ def run_refinement_and_downstream(
             "`default_1_3_ensemble`",
             "`dense_1_3`, `dense_1_3_PT_KD_3`, `crossdock_default2018_KD_4`",
             "invoked by omitting `--cnn`",
-            "combined 3D CNN and empirical scoring gradients",
+            "3D CNN scoring gradients",
             "not an independent empirical energy check",
         ):
             if required_phrase not in md:

@@ -375,12 +375,12 @@ def _gnina_ensemble_and_refinement_notes(campaign: ExportedCampaign) -> list[str
             )
     if campaign.parameters.get("cnn_scoring") == "refinement":
         extra.append(
-            "Under cnn_scoring='refinement', GNINA locally optimized pose "
-            "coordinates against combined 3D CNN and empirical gradients. "
-            "gnina_minimized_affinity_kcal_mol was evaluated on that CNN-refined "
-            "geometry (where closer CNN-favored contacts can produce elevated or "
-            "positive steric repulsion energies in kcal/mol) and is not an "
-            "independent empirical energy check."
+            "Under cnn_scoring='refinement' (--cnn_mix_emp_force disabled), GNINA "
+            "locally optimized pose coordinates against 3D CNN gradients after "
+            "empirical Monte Carlo sampling. gnina_minimized_affinity_kcal_mol was "
+            "evaluated on that CNN-refined geometry (where closer CNN-favored "
+            "contacts can produce elevated or positive steric repulsion energies in "
+            "kcal/mol) and is not an independent empirical energy check."
         )
     return extra
 
@@ -586,9 +586,10 @@ def readme(
         if campaign.parameters.get("cnn_scoring") == "refinement":
             lines += [
                 "Refinement note: pose coordinates were locally optimized against",
-                "combined 3D CNN and empirical gradients (cnn_scoring='refinement'),",
-                "so gnina_minimized_affinity_kcal_mol was evaluated on CNN-refined",
-                "geometry and is not an independent empirical energy check.",
+                "3D CNN gradients (cnn_scoring='refinement', --cnn_mix_emp_force",
+                "disabled), so gnina_minimized_affinity_kcal_mol was evaluated on",
+                "CNN-refined geometry and is not an independent empirical energy",
+                "check.",
                 "",
             ]
     elif campaign.engine == "GNINA":
@@ -615,9 +616,10 @@ def readme(
         if campaign.parameters.get("cnn_scoring") == "refinement":
             lines += [
                 "Refinement note: pose coordinates were locally optimized against",
-                "combined 3D CNN and empirical gradients (cnn_scoring='refinement'),",
-                "so gnina_minimized_affinity_kcal_mol was evaluated on CNN-refined",
-                "geometry and is not an independent empirical energy check.",
+                "3D CNN gradients (cnn_scoring='refinement', --cnn_mix_emp_force",
+                "disabled), so gnina_minimized_affinity_kcal_mol was evaluated on",
+                "CNN-refined geometry and is not an independent empirical energy",
+                "check.",
                 "",
             ]
         for warning in campaign.warnings:

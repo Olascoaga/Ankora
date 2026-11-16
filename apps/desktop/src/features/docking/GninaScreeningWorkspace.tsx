@@ -694,7 +694,7 @@ export function GninaScreeningWorkspace({
             >
               <option value="rescore">CNN rescore (empirical search + CNN rescoring)</option>
               <option value="refinement">
-                CNN refinement (combined CNN + empirical gradients · CUDA)
+                CNN refinement (3D CNN gradient local optimization · CUDA)
               </option>
             </select>
           </label>
@@ -750,11 +750,11 @@ export function GninaScreeningWorkspace({
           ) : null}
           {parameters.cnn_scoring === "refinement" ? (
             <p className="field-note">
-              Refinement note: pose coordinates are locally optimized against combined 3D CNN and
-              empirical gradients (5–17× slower per ligand on CUDA than rescore). Minimized
-              affinity (kcal/mol) is evaluated on CNN-refined geometry where closer CNN-favored
-              contacts may cross steric repulsion, so it is not an independent empirical energy
-              check.
+              Refinement note: pose coordinates are locally optimized against 3D CNN gradients
+              (--cnn_mix_emp_force disabled; 5–17× slower per ligand on CUDA than rescore).
+              Minimized affinity (kcal/mol) is evaluated on CNN-refined geometry where closer
+              CNN-favored contacts may cross steric repulsion, so it is not an independent
+              empirical energy check.
             </p>
           ) : null}
           <label className="numeric-field">

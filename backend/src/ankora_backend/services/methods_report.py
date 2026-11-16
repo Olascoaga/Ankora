@@ -569,12 +569,14 @@ class MethodsReportService:
         )
         if parameters.cnn_scoring == "refinement":
             draft.say(
-                "Under `refinement`, GNINA locally optimized pose coordinates against "
-                "combined 3D CNN and empirical scoring gradients rather than rescoring "
-                "empirical-only geometries."
+                "Under `refinement` (`--cnn_mix_emp_force` disabled), GNINA locally "
+                "optimized pose coordinates against 3D CNN scoring gradients after "
+                "empirical Monte Carlo sampling rather than rescoring empirical-only "
+                "geometries."
                 if executed
-                else "Under `refinement`, GNINA is configured to locally optimize pose "
-                "coordinates against combined 3D CNN and empirical scoring gradients."
+                else "Under `refinement` (`--cnn_mix_emp_force` disabled), GNINA is "
+                "configured to locally optimize pose coordinates against 3D CNN "
+                "scoring gradients after empirical Monte Carlo sampling."
             )
         if executed:
             draft.say(
@@ -677,9 +679,9 @@ class MethodsReportService:
         if getattr(job.request.parameters, "cnn_scoring", "rescore") == "refinement":
             draft.say(
                 "Because pose coordinates were locally optimized under CNN `refinement` "
-                "(combined 3D CNN and empirical gradients), the minimized empirical "
-                "affinity in kcal mol⁻¹ was evaluated at CNN-refined geometry where "
-                "closer CNN-favored contacts can produce elevated or positive steric "
+                "(3D CNN gradients with `--cnn_mix_emp_force` disabled), the minimized "
+                "empirical affinity in kcal mol⁻¹ was evaluated at CNN-refined geometry "
+                "where closer CNN-favored contacts can produce elevated or positive steric "
                 "repulsion terms, so it is not an independent empirical energy check."
             )
         top_cnn_vs = getattr(top, "cnn_vs", None)
@@ -1017,12 +1019,14 @@ class MethodsReportService:
         )
         if parameters.cnn_scoring == "refinement":
             draft.say(
-                "Under `refinement`, GNINA locally optimized pose coordinates against "
-                "combined 3D CNN and empirical scoring gradients rather than rescoring "
-                "empirical-only geometries."
+                "Under `refinement` (`--cnn_mix_emp_force` disabled), GNINA locally "
+                "optimized pose coordinates against 3D CNN scoring gradients after "
+                "empirical Monte Carlo sampling rather than rescoring empirical-only "
+                "geometries."
                 if executed
-                else "Under `refinement`, GNINA is configured to locally optimize pose "
-                "coordinates against combined 3D CNN and empirical scoring gradients."
+                else "Under `refinement` (`--cnn_mix_emp_force` disabled), GNINA is "
+                "configured to locally optimize pose coordinates against 3D CNN "
+                "scoring gradients after empirical Monte Carlo sampling."
             )
         if executed:
             draft.say(
@@ -1310,10 +1314,11 @@ class MethodsReportService:
         if getattr(campaign.request.parameters, "cnn_scoring", "rescore") == "refinement":
             draft.say(
                 "Because pose coordinates across this campaign were locally optimized under "
-                "CNN `refinement` (combined 3D CNN and empirical gradients), each compound's "
-                "minimized empirical affinity in kcal mol⁻¹ was evaluated at CNN-refined "
-                "geometry where closer CNN-favored contacts can produce elevated or positive "
-                "steric repulsion terms, so it is not an independent empirical energy check."
+                "CNN `refinement` (3D CNN gradients with `--cnn_mix_emp_force` disabled), "
+                "each compound's minimized empirical affinity in kcal mol⁻¹ was evaluated "
+                "at CNN-refined geometry where closer CNN-favored contacts can produce "
+                "elevated or positive steric repulsion terms, so it is not an independent "
+                "empirical energy check."
             )
         draft.say(
             "All of these GNINA quantities are computational predictions of this engine. "

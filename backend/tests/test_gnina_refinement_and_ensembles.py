@@ -509,11 +509,32 @@ def test_single_job_methods_and_export_disclose_ensemble_members_and_refinement_
     assert "`default_1_3_ensemble`" in report.markdown
     assert "`dense_1_3`, `dense_1_3_PT_KD_3`, `crossdock_default2018_KD_4`" in report.markdown
     assert "invoked by omitting `--cnn`" in report.markdown
-    assert "combined 3D CNN and empirical scoring gradients" in report.markdown
+    assert "3D CNN scoring gradients" in report.markdown
+    assert "`--cnn_mix_emp_force` disabled" in report.markdown
     assert "not an independent empirical energy check" in report.markdown
+    assert "combined 3D CNN and empirical" not in report.markdown
     lowered = report.markdown.lower()
     for forbidden in ("measured affinity of", "experimentally", "validated"):
         assert forbidden not in lowered
+
+    queued_report, _ = _render_single_methods(
+        tmp_path / "methods-queued",
+        monkeypatch,
+        job_overrides={
+            "status": DockingJobStatus.QUEUED,
+            "phase": DockingJobPhase.QUEUED,
+            "poses": [],
+            "parameters": parameters,
+            "tool": GninaToolIdentity(
+                version="1.3.3", sha256=VERIFIED_GNINA_1_3_3_SHA256, architecture="x86_64"
+            ),
+            "cnn_model_identity": identity,
+            "execution": None,
+        },
+    )
+    assert "3D CNN scoring gradients" in queued_report.markdown
+    assert "`--cnn_mix_emp_force` disabled" in queued_report.markdown
+    assert "combined 3D CNN and empirical" not in queued_report.markdown
 
     export_root = tmp_path / "export"
     store, job = _store_export_job(
@@ -557,13 +578,18 @@ def test_single_job_methods_and_export_disclose_ensemble_members_and_refinement_
     }
     notes_joined = " ".join(manifest["scientific_notes"])
     assert "dense_1_3, dense_1_3_PT_KD_3, crossdock_default2018_KD_4" in notes_joined
+    assert "--cnn_mix_emp_force disabled" in notes_joined
+    assert "3D CNN gradients" in notes_joined
     assert "not an independent empirical energy check" in notes_joined
+    assert "combined 3D CNN and empirical" not in notes_joined
     readme = (bundle_dir / "README.txt").read_text(encoding="utf-8")
     assert (
         "CNN ensemble  default_1_3_ensemble "
         "(dense_1_3, dense_1_3_PT_KD_3, crossdock_default2018_KD_4)"
     ) in readme
     assert "Refinement note:" in readme
+    assert "--cnn_mix_emp_force" in readme
+    assert "combined 3D CNN and empirical" not in readme
 
 
 def test_screening_methods_and_export_disclose_default1_0_ensemble_and_refinement(
@@ -934,7 +960,10 @@ def test_screening_methods_and_export_disclose_default1_0_ensemble_and_refinemen
     ):
         assert member in methods.markdown
     assert "`--cnn default1.0`" in methods.markdown
+    assert "3D CNN scoring gradients" in methods.markdown
+    assert "`--cnn_mix_emp_force` disabled" in methods.markdown
     assert "not an independent empirical energy check" in methods.markdown
+    assert "combined 3D CNN and empirical" not in methods.markdown
     lowered = methods.markdown.lower()
     for forbidden in ("measured affinity of", "experimentally", "validated"):
         assert forbidden not in lowered
@@ -974,3 +1003,8 @@ def test_screening_methods_and_export_disclose_default1_0_ensemble_and_refinemen
         "(dense, general_default2018_3, dense_3, crossdock_default2018, redock_default2018_2)"
     ) in readme
     assert "Refinement note:" in readme
+    assert "--cnn_mix_emp_force" in readme
+    assert "combined 3D CNN and empirical" not in readme
+    screening_notes = " ".join(manifest["scientific_notes"])
+    assert "--cnn_mix_emp_force disabled" in screening_notes
+    assert "combined 3D CNN and empirical" not in screening_notes

@@ -1,6 +1,6 @@
 # Validation and Engineering Evidence Index
 
-This index catalogs all **129** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
+This index catalogs all **130** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
 
 > **Scientific reading rule:** Every historical record preserves the exact state, hashes, and limitations that held on the date it was recorded. Engineering smokes (including WSL2/WSLg checks on synthetic or single-complex fixtures) verify software mechanics and provenance integrity; they do **not** extend the frozen scientific benchmark claims summarized in [`VALIDATION_STATUS.md`](VALIDATION_STATUS.md).
 
@@ -12,7 +12,7 @@ This index catalogs all **129** immutable validation, benchmark, engineering-smo
 | [2. Retrospective Virtual Screening Benchmark (`LIT-PCBA`)](#2-retrospective-virtual-screening-benchmark-lit-pcba) | 15 | Preregistered retrospective screening protocol, receptor/ligand freezes, primary AutoDock Vina campaign (`11,412` compounds across `ESR_antago` (`ESR1_ant`), `PPARG`, and `TP53`), and one-factor sensitivity design. |
 | [3. Core Workspaces (`M1–M9`), Chemistry Guards & AutoDock Engines](#3-core-workspaces-m1m9-chemistry-guards--autodock-engines) | 26 | Acceptance and engineering records for structure intake, topology-guarded receptor preparation, ligand preparation, binding-site guardrails, Vina sampling, AutoGrid4/AutoDock4 CPU, AutoDock-GPU, resource arbitration, work recovery, and ProLIF interactions. |
 | [4. Linux Port Foundation, Cross-OS Numeric Diagnostics & CUDA AutoDock-GPU (`ADR-026`)](#4-linux-port-foundation-cross-os-numeric-diagnostics--cuda-autodock-gpu-adr-026) | 22 | Engineering records for the Ubuntu 24.04 Linux runtime lock, process-tree lifetime, native P2Rank/Vina execution, `<= 4 ULP` glibc vs Windows UCRT BEDROC numeric diagnostic, and CUDA AutoDock-GPU execution/cancellation. |
-| [5. Linux `GNINA 1.3.3` Single-Ligand, Screening, Ensembles & `CNN_VS` (`ADR-027`, `ADR-028`)](#5-linux-gnina-133-single-ligand-screening-ensembles--cnn_vs-adr-027-adr-028) | 25 | Engineering and integration evidence for GNINA CPU/CUDA single jobs, sequential virtual screening, `CNNscore` / `CNNaffinity` / `CNN_VS` hit prioritization, CUDA `refinement`, built-in `dense_1_3` / `default_1_3_ensemble` / `default1.0` models, redocking, ProLIF interactions, `Methods`, and Export v4. |
+| [5. Linux `GNINA 1.3.3` Single-Ligand, Screening, Ensembles & `CNN_VS` (`ADR-027`, `ADR-028`)](#5-linux-gnina-133-single-ligand-screening-ensembles--cnn_vs-adr-027-adr-028) | 26 | Engineering and integration evidence for GNINA CPU/CUDA single jobs, sequential virtual screening, `CNNscore` / `CNNaffinity` / `CNN_VS` hit prioritization, CUDA `refinement`, built-in `dense_1_3` / `default_1_3_ensemble` / `default1.0` models, redocking, ProLIF interactions, `Methods`, and Export v4. |
 | [6. Offline Installers, Redistribution Compliance, Clean-Room Smoke & CI (`ADR-024`, `ADR-029`)](#6-offline-installers-redistribution-compliance-clean-room-smoke--ci-adr-024-adr-029) | 19 | Evidence for Windows NSIS installers, Linux `.deb` and zero-`sudo` `.tar.zst` Core bundles, the 1-click offline GNINA CUDA 12.8 pack (`D4`), the bare-metal Linux workstation protocol (`D6`), hash-locked environments, third-party legal inventories, and isolated CI. |
 | [7. Workbench Interface, Accessibility, Viewer CSP & Illustrated Guide](#7-workbench-interface-accessibility-viewer-csp--illustrated-guide) | 14 | Verification records for responsive layouts, accessible dialogs, strict-CSP Mol* viewer rendering, lossless 2D/3D contact presentation, and illustrated user-guide verification. |
 
@@ -123,6 +123,7 @@ Engineering and integration evidence for GNINA CPU/CUDA single jobs, sequential 
 | --- | --- | --- |
 | [`GNINA_EXPORT.md`](GNINA_EXPORT.md) | `Linux (WSL2/WSLg)` | GNINA portable export (single job and screening campaign) |
 | [`GNINA_METHODS.md`](GNINA_METHODS.md) | `Linux (WSL2/WSLg)` | GNINA Methods report |
+| [`GNINA_REFINEMENT_METHODS_CORRECTION_2026-11-16.md`](GNINA_REFINEMENT_METHODS_CORRECTION_2026-11-16.md) | `Cross-platform (v0.1.0-beta.2)` | GNINA `refinement` Methods/Export wording alignment and reproducible `7AQF/RV2` beginner walkthrough |
 | [`GNINA_REDOCKING.md`](GNINA_REDOCKING.md) | `Linux (WSL2/WSLg)` | GNINA single-job redocking validation |
 | [`GNINA_SCREENING_PLAN.md`](GNINA_SCREENING_PLAN.md) | `Linux (WSL2/WSLg)` | GNINA virtual-screening implementation plan |
 | [`GNINA_SINGLE_WORKSPACE.md`](GNINA_SINGLE_WORKSPACE.md) | `Linux (WSL2/WSLg)` | GNINA single-ligand workspace |

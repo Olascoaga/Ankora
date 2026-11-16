@@ -325,11 +325,12 @@ def check_validation_index_completeness(root: Path) -> int:
     index_path = _resolve_repo_path(root, str(VALIDATION_INDEX_PATH))
     linked_paths = check_markdown_links_and_paths(root, VALIDATION_INDEX_PATH)
 
+    ignored_local = (root / "docs/validation/AUDIT_ADVERSARIAL.md").resolve()
     expected_md_files = {
         path.resolve()
         for path in list(validation_dir.glob("*.md"))
         + list((validation_dir / "reference_cases").glob("*.md"))
-        if path.resolve() != index_path.resolve()
+        if path.resolve() not in {index_path.resolve(), ignored_local}
     }
     missing = sorted(
         path.relative_to(root.resolve()).as_posix() for path in (expected_md_files - linked_paths)

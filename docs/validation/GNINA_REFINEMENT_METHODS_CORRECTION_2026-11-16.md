@@ -1,0 +1,27 @@
+# GNINA `refinement` Methods/Export Wording Alignment and Reproducible `7AQF/RV2` Beginner Walkthrough (`v0.1.0-beta.2`) — 2026-11-16
+
+## Scope and motivation
+
+During forensic audit of the `v0.1.0` preprint against frozen source (`1926281c6bb133c2e25f38627429b0b9de621869`), two documentation/template details were identified for precision alignment in `v0.1.0-beta.2`:
+
+1. **GNINA `cnn_scoring = "refinement"` gradient description (`ADR-028`):**
+   Upstream `GNINA 1.3.3` (`3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172`) exposes `--cnn_scoring refinement` independently from `--cnn_mix_emp_force` and `--cnn_mix_emp_energy`. Because `build_gnina_arguments` (`backend/src/ankora_backend/adapters/engines/gnina.py`) invokes `--cnn_scoring refinement` with `--cnn_mix_emp_force` disabled (default), post-Monte-Carlo local coordinate refinement optimizes ligand coordinates against **3D CNN gradients** rather than merged 3D CNN + empirical gradients, and subsequently evaluates empirical `minimizedAffinity` (`kcal/mol`) at the resulting CNN-refined geometry.
+2. **End-to-end beginner reproducibility on `SERPINE1` (`7AQF/RV2`) in `USER_GUIDE.md`:**
+   Under `topology_guard_v3`, attempting to repair all `17` incomplete chain-A side chains in `7AQF` halts intentionally at remote surface residue `ARG A:300` (`23.20 Å` from co-crystallized `RV2 A:401`) with `RECEPTOR_REPAIRED_GEOMETRY_INVALID` (`3.58 Å` observed `CD`–`CZ` separation vs `2.80 Å` template bond sum). While preserving that geometry-guard failure as an explicit advanced note, `docs/USER_GUIDE.md` (§3.2) now leads with the complete, start-to-finish validated configuration (`16` compatible incomplete side chains set to `Repair`, single remote `ARG A:300` set to `Remove`, `9` absent-residue gaps left unmodelled, `pH 7.4`, `AMBER`, `97` PROPKA proposals, `Meeko 0.7.1`) so first-time users reach `docking_ready` on the first run.
+
+No historical frozen benchmark records (`SERPINE1_7AQF_RV2`, `PIK3CD_6OCO_M5V`, `LIT-PCBA`, or earlier dated `LINUX_GNINA_*` smoke logs) were altered or re-hashed.
+
+## Implemented changes
+
+- **`MethodsReportService` (`backend/src/ankora_backend/services/methods_report.py`):** Updated executed and unexecuted single-job and screening `refinement` prose and score notes to state explicitly that under `refinement` (`--cnn_mix_emp_force` disabled), GNINA locally optimizes pose coordinates against 3D CNN scoring gradients after empirical Monte Carlo sampling and evaluates empirical `minimizedAffinity` at the CNN-refined geometry (which remains non-independent of the CNN optimization).
+- **`CampaignExportService` (`backend/src/ankora_backend/services/campaign_export.py`):** Aligned `manifest.json` `scientific_notes` and `README.txt` refinement notes for both single-job (`gnina_job`) and campaign (`gnina_screening`) Export v4 bundles.
+- **Desktop UI & Documentation (`GninaWorkspace.tsx`, `GninaScreeningWorkspace.tsx`, `gninaParameters.ts`, `ADR-028`, `docs/USER_GUIDE.md`, `docs/Ankora-User-Guide.pdf`):** Aligned dropdown labels, field notes, `ADR-028` (with explicit dated amendment note), and User Guide §3.2 / §5.4.
+- **Automated Regression Coverage:** Added positive and negative assertions across `backend/tests/test_gnina_refinement_and_ensembles.py` (executed and queued single-job `methods.md`, screening `methods.md`, `manifest.json`, and `README.txt`) and `apps/desktop/src/tests/DockingWorkspace.test.tsx` forbidding `"combined 3D CNN and empirical"` / `"combined CNN + empirical"`.
+
+## Isolated end-to-end `7AQF/RV2` beginner walkthrough & Export v4 evidence
+
+Executed in an isolated project directory from untouched deposited `7AQF.cif` (`79fd3b96adca6bdbe17ded6e9c693534007ae2cb0538739044788754b7c6faac`):
+
+- **Receptor preparation (`topology_guard_v3`, `templates_v1`, seed `20261014`, `pH 7.4`, `AMBER`, relaxation off):** Completed cleanly on the first run (`status = docking_ready`, `97` PROPKA proposals, `0` terminal `OXT` candidates required; `ARG A:300` confirmed `23.20 Å` from `RV2 A:401`; receptor `PDBQT` `288,198` B, SHA-256 `b4bb585ba9be7ccc503cd92a6ee4da25ba917d733a2d41101a7ddda981f06db6`).
+- **Single-ligand `AutoDock Vina 1.2.7` + Redocking + ProLIF + Methods:** Anionic `RV2` (`charge = -1` at `pH 7.4`, `ETKDGv3` seed `20260819`, `MMFF94s` `500` iterations, `Meeko 0.7.1`) docked in the `5.0 Å`-padded `RV2 A:401` box (`center = (35.4305, -2.967, -0.7905) Å`, `size = (21.597, 19.870, 19.317) Å`) returned `7` poses (`Top-1 = -7.146 kcal/mol`), `17` ProLIF geometric contacts (`complex_Mode_1.pdb`), `0` Methods gaps, and in-place symmetry-aware crystallographic RMSD `Top-1 = 10.653 Å`, `best = 2.166 Å` (`not_recovered` at `2.0 Å`, illustrating why docking scores and contact counts never substitute for crystallographic RMSD validation).
+- **4-compound `7AQF` `Vina 1.2.7` screening + Export v4 verifier:** Two identical 4-compound runs (`RV2` control + `3` public NCI sample compounds, `seed = 20260823`, `exhaustiveness = 8`) exported as `Ankora_7aqf-serpine1-demo-vina_vina_batch-753736a5_inputs-27d40c0d_20261116-165354_export-3b2b2d63_bundle.zip` (`12,440` B, SHA-256 `3eeff52726164bc7ce30fbff7472377791f308bb6628fee3d9c796f7da7cea36`, `input_identity_sha256 = 27d40c0daf0986e668c87a86591c0ba224160a62a83df5ed8d3ab566602ed3db`, `bundle_identity_sha256 = 3b2b2d6344aca2b7c3b505e6b1f978aac87010f8d705ab6ef3c24d4a0cd1e2fe`) passed `python -S scripts/verify_export_bundle.py --json` with `verified: true` (`ankora_export_format = 4`, `row_count = 4`, `verified_evidence_files = 1`).

@@ -221,32 +221,52 @@ points back at it by identity and hash.
 
 ### 3.2 Make the receptor
 
-**Current workflow - three guided steps.** The interface opens in
-**Guided preparation**. Older installed betas may differ; check the exact build
-against its release notes. The accepted historical receptor and Figure
-3 below remain unchanged; they are not a new-method validation result.
+**Current workflow - three guided steps (reproducible from scratch).** The
+interface opens in **Guided preparation**. Older installed betas may differ;
+check the exact build against its release notes. The accepted historical
+receptor and Figure 3 below remain unchanged; they are not a new-method
+validation result.
 
-The original 7AQF all-17-repair plan now stops at ARG A:300's incompatible
-observed coordinates (explained below). These steps describe how to review that
-case, not a guaranteed one-click successful re-preparation.
+To complete a fresh `7AQF` chain-A receptor preparation from start to finish in
+the current workbench without halting:
 
-1. **Choose system.** For this example, select chain **A**, remove resolved
-   waters and remove **RV2 A:401**. A distance reference such as RV2 is optional:
-   it highlights proximity, not a docking box. No chain, water or component is
+1. **Choose system.** Select chain **A**, remove resolved waters and remove
+   **`RV2 A:401`**. Selecting `RV2 A:401` as the optional distance reference
+   labels each structural defect with its distance to the crystallographic
+   pocket (without defining a docking box). No chain, water or component is
    removed without your choice. Press **Next · review repairs**.
-2. **Review repairs.** The grouped actions can mark the **17 incomplete side
-   chains** for repair and keep the **9 absent-residue gaps unmodelled**. They
-   populate the draft only. Review individual rows in the table, especially
-   alternate conformations, unusual residues and anything near the site. No
-   loop coordinates or residue deletions are inferred. Press **Next · hydrogens
-   and preparation** when every issue has a resolved decision.
+2. **Review repairs.** Use the grouped draft actions to mark incomplete side
+   chains for **Repair** and keep the **9 absent-residue gaps unmodelled**, then
+   change the single remote distorted surface residue **`ARG A:300`** (`23.20 Å`
+   from `RV2 A:401`, `remote`) from **Repair** to **Remove** while keeping the
+   remaining **16 incomplete side chains** (`LYS 28, 80, 104, 288`;
+   `GLN 107, 174, 257, 303, 312`; `ASP 231`; `GLU 244, 313, 350, 351`;
+   `ARG 271`; `ILE 342`) set to **Repair**. Review individual rows in the table,
+   especially alternate conformations, unusual residues and anything near the
+   site. No loop coordinates or residue deletions are inferred automatically.
+   Press **Next · hydrogens and preparation** when every issue has a resolved
+   decision.
 3. **Prepare.** Select **Prepare for docking**, choose the target pH (**7.4** in
-   this example), and press **Analyze pKa proposals** above the viewer. Review
-   **Needs attention** and use **All proposals** for the complete list; filtering
-   never drops selected states. Confirm **I reviewed the system, repairs and
-   selected protonation states**, then **Apply explicit preparation plan**.
-   Editing the system, repair settings, pH or selected states requires a fresh
-   confirmation; structural/pH edits also invalidate the previous pKa analysis.
+   this example, `AMBER` force field, optional elastic relaxation off), and press
+   **Analyze pKa proposals** above the viewer. Review **Needs attention** and use
+   **All proposals** for the complete list (`97` proposals on this chain-A plan);
+   filtering never drops selected states. Confirm **I reviewed the system,
+   repairs and selected protonation states**, then **Apply explicit preparation
+   plan** to reach **`docking_ready`**. Editing the system, repair settings, pH
+   or selected states requires a fresh confirmation; structural/pH edits also
+   invalidate the previous pKa analysis.
+
+> **Advanced geometry-guard note — why `ARG A:300` requires an explicit choice.**
+> If `ARG A:300` is left set to **Repair**, Ankora's **Topology-guarded repair**
+> (`topology_guard_v3`) halts intentionally before protonation with
+> `RECEPTOR_REPAIRED_GEOMETRY_INVALID`: the deposited crystallographic `CD` and
+> `CZ` anchors of `ARG A:300` sit `3.58 Å` apart, exceeding the `2.80 Å` sum of
+> the two native template bonds through missing `NE` ([repair validation record](validation/RECEPTOR_TOPOLOGY_GUARD_2026-10-14.md)).
+> Ankora refuses to accept stretched covalent bonds (`> 0.2 Å` deviation) or to
+> move observed heavy atoms silently; because `ARG A:300` lies `23.20 Å` away
+> from `RV2 A:401` on the solvent-exposed surface, explicitly excluding that
+> single residue allows a clean first-time walkthrough without silent geometry
+> distortion.
 
 For any receptor, **What to keep** is the authoritative component decision:
 once you explicitly remove a component, its observations are excluded from
@@ -573,8 +593,9 @@ for both **Single ligand** and **Virtual screening** ([ADR-027](architecture/ADR
   - `rescore` (**CPU or CUDA 12.8 GPU**, default): performs empirical Monte Carlo
     sampling and local minimization, then evaluates each pose with the 3D CNN.
   - `refinement` (**CUDA 12.8 GPU only**, requires `timeout >= 10` minutes):
-    optimizes ligand coordinates directly against combined 3D CNN and empirical
-    gradients. Ankora rejects CPU `refinement` fail-closed rather than silently
+    optimizes ligand coordinates locally against 3D CNN gradients
+    (`--cnn_mix_emp_force` disabled) after empirical Monte Carlo sampling.
+    Ankora rejects CPU `refinement` fail-closed rather than silently
     downgrading to `rescore` or switching compute backends. Because CNN-favoured
     contacts can sit closer than Vina's hard steric wall, `minimizedAffinity`
     (`kcal/mol`) on CNN-refined poses can be higher or positive and is **not**

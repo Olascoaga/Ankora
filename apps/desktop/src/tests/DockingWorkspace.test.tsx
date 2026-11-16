@@ -1025,3 +1025,37 @@ it("opens the side-by-side comparison, which resolves campaigns from disk", asyn
     ).toBe(true),
   );
 });
+
+it("describes GNINA CNN refinement accurately as 3D CNN gradients with --cnn_mix_emp_force disabled", async () => {
+  window.localStorage.clear();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/docking/gnina/screenings")) return json([]);
+    return new Response("", { status: 200 });
+  });
+  render(
+    <DockingWorkspace
+      receptor={receptor}
+      bindingSite={bindingSite}
+      ligand={ligand}
+      ligandInput={ligandInput}
+      libraryInput={libraryInput}
+      tools={gninaTools}
+      platform="linux"
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · single" }));
+  fireEvent.change(screen.getByLabelText("Compute"), { target: { value: "cuda" } });
+  fireEvent.change(screen.getByLabelText("CNN scoring mode"), { target: { value: "refinement" } });
+  expect(screen.getByText(/--cnn_mix_emp_force disabled/)).toBeInTheDocument();
+  expect(screen.queryByText(/combined 3D CNN/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/combined CNN \+ empirical/i)).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "GNINA · screening" }));
+  fireEvent.change(screen.getByLabelText("Compute"), { target: { value: "cuda" } });
+  fireEvent.change(screen.getByLabelText("CNN scoring mode"), { target: { value: "refinement" } });
+  expect(await screen.findByText(/--cnn_mix_emp_force disabled/)).toBeInTheDocument();
+  expect(screen.queryByText(/combined 3D CNN/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/combined CNN \+ empirical/i)).not.toBeInTheDocument();
+  window.localStorage.clear();
+});

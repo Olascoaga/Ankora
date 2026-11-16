@@ -12,11 +12,11 @@ import type {
  * campaign-shaped here - no concurrency setting in particular. The existing
  * GNINA service runs one job at a time.
  *
- * `cnn_scoring` offers empirical+CNN rescoring (`rescore`) or combined 3D CNN +
- * empirical gradient local optimization (`refinement`, CUDA-only, >= 10 min
- * timeout). `cnn_model` offers single-network `dense_1_3` or the built-in
- * ensembles `default_1_3_ensemble` (3 models, `--cnn` omitted) and `default1.0`
- * (5 models, `--cnn default1.0`).
+ * `cnn_scoring` offers empirical+CNN rescoring (`rescore`) or post-Monte-Carlo
+ * 3D CNN gradient local optimization (`refinement`, `--cnn_mix_emp_force`
+ * disabled, CUDA-only, >= 10 min timeout). `cnn_model` offers single-network
+ * `dense_1_3` or the built-in ensembles `default_1_3_ensemble` (3 models,
+ * `--cnn` omitted) and `default1.0` (5 models, `--cnn default1.0`).
  */
 export function defaultGninaParameters(): GninaDockingParameters {
   return {

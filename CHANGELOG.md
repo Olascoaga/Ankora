@@ -2,6 +2,21 @@
 
 All notable project changes are recorded here.
 
+## GNINA `refinement` wording alignment and reproducible `7AQF/RV2` beginner walkthrough (`v0.1.0-beta.2`) - 2026-11-16
+
+- Align `MethodsReportService`, `CampaignExportService` (`manifest.json` and
+  `README.txt`), the desktop `GNINA` single-ligand and screening workspaces,
+  `ADR-028`, and `docs/USER_GUIDE.md` so `cnn_scoring = "refinement"`
+  accurately states post-Monte-Carlo 3D CNN gradient optimization with
+  `--cnn_mix_emp_force` disabled (followed by non-independent empirical
+  `minimizedAffinity` evaluation at the CNN-refined geometry), backed by
+  backend and frontend regression tests.
+- Lead `docs/USER_GUIDE.md` §3.2 (and regenerated `docs/Ankora-User-Guide.pdf`)
+  with a complete start-to-finish `7AQF` chain-A beginner preparation plan under
+  `topology_guard_v3` while retaining the `ARG A:300` anchor-conflict geometry
+  guard (`RECEPTOR_REPAIRED_GEOMETRY_INVALID`) as an explicit advanced note
+  (`docs/validation/GNINA_REFINEMENT_METHODS_CORRECTION_2026-11-16.md`).
+
 ## Platform status matrix, documentation portal, and citation reconciliation - 2026-11-12
 
 - Add machine-readable `docs/product/PLATFORM_STATUS.json`, generated
