@@ -64,6 +64,8 @@ import type {
   CalibrationRunRecord,
   CalibrationSelectRequest,
   CalibrationSplitRequest,
+  PoseQualityRecord,
+  PoseQualityRequest,
   PoseRescoreResult,
   SavedPoseRescoreRequest,
   AutoDockGpuBatchProgress,
@@ -917,6 +919,27 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     `/results/campaigns/${catalogPath(catalogId)}/compounds/`
     + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/interactions`,
     { method: "POST", body: JSON.stringify({}) },
+  ),
+
+  listPoseQualityAssessments: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): Promise<PoseQualityRecord[]> =>
+    getJson<PoseQualityRecord[]>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/quality`,
+    ),
+
+  assessPoseQuality: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+    request: PoseQualityRequest = {},
+  ): Promise<PoseQualityRecord> => requestJson<PoseQualityRecord>(
+    `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+    + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/quality`,
+    { method: "POST", body: JSON.stringify(request) },
   ),
 
   /**

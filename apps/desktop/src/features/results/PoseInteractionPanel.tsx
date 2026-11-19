@@ -18,6 +18,7 @@ import type { MolecularViewerHandle } from "../../viewer/MolecularViewer";
 import type { ViewerContact, ViewerSelection, ViewerSource } from "../../viewer/adapter";
 import { FigureExportControls } from "./FigureExportControls";
 import { PoseComplexExportControls } from "./PoseComplexExportControls";
+import { PoseQualitySection } from "./PoseQualitySection";
 import {
   DIAGRAM_ASPECT_RATIO,
   InteractionDiagram,
@@ -96,6 +97,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState<PoseRescoreResult | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const [qualityOpen, setQualityOpen] = useState(false);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -122,6 +124,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     return () => { disposed = true; };
   }, [entry.catalog_id, molecule.ligand_id]);
 
+  // Reset pose-scoped toggles before paint so a deferred effect can never
+  // clobber a user click immediately after a pose appears.
+  useLayoutEffect(() => {
+    setRefinement(null);
+    setRescoreResult(null);
+    setRescoreError(null);
+    setOverlayCrystalRotamers(false);
+  }, [selectedPoseId]);
+
   useEffect(() => {
     if (!selectedPoseId) return;
     let disposed = false;
@@ -129,10 +140,6 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     setAnalyses([]);
     setAnalysis(null);
     setSelectedContact(null);
-    setRefinement(null);
-    setRescoreResult(null);
-    setRescoreError(null);
-    setOverlayCrystalRotamers(false);
     setError(null);
     void ankoraApi.listPoseInteractionAnalyses(
       entry.catalog_id, molecule.ligand_id, selectedPoseId,
@@ -453,6 +460,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
               Cross-score (--score_only)
             </button>
           ) : null}
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={qualityOpen}
+            onClick={() => setQualityOpen((open) => !open)}
+          >
+            Pose quality (PoseBusters + MMFF94s)
+          </button>
           {coupledFlexPose ? (
             <label className="check-row pose-flex-overlay-toggle">
               <input
@@ -622,6 +638,14 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {qualityOpen && pose ? (
+        <PoseQualitySection
+          catalogId={entry.catalog_id}
+          ligandId={molecule.ligand_id}
+          poseArtifactId={pose.artifact_id}
+        />
       ) : null}
 
       {analysis ? (

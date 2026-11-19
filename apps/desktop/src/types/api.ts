@@ -3038,3 +3038,82 @@ export interface CalibrationSelectRequest {
 export interface CalibrationConfirmRequest {
   observations_by_protocol: Record<string, ScoreObservation[]>;
 }
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M3 — coupled physical pose plausibility (PoseBusters + MMFF94s).
+ *
+ * Mirrors `schemas/v02_contracts.py` (`PoseAssessment`, `PoseDiagnosticCheck`,
+ * `ConformationalStrainDiagnostic`) and `schemas/pose_quality.py`.
+ * Every check retains an explicit 4-state status (`pass`, `fail`,
+ * `not_applicable`, `not_evaluable`); conformational strain is strictly a
+ * diagnostic flag and is never added to or subtracted from any docking score.
+ * ------------------------------------------------------------------------ */
+
+export type DiagnosticStatus = "pass" | "fail" | "not_applicable" | "not_evaluable";
+
+export interface PoseDiagnosticCheck {
+  check_id: string;
+  tool_name: string;
+  tool_version: string;
+  status: DiagnosticStatus;
+  value?: number | null;
+  threshold?: number | null;
+  message?: string | null;
+}
+
+export interface ConformationalStrainDiagnostic {
+  force_field: "MMFF94s";
+  parent_state_id: string;
+  hydrogen_policy: string;
+  conformer_seed: number;
+  conformer_budget: number;
+  pose_restrained_energy_kcal_mol: number;
+  lowest_free_conformer_energy_kcal_mol: number;
+  delta_e_ref_kcal_mol: number;
+}
+
+export interface PoseAssessment {
+  schema_version: 1;
+  pose_complex: PoseComplexIdentity;
+  overall_status: DiagnosticStatus;
+  checks: PoseDiagnosticCheck[];
+  strain?: ConformationalStrainDiagnostic | null;
+  mutated_original_pose: false;
+}
+
+export interface PoseQualityRequest {
+  include_strain?: boolean;
+  conformer_seed?: number;
+  conformer_budget?: number;
+  strain_flag_threshold_kcal_mol?: number;
+}
+
+export interface PoseQualityRecord {
+  schema_version: 1;
+  assessment_id: string;
+  created_at: string;
+  catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  engine_label: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  conformer_id: string;
+  conformer_sha256: string;
+  parent_state_id: string;
+  receptor_id: string;
+  docking_receptor_artifact_id: string;
+  docking_receptor_sha256: string;
+  analysis_receptor_artifact_id: string;
+  analysis_receptor_sha256: string;
+  materialized_coupled_receptor_sha256?: string | null;
+  pose: PoseReference;
+  posebusters_version: string;
+  assessment: PoseAssessment;
+  passed_count: number;
+  failed_count: number;
+  not_applicable_count: number;
+  not_evaluable_count: number;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}

@@ -934,3 +934,159 @@ button { font: inherit; }
   color: var(--text-secondary);
   font-weight: 600;
 }
+
+/* M3: opt-in coupled pose-plausibility & MMFF94s strain panel. */
+.pose-quality-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  display: grid;
+  gap: 12px;
+}
+.pose-quality-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.pose-quality-controls {
+  display: grid;
+  gap: 10px;
+}
+.pose-quality-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.pose-quality-params {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.pose-quality-params label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pose-quality-params input {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font: inherit;
+}
+.pose-quality-result {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.pose-quality-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.pose-quality-counts {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.pose-quality-tool {
+  color: var(--muted);
+}
+.pose-quality-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-raised);
+  font-size: 11px;
+  font-weight: 600;
+}
+.pose-quality-pill.status-pass {
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+  color: var(--success);
+}
+.pose-quality-pill.status-fail {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--danger);
+}
+.pose-quality-pill.status-not_evaluable {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  color: var(--warning);
+}
+.pose-quality-pill.status-not_applicable {
+  color: var(--muted);
+}
+.pose-quality-coupled-note {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  font-size: 12px;
+}
+.pose-quality-warnings ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.pose-quality-strain-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-raised);
+  display: grid;
+  gap: 8px;
+}
+.pose-quality-strain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+}
+.pose-quality-strain-grid dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pose-quality-strain-grid dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pose-quality-filter-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pose-quality-table-scroll {
+  max-height: 340px;
+  overflow: auto;
+}
+.pose-quality-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pose-quality-table-scroll th,
+.pose-quality-table-scroll td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.pose-quality-table-scroll th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
