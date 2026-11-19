@@ -3,10 +3,10 @@
 from base64 import b64encode
 from datetime import UTC, datetime
 from hashlib import sha256
+from importlib import import_module
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
-from rdkit import rdBase
+from typing import Any
 
 from ankora_backend.adapters.tools.ligand_preparation import (
     execute_meeko_ligand,
@@ -27,6 +27,8 @@ from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.v02_contracts import MacrocyclePolicy
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.ligand_library_status import record_library_status
+
+rdBase: Any = import_module("rdkit.rdBase")
 
 
 def prepare_ligand_pdbqt(

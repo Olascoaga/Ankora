@@ -2,10 +2,10 @@
 
 import os
 import re
+from importlib import import_module
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
-
-from rdkit import Chem
 
 from ankora_backend.adapters.chemistry.molecule_files import sdf_supplier
 from ankora_backend.adapters.engines.autodock4 import collect_autodock_atom_types
@@ -19,6 +19,8 @@ from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
 from ankora_backend.schemas.ligands import LigandChargeModel, LigandSmartsRigidificationOutcome
 from ankora_backend.schemas.v02_contracts import LigandFlexibilitySpec, MacrocyclePolicy
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+
+Chem: Any = import_module("rdkit.Chem")
 
 
 def precheck_ligand_smarts_rigidification(
