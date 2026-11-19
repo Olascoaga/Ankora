@@ -30,6 +30,14 @@ interface PoseInteractionPanelProps {
   onClose: () => void;
 }
 
+interface LocalRefinementSummary {
+  refinementId: string;
+  engine: "vina" | "gnina";
+  headline: { label: string; value: number; unit: string };
+  breakdown: { label: string; value: number | null | undefined }[];
+  poseComplexIdentitySha256: string | null;
+}
+
 export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteractionPanelProps) {
   const [inventory, setInventory] = useState<PoseInventory | null>(null);
   const [selectedPoseId, setSelectedPoseId] = useState<string | null>(null);
@@ -41,6 +49,11 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Off by default: the coupled complex is the honest single picture of a
+  // flexible pose, and the overlay is an explicit comparison against it.
+  const [overlayCrystalRotamers, setOverlayCrystalRotamers] = useState(false);
+  const [refinement, setRefinement] = useState<LocalRefinementSummary | null>(null);
+  const [refining, setRefining] = useState(false);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -74,6 +87,8 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     setAnalyses([]);
     setAnalysis(null);
     setSelectedContact(null);
+    setRefinement(null);
+    setOverlayCrystalRotamers(false);
     setError(null);
     void ankoraApi.listPoseInteractionAnalyses(
       entry.catalog_id, molecule.ligand_id, selectedPoseId,
@@ -118,9 +133,20 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   }, [analysis]);
 
   const pose = inventory?.poses.find((item) => item.artifact_id === selectedPoseId) ?? null;
+  const coupledFlexPose = isCoupledFlexPose(pose);
+  const localRefinementEngine: "vina" | "gnina" | null =
+    entry.engine_key === "vina_job"
+      ? "vina"
+      : entry.engine_key === "gnina_job"
+        ? "gnina"
+        : null;
   const viewerSources = useMemo(
-    () => sourcesFor(inventory, pose),
-    [inventory, pose],
+    () => sourcesFor(inventory, pose, {
+      catalogId: entry.catalog_id,
+      ligandId: molecule.ligand_id,
+      overlayCrystalRotamers: overlayCrystalRotamers && coupledFlexPose,
+    }),
+    [inventory, pose, entry.catalog_id, molecule.ligand_id, overlayCrystalRotamers, coupledFlexPose],
   );
   /**
    * The contacts the viewer draws, positioned by the detector rather than here.
@@ -208,6 +234,63 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     }
   }
 
+  /**
+   * Create one `--local_only` refinement derivative of this exact pose.
+   *
+   * This is a create-only action (ADR-004 / ADR-005): the parent job and the
+   * parent pose keep their recorded coordinates and scores, and the result is
+   * a new record with its own identity. A local minimization is not a new
+   * search, so its energy must not be read as a re-docking result.
+   */
+  async function refineLocalOnly() {
+    if (!pose || !localRefinementEngine) return;
+    setRefining(true);
+    setError(null);
+    try {
+      const request = { parent_job_id: entry.record_id, parent_pose_artifact_id: pose.artifact_id };
+      if (localRefinementEngine === "vina") {
+        const record = await ankoraApi.refineVinaPoseLocalOnly(request);
+        setRefinement({
+          refinementId: record.refinement_id,
+          engine: "vina",
+          headline: {
+            label: "Minimized free energy",
+            value: record.estimated_free_energy_kcal_mol,
+            unit: "kcal/mol",
+          },
+          breakdown: [
+            { label: "Intermolecular", value: record.intermolecular_kcal_mol },
+            { label: "Total internal", value: record.total_internal_kcal_mol },
+            { label: "Torsional free energy", value: record.torsional_free_energy_kcal_mol },
+            { label: "Unbound system", value: record.unbound_system_energy_kcal_mol },
+          ],
+          poseComplexIdentitySha256: record.refined_pose.pose_complex_identity_sha256 ?? null,
+        });
+      } else {
+        const record = await ankoraApi.refineGninaPoseLocalOnly(request);
+        setRefinement({
+          refinementId: record.refinement_id,
+          engine: "gnina",
+          headline: {
+            label: "Minimized affinity",
+            value: record.minimized_affinity_kcal_mol,
+            unit: "kcal/mol",
+          },
+          breakdown: [
+            { label: "CNN score", value: record.cnn_score },
+            { label: "CNN affinity", value: record.cnn_affinity },
+            { label: "CNN VS", value: record.cnn_vs },
+          ],
+          poseComplexIdentitySha256: record.refined_pose.pose_complex_identity_sha256 ?? null,
+        });
+      }
+    } catch (reason: unknown) {
+      setError(message(reason, "The local-only refinement could not be created."));
+    } finally {
+      setRefining(false);
+    }
+  }
+
   return (
     <section className="pose-interaction-panel" aria-label={`Pose interactions for ${molecule.name}`}>
       <header className="pose-interaction-heading">
@@ -269,6 +352,77 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
           <button type="button" className="primary-button" disabled={!pose || analyzing} onClick={analyze}>
             {analyzing ? "Analyzing with ProLIF…" : analysis ? "Create another analysis" : "Analyze this pose with ProLIF"}
           </button>
+          {localRefinementEngine ? (
+            <button
+              type="button"
+              className="quiet-button"
+              disabled={!pose || refining}
+              onClick={refineLocalOnly}
+            >
+              {refining ? "Refining locally (--local_only)…" : "Refine locally (--local_only)"}
+            </button>
+          ) : null}
+          {coupledFlexPose ? (
+            <label className="check-row pose-flex-overlay-toggle">
+              <input
+                type="checkbox"
+                checked={overlayCrystalRotamers}
+                onChange={(event) => setOverlayCrystalRotamers(event.target.checked)}
+              />
+              <span>
+                <strong>Overlay crystal rotamers (translucent reference)</strong>
+                <small>
+                  Default view shows the coupled FlexRes complex with moved side chains; enable
+                  this toggle to compare against the original prepared crystal rotamers.
+                </small>
+              </span>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
+      {coupledFlexPose && pose ? (
+        <div className="pose-flex-identity-banner" role="status">
+          <strong>Coupled FlexRes complex (E8)</strong>
+          {pose.pose_complex_identity_sha256 ? (
+            <span>Complex SHA-256 <code>{pose.pose_complex_identity_sha256.slice(0, 12)}…</code></span>
+          ) : null}
+          {pose.pose_flex_sidechains_sha256 ? (
+            <span>Moved side chains <code>{pose.pose_flex_sidechains_sha256.slice(0, 12)}…</code></span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {refinement ? (
+        <div className="local-refinement-result" role="status" aria-label="Local-only refinement derivative">
+          <strong>
+            Create-only --local_only derivative ({refinement.engine === "vina" ? "AutoDock Vina" : "GNINA"})
+          </strong>
+          <p className="field-note">
+            Parent job and pose remain immutable. A local minimization is not a new search and
+            must not be compared as a re-docked global pose.
+          </p>
+          <dl>
+            <div><dt>Derivative ID</dt><dd><code>{refinement.refinementId}</code></dd></div>
+            <div>
+              <dt>{refinement.headline.label}</dt>
+              <dd>{formatScientificNumber(refinement.headline.value, 3)} {refinement.headline.unit}</dd>
+            </div>
+            {refinement.breakdown
+              .filter((item) => item.value !== null && item.value !== undefined)
+              .map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd>{formatScientificNumber(item.value ?? null, 3)}</dd>
+                </div>
+              ))}
+            {refinement.poseComplexIdentitySha256 ? (
+              <div>
+                <dt>Coupled complex SHA-256</dt>
+                <dd><code>{refinement.poseComplexIdentitySha256.slice(0, 12)}…</code></dd>
+              </div>
+            ) : null}
+          </dl>
         </div>
       ) : null}
 
@@ -415,6 +569,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
                     <div><dt>Docking receptor SHA-256</dt><dd><code>{analysis.docking_receptor_sha256}</code></dd></div>
                     <div><dt>Analysis receptor SHA-256</dt><dd><code>{analysis.analysis_receptor_sha256}</code></dd></div>
                     <div><dt>Conformer SHA-256</dt><dd><code>{analysis.conformer_sha256}</code></dd></div>
+                    {analysis.pose_flex_sidechains_sha256 ? (
+                      <div><dt>Moved side-chains SHA-256</dt><dd><code>{analysis.pose_flex_sidechains_sha256}</code></dd></div>
+                    ) : null}
+                    {analysis.pose_complex_identity_sha256 ? (
+                      <div><dt>Coupled complex SHA-256</dt><dd><code>{analysis.pose_complex_identity_sha256}</code></dd></div>
+                    ) : null}
+                    {analysis.materialized_coupled_receptor_sha256 ? (
+                      <div><dt>Materialized receptor PDB SHA-256</dt><dd><code>{analysis.materialized_coupled_receptor_sha256}</code></dd></div>
+                    ) : null}
                     <div><dt>Detector profile</dt><dd>{analysis.profile.profile_id} · {analysis.profile.vicinity_cutoff_angstrom} Å vicinity</dd></div>
                   </dl>
                 </details>
@@ -531,27 +694,87 @@ function angleLabel(contact: InteractionContact): string {
     .join(" · ");
 }
 
-function sourcesFor(inventory: PoseInventory | null, pose: PoseReference | null): ViewerSource[] {
+/** A pose produced against a FlexRes receptor carries moved side chains. */
+export function isCoupledFlexPose(pose: PoseReference | null): boolean {
+  return Boolean(pose?.pose_flex_sidechains_sha256);
+}
+
+interface PoseSourceOptions {
+  catalogId: string;
+  ligandId: string;
+  /** Show the crystal rotamers behind the moved side chains (ADR-032 §4 E8). */
+  overlayCrystalRotamers: boolean;
+}
+
+/**
+ * The structures the viewer loads for one pose.
+ *
+ * A rigid pose keeps the frozen v0.1 pairing: prepared receptor as context
+ * plus the ligand pose. A flexible pose is a *coupled complex*, so by default
+ * it loads the deterministically materialized complex — the rigid receptor,
+ * the moved side chains and the ligand as one document — rather than drawing
+ * the ligand against a receptor whose pocket rotamers it never had. Showing
+ * only the rigid crystal receptor there would misstate the result.
+ */
+function sourcesFor(
+  inventory: PoseInventory | null,
+  pose: PoseReference | null,
+  options: PoseSourceOptions,
+): ViewerSource[] {
   if (!inventory || !pose) return [];
-  const sources: ViewerSource[] = [];
-  if (inventory.receptor_content_url && inventory.receptor_artifact_id) {
-    sources.push({
+  const crystalReceptor = inventory.receptor_content_url && inventory.receptor_artifact_id
+    ? {
       id: inventory.receptor_artifact_id,
       url: ankoraApi.receptorOutputUrl(inventory.receptor_content_url),
-      format: "pdb",
+      format: "pdb" as const,
       label: "Exact prepared receptor",
-      appearance: "interaction-context",
-    });
-  }
-  sources.push({
+    }
+    : null;
+  // PDBQT retains PDB coordinate columns; Mol* uses the compatible parser only for display.
+  const ligandPose: ViewerSource = {
     id: pose.artifact_id,
     url: ankoraApi.dockingPoseUrl(pose.content_url),
-    // PDBQT retains PDB coordinate columns; Mol* uses the compatible parser only for display.
     format: "pdb",
     label: pose.label,
     appearance: "interaction-ligand",
-  });
-  return sources;
+  };
+
+  if (!isCoupledFlexPose(pose)) {
+    return crystalReceptor
+      ? [{ ...crystalReceptor, appearance: "interaction-context" }, ligandPose]
+      : [ligandPose];
+  }
+
+  if (options.overlayCrystalRotamers) {
+    // Crystal rotamers translucent behind the moved side chains, so what the
+    // search actually moved — and how far — is visible rather than inferred.
+    return [
+      ...(crystalReceptor
+        ? [{
+          ...crystalReceptor,
+          label: "Crystal rotamers (reference)",
+          appearance: "flex-crystal-reference" as const,
+        }]
+        : []),
+      ...(pose.flex_content_url
+        ? [{
+          id: `${pose.artifact_id}-flex`,
+          url: ankoraApi.dockingPoseUrl(pose.flex_content_url),
+          format: "pdb" as const,
+          label: "Moved side chains",
+          appearance: "flex-moved-sidechains" as const,
+        }]
+        : []),
+      ligandPose,
+    ];
+  }
+
+  return [{
+    id: `${pose.artifact_id}-complex`,
+    url: ankoraApi.poseComplexUrl(options.catalogId, options.ligandId, pose.artifact_id),
+    format: "pdb",
+    label: "Coupled FlexRes complex",
+  }];
 }
 
 export function residueLabel(contact: InteractionContact): string {

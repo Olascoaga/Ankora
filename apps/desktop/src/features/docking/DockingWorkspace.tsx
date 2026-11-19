@@ -13,10 +13,13 @@ import type {
   ToolsResponse,
   VinaDockingJobRecord,
   VinaDockingParameters,
+  VinaScoringFunction,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
 import { formatScientificNumber } from "../../utils/format";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { AutoDock4LibraryWorkspace } from "./AutoDock4LibraryWorkspace";
 import { EngineComparisonWorkspace } from "./EngineComparisonWorkspace";
 import { AutoDock4Workspace } from "./AutoDock4Workspace";
@@ -141,7 +144,7 @@ function SingleLigandDockingWorkspace({
   const displayOutput = receptor.outputs.find(
     (item) => item.artifact_id === receptor.display_output_artifact_id,
   );
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const matchingLigandInput = ligandInput
     && ligandInput.ligand_id === ligand?.artifact.ligand_id
     ? ligandInput
@@ -233,6 +236,23 @@ function SingleLigandDockingWorkspace({
     setParameters((current) => applyVinaSamplingProtocol(current, protocol));
   }
 
+  /**
+   * Select the scoring function, omitting the key entirely for plain Vina.
+   *
+   * The default request stays byte-identical to the recorded v0.1 shape, so
+   * every protocol already validated against Vina scoring keeps producing the
+   * same payload; only an explicit Vinardo choice adds the parameter.
+   */
+  function selectScoring(scoring: VinaScoringFunction) {
+    setAcknowledged(false);
+    setParameters((current) => {
+      const next = { ...current };
+      if (scoring === "vinardo") next.scoring = "vinardo";
+      else delete next.scoring;
+      return next;
+    });
+  }
+
   async function startDocking() {
     if (!ligand || !ligandPdbqt || !ready) return;
     setError(null);
@@ -305,6 +325,7 @@ function SingleLigandDockingWorkspace({
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
           <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å · ${bindingSite.binding_site_id.slice(0, 8)}…`} />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand, minimize it, and generate PDBQT."} />
+          <ActiveFlexResBanner receptor={receptor} engineFamily="vina" />
         </section>
         <section className="receptor-section">
           <div className="filter-heading"><span>2 · Engine & search</span><small>{tools?.vina.available ? tools.vina.version : "Unavailable"}</small></div>
@@ -317,6 +338,19 @@ function SingleLigandDockingWorkspace({
             disabled={active}
             onChange={selectSamplingProtocol}
           />
+          <label className="numeric-field vina-scoring-field">
+            Scoring function
+            <select
+              aria-label="Vina scoring function"
+              value={parameters.scoring ?? "vina"}
+              disabled={active}
+              onChange={(event) => selectScoring(event.target.value as VinaScoringFunction)}
+            >
+              <option value="vina">Vina (default)</option>
+              <option value="vinardo">Vinardo</option>
+            </select>
+          </label>
+          <p className="field-note">Vinardo is a different scoring function, not a refinement of Vina. Its scores are on their own scale and are not comparable with Vina scores, so a campaign must not mix them in one ranking.</p>
           <div className="docking-parameter-grid">
             <NumberField label="CPU threads" value={parameters.cpu_threads} min={1} max={256} disabled={active} onChange={(value) => updateParameter("cpu_threads", value)} />
             <NumberField label="Seed" value={parameters.seed} min={1} max={2147483647} disabled={active} onChange={(value) => updateParameter("seed", value)} />

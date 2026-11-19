@@ -18,6 +18,8 @@ import type {
   ReceptorPreparationRecord,
   ToolsResponse,
 } from "../../types/api";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
@@ -101,7 +103,7 @@ export function GninaScreeningWorkspace({
   const displayOutput = receptor.outputs.find(
     (item) => item.artifact_id === receptor.display_output_artifact_id,
   );
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const active = Boolean(campaign && !TERMINAL.has(campaign.status));
   const controlsLocked = active || starting || restoring || openingHistory;
   const preparedCount = Math.min(libraryInput.prepared_count, libraryInput.selected_count);
@@ -605,6 +607,7 @@ export function GninaScreeningWorkspace({
               ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…`
               : "Return to Receptor and generate PDBQT."}
           />
+          <ActiveFlexResBanner receptor={receptor} engineFamily="gnina" />
           <InputState
             ready={!bindingSite.stale}
             label="Binding site"
@@ -1319,7 +1322,7 @@ function describeInputMismatch(
     return "The saved GNINA campaign screened a different applied selection: its manifest hash "
       + "does not match the selection currently applied.";
   }
-  const output = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const output = findDockingReceptorPdbqt(receptor.outputs);
   if (!output || record.receptor_output_artifact_id !== output.artifact_id
       || record.receptor_sha256 !== output.sha256
       || (Object.keys(bindingSite.box) as Array<keyof typeof bindingSite.box>)

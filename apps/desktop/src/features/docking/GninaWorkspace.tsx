@@ -14,6 +14,8 @@ import type {
   ReceptorPreparationRecord,
   ToolsResponse,
 } from "../../types/api";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { ViewerSource } from "../../viewer/adapter";
@@ -48,7 +50,7 @@ export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, too
   const [starting, setStarting] = useState(false);
   const [recovering, setRecovering] = useState(true);
   const active = starting || Boolean(job && !terminal.has(job.status));
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const display = receptor.outputs.find((item) => item.artifact_id === receptor.display_output_artifact_id);
   const ligandPdbqt = ligand && ligandInput?.ligand_id === ligand.artifact.ligand_id ? ligandInput.pdbqt : null;
   const ready = Boolean(!recovering && tools?.gnina.available && receptorPdbqt && ligand && ligandPdbqt && !bindingSite.stale && gninaParametersValid(parameters));
@@ -146,7 +148,7 @@ export function GninaWorkspace({ receptor, bindingSite, ligand, ligandInput, too
     </section>
     <aside className="inspector docking-inspector" aria-label="GNINA setup inspector">
       <div className="inspector-heading"><span className="section-label">Docking experiment</span><h2>GNINA</h2><p className="inspector-subtitle">One prepared ligand and one finalized search space. Completed and recorded GNINA jobs appear in the Results catalog and can also be reopened here on this device.</p></div>
-      <section className="receptor-section"><div className="filter-heading"><span>1 · Scientific inputs</span></div><div className={receptorPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Receptor PDBQT</strong><small>{receptorPdbqt?.filename ?? "Prepare the receptor first."}</small></div><div className={!bindingSite.stale ? "state-resolved-note" : "protonation-blocker"}><strong>Binding site</strong><small>{bindingSite.stale ? "The binding site is stale." : `${bindingSite.box.size_x} × ${bindingSite.box.size_y} × ${bindingSite.box.size_z} Å`}</small></div><div className={ligandPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Ligand PDBQT</strong><small>{ligandPdbqt?.artifact.filename ?? "Prepare the selected ligand first."}</small></div></section>
+      <section className="receptor-section"><div className="filter-heading"><span>1 · Scientific inputs</span></div><div className={receptorPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Receptor PDBQT</strong><small>{receptorPdbqt?.filename ?? "Prepare the receptor first."}</small></div><div className={!bindingSite.stale ? "state-resolved-note" : "protonation-blocker"}><strong>Binding site</strong><small>{bindingSite.stale ? "The binding site is stale." : `${bindingSite.box.size_x} × ${bindingSite.box.size_y} × ${bindingSite.box.size_z} Å`}</small></div><div className={ligandPdbqt ? "state-resolved-note" : "protonation-blocker"}><strong>Ligand PDBQT</strong><small>{ligandPdbqt?.artifact.filename ?? "Prepare the selected ligand first."}</small></div><ActiveFlexResBanner receptor={receptor} engineFamily="gnina" /></section>
       <section className="receptor-section"><div className="filter-heading"><span>2 · Engine & search</span></div><div className={tools?.gnina.available ? "state-resolved-note" : "protonation-blocker"}><strong>GNINA 1.3.3</strong><small>{tools?.gnina.available ? "Detected; version and executable identity are checked at launch." : "Import the offline GNINA pack below or configure a Linux GNINA executable and rescan tools."}</small></div>
         <GninaOfflinePackControl gnina={tools?.gnina} disabled={active} onToolsRefresh={onToolsRefresh} />
         <label className="numeric-field"><span className="field-label">Compute</span><select aria-label="Compute" value={parameters.compute} disabled={active} onChange={(event) => update("compute", event.target.value as "cpu" | "cuda")}><option value="cpu">CPU</option><option value="cuda">NVIDIA GPU · CUDA</option></select></label>

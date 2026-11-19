@@ -9,6 +9,8 @@ import type {
   LigandProtonationOptions,
   LigandProtonationRecord,
 } from "../../types/api";
+import { LigandFlexibilityControls } from "./LigandFlexibilityControls";
+import { buildLigandFlexibilitySpec, type LigandFlexibilityDraft } from "./ligandFlexibility";
 
 /**
  * One ligand, one action.
@@ -57,6 +59,9 @@ interface SingleLigandPreparationProps {
   setAcknowledged: Dispatch<SetStateAction<boolean>>;
   conformer: LigandConformerRecord | null;
   pdbqt: LigandPdbqtRecord | null;
+  /** Semi-flexible Meeko options; untouched, they send no spec at all. */
+  flexibility: LigandFlexibilityDraft;
+  setFlexibility: Dispatch<SetStateAction<LigandFlexibilityDraft>>;
   meekoAvailable: boolean;
   blocked: boolean;
   step: PreparationStep;
@@ -97,6 +102,8 @@ export function SingleLigandPreparation({
   setAcknowledged,
   conformer,
   pdbqt,
+  flexibility,
+  setFlexibility,
   meekoAvailable,
   blocked,
   step,
@@ -112,7 +119,11 @@ export function SingleLigandPreparation({
   const nonConverged = conformer !== null && !conformer.minimization.converged;
   const ready = pdbqt !== null;
 
-  const canPrepare = acknowledged && !busy && !blocked && !protonationDecisionPending;
+  // An invalid SMARTS row must not be submitted and must not be quietly
+  // dropped either, so it blocks preparation until it is fixed or removed.
+  const flexibilityInvalid = buildLigandFlexibilitySpec(flexibility) === undefined;
+  const canPrepare = acknowledged && !busy && !blocked && !protonationDecisionPending
+    && !flexibilityInvalid;
 
   return (
     <section className="receptor-section ligand-preparation-card" aria-label="Ligand preparation">
@@ -238,6 +249,12 @@ export function SingleLigandPreparation({
         </div>
       ) : null}
 
+      {meekoAvailable ? (
+        <LigandFlexibilityControls
+          draft={flexibility} setDraft={setFlexibility} pdbqt={pdbqt} busy={busy}
+        />
+      ) : null}
+
       <label className="check-row">
         <input
           type="checkbox" checked={acknowledged} disabled={busy}
@@ -274,6 +291,12 @@ export function SingleLigandPreparation({
       {protonationDecisionPending ? (
         <p className="field-note">
           Choose a protonation state above, narrow the pH, or skip it before preparing.
+        </p>
+      ) : null}
+      {flexibilityInvalid ? (
+        <p className="protonation-blocker" role="alert">
+          Correct or remove the incomplete bond-rigidification row in the semi-flexible ligand
+          control before preparing.
         </p>
       ) : null}
       {blocked ? (
