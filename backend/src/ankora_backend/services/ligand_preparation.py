@@ -1,11 +1,18 @@
 """Create-only ligand PDBQT preparation from an accepted converged conformer."""
 
+from base64 import b64encode
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ankora_backend.adapters.tools.ligand_preparation import execute_meeko_ligand
+from rdkit import rdBase
+
+from ankora_backend.adapters.tools.ligand_preparation import (
+    execute_meeko_ligand,
+    parse_ligand_pdbqt_summary,
+    precheck_ligand_smarts_rigidification,
+)
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
@@ -13,9 +20,12 @@ from ankora_backend.schemas.ligands import (
     LigandPdbqtArtifact,
     LigandPdbqtRecord,
     LigandRecord,
+    LigandSmartsRigidificationOutcome,
     PrepareLigandPdbqtRequest,
 )
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.v02_contracts import MacrocyclePolicy
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.ligand_library_status import record_library_status
 
 
@@ -83,48 +93,85 @@ def _prepare_and_store_pdbqt(
             "Meeko preparation requires a conformer whose MMFF minimization converged.",
             details={"conformer_id": conformer_id},
         )
+    conformer_sdf_path = store.conformer_content_path(ligand_id, conformer_id)
+    flexibility = request.flexibility
+    warnings: list[StructuredWarning] = []
+    smarts_outcomes: list[LigandSmartsRigidificationOutcome] = []
+    if flexibility is not None:
+        smarts_outcomes, warnings = precheck_ligand_smarts_rigidification(
+            input_sdf_path=conformer_sdf_path, flexibility=flexibility
+        )
+        if flexibility.flexible_amides:
+            warnings.append(
+                StructuredWarning(
+                    code=WarningCode.LIG_FLEXIBLE_AMIDES_PLANARITY,
+                    stage="ligand_pdbqt",
+                    message=(
+                        "Amide bonds were explicitly freed via --flexible_amides; amide groups "
+                        "are conjugated and normally planar, so non-planar geometries may be "
+                        "chemically unrealistic."
+                    ),
+                    details={"flexible_amides": True},
+                )
+            )
+        if flexibility.macrocycle_policy is MacrocyclePolicy.RIGID_INPUT_CONFORMATION:
+            warnings.append(
+                StructuredWarning(
+                    code=WarningCode.LIG_MACROCYCLE_RIGID_SCOPE,
+                    stage="ligand_pdbqt",
+                    message=(
+                        "Macrocyclic rings were kept rigid in their prepared input conformation "
+                        "(--rigid_macrocycles); ring conformational sampling is surrendered and "
+                        "results depend on the input ring geometry."
+                    ),
+                    details={"macrocycle_policy": flexibility.macrocycle_policy.value},
+                )
+            )
     preparation_id = store.new_preparation_id()
     created_at = datetime.now(UTC)
     with TemporaryDirectory(prefix="ankora-meeko-ligand-") as temporary_directory:
         output_path = Path(temporary_directory) / "prepared_ligand.pdbqt"
         execution, version = execute_meeko_ligand(
-            input_sdf_path=store.conformer_content_path(ligand_id, conformer_id),
+            input_sdf_path=conformer_sdf_path,
             output_pdbqt_path=output_path,
             charge_model=request.charge_model,
+            flexibility=flexibility,
         )
-        if execution.exit_code != 0 or not output_path.is_file():
-            details: dict[str, object] = {
-                "preparation_id": preparation_id,
-                "conformer_id": conformer_id,
-                "tool_version": version,
-                "command": execution.command,
-                "exit_code": execution.exit_code,
-                "stdout": execution.stdout,
-                "stderr": execution.stderr,
+        content: bytes | None = None
+        try:
+            if execution.exit_code != 0 or not output_path.is_file():
+                raise _preparation_error(
+                    "MEEKO_LIGAND_PREPARATION_FAILED",
+                    "Meeko could not generate a docking-ready ligand from the converged conformer.",
+                )
+            content = output_path.read_bytes()
+            effective_torsdof, atom_types = parse_ligand_pdbqt_summary(content)
+        except AnkoraDomainError as error:
+            error.details.update(
+                preparation_id=preparation_id,
+                conformer_id=conformer_id,
+                tool_version=version,
+                command=execution.command,
+                exit_code=execution.exit_code,
+                stdout=execution.stdout,
+                stderr=execution.stderr,
+            )
+            failure_payload = {
+                "code": error.code,
+                "stage": error.stage,
+                "created_at": created_at.isoformat(),
+                **error.details,
             }
+            if content is not None:
+                failure_payload["pdbqt_base64"] = b64encode(content).decode("ascii")
             store.create_pdbqt_failure(
                 ligand_id,
                 preparation_id,
-                {
-                    "code": "MEEKO_LIGAND_PREPARATION_FAILED",
-                    "stage": "ligand_pdbqt",
-                    "created_at": created_at.isoformat(),
-                    **details,
-                },
+                failure_payload,
                 execution.stdout,
                 execution.stderr,
             )
-            raise _preparation_error(
-                "MEEKO_LIGAND_PREPARATION_FAILED",
-                "Meeko could not generate a docking-ready ligand from the converged conformer.",
-                details=details,
-            )
-        content = output_path.read_bytes()
-    if not content:
-        raise _preparation_error(
-            "MEEKO_LIGAND_OUTPUT_EMPTY",
-            "Meeko reported success but produced an empty ligand PDBQT file.",
-        )
+            raise
     artifact = LigandPdbqtArtifact(
         preparation_id=preparation_id,
         ligand_id=ligand_id,
@@ -136,6 +183,20 @@ def _prepare_and_store_pdbqt(
         created_at=created_at,
     )
     tool = ToolIdentity(name="Meeko ligand preparation", version=version)
+    parameters = request.model_dump(
+        mode="json", exclude={"flexibility"} if flexibility is None else None
+    )
+    parameters.update(
+        conformer_converged=True,
+        source_conformer_sha256=conformer.artifact.sha256,
+        effective_torsdof=effective_torsdof,
+        atom_types=atom_types,
+        smarts_rigidification_outcomes=[
+            outcome.model_dump(mode="json") for outcome in smarts_outcomes
+        ],
+    )
+    if smarts_outcomes:
+        parameters["rdkit_version"] = rdBase.rdkitVersion
     provenance = ProvenanceEvent(
         event_id=f"ligand_pdbqt-{preparation_id}",
         event_type="ligand_pdbqt_prepared",
@@ -143,12 +204,8 @@ def _prepare_and_store_pdbqt(
         input_artifacts=[conformer_id],
         output_artifacts=[preparation_id],
         tool=tool,
-        parameters={
-            **request.model_dump(mode="json"),
-            "conformer_converged": True,
-            "source_conformer_sha256": conformer.artifact.sha256,
-        },
-        warnings=[],
+        parameters=parameters,
+        warnings=warnings,
         command=execution.command,
     )
     record = LigandPdbqtRecord(
@@ -160,6 +217,11 @@ def _prepare_and_store_pdbqt(
         stderr=execution.stderr,
         provenance=provenance,
         content_url=f"/ligands/{ligand_id}/preparations/{preparation_id}/content",
+        flexibility=flexibility,
+        effective_torsdof=effective_torsdof,
+        atom_types=atom_types,
+        warnings=warnings,
+        smarts_rigidification_outcomes=smarts_outcomes,
     )
     store.create_pdbqt(ligand_id, preparation_id, content, record)
     return record
