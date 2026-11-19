@@ -14,10 +14,13 @@ from ankora_backend import __version__
 from ankora_backend.adapters.tools.receptor_preparation import (
     RepairOptions,
     diagnose_meeko_pqr_content,
+    inspect_receptor_flex_pdbqt,
     package_version,
     run_meeko_receptor,
+    run_meeko_receptor_flex,
     run_pdb2pqr_propka,
     run_pdbfixer,
+    validate_flex_residues_against_pqr,
 )
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution
@@ -25,9 +28,13 @@ from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import (
+    RECOMMENDED_MAX_FLEX_CHI_TORSIONS,
+    RECOMMENDED_MAX_FLEX_RESIDUES,
     ComponentAction,
     IssueDecision,
     ReceptorDecisionAction,
+    ReceptorFlexMode,
+    ReceptorFlexSpec,
     ReceptorInspectionReport,
     ReceptorIssue,
     ReceptorIssueKind,
@@ -41,6 +48,7 @@ from ankora_backend.schemas.receptors import (
     TerminalHeavyAtomAddition,
 )
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.services.receptor_inspection import (
     _clean_char,
     _read_structure,
@@ -73,7 +81,7 @@ def preview_receptor_protonation(
             status_code=422,
             details={},
         )
-    preview_request = request.model_copy(update={"generate_pdbqt": False})
+    preview_request = request.model_copy(update={"generate_pdbqt": False, "flexibility": None})
     with tempfile.TemporaryDirectory(prefix="ankora-protonation-preview-") as directory:
         record = prepare_receptor(
             source_artifact_id=source_artifact_id,
@@ -114,6 +122,15 @@ def prepare_receptor(
     outputs: list[ReceptorOutputArtifact] = []
     provenance: list[ProvenanceEvent] = []
     protonation_analysis: ReceptorProtonationAnalysis | None = None
+    flex_spec: ReceptorFlexSpec | None = None
+    flex_atom_types: tuple[str, ...] = ()
+    warnings = list(report.warnings)
+    flexibility = request.flexibility
+    flex_residues = (
+        flexibility.flex_residues
+        if flexibility is not None and flexibility.mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        else None
+    )
 
     try:
         selected_content = _build_selected_receptor(
@@ -426,7 +443,9 @@ def prepare_receptor(
             display_output = pdb_output
 
             if request.repair_method == "topology_guard_v3":
-                normalized, normalized_lines = _normalize_pqr_for_meeko(pqr_path.read_bytes())
+                normalized, normalized_lines = _normalize_pqr_for_meeko(
+                    pqr_path.read_bytes(), separate_insertion_codes=flex_residues is not None
+                )
                 findings = diagnose_meeko_pqr_content(normalized.decode("utf-8"), required=True)
                 if findings:
                     raise AnkoraDomainError(
@@ -479,7 +498,7 @@ def prepare_receptor(
                     details={"receptor_id": receptor_id},
                 )
             meeko_input_content, normalized_line_count = _normalize_pqr_for_meeko(
-                pqr_path.read_bytes()
+                pqr_path.read_bytes(), separate_insertion_codes=flex_residues is not None
             )
             meeko_input_path = receptor_store.write_bytes(
                 receptor_id,
@@ -510,6 +529,10 @@ def prepare_receptor(
                         "rule": (
                             "separate a nonblank chain identifier from a compact "
                             "four-digit residue sequence field"
+                            + (
+                                " and separate attached insertion codes"
+                                if flex_residues is not None else ""
+                            )
                         ),
                         "normalized_compact_residue_lines": normalized_line_count,
                         "source_pqr_sha256": pqr_output.sha256,
@@ -517,12 +540,49 @@ def prepare_receptor(
                     },
                 )
             )
-            pdbqt_path = receptor_store.output_path(receptor_id, "prepared_receptor.pdbqt")
             try:
-                execution, tool_version = run_meeko_receptor(
-                    input_pqr_path=meeko_input_path,
-                    output_pdbqt_path=pdbqt_path,
-                )
+                if flex_residues is not None:
+                    split_outputs, event, flex_spec, flex_atom_types = _prepare_flexible_pdbqt(
+                        receptor_store=receptor_store,
+                        receptor_id=receptor_id,
+                        meeko_input_path=meeko_input_path,
+                        input_artifact=meeko_input_output.artifact_id,
+                        requested_residues=flex_residues,
+                    )
+                    outputs.extend(split_outputs)
+                    provenance.append(event)
+                    warnings.extend(event.warnings)
+                else:
+                    pdbqt_path = receptor_store.output_path(
+                        receptor_id, "prepared_receptor.pdbqt"
+                    )
+                    execution, tool_version = run_meeko_receptor(
+                        input_pqr_path=meeko_input_path,
+                        output_pdbqt_path=pdbqt_path,
+                    )
+                    log_files = _save_execution_logs(
+                        receptor_store, receptor_id, "meeko", execution
+                    )
+                    pdbqt_output = _record_output(
+                        receptor_id=receptor_id,
+                        path=pdbqt_path,
+                        stage=ReceptorOutputStage.PDBQT,
+                        format_name="pdbqt",
+                        created_at=datetime.now(UTC),
+                    )
+                    outputs.append(pdbqt_output)
+                    provenance.append(
+                        _tool_event(
+                            receptor_id=receptor_id,
+                            event_type="receptor_pdbqt_generated",
+                            input_artifact=meeko_input_output.artifact_id,
+                            output_artifact=pdbqt_output.artifact_id,
+                            tool_name="Meeko",
+                            tool_version=tool_version,
+                            execution=execution,
+                            parameters={"raw_logs": log_files},
+                        )
+                    )
             except AnkoraDomainError as error:
                 error.details.update(
                     {
@@ -534,29 +594,6 @@ def prepare_receptor(
                     }
                 )
                 raise
-            log_files = _save_execution_logs(
-                receptor_store, receptor_id, "meeko", execution
-            )
-            pdbqt_output = _record_output(
-                receptor_id=receptor_id,
-                path=pdbqt_path,
-                stage=ReceptorOutputStage.PDBQT,
-                format_name="pdbqt",
-                created_at=datetime.now(UTC),
-            )
-            outputs.append(pdbqt_output)
-            provenance.append(
-                _tool_event(
-                    receptor_id=receptor_id,
-                    event_type="receptor_pdbqt_generated",
-                    input_artifact=meeko_input_output.artifact_id,
-                    output_artifact=pdbqt_output.artifact_id,
-                    tool_name="Meeko",
-                    tool_version=tool_version,
-                    execution=execution,
-                    parameters={"raw_logs": log_files},
-                )
-            )
             status = ReceptorPreparationStatus.DOCKING_READY
 
         record = ReceptorPreparationRecord(
@@ -566,10 +603,12 @@ def prepare_receptor(
             status=status,
             decisions=request,
             outputs=outputs,
-            warnings=report.warnings,
+            warnings=warnings,
             provenance=provenance,
             display_output_artifact_id=display_output.artifact_id,
             protonation_analysis=protonation_analysis,
+            flex_spec=flex_spec,
+            flex_atom_types=list(flex_atom_types),
         )
         receptor_store.save_record(record)
         return record
@@ -577,6 +616,91 @@ def prepare_receptor(
         error.details["receptor_id"] = receptor_id
         _save_failure(receptor_store, receptor_id, error)
         raise
+
+
+def _prepare_flexible_pdbqt(
+    *,
+    receptor_store: ReceptorArtifactStore,
+    receptor_id: str,
+    meeko_input_path: Path,
+    input_artifact: str,
+    requested_residues: list[ResidueLocator],
+) -> tuple[
+    list[ReceptorOutputArtifact], ProvenanceEvent, ReceptorFlexSpec, tuple[str, ...]
+]:
+    resolved_residues = validate_flex_residues_against_pqr(meeko_input_path, requested_residues)
+    execution, tool_version, rigid_path, flex_path = run_meeko_receptor_flex(
+        input_pqr_path=meeko_input_path,
+        output_stem_path=receptor_store.output_path(receptor_id, "receptor"),
+        flex_residues=resolved_residues,
+    )
+    log_files = _save_execution_logs(receptor_store, receptor_id, "meeko", execution)
+    try:
+        added_chi_torsion_count, flex_atom_types = inspect_receptor_flex_pdbqt(
+            flex_path.read_text(encoding="utf-8", errors="replace")
+        )
+    except AnkoraDomainError as error:
+        error.details.update(
+            tool_version=tool_version,
+            command=execution.command,
+            raw_logs=log_files,
+        )
+        raise
+    created_at = datetime.now(UTC)
+    rigid_output = _record_output(
+        receptor_id=receptor_id,
+        path=rigid_path,
+        stage=ReceptorOutputStage.PDBQT_RIGID,
+        format_name="pdbqt",
+        created_at=created_at,
+    )
+    flex_output = _record_output(
+        receptor_id=receptor_id,
+        path=flex_path,
+        stage=ReceptorOutputStage.PDBQT_FLEX,
+        format_name="pdbqt",
+        created_at=created_at,
+    )
+    flex_spec = ReceptorFlexSpec(
+        mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+        flex_residues=tuple(requested_residues),
+        receptor_rigid_sha256=rigid_output.sha256,
+        receptor_flex_sha256=flex_output.sha256,
+        added_chi_torsion_count=added_chi_torsion_count,
+    )
+    warnings = []
+    if flex_spec.high_dof_warning_required:
+        warnings.append(
+            StructuredWarning(
+                code=WarningCode.DOCKING_FLEXRES_DOF_HIGH,
+                stage="receptor_pdbqt",
+                message="The flexible side-chain selection exceeds the recommended budget.",
+                details={
+                    "flex_residue_count": len(flex_spec.flex_residues),
+                    "added_chi_torsion_count": added_chi_torsion_count,
+                    "recommended_max_residues": RECOMMENDED_MAX_FLEX_RESIDUES,
+                    "recommended_max_chi_torsions": RECOMMENDED_MAX_FLEX_CHI_TORSIONS,
+                },
+            )
+        )
+    event = ProvenanceEvent(
+        event_id=f"receptor_flex_pdbqt_generated-{receptor_id}",
+        event_type="receptor_flex_pdbqt_generated",
+        timestamp=created_at,
+        input_artifacts=[input_artifact],
+        output_artifacts=[rigid_output.artifact_id, flex_output.artifact_id],
+        tool=ToolIdentity(name="Meeko", version=tool_version),
+        parameters={
+            "raw_logs": log_files,
+            "flex_residues": [item.model_dump(mode="json") for item in flex_spec.flex_residues],
+            "resolved_flex_residues": [item.model_dump(mode="json") for item in resolved_residues],
+            "added_chi_torsion_count": added_chi_torsion_count,
+            "flex_atom_types": list(flex_atom_types),
+        },
+        warnings=warnings,
+        command=execution.command,
+    )
+    return [rigid_output, flex_output], event, flex_spec, flex_atom_types
 
 
 def _validate_decisions(
@@ -1199,14 +1323,17 @@ def _record_output(
     )
 
 
-def _normalize_pqr_for_meeko(content: bytes) -> tuple[bytes, int]:
+def _normalize_pqr_for_meeko(
+    content: bytes, *, separate_insertion_codes: bool = False
+) -> tuple[bytes, int]:
     """Separate compact four-digit PQR residue fields without changing chemistry.
 
     PDB2PQR preserves PDB-style fixed columns, so chain A followed by residue 1000
     is written as ``A1000``. Meeko 0.7.1 tokenizes PQR records on whitespace and
     therefore cannot distinguish the chain from the residue number. The exact
     tool input is preserved as a separate artifact; this formatter only inserts
-    one ASCII space at that boundary.
+    ASCII spaces at locator boundaries. Flex selection also needs a space before
+    any insertion code so Meeko reads it as a separate token.
     """
     normalized_lines: list[bytes] = []
     normalized_count = 0
@@ -1214,6 +1341,14 @@ def _normalize_pqr_for_meeko(content: bytes) -> tuple[bytes, int]:
         body = line.rstrip(b"\r\n")
         newline = line[len(body) :]
         record_name = body[:6].strip()
+        if (
+            separate_insertion_codes
+            and record_name in {b"ATOM", b"HETATM"}
+            and body[25:26].isdigit()
+            and body[26:27].isalpha()
+        ):
+            # Meeko reads the insertion code as a separate token after the sequence.
+            body = body[:26] + b" " + body[26:]
         chain_id = body[21:22]
         residue_sequence = body[22:26]
         if (

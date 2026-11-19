@@ -2,9 +2,10 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal, Self
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -16,6 +17,10 @@ from pydantic import (
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.structures import HeterogenKind, StructureFormat
 from ankora_backend.schemas.warnings import StructuredWarning
+
+DISALLOWED_FLEX_RESIDUE_NAMES = frozenset({"GLY", "ALA", "PRO", "CYX"})
+RECOMMENDED_MAX_FLEX_RESIDUES = 4
+RECOMMENDED_MAX_FLEX_CHI_TORSIONS = 12
 
 
 class ReceptorIssueKind(StrEnum):
@@ -57,6 +62,8 @@ class ReceptorOutputStage(StrEnum):
     PROTONATED_PQR = "protonated_pqr"
     MEEKO_INPUT_PQR = "meeko_input_pqr"
     PDBQT = "pdbqt"
+    PDBQT_RIGID = "pdbqt_rigid"
+    PDBQT_FLEX = "pdbqt_flex"
 
 
 class ResidueLocator(BaseModel):
@@ -66,6 +73,102 @@ class ResidueLocator(BaseModel):
     residue_name: str = Field(min_length=1)
     sequence_number: int
     insertion_code: str = ""
+
+
+class ReceptorFlexMode(StrEnum):
+    RIGID = "rigid"
+    SIDECHAIN_FLEX = "sidechain_flex"
+
+
+def _validate_flex_selection(residues: list[ResidueLocator] | tuple[ResidueLocator, ...]) -> None:
+    positions = set()
+    for residue in residues:
+        if residue.residue_name.upper() in DISALLOWED_FLEX_RESIDUE_NAMES:
+            raise ValueError(f"Residue {residue.residue_name} is disallowed for FlexRes")
+        position = (residue.chain_id, residue.sequence_number, residue.insertion_code)
+        if position in positions:
+            raise ValueError("Flexible residue locators must have unique positions")
+        positions.add(position)
+
+
+class ReceptorFlexRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_flex_selection(self) -> Self:
+        if self.mode is ReceptorFlexMode.RIGID:
+            if self.flex_residues:
+                raise ValueError("Rigid receptors cannot declare flexible residues")
+        else:
+            if not self.flex_residues:
+                raise ValueError("Side-chain flexibility requires at least one flexible residue")
+            _validate_flex_selection(self.flex_residues)
+        return self
+
+
+type _Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class _FrozenResidueLocator(ResidueLocator):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _freeze_residue_locator(residue: ResidueLocator) -> ResidueLocator:
+    # Snapshot the v0.1 locator so it cannot be edited through either model.
+    return _FrozenResidueLocator.model_validate(residue.model_dump())
+
+
+def flex_residue_locator_key(residue: ResidueLocator) -> tuple[str, str, int, str]:
+    return (
+        residue.chain_id,
+        residue.residue_name.upper(),
+        residue.sequence_number,
+        residue.insertion_code,
+    )
+
+
+class ReceptorFlexSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    flex_residues: tuple[
+        Annotated[ResidueLocator, AfterValidator(_freeze_residue_locator)], ...
+    ] = ()
+    receptor_rigid_sha256: _Sha256
+    receptor_flex_sha256: _Sha256 | None = None
+    added_chi_torsion_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_receptor_split(self) -> Self:
+        if self.mode == ReceptorFlexMode.RIGID:
+            if (
+                self.flex_residues
+                or self.receptor_flex_sha256 is not None
+                or self.added_chi_torsion_count != 0
+            ):
+                raise ValueError(
+                    "Rigid receptors cannot declare flexible residues, a flex hash, or chi torsions"
+                )
+            return self
+
+        if not self.flex_residues or self.receptor_flex_sha256 is None:
+            raise ValueError("Side-chain flexibility requires flex residues and a flex hash")
+        _validate_flex_selection(self.flex_residues)
+        return self
+
+    def canonical_flex_locators(self) -> tuple[tuple[str, str, int, str], ...]:
+        """Return sorted (chain, uppercase residue name, sequence number, insertion code) keys."""
+        return tuple(sorted(map(flex_residue_locator_key, self.flex_residues)))
+
+    @property
+    def high_dof_warning_required(self) -> bool:
+        return (
+            len(self.flex_residues) > RECOMMENDED_MAX_FLEX_RESIDUES
+            or self.added_chi_torsion_count > RECOMMENDED_MAX_FLEX_CHI_TORSIONS
+        )
 
 
 class ReceptorIssue(BaseModel):
@@ -277,12 +380,15 @@ class ReceptorPreparationRequest(BaseModel):
     repair_method: Literal["legacy", "topology_guard_v3"] = "legacy"
     repair_seed: int = Field(default=20261014, ge=1, le=2147483647)
     inspection_method: ReceptorInspectionMethod = "reported_only"
+    flexibility: ReceptorFlexRequest | None = None
 
     @model_serializer(mode="wrap")
     def preserve_legacy_request_shape(
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
         result: dict[str, object] = handler(self)
+        if self.flexibility is None:
+            result.pop("flexibility", None)
         if self.inspection_method == "reported_only":
             result.pop("inspection_method", None)
         if self.repair_method == "legacy":
@@ -294,6 +400,16 @@ class ReceptorPreparationRequest(BaseModel):
     def pdbqt_requires_protonation(self) -> "ReceptorPreparationRequest":
         if self.generate_pdbqt and not self.protonation.enabled:
             raise ValueError("PDBQT generation requires an explicit protonation stage")
+        return self
+
+    @model_validator(mode="after")
+    def flexible_receptor_requires_protonated_pdbqt(self) -> Self:
+        if self.flexibility is None or self.flexibility.mode is ReceptorFlexMode.RIGID:
+            return self
+        if not self.generate_pdbqt or not self.protonation.enabled:
+            raise ValueError("Side-chain flexibility requires protonation and PDBQT generation")
+        if {item.chain_id for item in self.flexibility.flex_residues} - set(self.selected_chains):
+            raise ValueError("Flexible residues must belong to selected chains")
         return self
 
     @model_validator(mode="after")
@@ -344,3 +460,5 @@ class ReceptorPreparationRecord(BaseModel):
     provenance: list[ProvenanceEvent]
     display_output_artifact_id: str = Field(min_length=1)
     protonation_analysis: ReceptorProtonationAnalysis | None = None
+    flex_spec: ReceptorFlexSpec | None = None
+    flex_atom_types: list[str] = Field(default_factory=list)

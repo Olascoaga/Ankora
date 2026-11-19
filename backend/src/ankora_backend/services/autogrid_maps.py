@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from ankora_backend.adapters.engines.autodock4 import (
+    MAX_AUTOGRID_LIGAND_TYPES,
     collect_autodock_atom_types,
     plan_autodock_grid,
     preflight_autodock4_cpu_atom_types,
@@ -55,9 +56,13 @@ from ankora_backend.schemas.binding_sites import BindingSiteRecord
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
     ReceptorOutputArtifact,
     ReceptorOutputStage,
+    ReceptorPreparationRecord,
     ReceptorPreparationStatus,
+    ResidueLocator,
+    flex_residue_locator_key,
 )
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.execution_freshness import require_current_inputs
@@ -74,14 +79,22 @@ _STAGE = "autogrid_map_generation"
 
 
 @dataclass(frozen=True, slots=True)
+class _GridReceptor:
+    record: ReceptorPreparationRecord
+    rigid_output: ReceptorOutputArtifact
+    rigid_path: Path
+    flex_output: ReceptorOutputArtifact | None
+    flex_atom_types: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _PreparedMapSet:
     """Everything validated before AutoGrid is launched, including the cache answer."""
 
     request: AutoGridMapSetRequest
     installation: AutoGridInstallation
     identity_key: str
-    receptor_output: ReceptorOutputArtifact
-    receptor_path: Path
+    receptor: _GridReceptor
     receptor_atom_types: tuple[str, ...]
     binding_site: BindingSiteRecord
     geometry: AutoGridGeometry
@@ -100,6 +113,56 @@ class _JobCanceled(Exception):
 
 def _as_optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def verify_autogrid_map_set_for_receptor(
+    map_set: AutoGridMapSetRecord, receptor: ReceptorPreparationRecord
+) -> None:
+    """Enforce E7 before a map set is used with the prepared receptor."""
+    spec = receptor.flex_spec
+    expected_mode = spec.mode if spec is not None else ReceptorFlexMode.RIGID
+    expected_sha256: str | None
+    expected_locators: tuple[tuple[str, str, int, str], ...] = ()
+    expected_flex_types: set[str] = set()
+    if spec is not None and spec.mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        expected_sha256 = spec.receptor_rigid_sha256
+        expected_locators = spec.canonical_flex_locators()
+        expected_flex_types = set(receptor.flex_atom_types)
+    else:
+        output = next(
+            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
+            None,
+        )
+        expected_sha256 = output.sha256 if output is not None else None
+
+    map_locators = tuple(sorted(map(flex_residue_locator_key, map_set.flex_residues)))
+    if (
+        map_set.receptor_flex_mode is not expected_mode
+        or (expected_mode is ReceptorFlexMode.SIDECHAIN_FLEX and not expected_flex_types)
+        or map_set.receptor_sha256 != expected_sha256
+        or map_locators != expected_locators
+        or set(map_set.flex_atom_types) != expected_flex_types
+        or not expected_flex_types.issubset(map_set.preflight.ligand_atom_types)
+    ):
+        raise AnkoraDomainError(
+            code="AUTOGRID_FLEXRES_MAP_MISMATCH",
+            stage="autogrid_map_verification",
+            status_code=422,
+            message="The AutoGrid maps do not match the receptor split and flexible atom types.",
+            details={
+                "map_set_id": map_set.map_set_id,
+                "receptor_id": receptor.receptor_id,
+                "expected_receptor_flex_mode": expected_mode.value,
+                "map_receptor_flex_mode": map_set.receptor_flex_mode.value,
+                "expected_receptor_sha256": expected_sha256,
+                "map_receptor_sha256": map_set.receptor_sha256,
+                "expected_flex_locators": expected_locators,
+                "map_flex_locators": map_locators,
+                "expected_flex_atom_types": sorted(expected_flex_types),
+                "map_flex_atom_types": map_set.flex_atom_types,
+                "map_affinity_atom_types": map_set.preflight.ligand_atom_types,
+            },
+        )
 
 
 class AutoGridMapService:
@@ -368,17 +431,17 @@ class AutoGridMapService:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        installation = probe_autogrid4()
-        receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
+        receptor, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
         )
-        receptor_document = receptor_path.read_text(encoding="utf-8", errors="replace")
+        receptor_document = receptor.rigid_path.read_text(encoding="utf-8", errors="replace")
         receptor_atom_types = preflight_autodock4_receptor_atom_types(
             collect_autodock_atom_types((receptor_document,))
         )
-        preflight = self._preflight_ligands(request, receptor_atom_types)
+        preflight = self._preflight_ligands(request, receptor_atom_types, receptor.flex_atom_types)
         ligand_atom_types = tuple(preflight.ligand_atom_types)
 
+        installation = probe_autogrid4()
         plan = plan_autodock_grid(
             binding_site.box, spacing_angstrom=request.parameters.spacing_angstrom
         )
@@ -395,23 +458,27 @@ class AutoGridMapService:
             realized_size_angstrom=plan.realized_size_angstrom,
         )
         identity_key = self._identity_key(
-            receptor_sha256=receptor_output.sha256,
+            receptor_sha256=receptor.rigid_output.sha256,
             binding_site=binding_site,
             geometry=geometry,
             receptor_atom_types=receptor_atom_types,
             ligand_atom_types=ligand_atom_types,
             request=request,
             installation=installation,
+            flex_residues=(
+                receptor.record.flex_spec.flex_residues if receptor.record.flex_spec else ()
+            ),
+            flex_atom_types=receptor.flex_atom_types,
         )
         existing = self._map_store.find_by_identity(identity_key)
         if existing is not None:
             ProjectDependencyService.for_project_root(self._binding_site_store.project_root).require_current([existing.map_set_id])
+            verify_autogrid_map_set_for_receptor(existing, receptor.record)
         return _PreparedMapSet(
             request=request,
             installation=installation,
             identity_key=identity_key,
-            receptor_output=receptor_output,
-            receptor_path=receptor_path,
+            receptor=receptor,
             receptor_atom_types=receptor_atom_types,
             binding_site=binding_site,
             geometry=geometry,
@@ -432,8 +499,15 @@ class AutoGridMapService:
         )
         installation = prepared.installation
         identity_key = prepared.identity_key
-        receptor_output = prepared.receptor_output
-        receptor_path = prepared.receptor_path
+        receptor_output = prepared.receptor.rigid_output
+        receptor_path = prepared.receptor.rigid_path
+        flex_output = prepared.receptor.flex_output
+        flex_spec = prepared.receptor.record.flex_spec
+        flex_residues = (
+            [ResidueLocator.model_validate(item.model_dump()) for item in flex_spec.flex_residues]
+            if flex_spec is not None else []
+        )
+        flex_atom_types = list(prepared.receptor.flex_atom_types)
         receptor_atom_types = prepared.receptor_atom_types
         binding_site = prepared.binding_site
         geometry = prepared.geometry
@@ -453,7 +527,10 @@ class AutoGridMapService:
         job_directory = self._map_store.create_map_set_directory(map_set_id)
         self._require_ascii_job_directory(job_directory)
 
-        shutil.copyfile(receptor_path, job_directory / RECEPTOR_FILENAME)
+        staged_receptor = job_directory / RECEPTOR_FILENAME
+        shutil.copyfile(receptor_path, staged_receptor)
+        if flex_output is not None:
+            self._verify_hash(staged_receptor, receptor_output.sha256, "rigid receptor split")
         (job_directory / GRID_PARAMETER_FILENAME).write_text(gpf, encoding="ascii", newline="\n")
 
         started = time.monotonic()
@@ -517,6 +594,18 @@ class AutoGridMapService:
         artifacts = self._collect_artifacts(map_set_id, job_directory, ligand_atom_types)
         field_artifact = next(item for item in artifacts if item.kind is AutoGridMapKind.FIELD)
         created_at = datetime.now(UTC)
+        receptor_flex_mode = (
+            ReceptorFlexMode.SIDECHAIN_FLEX if flex_output is not None else ReceptorFlexMode.RIGID
+        )
+        flex_parameters: dict[str, object] = {}
+        if flex_output is not None:
+            flex_parameters = {
+                "receptor_flex_mode": receptor_flex_mode.value,
+                "receptor_flex_output_artifact_id": flex_output.artifact_id,
+                "receptor_flex_sha256": flex_output.sha256,
+                "flex_residues": [item.model_dump(mode="json") for item in flex_residues],
+                "flex_atom_types": flex_atom_types,
+            }
         record = AutoGridMapSetRecord(
             map_set_id=map_set_id,
             identity_key=identity_key,
@@ -525,6 +614,11 @@ class AutoGridMapService:
             receptor_id=request.receptor_id,
             receptor_output_artifact_id=receptor_output.artifact_id,
             receptor_sha256=receptor_output.sha256,
+            receptor_flex_mode=receptor_flex_mode,
+            receptor_flex_output_artifact_id=flex_output.artifact_id if flex_output else None,
+            receptor_flex_sha256=flex_output.sha256 if flex_output else None,
+            flex_residues=flex_residues,
+            flex_atom_types=flex_atom_types,
             binding_site_id=binding_site.binding_site_id,
             box=binding_site.box,
             geometry=geometry,
@@ -540,6 +634,7 @@ class AutoGridMapService:
                 timestamp=created_at,
                 input_artifacts=[
                     receptor_output.artifact_id,
+                    *([flex_output.artifact_id] if flex_output is not None else []),
                     binding_site.binding_site_id,
                     *self._ligand_input_artifacts(request),
                 ],
@@ -557,6 +652,7 @@ class AutoGridMapService:
                     # The user-visible location is recorded even though AutoGrid
                     # itself only ever saw short relative filenames.
                     "job_directory": str(job_directory),
+                    **flex_parameters,
                 },
                 command=execution.command,
             ),
@@ -623,7 +719,10 @@ class AutoGridMapService:
         return artifacts
 
     def _preflight_ligands(
-        self, request: AutoGridMapSetRequest, receptor_atom_types: tuple[str, ...]
+        self,
+        request: AutoGridMapSetRequest,
+        receptor_atom_types: tuple[str, ...],
+        flex_atom_types: tuple[str, ...] = (),
     ) -> AutoGridPreflight:
         if request.source is AutoGridLigandSource.LIGAND_PREPARATION:
             rows = [self._single_ligand_row(request)]
@@ -647,12 +746,30 @@ class AutoGridMapService:
                     ]
                 },
             )
-        union = preflight_autodock4_cpu_atom_types(
-            {atom_type for row in compatible for atom_type in row.atom_types}
-        )
+        selected_types = {atom_type for row in compatible for atom_type in row.atom_types}
+        try:
+            ligand_only_types = preflight_autodock4_cpu_atom_types(selected_types)
+            affinity_types = (
+                preflight_autodock4_cpu_atom_types(set(ligand_only_types) | set(flex_atom_types))
+                if flex_atom_types else ligand_only_types
+            )
+        except ValueError as error:
+            if not flex_atom_types:
+                raise
+            raise self._input_error(
+                "AUTOGRID_LIGAND_TYPES_EXCEEDED",
+                str(error),
+                {
+                    "ligand_only_atom_types": sorted(selected_types),
+                    "flex_atom_types": list(flex_atom_types),
+                    "max_ligand_types": MAX_AUTOGRID_LIGAND_TYPES,
+                },
+            ) from error
         return AutoGridPreflight(
             receptor_atom_types=list(receptor_atom_types),
-            ligand_atom_types=list(union),
+            ligand_atom_types=list(affinity_types),
+            flex_atom_types=list(flex_atom_types),
+            ligand_only_atom_types=list(ligand_only_types) if flex_atom_types else None,
             selected_count=len(rows),
             prepared_count=sum(1 for row in rows if row.atom_types),
             compatible_count=len(compatible),
@@ -791,7 +908,7 @@ class AutoGridMapService:
 
     def _validate_receptor_and_site(
         self, receptor_id: str, binding_site_id: str
-    ) -> tuple[ReceptorOutputArtifact, Path, BindingSiteRecord]:
+    ) -> tuple[_GridReceptor, BindingSiteRecord]:
         receptor = self._receptor_store.load_record(receptor_id)
         if receptor.status is not ReceptorPreparationStatus.DOCKING_READY:
             raise self._input_error(
@@ -799,9 +916,13 @@ class AutoGridMapService:
                 "Grid generation requires a receptor in docking-ready status.",
                 {"receptor_id": receptor_id, "status": receptor.status.value},
             )
+        spec = receptor.flex_spec
+        sidechain_flex = spec is not None and spec.mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        rigid_stage = (
+            ReceptorOutputStage.PDBQT_RIGID if sidechain_flex else ReceptorOutputStage.PDBQT
+        )
         receptor_output = next(
-            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
-            None,
+            (item for item in receptor.outputs if item.stage is rigid_stage), None
         )
         if receptor_output is None:
             raise self._input_error(
@@ -811,6 +932,37 @@ class AutoGridMapService:
             )
         receptor_path = self._receptor_store.content_path(receptor_id, receptor_output.artifact_id)
         self._verify_hash(receptor_path, receptor_output.sha256, "receptor")
+        flex_output = None
+        flex_atom_types: tuple[str, ...] = ()
+        if spec is not None and sidechain_flex:
+            if receptor_output.sha256 != spec.receptor_rigid_sha256:
+                raise self._split_hash_mismatch(receptor_output, spec.receptor_rigid_sha256)
+            flex_output = next(
+                (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT_FLEX),
+                None,
+            )
+            if flex_output is None:
+                raise self._input_error(
+                    "AUTOGRID_RECEPTOR_PDBQT_MISSING",
+                    "The selected receptor has no preserved flexible PDBQT output.",
+                    {"receptor_id": receptor_id},
+                )
+            if flex_output.sha256 != spec.receptor_flex_sha256:
+                raise self._split_hash_mismatch(flex_output, spec.receptor_flex_sha256)
+            flex_path = self._receptor_store.content_path(receptor_id, flex_output.artifact_id)
+            flex_bytes = flex_path.read_bytes()
+            self._require_hash(
+                sha256(flex_bytes).hexdigest(), flex_output.sha256, flex_path, "flex"
+            )
+            try:
+                flex_document = flex_bytes.decode("utf-8", errors="replace")
+                flex_atom_types = collect_autodock_atom_types((flex_document,))
+            except ValueError as error:
+                raise self._input_error(
+                    "AUTOGRID_LIGAND_TYPES_EXCEEDED",
+                    str(error),
+                    {"receptor_flex_output_artifact_id": flex_output.artifact_id},
+                ) from error
         binding_site = self._binding_site_store.load_record(binding_site_id)
         if binding_site.receptor_id != receptor_id or binding_site.stale:
             raise self._input_error(
@@ -823,7 +975,13 @@ class AutoGridMapService:
                     "stale": binding_site.stale,
                 },
             )
-        return receptor_output, receptor_path, binding_site
+        return _GridReceptor(
+            record=receptor,
+            rigid_output=receptor_output,
+            rigid_path=receptor_path,
+            flex_output=flex_output,
+            flex_atom_types=flex_atom_types,
+        ), binding_site
 
     @staticmethod
     def _identity_key(
@@ -835,13 +993,15 @@ class AutoGridMapService:
         ligand_atom_types: tuple[str, ...],
         request: AutoGridMapSetRequest,
         installation: AutoGridInstallation,
+        flex_residues: tuple[ResidueLocator, ...] = (),
+        flex_atom_types: tuple[str, ...] = (),
     ) -> str:
         """Hash everything that changes the maps, and nothing that does not.
 
         `timeout_minutes` is deliberately excluded: it bounds how long Ankora
         waits, never what AutoGrid computes, so it must not fragment the cache.
         """
-        identity = {
+        identity: dict[str, object] = {
             "receptor_sha256": receptor_sha256,
             "box": binding_site.box.model_dump(mode="json"),
             "spacing_angstrom": geometry.spacing_angstrom,
@@ -854,6 +1014,15 @@ class AutoGridMapService:
             "autogrid_version": installation.version,
             "autogrid_sha256": installation.sha256,
         }
+        if flex_residues or flex_atom_types:
+            identity.update(
+                receptor_flex_mode=ReceptorFlexMode.SIDECHAIN_FLEX.value,
+                flex_residues=[
+                    item.model_dump(mode="json")
+                    for item in sorted(flex_residues, key=flex_residue_locator_key)
+                ],
+                flex_atom_types=list(flex_atom_types),
+            )
         canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -889,7 +1058,11 @@ class AutoGridMapService:
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(chunk)
-        if digest.hexdigest() != expected:
+        AutoGridMapService._require_hash(digest.hexdigest(), expected, path, label)
+
+    @staticmethod
+    def _require_hash(actual: str, expected: str, path: Path, label: str) -> None:
+        if actual != expected:
             raise AnkoraDomainError(
                 code="AUTOGRID_INPUT_HASH_MISMATCH",
                 stage=_STAGE,
@@ -897,6 +1070,21 @@ class AutoGridMapService:
                 status_code=422,
                 details={"path": path.name, "expected_sha256": expected},
             )
+
+    @staticmethod
+    def _split_hash_mismatch(
+        artifact: ReceptorOutputArtifact, expected: str | None
+    ) -> AnkoraDomainError:
+        return AutoGridMapService._input_error(
+            "AUTOGRID_INPUT_HASH_MISMATCH",
+            "The receptor split specification does not match its recorded artifact hash.",
+            {
+                "artifact_id": artifact.artifact_id,
+                "stage": artifact.stage.value,
+                "artifact_sha256": artifact.sha256,
+                "expected_sha256": expected,
+            },
+        )
 
     @staticmethod
     def _inconsistent_request(source: str, missing_field: str) -> AnkoraDomainError:

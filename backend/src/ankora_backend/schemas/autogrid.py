@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.receptors import ReceptorFlexMode, ResidueLocator
 from ankora_backend.schemas.warnings import StructuredWarning
 
 
@@ -92,6 +93,8 @@ class AutoGridPreflight(BaseModel):
     compatible_count: int = Field(ge=1)
     incompatible_count: int = Field(ge=0)
     ligands: list[AutoGridLigandPreflightRow] = Field(default_factory=list)
+    flex_atom_types: list[str] = Field(default_factory=list)
+    ligand_only_atom_types: list[str] | None = None
 
 
 class AutoGridExecutionEvidence(BaseModel):
@@ -157,6 +160,11 @@ class AutoGridMapSetRecord(BaseModel):
     artifacts: list[AutoGridMapArtifact] = Field(min_length=1)
     warnings: list[StructuredWarning] = Field(default_factory=list)
     provenance: ProvenanceEvent
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
+    flex_atom_types: list[str] = Field(default_factory=list)
 
 
 class AutoGridMapSetSummary(BaseModel):
