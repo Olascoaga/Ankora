@@ -261,6 +261,17 @@ class VinaDockingService:
     def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
         return self._docking_store.pose_flex_content_path(job_id, artifact_id)
 
+    def get_refinement(self, refinement_id: str) -> VinaLocalRefinementRecord:
+        return self._docking_store.load_refinement_record(refinement_id)
+
+    def refinement_pose_content_path(self, refinement_id: str, artifact_id: str) -> Path:
+        return self._docking_store.refinement_pose_content_path(refinement_id, artifact_id)
+
+    def refinement_pose_flex_content_path(
+        self, refinement_id: str, artifact_id: str
+    ) -> Path | None:
+        return self._docking_store.refinement_pose_flex_content_path(refinement_id, artifact_id)
+
     def refine_pose_local_only(
         self, request: VinaLocalRefinementRequest
     ) -> VinaLocalRefinementRecord:

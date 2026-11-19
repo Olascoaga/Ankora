@@ -873,6 +873,12 @@ class GninaScreeningStore:
             or job.box != BindingBox.model_validate(summary["box"])
             or job.receptor_output_artifact_id != str(summary["receptor_output_artifact_id"])
             or job.receptor_sha256 != str(summary["receptor_sha256"])
+            or job.receptor_flex_mode.value != summary.get("receptor_flex_mode", "rigid")
+            or job.receptor_flex_output_artifact_id
+            != summary.get("receptor_flex_output_artifact_id")
+            or job.receptor_flex_sha256 != summary.get("receptor_flex_sha256")
+            or [item.model_dump(mode="json") for item in job.flex_residues]
+            != summary.get("flex_residues", [])
             or job.tool != GninaToolIdentity.model_validate(summary["tool"])
             or job.ligand_sha256 != entry.ligand_sha256
             or job.conformer_sha256 != entry.conformer_sha256

@@ -9,7 +9,11 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
-from ankora_backend.schemas.gnina import GninaJobRecord
+from ankora_backend.schemas.gnina import (
+    GninaJobRecord,
+    GninaLocalRefinementRecord,
+    GninaPoseArtifact,
+)
 
 
 class GninaJobStore:
@@ -73,19 +77,24 @@ class GninaJobStore:
         return records
 
     def job_directory(self, job_id: str) -> Path:
+        return self._result_directory("gnina_jobs", job_id)
+
+    def _result_directory(self, category: str, job_id: str) -> Path:
         try:
             normalized = str(UUID(job_id))
         except (ValueError, AttributeError) as error:
             raise self._not_found(job_id) from error
-        directory = (self._project_root / "results" / "gnina_jobs" / normalized).resolve()
+        directory = (self._project_root / "results" / category / normalized).resolve()
         if self._project_root not in directory.parents:
             raise self._not_found(job_id)
         return directory
 
     def output_path(self, job_id: str, filename: str) -> Path:
+        return self._output_path(self.job_directory(job_id), job_id, filename)
+
+    def _output_path(self, directory: Path, job_id: str, filename: str) -> Path:
         if not filename or Path(filename).name != filename or filename in {".", ".."}:
             raise ValueError("A GNINA artifact filename must be a plain filename")
-        directory = self.job_directory(job_id)
         path = (directory / filename).resolve()
         if path.parent != directory:
             raise self._not_found(job_id)
@@ -98,24 +107,108 @@ class GninaJobStore:
         return path
 
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
-        record = self.load_job(job_id)
-        pose = next(
-            (item for item in record.poses if item.artifact.artifact_id == artifact_id), None
-        )
-        if pose is None:
-            raise self._not_found(job_id)
-        path = self.output_path(job_id, pose.artifact.filename)
+        artifact = self._job_pose(job_id, artifact_id)
+        path = self.output_path(job_id, artifact.filename)
         if not path.is_file():
             raise self._not_found(job_id)
-        if sha256(path.read_bytes()).hexdigest() != pose.artifact.sha256:
-            raise AnkoraDomainError(
-                code="GNINA_POSE_INTEGRITY_FAILED",
-                stage="gnina_storage",
-                message="The stored GNINA pose no longer matches its recorded hash.",
-                status_code=409,
-                details={"job_id": job_id, "artifact_id": artifact_id},
-            )
+        return self._verify_pose(path, artifact.sha256, job_id, artifact_id)
+
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        artifact = self._job_pose(job_id, artifact_id)
+        return self._flex_path(self.job_directory(job_id), job_id, artifact)
+
+    def _job_pose(self, job_id: str, artifact_id: str) -> GninaPoseArtifact:
+        for pose in self.load_job(job_id).poses:
+            if pose.artifact.artifact_id == artifact_id:
+                return pose.artifact
+        raise self._not_found(job_id)
+
+    def new_refinement_id(self) -> str:
+        return str(uuid4())
+
+    def create_refinement_dir(self, refinement_id: str) -> Path:
+        directory = self._result_directory("gnina_refinements", refinement_id)
+        directory.mkdir(parents=True, exist_ok=False)
+        return directory
+
+    def refinement_output_path(self, refinement_id: str, filename: str) -> Path:
+        directory = self._result_directory("gnina_refinements", refinement_id)
+        return self._output_path(directory, refinement_id, filename)
+
+    def write_refinement_artifact(self, refinement_id: str, filename: str, content: bytes) -> Path:
+        path = self.refinement_output_path(refinement_id, filename)
+        with path.open("xb") as stream:
+            stream.write(content)
         return path
+
+    def save_refinement(self, record: GninaLocalRefinementRecord) -> None:
+        data = record.model_dump_json(indent=2) + "\n"
+        with self._lock:
+            self.write_refinement_artifact(
+                record.refinement_id, "record.json", data.encode("utf-8")
+            )
+
+    def load_refinement(self, refinement_id: str) -> GninaLocalRefinementRecord:
+        with self._lock:
+            try:
+                raw = self.refinement_output_path(refinement_id, "record.json").read_bytes()
+            except FileNotFoundError as error:
+                raise self._not_found(refinement_id) from error
+        return GninaLocalRefinementRecord.model_validate_json(raw)
+
+    def refinement_pose_content_path(self, refinement_id: str, artifact_id: str) -> Path:
+        artifact = self._refinement_pose(refinement_id, artifact_id)
+        path = self.refinement_output_path(refinement_id, artifact.filename)
+        return self._verify_pose(path, artifact.sha256, refinement_id, artifact_id)
+
+    def refinement_pose_flex_content_path(
+        self, refinement_id: str, artifact_id: str
+    ) -> Path | None:
+        artifact = self._refinement_pose(refinement_id, artifact_id)
+        directory = self._result_directory("gnina_refinements", refinement_id)
+        return self._flex_path(directory, refinement_id, artifact)
+
+    def _refinement_pose(self, refinement_id: str, artifact_id: str) -> GninaPoseArtifact:
+        artifact = self.load_refinement(refinement_id).refined_pose
+        if artifact.artifact_id != artifact_id:
+            raise self._not_found(refinement_id)
+        return artifact
+
+    def _flex_path(
+        self, directory: Path, record_id: str, artifact: GninaPoseArtifact
+    ) -> Path | None:
+        if artifact.flex_filename is None and artifact.pose_flex_sidechains_sha256 is None:
+            return None
+        if artifact.flex_filename is None:
+            raise self._pose_integrity_failed(record_id, artifact.artifact_id)
+        path = self._output_path(directory, record_id, artifact.flex_filename)
+        return self._verify_pose(
+            path,
+            artifact.pose_flex_sidechains_sha256,
+            record_id,
+            artifact.artifact_id,
+        )
+
+    def _verify_pose(
+        self, path: Path, expected: str | None, record_id: str, artifact_id: str
+    ) -> Path:
+        try:
+            digest = sha256(path.read_bytes()).hexdigest()
+        except OSError as error:
+            raise self._pose_integrity_failed(record_id, artifact_id) from error
+        if digest != expected:
+            raise self._pose_integrity_failed(record_id, artifact_id)
+        return path
+
+    @staticmethod
+    def _pose_integrity_failed(record_id: str, artifact_id: str) -> AnkoraDomainError:
+        return AnkoraDomainError(
+            code="GNINA_POSE_INTEGRITY_FAILED",
+            stage="gnina_storage",
+            message="The stored GNINA pose artifact no longer matches its recorded hash.",
+            status_code=409,
+            details={"job_id": record_id, "artifact_id": artifact_id},
+        )
 
     def _require_stable_campaign_link(self, record: GninaJobRecord) -> None:
         """The campaign correlation is written once, at creation, and never edited.

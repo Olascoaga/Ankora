@@ -56,6 +56,7 @@ from ankora_backend.schemas.gnina import (
     GninaToolIdentity,
 )
 from ankora_backend.schemas.provenance import ProvenanceEvent
+from ankora_backend.schemas.receptors import ReceptorFlexMode, ResidueLocator
 from ankora_backend.schemas.warnings import StructuredWarning
 
 # An entry in one of these states will not change again without a new attempt.
@@ -311,6 +312,10 @@ class GninaScreeningCampaignRecord(BaseModel):
     selection: GninaScreeningSelection
     receptor_output_artifact_id: str = Field(min_length=1)
     receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
     box: BindingBox
     # One job at a time, recorded as a fact of the run rather than a setting.
     worker_count: int = Field(default=1, ge=1, le=1)

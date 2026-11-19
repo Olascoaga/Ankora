@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from ankora_backend.adapters.engines.gnina import parse_gnina_pdbqt
+from ankora_backend.adapters.engines.gnina import pair_gnina_flex_models, parse_gnina_pdbqt
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
@@ -73,6 +73,7 @@ from ankora_backend.schemas.gnina_screening import (
 )
 from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.receptors import ReceptorFlexMode
 from ankora_backend.schemas.redocking import RedockingRunRecord
 from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 from ankora_backend.services.export_destinations import (
@@ -174,6 +175,10 @@ class ExportedCampaign:
     ranking_metric: str | None = None
     cnn_model_identity: dict[str, Any] | None = None
     warnings: list[dict[str, Any]] = field(default_factory=list)
+    receptor_flex_mode: str | None = None
+    receptor_flex_sha256: str | None = None
+    flex_residues: list[dict[str, Any]] = field(default_factory=list)
+    flex_atom_types: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,41 +316,50 @@ def manifest(
     if bundle_identity is not None:
         payload["bundle"] = bundle_identity.manifest_payload()
     if source_files:
+        if source_kind == "gnina_screening":
+            source_notes = [
+                "These are copies of the exact bytes preserved by the "
+                "screening campaign, its pinned applied selection manifest, "
+                "and each attempted molecule's GNINA child job. Nothing was "
+                "reparsed, reformatted or regenerated.",
+                "`integrity` says what each hash establishes. "
+                "`matches_recorded_sha256` means the campaign or child job "
+                "recorded a SHA-256 for that file before this export and "
+                "the copied bytes still match it. "
+                "`export_time_digest_only` means no hash was recorded at "
+                "run time, so the digest identifies the copy in this bundle "
+                "and is not evidence of a check made at run time.",
+                "Per-molecule raw GNINA outputs, captured logs and child "
+                "job records live under `jobs/<gnina_job_id>/` and can be "
+                "compared against each child job's recorded execution and "
+                "published poses.",
+            ]
+        elif source_kind == "gnina_job":
+            source_notes = [
+                "These are copies of the exact bytes the job preserved. "
+                "Nothing was reparsed, reformatted or regenerated.",
+                "`integrity` says what each hash establishes. "
+                "`matches_recorded_sha256` means the job recorded a SHA-256 "
+                "for that file before this export and the copied bytes still "
+                "match it. `export_time_digest_only` means the job records no "
+                "hash for that file, so the digest identifies the copy in this "
+                "bundle and is not evidence of a check made at run time.",
+                "The raw engine output and captured logs are in the second "
+                "group. Their content can be compared against the stdout, "
+                "stderr and per-pose scores retained inside record.json.",
+            ]
+        else:
+            source_notes = [
+                "These are copies of the exact flexible side-chain pose "
+                "artifacts preserved by this sidechain_flex campaign. "
+                "Nothing was reparsed, reformatted or regenerated.",
+                "`matches_recorded_sha256` means the batch record held a "
+                "SHA-256 for that moved side-chain file before this export "
+                "and the copied bytes still match it.",
+            ]
         payload["source_files"] = {
             "files": source_files,
-            "notes": (
-                [
-                    "These are copies of the exact bytes preserved by the "
-                    "screening campaign, its pinned applied selection manifest, "
-                    "and each attempted molecule's GNINA child job. Nothing was "
-                    "reparsed, reformatted or regenerated.",
-                    "`integrity` says what each hash establishes. "
-                    "`matches_recorded_sha256` means the campaign or child job "
-                    "recorded a SHA-256 for that file before this export and "
-                    "the copied bytes still match it. "
-                    "`export_time_digest_only` means no hash was recorded at "
-                    "run time, so the digest identifies the copy in this bundle "
-                    "and is not evidence of a check made at run time.",
-                    "Per-molecule raw GNINA outputs, captured logs and child "
-                    "job records live under `jobs/<gnina_job_id>/` and can be "
-                    "compared against each child job's recorded execution and "
-                    "published poses.",
-                ]
-                if source_kind == "gnina_screening"
-                else [
-                    "These are copies of the exact bytes the job preserved. "
-                    "Nothing was reparsed, reformatted or regenerated.",
-                    "`integrity` says what each hash establishes. "
-                    "`matches_recorded_sha256` means the job recorded a SHA-256 "
-                    "for that file before this export and the copied bytes still "
-                    "match it. `export_time_digest_only` means the job records no "
-                    "hash for that file, so the digest identifies the copy in this "
-                    "bundle and is not evidence of a check made at run time.",
-                    "The raw engine output and captured logs are in the second "
-                    "group. Their content can be compared against the stdout, "
-                    "stderr and per-pose scores retained inside record.json.",
-                ]
-            ),
+            "notes": source_notes,
         }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
@@ -385,6 +399,31 @@ def _gnina_ensemble_and_refinement_notes(campaign: ExportedCampaign) -> list[str
     return extra
 
 
+def _flexibility_notes(campaign: ExportedCampaign) -> list[str]:
+    notes: list[str] = []
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        labels = [
+            f"{str(item.get('residue_name', '')).upper()} "
+            f"{item.get('chain_id', '')}:{item.get('sequence_number', '')}"
+            f"{item.get('insertion_code', '')}"
+            for item in campaign.flex_residues
+        ]
+        residue_clause = f" ({', '.join(labels)})" if labels else ""
+        notes.append(
+            f"Receptor side-chain flexibility (`sidechain_flex`) was enabled for "
+            f"{len(labels)} selected residue{'s' if len(labels) != 1 else ''}"
+            f"{residue_clause}; backbone coordinates and all non-selected residues "
+            "remained rigid, and moved side-chain artifacts are preserved beside each pose."
+        )
+    if campaign.engine == "AutoDock Vina" and campaign.parameters.get("scoring") == "vinardo":
+        notes.append(
+            "Vina evaluated the Vinardo empirical scoring function (--scoring vinardo) "
+            "rather than the default Vina function; Vinardo scores are not interchangeable "
+            "with default Vina scores."
+        )
+    return notes
+
+
 def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
     if campaign.row_kind == "pose":
         return [
@@ -411,6 +450,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "the one with the lowest recorded energy."
             ),
             *_gnina_ensemble_and_refinement_notes(campaign),
+            *_flexibility_notes(campaign),
             (
                 "All of these GNINA quantities are predictions of this engine "
                 "for this pose. None is an experimentally measured binding "
@@ -479,6 +519,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "recorded failure codes."
             ),
             *_gnina_ensemble_and_refinement_notes(campaign),
+            *_flexibility_notes(campaign),
         ]
         for warning in campaign.warnings:
             if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
@@ -501,6 +542,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
             "Values from different engines are on different scales and must "
             "not be merged, averaged, or combined into a consensus score."
         ),
+        *_flexibility_notes(campaign),
     ]
 
 
@@ -527,6 +569,16 @@ def readme(
                 f"CNN ensemble  {campaign.cnn_model_identity.get('selector')} "
                 f"({', '.join(members)})"
             )
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        labels = [
+            f"{str(item.get('residue_name', '')).upper()} "
+            f"{item.get('chain_id', '')}:{item.get('sequence_number', '')}"
+            f"{item.get('insertion_code', '')}"
+            for item in campaign.flex_residues
+        ]
+        lines.append(
+            f"FlexRes       sidechain_flex ({', '.join(labels) if labels else 'recorded'})"
+        )
     if bundle_identity is not None:
         lines += [
             f"Name          {bundle_identity.display_name or '(not assigned)'}",
@@ -686,6 +738,24 @@ def _common_row(entry: Any, rank: int) -> dict[str, Any]:
     }
 
 
+def _flex_export_fields(record: Any) -> dict[str, Any]:
+    mode = getattr(record, "receptor_flex_mode", ReceptorFlexMode.RIGID)
+    if mode is not ReceptorFlexMode.SIDECHAIN_FLEX:
+        return {}
+    return {
+        "receptor_flex_mode": mode.value,
+        "receptor_flex_sha256": getattr(record, "receptor_flex_sha256", None),
+        "flex_residues": [
+            item.model_dump(mode="json") for item in (getattr(record, "flex_residues", []) or [])
+        ],
+        "flex_atom_types": list(getattr(record, "flex_atom_types", []) or []),
+    }
+
+
+def _record_warnings(record: Any) -> list[dict[str, Any]]:
+    return [item.model_dump(mode="json") for item in (getattr(record, "warnings", []) or [])]
+
+
 def from_vina_batch(
     record: VinaBatchDockingRecord,
     *,
@@ -725,6 +795,8 @@ def from_vina_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=rows,
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -779,6 +851,8 @@ def from_autodock4_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=_autodock_rows(list(record.entries)),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -809,6 +883,8 @@ def from_autodock_gpu_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=_autodock_rows(list(record.entries)),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -878,6 +954,8 @@ def from_gnina_job(
             if record.cnn_model_identity is not None
             else None
         ),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -1060,6 +1138,7 @@ def from_gnina_screening(
             else None
         ),
         warnings=[warning.model_dump(mode="json") for warning in record.warnings],
+        **_flex_export_fields(record),
     )
 
 
@@ -1117,15 +1196,41 @@ def _gnina_job_artifacts(record: GninaJobRecord) -> list[_JobArtifact]:
             "the GNINA job record this bundle was built from",
         ),
     ]
-    artifacts += [
-        _JobArtifact(
-            pose.artifact.filename,
-            f"poses/{pose.artifact.filename}",
-            pose.artifact.sha256,
-            f"the published pose for mode {pose.mode}",
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        artifacts.extend(
+            [
+                _JobArtifact(
+                    "receptor_flex.pdbqt",
+                    "inputs/receptor_flex.pdbqt",
+                    record.receptor_flex_sha256,
+                    "the prepared flexible side-chain PDBQT GNINA was given",
+                ),
+                _JobArtifact(
+                    "raw_flex.pdb",
+                    "raw/raw_flex.pdb",
+                    None,
+                    "the unparsed flexible side-chain PDB GNINA wrote",
+                ),
+            ]
         )
-        for pose in record.poses
-    ]
+    for pose in record.poses:
+        artifacts.append(
+            _JobArtifact(
+                pose.artifact.filename,
+                f"poses/{pose.artifact.filename}",
+                pose.artifact.sha256,
+                f"the published pose for mode {pose.mode}",
+            )
+        )
+        if pose.artifact.flex_filename is not None:
+            artifacts.append(
+                _JobArtifact(
+                    pose.artifact.flex_filename,
+                    f"poses/{pose.artifact.flex_filename}",
+                    pose.artifact.pose_flex_sidechains_sha256,
+                    f"the preserved moved side chains for mode {pose.mode}",
+                )
+            )
     return artifacts
 
 
@@ -1418,6 +1523,27 @@ def _verify_gnina_source(record: GninaJobRecord, store: GninaJobStore) -> dict[s
         raise _source_incomplete(
             record.job_id, "raw_poses.pdbqt", "Raw output differs from published poses."
         )
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        try:
+            paired_flex = pair_gnina_flex_models(
+                raw,
+                gnina_flex_pdb_text=preserved["raw_flex.pdb"].decode("utf-8"),
+                meeko_flex_template_pdbqt=preserved["receptor_flex.pdbqt"].decode("utf-8"),
+            )
+        except (AnkoraDomainError, UnicodeDecodeError, ValueError) as error:
+            raise _source_incomplete(
+                record.job_id, "raw_flex.pdb", "The raw flexible side-chain output is invalid."
+            ) from error
+        if len(paired_flex) != len(record.poses) or any(
+            pose.artifact.flex_filename is None
+            or sha256(flex_bytes).hexdigest() != pose.artifact.pose_flex_sidechains_sha256
+            for flex_bytes, pose in zip(paired_flex, record.poses, strict=False)
+        ):
+            raise _source_incomplete(
+                record.job_id,
+                "raw_flex.pdb",
+                "Raw flexible side-chain output differs from published flex poses.",
+            )
     return preserved
 
 
@@ -1468,6 +1594,7 @@ class _VerifiedGninaScreening:
     state_bytes: bytes
     selection_bytes: bytes
     receptor_bytes: bytes
+    receptor_flex_bytes: bytes | None
     completed_jobs: dict[str, GninaJobRecord]
     completed_preserved: dict[str, dict[str, bytes]]
     failed_jobs: dict[str, GninaJobRecord]
@@ -1540,6 +1667,10 @@ def _verify_gnina_screening_source(
         or snapshot.box != record.box
         or snapshot.receptor_output_artifact_id != record.receptor_output_artifact_id
         or snapshot.receptor_sha256 != record.receptor_sha256
+        or snapshot.receptor_flex_mode != record.receptor_flex_mode
+        or snapshot.receptor_flex_output_artifact_id != record.receptor_flex_output_artifact_id
+        or snapshot.receptor_flex_sha256 != record.receptor_flex_sha256
+        or snapshot.flex_residues != record.flex_residues
         or len(snapshot.entries) != len(record.entries)
         or any(
             initial.ligand_id != final.ligand_id
@@ -1612,6 +1743,7 @@ def _verify_gnina_screening_source(
     failed_jobs: dict[str, GninaJobRecord] = {}
     failed_preserved: dict[str, dict[str, bytes]] = {}
     receptor_bytes: bytes | None = None
+    receptor_flex_bytes: bytes | None = None
 
     for entry in record.entries:
         if entry.status is DockingJobStatus.COMPLETED:
@@ -1630,12 +1762,21 @@ def _verify_gnina_screening_source(
                     "A completed screening entry's GNINA job could not be read.",
                 ) from error
             preserved_child = _verify_gnina_source(child_job, resolved_jobs)
-            for label, expected_hash, observed_hash in (
+            hash_checks: list[tuple[str, str | None, str | None]] = [
                 ("receptor.pdbqt", record.receptor_sha256, child_job.receptor_sha256),
                 ("ligand.pdbqt", entry.ligand_sha256, child_job.ligand_sha256),
                 ("conformer.sdf", entry.conformer_sha256, child_job.conformer_sha256),
                 ("gnina", record.tool.sha256, child_job.tool.sha256),
-            ):
+            ]
+            if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+                hash_checks.append(
+                    (
+                        "receptor_flex.pdbqt",
+                        record.receptor_flex_sha256,
+                        child_job.receptor_flex_sha256,
+                    )
+                )
+            for label, expected_hash, observed_hash in hash_checks:
                 if expected_hash != observed_hash:
                     raise AnkoraDomainError(
                         code="EXPORT_SOURCE_TAMPERED",
@@ -1673,6 +1814,27 @@ def _verify_gnina_screening_source(
                     message="Receptor bytes differ across campaign jobs; no bundle was written.",
                     details={"campaign_id": campaign_id, "job_id": verified_job.job_id},
                 )
+            if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+                child_flex = preserved_child.get("receptor_flex.pdbqt")
+                if child_flex is None:
+                    raise _screening_incomplete(
+                        campaign_id,
+                        "receptor_flex.pdbqt",
+                        "Flexible receptor bytes were missing from a completed child job.",
+                    )
+                if receptor_flex_bytes is None:
+                    receptor_flex_bytes = child_flex
+                elif child_flex != receptor_flex_bytes:
+                    raise AnkoraDomainError(
+                        code="EXPORT_SOURCE_TAMPERED",
+                        stage=_STAGE,
+                        status_code=409,
+                        message=(
+                            "Flexible receptor bytes differ across campaign jobs; "
+                            "no bundle was written."
+                        ),
+                        details={"campaign_id": campaign_id, "job_id": verified_job.job_id},
+                    )
             completed_jobs[entry.ligand_id] = verified_job
             completed_preserved[verified_job.job_id] = preserved_child
         elif entry.gnina_job_id is not None:
@@ -1697,7 +1859,7 @@ def _verify_gnina_screening_source(
                     "A failed screening entry's linked GNINA job belongs elsewhere.",
                 )
             failed_files: dict[str, bytes] = {"record.json": raw_record}
-            for optional_name in ("stdout.log", "stderr.log", "raw_poses.pdbqt"):
+            for optional_name in ("stdout.log", "stderr.log", "raw_poses.pdbqt", "raw_flex.pdb"):
                 with suppress(AnkoraDomainError, OSError, ValueError):
                     candidate = resolved_jobs.output_path(entry.gnina_job_id, optional_name)
                     if candidate.is_file():
@@ -1711,6 +1873,15 @@ def _verify_gnina_screening_source(
             "receptor.pdbqt",
             "Verified receptor PDBQT bytes were not available for this campaign.",
         )
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX and (
+        receptor_flex_bytes is None
+        or sha256(receptor_flex_bytes).hexdigest() != record.receptor_flex_sha256
+    ):
+        raise _screening_incomplete(
+            campaign_id,
+            "receptor_flex.pdbqt",
+            "Verified flexible side-chain PDBQT bytes were not available for this campaign.",
+        )
 
     return _VerifiedGninaScreening(
         record=record,
@@ -1718,6 +1889,7 @@ def _verify_gnina_screening_source(
         state_bytes=state_bytes,
         selection_bytes=selection_bytes,
         receptor_bytes=receptor_bytes,
+        receptor_flex_bytes=receptor_flex_bytes,
         completed_jobs=completed_jobs,
         completed_preserved=completed_preserved,
         failed_jobs=failed_jobs,
@@ -1796,6 +1968,18 @@ def collect_gnina_screening_source_files(
             description="the terminal GNINA campaign SQLite state database",
         ),
     ]
+    if verified.receptor_flex_bytes is not None:
+        carried.insert(
+            1,
+            _write_verified_file(
+                destination=destination,
+                relative_path="inputs/receptor_flex.pdbqt",
+                filename="receptor_flex.pdbqt",
+                content=verified.receptor_flex_bytes,
+                recorded_sha256=record.receptor_flex_sha256,
+                description="the prepared flexible side-chain PDBQT shared by this GNINA campaign",
+            ),
+        )
 
     for entry in record.entries:
         completed = verified.completed_jobs.get(entry.ligand_id)
@@ -1803,7 +1987,7 @@ def collect_gnina_screening_source_files(
             preserved = verified.completed_preserved[completed.job_id]
             prefix = f"jobs/{completed.job_id}"
             for artifact in _gnina_job_artifacts(completed):
-                if artifact.filename == "receptor.pdbqt":
+                if artifact.filename in {"receptor.pdbqt", "receptor_flex.pdbqt"}:
                     # Shared across the campaign and already written once under inputs/.
                     continue
                 carried.append(
@@ -1832,7 +2016,7 @@ def collect_gnina_screening_source_files(
                     description=f"the failed GNINA child job record ({entry.ligand_id})",
                 )
             )
-            for optional_name in ("raw_poses.pdbqt", "stdout.log", "stderr.log"):
+            for optional_name in ("raw_poses.pdbqt", "raw_flex.pdb", "stdout.log", "stderr.log"):
                 if optional_name in failed_files:
                     carried.append(
                         _write_verified_file(
@@ -2096,6 +2280,12 @@ class CampaignExportService:
                 verified=verified_screening,
                 export_directory=directory,
             )
+        elif campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+            source_files = self._collect_batch_flex_source_files(
+                source_kind=source_kind,
+                batch_id=batch_id,
+                export_directory=directory,
+            )
 
         files = {
             "results.csv": results_csv(campaign),
@@ -2182,6 +2372,73 @@ class CampaignExportService:
         if not path.is_file():
             raise self._not_found(export_id, filename)
         return path
+
+    def _collect_batch_flex_source_files(
+        self,
+        *,
+        source_kind: str,
+        batch_id: str,
+        export_directory: Path,
+    ) -> list[dict[str, Any]]:
+        """Preserve per-pose moved side-chain artifacts for sidechain_flex batches."""
+        destination = export_directory.resolve()
+        carried: list[dict[str, Any]] = []
+        if source_kind == "vina_batch":
+            batch: Any = self._docking_store.load_batch_record(batch_id)
+            resolver: Any = self._docking_store.batch_pose_flex_content_path
+            entries: list[Any] = list(batch.entries)
+            pose_attr = "poses"
+        elif source_kind == "autodock4_batch":
+            batch = self._autodock4_store.load_batch(batch_id)
+            resolver = self._autodock4_store.batch_pose_flex_content_path
+            entries = list(batch.entries)
+            pose_attr = "runs"
+        elif source_kind == "autodock_gpu_batch":
+            batch = self._autodock_gpu_store.load_batch(batch_id)
+            resolver = self._autodock_gpu_store.batch_pose_flex_content_path
+            entries = list(batch.entries)
+            pose_attr = "runs"
+        else:
+            return carried
+
+        for entry in entries:
+            for item in getattr(entry, pose_attr, []):
+                artifact = item.artifact
+                if artifact.flex_filename is None or artifact.pose_flex_sidechains_sha256 is None:
+                    continue
+                flex_path = resolver(batch_id, entry.ligand_id, artifact.artifact_id)
+                if flex_path is None or not flex_path.is_file():
+                    continue
+                content = flex_path.read_bytes()
+                if sha256(content).hexdigest() != artifact.pose_flex_sidechains_sha256:
+                    raise AnkoraDomainError(
+                        code="EXPORT_SOURCE_TAMPERED",
+                        stage=_STAGE,
+                        status_code=409,
+                        message=(
+                            "A flexible side-chain pose artifact differs from its recorded "
+                            "hash; no bundle was written."
+                        ),
+                        details={
+                            "batch_id": batch_id,
+                            "ligand_id": entry.ligand_id,
+                            "filename": artifact.flex_filename,
+                        },
+                    )
+                carried.append(
+                    _write_verified_file(
+                        destination=destination,
+                        relative_path=f"poses/{entry.ligand_id}/{artifact.flex_filename}",
+                        filename=artifact.flex_filename,
+                        content=content,
+                        recorded_sha256=artifact.pose_flex_sidechains_sha256,
+                        description=(
+                            f"preserved moved side chains for {entry.ligand_id} "
+                            f"({artifact.flex_filename})"
+                        ),
+                    )
+                )
+        return carried
 
     def _load(self, source_kind: str, batch_id: str) -> ExportedCampaign:
         if source_kind == "vina_batch":
@@ -2303,6 +2560,12 @@ def _campaign_inputs(campaign: ExportedCampaign) -> dict[str, Any]:
         "map_set_id": campaign.map_set_id,
         "map_set_identity_key": campaign.map_set_identity_key,
     }
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        payload["receptor_flex_mode"] = campaign.receptor_flex_mode
+        payload["receptor_flex_pdbqt_sha256"] = campaign.receptor_flex_sha256
+        payload["flex_residues"] = campaign.flex_residues
+        if campaign.flex_atom_types:
+            payload["flex_atom_types"] = campaign.flex_atom_types
     if campaign.ligand_id is not None:
         payload["ligand_id"] = campaign.ligand_id
     for key, value in (

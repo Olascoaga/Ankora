@@ -322,6 +322,54 @@ class MethodsReportService:
             return _Verified(
                 gap=("a prepared receptor whose stored bytes still match the hash GNINA recorded")
             )
+        if _text(getattr(job, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+            flex_id = getattr(job, "receptor_flex_output_artifact_id", None)
+            flex_sha = getattr(job, "receptor_flex_sha256", None)
+            flex_output = next(
+                (
+                    item
+                    for item in getattr(receptor, "outputs", [])
+                    if item.artifact_id == flex_id
+                ),
+                None,
+            )
+            if flex_output is None or not flex_sha:
+                return _Verified(
+                    gap=(
+                        "the prepared flexible side-chain artifact GNINA was given, "
+                        "in the receptor record"
+                    )
+                )
+            flex_stored = _stored_digest(
+                self._receptors.content_path, job.request.receptor_id, flex_output.artifact_id
+            )
+            if flex_stored is None:
+                return _Verified(
+                    gap=(
+                        "readable stored bytes for the flexible side-chain receptor "
+                        "GNINA was given"
+                    )
+                )
+            if flex_stored != flex_sha or flex_output.sha256 != flex_sha:
+                return _Verified(
+                    gap=(
+                        "a flexible side-chain receptor whose stored bytes still match "
+                        "the hash GNINA recorded"
+                    )
+                )
+            flex_spec = getattr(receptor, "flex_spec", None)
+            if (
+                flex_spec is None
+                or _text(getattr(flex_spec, "mode", "rigid")) != "sidechain_flex"
+                or getattr(flex_spec, "receptor_rigid_sha256", None) != job.receptor_sha256
+                or getattr(flex_spec, "receptor_flex_sha256", None) != flex_sha
+            ):
+                return _Verified(
+                    gap=(
+                        "a receptor flexibility specification matching the split PDBQT "
+                        "hashes GNINA recorded"
+                    )
+                )
         return _Verified(record=receptor)
 
     def _gnina_ligand_preparation(self, job: Any) -> "_Verified":
@@ -378,10 +426,20 @@ class MethodsReportService:
                 f"so the preparation is not described: {draft.missing(receptor.gap or '')}\n"
             )
             return
-        draft.say(
-            "The receptor GNINA received is the prepared PDBQT identified by SHA-256 "
-            f"{job.receptor_sha256}, which still matches the stored artifact."
-        )
+        if (
+            _text(getattr(job, "receptor_flex_mode", "rigid")) == "sidechain_flex"
+            and getattr(job, "receptor_flex_sha256", None)
+        ):
+            draft.say(
+                "The receptor GNINA received is the split prepared PDBQT pair identified by "
+                f"rigid-frame SHA-256 {job.receptor_sha256} and flexible side-chain SHA-256 "
+                f"{job.receptor_flex_sha256}, both of which still match their stored artifacts."
+            )
+        else:
+            draft.say(
+                "The receptor GNINA received is the prepared PDBQT identified by SHA-256 "
+                f"{job.receptor_sha256}, which still matches the stored artifact."
+            )
         self._protein_prose(draft, receptor.record)
 
     def _gnina_site(
@@ -496,25 +554,23 @@ class MethodsReportService:
             f"recorded ({job.ligand_sha256} and {job.conformer_sha256})."
         )
         draft.say(_single_preparation_sentence(protocol))
-        _chemical_state_prose(
-            draft,
-            _PreparationSet(
-                items=[
-                    _PreparedLigand(
-                        ligand_id=job.request.ligand_id,
-                        preparation_id=job.request.ligand_preparation_id,
-                        conformer=conformer,
-                        pdbqt=pdbqt,
-                        protocol=protocol,
-                        state_lineage=lineage,
-                    )
-                ],
-                total_entries=1,
-                entries_without_preparation=0,
-                unavailable_preparations=0,
-            ),
-            single=True,
+        prepared_set = _PreparationSet(
+            items=[
+                _PreparedLigand(
+                    ligand_id=job.request.ligand_id,
+                    preparation_id=job.request.ligand_preparation_id,
+                    conformer=conformer,
+                    pdbqt=pdbqt,
+                    protocol=protocol,
+                    state_lineage=lineage,
+                )
+            ],
+            total_entries=1,
+            entries_without_preparation=0,
+            unavailable_preparations=0,
         )
+        _chemical_state_prose(draft, prepared_set, single=True)
+        _ligand_flexibility_prose(draft, prepared_set, single=True)
         draft.say("")
 
     def _gnina_docking(
@@ -591,6 +647,13 @@ class MethodsReportService:
                 "prepared PDBQT files with both hydrogen addition and hydrogen "
                 "stripping disabled, so the engine would neither add nor remove "
                 "hydrogens from the prepared inputs."
+            )
+        if _text(getattr(job, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+            _gnina_flex_docking_prose(
+                draft,
+                getattr(job, "flex_residues", ()),
+                executed=executed,
+                plural=False,
             )
         # Only claimable once both inputs were verified against their stored bytes;
         # otherwise Ankora does not know which protonation the engine received.
@@ -790,11 +853,22 @@ class MethodsReportService:
                 f"so the preparation is not described: {draft.missing(receptor.gap or '')}\n"
             )
             return
-        draft.say(
-            "The receptor GNINA received across this screening campaign is the prepared "
-            f"PDBQT identified by SHA-256 {campaign.receptor_sha256}, which still matches "
-            "the stored artifact."
-        )
+        if (
+            _text(getattr(campaign, "receptor_flex_mode", "rigid")) == "sidechain_flex"
+            and getattr(campaign, "receptor_flex_sha256", None)
+        ):
+            draft.say(
+                "The receptor GNINA received across this screening campaign is the split "
+                f"prepared PDBQT pair identified by rigid-frame SHA-256 {campaign.receptor_sha256} "
+                f"and flexible side-chain SHA-256 {campaign.receptor_flex_sha256}, both of which "
+                "still match their stored artifacts."
+            )
+        else:
+            draft.say(
+                "The receptor GNINA received across this screening campaign is the prepared "
+                f"PDBQT identified by SHA-256 {campaign.receptor_sha256}, which still matches "
+                "the stored artifact."
+            )
         self._protein_prose(draft, receptor.record)
 
     def _gnina_screening_ligands(self, draft: _Draft, campaign: Any) -> bool:
@@ -933,16 +1007,14 @@ class MethodsReportService:
                     f"{_protocol_description(protocol)}."
                 )
 
-        _chemical_state_prose(
-            draft,
-            _PreparationSet(
-                items=verified_items,
-                total_entries=len(verified_items),
-                entries_without_preparation=0,
-                unavailable_preparations=0,
-            ),
-            single=False,
+        verified_set = _PreparationSet(
+            items=verified_items,
+            total_entries=len(verified_items),
+            entries_without_preparation=0,
+            unavailable_preparations=0,
         )
+        _chemical_state_prose(draft, verified_set, single=False)
+        _ligand_flexibility_prose(draft, verified_set, single=False)
         return unverified_count == 0
 
     def _gnina_screening_docking(
@@ -1041,6 +1113,13 @@ class MethodsReportService:
                 "prepared PDBQT files with both hydrogen addition and hydrogen "
                 "stripping disabled, so the engine would neither add nor remove "
                 "hydrogens from the prepared inputs."
+            )
+        if _text(getattr(campaign, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+            _gnina_flex_docking_prose(
+                draft,
+                getattr(campaign, "flex_residues", ()),
+                executed=executed,
+                plural=True,
             )
         if receptor_verified and ligands_verified:
             draft.say(
@@ -1455,13 +1534,50 @@ class MethodsReportService:
                 f"Protonation of the receptor was {draft.missing('receptor protonation record')}."
             )
 
-        pdbqt = events.get("receptor_pdbqt_generated")
+        pdbqt = events.get("receptor_pdbqt_generated") or events.get(
+            "receptor_flex_pdbqt_generated"
+        )
+        flex_spec = getattr(receptor, "flex_spec", None)
         if pdbqt is not None:
             draft.tool(pdbqt.tool.name, pdbqt.tool.version, "receptor PDBQT conversion")
-            draft.say(
-                "The prepared receptor was converted to PDBQT with "
-                f"{pdbqt.tool.name} {pdbqt.tool.version}."
-            )
+            if (
+                flex_spec is not None
+                and _text(getattr(flex_spec, "mode", "rigid")) == "sidechain_flex"
+            ):
+                labels = [_format_residue_locator(item) for item in flex_spec.flex_residues]
+                chi_count = int(getattr(flex_spec, "added_chi_torsion_count", 0))
+                draft.say(
+                    "The prepared receptor was split into rigid and flexible side-chain "
+                    f"PDBQT artifacts with {pdbqt.tool.name} {pdbqt.tool.version} "
+                    f"(`sidechain_flex` mode; {len(labels)} flexible residue"
+                    f"{'s' if len(labels) != 1 else ''}: {', '.join(labels)}; "
+                    f"{chi_count} added side-chain chi torsion"
+                    f"{'s' if chi_count != 1 else ''})."
+                )
+                draft.say(
+                    "The immutable split outputs are identified by rigid-frame SHA-256 "
+                    f"{flex_spec.receptor_rigid_sha256} and flexible side-chain SHA-256 "
+                    f"{flex_spec.receptor_flex_sha256}. Backbone coordinates and all other "
+                    "receptor residues remained rigid; this bounded rotamer flexibility does "
+                    "not model backbone rearrangement or loop motion."
+                )
+                warnings = getattr(receptor, "warnings", ()) or ()
+                has_dof_warning = any(
+                    _text(getattr(warning, "code", "")) == "DOCKING_FLEXRES_DOF_HIGH"
+                    for warning in warnings
+                ) or bool(getattr(flex_spec, "high_dof_warning_required", False))
+                if has_dof_warning:
+                    draft.say(
+                        "Flexibility DOF note (`DOCKING_FLEXRES_DOF_HIGH`): the selected "
+                        "side-chain set exceeded Ankora's recommended threshold (>4 flexible "
+                        "residues or >12 added chi torsions), increasing search-space "
+                        "dimensionality and sampling variance."
+                    )
+            else:
+                draft.say(
+                    "The prepared receptor was converted to PDBQT with "
+                    f"{pdbqt.tool.name} {pdbqt.tool.version}."
+                )
         draft.say("")
 
     def _site(self, draft: _Draft, entry: CatalogEntry) -> None:
@@ -1554,6 +1670,22 @@ class MethodsReportService:
                     f"({geometry.npts[0]} × {geometry.npts[1]} × "
                     f"{geometry.npts[2]} intervals)."
                 )
+                if _text(getattr(maps, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+                    flex_types = list(getattr(maps, "flex_atom_types", []) or [])
+                    union_types = list(getattr(maps.preflight, "ligand_atom_types", []) or [])
+                    flex_labels = [
+                        _format_residue_locator(item)
+                        for item in (getattr(maps, "flex_residues", []) or [])
+                    ]
+                    draft.say(
+                        "Because the receptor uses `sidechain_flex` mode "
+                        f"({', '.join(flex_labels)}; flexible side-chain SHA-256 "
+                        f"{getattr(maps, 'receptor_flex_sha256', '')}), AutoGrid4 "
+                        "computed maps against the rigid receptor frame for the union of "
+                        f"ligand and flexible side-chain atom types "
+                        f"({', '.join(union_types)}; flexible side-chain types: "
+                        f"{', '.join(flex_types)})."
+                    )
             else:
                 draft.say(
                     "The grid map set used for this campaign is "
@@ -1709,10 +1841,14 @@ class MethodsReportService:
         else:
             _batch_preparation_prose(draft, preparations)
         _chemical_state_prose(draft, preparations, single=entry.library_id is None)
+        _ligand_flexibility_prose(draft, preparations, single=entry.library_id is None)
 
     def _docking_section(self, draft: _Draft, entry: CatalogEntry) -> None:
         draft.say("## Molecular docking\n")
-        parameters = self._parameters(entry)
+        record = self._record(entry)
+        parameters = (
+            dict(record.request.parameters.model_dump(mode="json")) if record is not None else None
+        )
         if parameters is None:
             draft.say(
                 "The docking parameters for this campaign are "
@@ -1750,6 +1886,23 @@ class MethodsReportService:
                 f"{parameters.get('energy_range_kcal_mol')} kcal mol⁻¹. "
                 f"The random seed was fixed at {parameters.get('seed')}."
             )
+            if parameters.get("scoring") == "vinardo":
+                draft.say(
+                    "Vina evaluated the Vinardo empirical scoring function "
+                    "(`--scoring vinardo`, kcal mol⁻¹), whose energy scale is distinct "
+                    "from the default Vina scoring function and must not be pooled with it."
+                )
+            if _text(getattr(record, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+                flex_labels = [
+                    _format_residue_locator(item)
+                    for item in (getattr(record, "flex_residues", []) or [])
+                ]
+                draft.say(
+                    "Explicit flexible receptor side chains were supplied to Vina via "
+                    f"`--flex` ({', '.join(flex_labels)}); moved side-chain coordinates "
+                    "were split from each output model and preserved alongside the "
+                    "corresponding ligand pose."
+                )
         else:
             runs = parameters.get("runs", parameters.get("ga_runs"))
             population = parameters.get("population_size", parameters.get("ga_population_size"))
@@ -1774,6 +1927,22 @@ class MethodsReportService:
                 "tolerance of "
                 f"{parameters.get('cluster_rmsd_tolerance_angstrom')} Å."
             )
+            if _text(getattr(record, "receptor_flex_mode", "rigid")) == "sidechain_flex":
+                flex_labels = [
+                    _format_residue_locator(item)
+                    for item in (getattr(record, "flex_residues", []) or [])
+                ]
+                flag = (
+                    "`--flexres`"
+                    if entry.engine_key in (AUTODOCK_GPU_JOB, AUTODOCK_GPU_BATCH)
+                    else "the DPF `flexres` directive"
+                )
+                draft.say(
+                    f"Explicit flexible receptor side chains were enabled via {flag} "
+                    f"({', '.join(flex_labels)}) against the union AutoGrid4 affinity "
+                    "maps; per-run moved side-chain conformations were separated and "
+                    "preserved alongside each ligand pose."
+                )
         if entry.executable_sha256:
             draft.say(
                 f"The exact executable used is identified by SHA-256 {entry.executable_sha256}."
@@ -1784,11 +1953,11 @@ class MethodsReportService:
 
     def _outcome(self, draft: _Draft, entry: CatalogEntry) -> None:
         draft.say("## Results and reproducibility\n")
-        value = (
-            "Vina score"
-            if entry.scoring_family is ScoringFamily.VINA
-            else "AutoDock4 binding energy"
-        )
+        if entry.scoring_family is ScoringFamily.VINA:
+            parameters = self._parameters(entry) or {}
+            value = "Vinardo score" if parameters.get("scoring") == "vinardo" else "Vina score"
+        else:
+            value = "AutoDock4 binding energy"
         draft.say(
             f"{entry.selected_count} compounds were submitted, of which "
             f"{entry.succeeded_count} produced poses and {entry.failed_count} "
@@ -2644,3 +2813,141 @@ def _gnina_cnn_model_prose(parameters: Any, model_identity: Any) -> str:
         f"scoring mode `{parameters.cnn_scoring}` with the engine's built-in "
         f"`{parameters.cnn_model}` model"
     )
+
+
+def _format_residue_locator(residue: Any) -> str:
+    insertion = str(getattr(residue, "insertion_code", "") or "")
+    chain = str(getattr(residue, "chain_id", "") or "")
+    name = str(getattr(residue, "residue_name", "") or "").upper()
+    seq = getattr(residue, "sequence_number", "")
+    return f"{name} {chain}:{seq}{insertion}"
+
+
+def _gnina_flex_docking_prose(
+    draft: _Draft,
+    residues: Any,
+    *,
+    executed: bool,
+    plural: bool,
+) -> None:
+    labels = [_format_residue_locator(item) for item in (residues or ())]
+    residue_clause = f" ({', '.join(labels)})" if labels else ""
+    pose_noun = "each docked ligand pose" if plural else "each ligand pose"
+    if executed:
+        draft.say(
+            f"Explicit flexible receptor side chains{residue_clause} were supplied via "
+            "`--flex` and emitted via `--out_flex` as a multi-model PDB; moved side-chain "
+            f"models were paired by 0-based ordinal index with {pose_noun} and re-injected "
+            "into the Meeko flexible-residue PDBQT template so atom types, partial charges, "
+            "and branch hierarchy remained intact."
+        )
+    else:
+        draft.say(
+            f"The configuration supplies explicit flexible receptor side chains{residue_clause} "
+            "via `--flex` with multi-model PDB output (`--out_flex`), paired by 0-based "
+            f"ordinal index with {pose_noun} and re-injected into the Meeko flexible-residue "
+            "PDBQT template."
+        )
+
+
+def _ligand_flexibility_prose(
+    draft: _Draft,
+    preparations: _PreparationSet,
+    *,
+    single: bool,
+) -> None:
+    specs = [getattr(item.pdbqt, "flexibility", None) for item in preparations.items]
+    torsdofs = [
+        int(torsdof)
+        for item in preparations.items
+        if (torsdof := getattr(item.pdbqt, "effective_torsdof", None)) is not None
+    ]
+    if all(spec is None for spec in specs) and not torsdofs:
+        return
+
+    recorded_specs = [spec for spec in specs if spec is not None]
+    if recorded_specs:
+        policies = sorted({_text(spec.macrocycle_policy) for spec in recorded_specs})
+        amide_flags = sorted({bool(spec.flexible_amides) for spec in recorded_specs})
+        smarts_rules: list[str] = []
+        for spec in recorded_specs:
+            for smarts, pair in zip(
+                spec.rigidified_smarts, spec.rigidified_bond_indices, strict=False
+            ):
+                label = f"`{smarts}` (atoms {pair[0]}-{pair[1]})"
+                if label not in smarts_rules:
+                    smarts_rules.append(label)
+
+        clauses: list[str] = []
+        if policies == ["rigid_input_conformation"]:
+            clauses.append(
+                "macrocycles held rigid in their input conformer geometry "
+                "(`rigid_input_conformation`; ring conformations were not sampled)"
+            )
+        elif policies == ["flexible_pseudoatoms"]:
+            clauses.append("flexible macrocycle ring closure (`flexible_pseudoatoms`)")
+        else:
+            clauses.append(f"macrocycle policies {', '.join(f'`{p}`' for p in policies)}")
+
+        if amide_flags == [True]:
+            clauses.append(
+                "rotatable amide bonds enabled (`--flexible_amides`; unconstrained amide "
+                "torsion sampling can populate non-planar amide geometries)"
+            )
+        elif amide_flags == [False]:
+            clauses.append("rigid amide bonds")
+        else:
+            clauses.append("mixed amide flexibility settings across ligands")
+
+        if smarts_rules:
+            clauses.append(f"SMARTS bond rigidification rules: {', '.join(smarts_rules)}")
+
+        subject = "Ligand flexibility was explicitly configured with" if single else (
+            "Ligand flexibility across prepared compounds was explicitly configured with"
+        )
+        draft.say(f"{subject} {'; '.join(clauses)}.")
+
+    unmatched_smarts: list[str] = []
+    matched_bond_total = 0
+    outcome_count = 0
+    for item in preparations.items:
+        for outcome in getattr(item.pdbqt, "smarts_rigidification_outcomes", ()) or ():
+            outcome_count += 1
+            if getattr(outcome, "applied", False):
+                matched_bond_total += int(getattr(outcome, "match_count", 0))
+            else:
+                pattern = str(getattr(outcome, "smarts", ""))
+                if pattern and pattern not in unmatched_smarts:
+                    unmatched_smarts.append(pattern)
+    if outcome_count:
+        detail = (
+            f"SMARTS rigidification pre-checks recorded {matched_bond_total} matched bond "
+            f"instance{'s' if matched_bond_total != 1 else ''} across {outcome_count} "
+            f"rule evaluation{'s' if outcome_count != 1 else ''}."
+        )
+        if unmatched_smarts:
+            patterns = ", ".join(f"`{p}`" for p in unmatched_smarts)
+            detail += (
+                f" Warning (`LIG_RIGIDIFY_SMARTS_NO_MATCH`): pattern"
+                f"{'s' if len(unmatched_smarts) != 1 else ''} {patterns} matched zero "
+                "bonds in at least one ligand and did not rigidify any torsion there."
+            )
+        draft.say(detail)
+
+    if torsdofs:
+        if single or min(torsdofs) == max(torsdofs):
+            count = torsdofs[0]
+            subject = (
+                "The prepared ligand PDBQT recorded"
+                if single
+                else "Each prepared ligand PDBQT recorded"
+            )
+            draft.say(
+                f"{subject} an effective `TORSDOF` of {count} active rotatable "
+                f"torsion{'s' if count != 1 else ''}."
+            )
+        else:
+            draft.say(
+                "Prepared ligand PDBQTs recorded effective `TORSDOF` values ranging "
+                f"from {min(torsdofs)} to {max(torsdofs)} active rotatable torsions."
+            )

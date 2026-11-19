@@ -4,6 +4,7 @@ import json
 import os
 import threading
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -341,6 +342,40 @@ class DockingArtifactStore:
         except FileNotFoundError as error:
             raise self._not_found(refinement_id) from error
         return VinaLocalRefinementRecord.model_validate_json(raw)
+
+    def refinement_pose_content_path(self, refinement_id: str, artifact_id: str) -> Path:
+        pose = self.load_refinement_record(refinement_id).refined_pose
+        if pose.artifact_id != artifact_id:
+            raise self._not_found(refinement_id, artifact_id)
+        return self._verified_refinement_path(refinement_id, pose.filename, pose.sha256)
+
+    def refinement_pose_flex_content_path(
+        self, refinement_id: str, artifact_id: str
+    ) -> Path | None:
+        pose = self.load_refinement_record(refinement_id).refined_pose
+        if pose.artifact_id != artifact_id:
+            raise self._not_found(refinement_id, artifact_id)
+        if pose.flex_filename is None:
+            return None
+        return self._verified_refinement_path(
+            refinement_id, pose.flex_filename, pose.pose_flex_sidechains_sha256
+        )
+
+    def _verified_refinement_path(
+        self, refinement_id: str, filename: str, digest: str | None
+    ) -> Path:
+        path = self.refinement_output_path(refinement_id, filename)
+        if path.resolve().parent != path.parent or not path.is_file():
+            raise self._not_found(refinement_id)
+        if sha256(path.read_bytes()).hexdigest() != digest:
+            raise AnkoraDomainError(
+                code="DOCKING_INPUT_HASH_MISMATCH",
+                stage="vina_local_refinement",
+                message="The refinement pose no longer matches its recorded hash.",
+                status_code=409,
+                details={"refinement_id": refinement_id, "filename": filename},
+            )
+        return path
 
     def _refinement_dir(self, refinement_id: str) -> Path:
         try:
