@@ -2,6 +2,40 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M2`: Out-of-Sample Protocol Calibration & Cross-Engine `--score_only` (`codex/v0.2-dev`) - 2026-11-19
+
+- **Cross-engine `--score_only` rescoring (`M2a`):**
+  add read-only, in-place pose evaluation adapters for **AutoDock Vina `1.2.7`**
+  (`vina`, `vinardo`, `ad4 --maps`), canonical **AutoDock4 `4.2.6` `epdb`**
+  (rigid and `flexres`, parsing cross-OS 2/3-digit exponents), and Linux
+  **GNINA `1.3.3`** (`CNNscore`, `CNNaffinity`, `CNN_VS`, `minimizedAffinity`,
+  optional `CNNvariance`), orchestrated by `PoseRescoringService` with fail-closed
+  `E4`/`E7` context checks, immutable staging-copy header cleanup, and Gate 0 `F4`
+  `unbound_reference_shifted` provenance. Frozen `v0.1` `adapters/engines/vina.py`
+  remains byte-identical to `v0.1.0-beta.2` (`36f1c0e`).
+- **Out-of-sample protocol calibration engine (`M2b`, `ADR-031` §3):**
+  implement `ProtocolCalibrationService` and create-only `CalibrationArtifactStore`
+  (`split.json`, `selection.json`, `confirmation.json`) with parent + Bemis–Murcko
+  scaffold grouped splits, 6-property physicochemical decoy bias audit (SMD + KS),
+  tie-aware `BEDROC20` (primary), `EF1%` (with small-sample caution), `ROC-AUC`,
+  `PR-AUC`, denominator-invariant active-vs-inactive failure census, paired parent
+  bootstrap (`2,000` replicates), deterministic `1-SE` parsimony rule favoring
+  simpler/rigid protocols, single-use Confirmation unlock, and verbatim null
+  verdict `"Insufficient evidence to prefer over baseline"`.
+- **HTTP API, `MethodsReport`, & Desktop UI (`M2c`):**
+  expose 6 localhost endpoints (`/api/v1/calibrations*` and
+  `/api/v1/rescoring/score-only`), add `render_calibration_methods(...)` in
+  `MethodsReportService` (preserving all `v0.1` `render(catalog_id)` prose),
+  add `ProtocolCalibrationWorkspace.tsx` + `RedockingWorkspace.tsx` view switch
+  (`Redocking` | `Protocol calibration`), and add opt-in native-unit
+  `Cross-score (--score_only)` controls with Gate 0 `F4` disclosure in
+  `PoseInteractionPanel.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M2_PROTOCOL_CALIBRATION.md`, `133` records):**
+  verified across Windows 11 x64 (`41/41` `test_v02_m2*.py`, `475` passed / `1`
+  Linux-only skip combined with `M0–M1` & frozen `LIT_PCBA`, `386/386` Vitest,
+  `3/3` Tauri Rust) and Linux x86\_64 WSL2 (`390/390` `test_v02_*.py` with live
+  `GNINA 1.3.3`, `386/386` Vitest).
+
 ## Ankora `v0.2` Milestones `M0`–`M1`: Explicit Ligand Semi-Flexibility & Bounded Receptor Side-Chain `FlexRes` (`codex/v0.2-dev`) - 2026-11-19
 
 - **Governance & frozen `v0.2` contracts (`M0`, `ADR-030`–`ADR-032`):**
