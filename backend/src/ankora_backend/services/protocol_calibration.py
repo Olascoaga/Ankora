@@ -535,6 +535,16 @@ class ProtocolCalibrationService:
     def __init__(self, store: CalibrationArtifactStore) -> None:
         self._store = store
 
+    @classmethod
+    def from_environment(cls, project_id: str | None = None) -> ProtocolCalibrationService:
+        return cls(CalibrationArtifactStore.from_environment(project_id=project_id))
+
+    def get_run(self, calibration_id: str) -> CalibrationRunRecord:
+        return self._store.get_run(calibration_id)
+
+    def list_runs(self) -> list[CalibrationRunRecord]:
+        return self._store.list_runs()
+
     # -- Step 1: the frozen, scaffold-grouped split -----------------------
 
     def create_split(

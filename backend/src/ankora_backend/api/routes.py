@@ -52,6 +52,13 @@ from ankora_backend.schemas.binding_sites import (
     BindingSiteRequest,
     PocketDetectionReport,
 )
+from ankora_backend.schemas.calibration import (
+    CalibrationConfirmRequest,
+    CalibrationRunListResponse,
+    CalibrationRunRecord,
+    CalibrationSelectRequest,
+    CalibrationSplitRequest,
+)
 from ankora_backend.schemas.campaign_history import CampaignHistory
 from ankora_backend.schemas.docking import (
     DockingBatchCancelResponse,
@@ -135,6 +142,7 @@ from ankora_backend.schemas.redocking import (
     RedockingRunRecord,
     RedockingValidationRequest,
 )
+from ankora_backend.schemas.rescoring import PoseRescoreResult, SavedPoseRescoreRequest
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
     CatalogPage,
@@ -209,8 +217,10 @@ from ankora_backend.services.methods_report import MethodsReportService
 from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
 from ankora_backend.services.pose_interactions import PoseInteractionService
+from ankora_backend.services.pose_rescoring import PoseRescoringService
 from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.project_runtime import ProjectRuntime
+from ankora_backend.services.protocol_calibration import ProtocolCalibrationService
 from ankora_backend.services.receptor_inspection import inspect_receptor
 from ankora_backend.services.receptor_preparation import (
     prepare_receptor,
@@ -2045,3 +2055,69 @@ def get_figure_file(figure_id: str, filename: str) -> FileResponse:
         filename=path.name,
         content_disposition_type="attachment",
     )
+
+
+@router.get("/calibrations", response_model=CalibrationRunListResponse)
+def list_calibrations() -> CalibrationRunListResponse:
+    runs = tuple(ProtocolCalibrationService.from_environment().list_runs())
+    return CalibrationRunListResponse(runs=runs)
+
+
+@router.get("/calibrations/{calibration_id}", response_model=CalibrationRunRecord)
+def get_calibration(calibration_id: str) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().get_run(calibration_id)
+
+
+@router.post(
+    "/calibrations/splits",
+    response_model=CalibrationRunRecord,
+    status_code=201,
+)
+def create_calibration_split(
+    payload: CalibrationSplitRequest,
+    http_request: Request,
+) -> CalibrationRunRecord:
+    project_id = http_request.app.state.project_runtime.active_project_id
+    return ProtocolCalibrationService.from_environment().create_split(
+        project_id=project_id,
+        receptor_id=payload.receptor_id,
+        binding_site_id=payload.binding_site_id,
+        compounds=payload.compounds,
+        policy=payload.policy,
+    )
+
+
+@router.post(
+    "/calibrations/{calibration_id}/select",
+    response_model=CalibrationRunRecord,
+)
+def select_calibration_protocol(
+    calibration_id: str,
+    payload: CalibrationSelectRequest,
+) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().select_protocol_on_calibration(
+        calibration_id=calibration_id,
+        baseline_protocol_id=payload.baseline_protocol_id,
+        candidates=payload.candidates,
+        observations_by_protocol=payload.observations_by_protocol,
+    )
+
+
+@router.post(
+    "/calibrations/{calibration_id}/confirm",
+    response_model=CalibrationRunRecord,
+)
+def confirm_calibration_protocol(
+    calibration_id: str,
+    payload: CalibrationConfirmRequest,
+) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().evaluate_locked_confirmation(
+        calibration_id=calibration_id,
+        observations_by_protocol=payload.observations_by_protocol,
+    )
+
+
+@router.post("/rescoring/score-only", response_model=PoseRescoreResult)
+def rescore_saved_pose_only(payload: SavedPoseRescoreRequest) -> PoseRescoreResult:
+    """Evaluate one saved docking pose in place across requested scoring functions."""
+    return PoseRescoringService.from_environment().rescore_saved_pose(payload)

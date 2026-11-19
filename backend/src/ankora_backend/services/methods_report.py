@@ -23,6 +23,7 @@ Three rules the renderer follows, in order of importance:
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -41,7 +42,9 @@ from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.calibration import CalibrationRunRecord
 from ankora_backend.schemas.methods import MethodsReport, MethodsSoftware
+from ankora_backend.schemas.rescoring import PoseRescoreResult
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
     ReproducibilityStatus,
@@ -2951,3 +2954,124 @@ def _ligand_flexibility_prose(
                 "Prepared ligand PDBQTs recorded effective `TORSDOF` values ranging "
                 f"from {min(torsdofs)} to {max(torsdofs)} active rotatable torsions."
             )
+
+
+def render_calibration_methods(
+    calibration: CalibrationRunRecord,
+    *,
+    rescoring_results: Sequence[PoseRescoreResult] = (),
+) -> str:
+    """Render record-derived Methods prose for M2 out-of-sample calibration & `--score_only`."""
+    split = calibration.split
+    policy = split.policy
+    lines: list[str] = [
+        "### Out-of-Sample Protocol Calibration",
+        "",
+        (
+            f"Parent compounds were partitioned into disjoint Calibration "
+            f"({split.calibration_active_count} actives, {split.calibration_inactive_count} "
+            f"inactives across {len(split.calibration_scaffolds)} Bemis-Murcko scaffold groups) "
+            f"and locked Confirmation ({split.confirmation_active_count} actives, "
+            f"{split.confirmation_inactive_count} inactives across "
+            f"{len(split.confirmation_scaffolds)} scaffold groups) subsets using "
+            f"grouping strategy `{policy.grouping_strategy.value}` "
+            f"(target calibration fraction {policy.calibration_fraction:.2f}, "
+            f"split seed {policy.split_seed}, split SHA-256 "
+            f"`{split.split_identity_sha256[:12]}`), ensuring no parent compound and no "
+            "Bemis-Murcko scaffold crossed the split boundary."
+        ),
+    ]
+    if split.bias_audit.any_bias_flagged:
+        props = ", ".join(f"`{name}`" for name in split.bias_audit.flagged_properties)
+        lines.append(
+            f"Physicochemical property-bias auditing flagged separation between actives and "
+            f"inactives (`CALIBRATION_DECOY_PROPERTY_BIAS`) on {props}; enrichment on this "
+            "cohort may partly reflect 2D property discrimination."
+        )
+    else:
+        lines.append(
+            "Physicochemical property-bias auditing across molecular weight, cLogP, HBD, HBA, "
+            "rotatable bonds, and formal charge flagged no active-vs-inactive separation."
+        )
+    if split.confirmation_underpowered:
+        lines.append(
+            f"Warning (`CALIBRATION_CONFIRMATION_UNDERPOWERED`): locked Confirmation holds "
+            f"{split.confirmation_active_count} actives, below the declared minimum of "
+            f"{policy.min_confirmation_actives}."
+        )
+
+    selection = calibration.calibration_selection
+    if selection is not None:
+        lines.append("")
+        lines.append(
+            f"Candidate protocols ({len(selection.evaluations)} total; baseline "
+            f"`{selection.baseline_protocol_id}`) were evaluated strictly on the Calibration "
+            f"subset using BEDROC (alpha = {policy.bedroc_alpha:g}) as primary metric with "
+            "every failed or unscored parent retained as a single worst-ranked tie group. "
+            f"Highest point BEDROC_20 was observed for `{selection.best_point_protocol_id}`; "
+            f"applying the paired parent-bootstrap 1-SE parsimony rule "
+            f"({policy.bootstrap_replicates} replicates, seed {policy.bootstrap_seed}) "
+            f"sealed `{selection.selected_protocol_id}` "
+            f"(selection SHA-256 `{selection.selection_identity_sha256[:12]}`)"
+            + (
+                " by 1-SE parsimony over a more complex candidate."
+                if selection.selected_by_one_se_parsimony
+                else "."
+            )
+        )
+        for ev in selection.evaluations:
+            census = ev.failure_census
+            ef_note = " [small-sample EF caution]" if ev.ef_small_sample_caution else ""
+            lines.append(
+                f"- Calibration `{ev.protocol_id}` ({ev.label}): "
+                f"BEDROC_{policy.bedroc_alpha:g} = {ev.metrics.bedroc:.4f} "
+                f"(95% CI {ev.bedroc_ci_lower:.4f} to {ev.bedroc_ci_upper:.4f}, "
+                f"SE {ev.bedroc_bootstrap_se:.4f}); EF{policy.top_fraction * 100:g}% = "
+                f"{ev.metrics.enrichment_factor:.3f}{ef_note}; "
+                f"unscored parents retained = {census.failed_count}/{census.total_parents} "
+                f"({census.failed_active_count} actives, {census.failed_inactive_count} inactives)."
+            )
+
+    confirmation = calibration.confirmation_evaluation
+    if confirmation is not None:
+        delta = confirmation.paired_delta_vs_baseline
+        lines.append("")
+        lines.append(
+            "The locked Confirmation subset was unlocked once and permanently consumed "
+            f"(confirmation SHA-256 `{confirmation.confirmation_identity_sha256[:12]}`). "
+            f"Paired parent bootstrap delta BEDROC_{policy.bedroc_alpha:g} "
+            f"(`{confirmation.selected_protocol_id}` minus `{confirmation.baseline_protocol_id}`) "
+            f"was {delta.point_delta:+.4f} "
+            f"({int(delta.confidence_level * 100)}% CI {delta.ci_lower:+.4f} to "
+            f"{delta.ci_upper:+.4f}, SE {delta.bootstrap_se:.4f}). "
+            f"Recorded verdict: \"{confirmation.verdict_text}\"."
+        )
+        if confirmation.all_candidate_audit_evaluations:
+            audit_ids = ", ".join(
+                f"`{item.protocol_id}` (BEDROC = {item.metrics.bedroc:.4f})"
+                for item in confirmation.all_candidate_audit_evaluations
+            )
+            lines.append(f"Additional confirmation audit evaluations preserved: {audit_ids}.")
+
+    if rescoring_results:
+        lines.append("")
+        lines.append("### Cross-Engine In-Place Pose Rescoring (`--score_only`)")
+        lines.append("")
+        lines.append(
+            "Fixed pose complexes were evaluated in place via `--score_only` without mutating "
+            "parent pose coordinates. Scores from distinct scoring functions were recorded in "
+            "their native units and were never averaged, rescaled, or pooled."
+        )
+        any_unbound_shift = any(
+            ev.unbound_reference_shifted
+            for result in rescoring_results
+            for ev in result.evidence
+        )
+        if any_unbound_shift:
+            lines.append(
+                "Note (`Gate 0 F4`): flexible Vina/Vinardo `--score_only --flex` evaluations "
+                "recompute the unbound system energy reference from the moved flexible side-chain "
+                "geometry, so total energies cannot be compared directly against docking-time "
+                "totals without accounting for the shifted unbound reference."
+            )
+    return "\n".join(lines).strip() + "\n"
