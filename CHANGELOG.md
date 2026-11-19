@@ -2,6 +2,43 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M5`: Pose-Concordant Quantile Consensus (`PC-Q`, `PC-ECR`, Gated `PC-L2`) (`codex/v0.2-dev`) - 2026-11-19
+
+- **Joint `(ligand, flex)` clustering & ADR-030 rank-space consensus math (`M5a`, `0` new dependencies):**
+  add `schemas/consensus.py`, `adapters/chemistry/pose_clustering.py`,
+  `adapters/consensus/pcq_math.py`, and 3 warning codes
+  (`CONSENSUS_PARTIAL_PROFILE_RETAINED`, `CONSENSUS_HIGH_INTER_FAMILY_DISAGREEMENT`,
+  `CONSENSUS_PCL2_UNPROMOTED`). Implements complete-linkage joint `(ligand, flex)`
+  pose clustering (`<= 2.0 Å` diameter with symmetry-aware ligand + `PHE`/`TYR`/`ASP`/`GLU`/`ARG`/`VAL`/`LEU`
+  side-chain RMSD, explicit required `k_max` cap `E2`, and bitwise input-order-invariant `E3`
+  medoid tie-break), parent-weighted empirical midrank quantiles over a hash-locked
+  `ReferencePanelArtifact` (`E1`), published fixed-weight `pcq-core-v1` (`0.50/0.50`) and
+  `pcq-neural-v1` (`1/3,1/3,1/3`, always emitting `pcq-core-v1` alongside) with non-double-voting
+  within-block `vina`+`vinardo` averaging, inter-family disagreement `D_ic`, separate-scale `PC-ECR`
+  (`tau = 0.05`, `1/sigma` scale `E5`), two-tier `E6` `RankingArtifact` retaining partial/unscored
+  parents unranked without imputation, and bounded strictly convex `scipy.optimize.L-BFGS-B`
+  non-negative `PC-L2` gated on locked Confirmation (`ADR-030 §3`).
+- **Live cross-engine consensus service, create-only stores, API, stale DAG & `MethodsReport` (`M5b`):**
+  add `persistence/consensus_store.py`, `services/pose_consensus.py` (`PoseConsensusService`
+  enforcing fail-closed `E4`/`E7` shared receptor/box/map-set identity and orchestrating live
+  `PoseRescoringService` `--score_only` evaluation across retained medoids without mutating pose
+  bytes), stale DAG tracking (`consensus_id`, `panel_id`, `calibration_id` -> `POSE_ANALYSIS`),
+  5 localhost REST endpoints (`/api/v1/consensus/runs*` and `/pc-l2`), DOI-verified citation
+  `Palacio-Rodríguez et al., Scientific Reports 2019;9:5142 (doi:10.1038/s41598-019-41594-3)`,
+  and standalone `render_consensus_methods(...)`.
+- **Desktop UI (`M5c`):**
+  add strictly opt-in `ConsensusWorkspace.tsx` toggled via `Campaigns` | `PC-Q Consensus` inside
+  `ResultsWorkspace.tsx` (zero unsolicited `/consensus/*` calls on mount), enforcing explicit `K_max`
+  input (`E2`), fixed published weights, two-tier `E6` ranking table with `PC-Q`, `PC-Q Core`
+  alongside neural, separate `PC-ECR (1/σ)` column, `D_ic`, family block quantile bars, independent
+  Search Convergence badge, expandable native-unit medoid inspector, optional Confirmation-gated
+  `PC-L2` calibration/audit panel, and `ConsensusM5c.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M5_PCQ_CONSENSUS.md`, `136` records):**
+  verified across Windows 11 x64 (`511` passed / `1` Linux-only skip combined with `M0–M4` & frozen
+  `LIT_PCBA`, `48/48` Vitest / `393/393` tests, Vite build `12.36s`) and Linux x86\_64 WSL2
+  (`verify_linux_environment_lock.py --runtime` passed `45` Conda / `76` pip unchanged, `412/412`
+  `test_v02_*.py` with 0 skips, `48/48` Vitest / `393/393` tests, Vite build `7.22s`).
+
 ## Ankora `v0.2` Milestone `M4`: Declarative ProLIF Pharmacophoric Rules (`PIC`) & Tanimoto IFP (`codex/v0.2-dev`) - 2026-11-19
 
 - **Declarative `REQUIRED` / `ALTERNATIVE_OR` / `FORBIDDEN` rules & Tanimoto IFP (`M4a`, `0` new dependencies):**
