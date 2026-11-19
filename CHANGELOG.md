@@ -2,6 +2,35 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M3`: Coupled Physical Pose Plausibility (`PoseBusters 0.6.5`) & Dual `MMFF94s` Strain (`codex/v0.2-dev`) - 2026-11-19
+
+- **Pure-Python `posebusters==0.6.5` lock & budget compliance (`M3a`, `ADR-031`):**
+  pin `posebusters==0.6.5` (`567,794` B / `554.49 KiB`, MIT license, `0` new
+  transitive dependencies, within the `< 1 MiB` `M3` budget) across
+  `backend/pyproject.toml`, `requirements/windows-py312.{in,lock}`,
+  `requirements/linux-py312.{in,lock}`, `environment/v02-installer-size-budget.json`,
+  and `scripts/generate_third_party_notices.py`.
+- **Coupled `PoseBusters` + dual `MMFF94s` strain + `FlexRes` geometry (`M3a`–`M3b`):**
+  add `adapters/quality/{posebusters_adapter,conformational_strain,flex_sidechain_geometry}.py`,
+  create-only `PoseQualityStore` (`analysis/pose_quality/`), `PoseQualityService`,
+  `GET`/`POST /api/v1/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/{pose_artifact_id}/quality`,
+  and `render_pose_quality_methods(...)` (citing `DOI: 10.1039/D3SC04185A`).
+  Evaluates every `PoseBusters` `dock` check and flexible side-chain covalent
+  geometry check directly on the coupled `PoseComplex` (`E8`), separates `pass`,
+  `fail`, `not_applicable`, and `not_evaluable` honestly, refuses silent `UFF`
+  downgrade when `MMFF94s` lacks parameters, and never mutates poses or alters
+  docking scores.
+- **Desktop UI (`M3c`):**
+  add opt-in `PoseQualitySection.tsx` inside `PoseInteractionPanel.tsx` with
+  4-state summary pills, status filter, coupled `FlexRes` complex badge, warning
+  alerts, dual `MMFF94s` strain card with diagnostic disclaimer, and
+  `PoseQualityM3.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M3_POSE_QUALITY.md`, `134` records):**
+  verified across Windows 11 x64 (`496` passed / `1` Linux-only skip combined
+  with `M0–M2` & frozen `LIT_PCBA`, `46/46` Vitest / `388/388` tests) and Linux
+  x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed, `397/397`
+  `test_v02_*.py` with 0 skips, `46/46` Vitest / `388/388` tests).
+
 ## Ankora `v0.2` Milestone `M2`: Out-of-Sample Protocol Calibration & Cross-Engine `--score_only` (`codex/v0.2-dev`) - 2026-11-19
 
 - **Cross-engine `--score_only` rescoring (`M2a`):**
