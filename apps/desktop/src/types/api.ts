@@ -3276,3 +3276,258 @@ export interface InteractionRuleEvaluationRecord {
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
 }
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M5 — ADR-030 rank-space consensus prioritization (PC-Q, PC-ECR,
+ * gated convex non-negative PC-L2) & two-tier RankingArtifact (`E6`).
+ *
+ * Mirrors `schemas/v02_contracts.py` (`RankingArtifact`, `RankingEntry`,
+ * `RankingMethod`) and `schemas/consensus.py`. Fixed published family block
+ * weights are server-enforced; `PC-Q` (0–100) is dimensionless concordance,
+ * `PC-ECR` (`tau = 0.05`) stays on its separate `1/sigma` scale (`E5`), and
+ * `partial_or_unscored` parents remain unranked in the denominator (`E6`).
+ * ------------------------------------------------------------------------ */
+
+export const FROZEN_ECR_TAU = 0.05;
+export const DEFAULT_CLUSTER_RMSD_THRESHOLD_ANGSTROM = 2.0;
+
+export type RankingMethod =
+  | "single_engine"
+  | "pc_q_core_v1"
+  | "pc_q_neural_v1"
+  | "pc_ecr_v1"
+  | "pc_l2_v1";
+
+export type ConsensusTier = "full_profile" | "partial_or_unscored";
+
+export interface RankingEntry {
+  parent_compound_id: string;
+  parent_state_id: string;
+  tier: ConsensusTier;
+  rank?: number | null;
+  score_value?: number | null;
+  percentile?: number | null;
+  inter_family_disagreement?: number | null;
+  search_convergence_count?: number | null;
+  search_engine_count?: number | null;
+  selected_pose_complex?: PoseComplexIdentity | null;
+  failure_or_exclusion_codes: string[];
+}
+
+export interface RankingArtifact {
+  schema_version: 1;
+  method: RankingMethod;
+  reference_panel_sha256?: string | null;
+  tie_policy: string;
+  failure_policy: string;
+  total_parents: number;
+  full_profile_count: number;
+  partial_or_unscored_count: number;
+  entries: RankingEntry[];
+}
+
+export type ConsensusVariantId = "pcq-core-v1" | "pcq-neural-v1";
+
+export interface PoseClusterMemberSummary {
+  pose_id: string;
+  source_engine: RescoreSourceEngine;
+  primary_rank_order: number;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+}
+
+export interface PoseClusterSummary {
+  cluster_id: string;
+  medoid_pose_id: string;
+  medoid_pose_complex: PoseComplexIdentity;
+  medoid_canonical_coordinate_sha256: string;
+  member_count: number;
+  max_intra_cluster_rmsd_angstrom: number;
+  best_primary_rank_order: number;
+  search_engines_present: RescoreSourceEngine[];
+  members: PoseClusterMemberSummary[];
+}
+
+export interface ReferencePanelEntry {
+  parent_compound_id: string;
+  parent_state_id: string;
+  cluster_id: string;
+  pose_complex: PoseComplexIdentity;
+  scores_by_function: Partial<Record<ScoringFunctionId, number>>;
+}
+
+export interface ReferencePanelArtifact {
+  schema_version: 1;
+  panel_id: string;
+  created_at: string;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256?: string | null;
+  enabled_functions: ScoringFunctionId[];
+  tool_identities: Array<{ name: string; version: string }>;
+  executable_sha256s: Record<string, string>;
+  k_max: number;
+  total_panel_parents: number;
+  entries: ReferencePanelEntry[];
+  reference_panel_sha256: string;
+}
+
+export interface MedoidConsensusBreakdown {
+  cluster_id: string;
+  medoid_pose_id: string;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+  member_count: number;
+  max_intra_cluster_rmsd_angstrom: number;
+  search_engines_present: RescoreSourceEngine[];
+  search_convergence_count: number;
+  search_engine_count: number;
+  native_scores: Partial<Record<ScoringFunctionId, number>>;
+  function_quantiles: Partial<Record<ScoringFunctionId, number>>;
+  block_quantiles: Partial<Record<ScoreObservationFamily, number>>;
+  pcq_score: number;
+  pcq_core_score: number;
+  inter_family_disagreement: number;
+  pc_ecr_score: number;
+}
+
+export interface PcL2ModelArtifact {
+  schema_version: 1;
+  reference_panel_sha256: string;
+  calibration_id: string;
+  split_identity_sha256: string;
+  selection_identity_sha256?: string | null;
+  confirmation_identity_sha256?: string | null;
+  feature_functions: ScoringFunctionId[];
+  l2_regularization: number;
+  solver_name: "scipy.optimize.L-BFGS-B";
+  intercept: number;
+  weights: Partial<Record<ScoringFunctionId, number>>;
+  converged: true;
+  iterations: number;
+  final_objective: number;
+  promoted: boolean;
+  promotion_verdict_text: string;
+  confirmation_deltas_vs_single_engines: Record<string, PairedBootstrapDelta>;
+}
+
+export interface ConsensusParentDetail {
+  parent_compound_id: string;
+  parent_state_id: string;
+  tier: ConsensusTier;
+  rotatable_bond_count?: number | null;
+  total_input_poses: number;
+  total_clusters_found: number;
+  retained_cluster_count: number;
+  truncated_by_k_max: boolean;
+  selected_medoid_cluster_id?: string | null;
+  selected_pose_complex?: PoseComplexIdentity | null;
+  pcq_score?: number | null;
+  pcq_core_score?: number | null;
+  pc_ecr_score?: number | null;
+  pc_ecr_selected_cluster_id?: string | null;
+  pc_l2_score?: number | null;
+  inter_family_disagreement?: number | null;
+  search_convergence_count?: number | null;
+  search_engine_count?: number | null;
+  medoids: MedoidConsensusBreakdown[];
+  failure_or_exclusion_codes: string[];
+}
+
+export interface ConsensusPoseScoreInput {
+  cluster_id: string;
+  medoid_pose_id: string;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+  member_count?: number;
+  max_intra_cluster_rmsd_angstrom?: number;
+  search_engines_present: RescoreSourceEngine[];
+  scores_by_function?: Partial<Record<ScoringFunctionId, number>>;
+  missing_or_failed_codes?: string[];
+}
+
+export interface ConsensusParentInput {
+  parent_compound_id: string;
+  parent_state_id: string;
+  rotatable_bond_count?: number | null;
+  total_input_poses?: number;
+  total_clusters_found?: number;
+  truncated_by_k_max?: boolean;
+  medoids?: ConsensusPoseScoreInput[];
+  failure_or_exclusion_codes?: string[];
+}
+
+export interface CreateStructuredConsensusRequest {
+  name: string;
+  variant_id: ConsensusVariantId;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256: string;
+  enabled_functions: ScoringFunctionId[];
+  k_max: number;
+  rmsd_threshold_angstrom?: number;
+  search_engine_count: number;
+  parents: ConsensusParentInput[];
+  reference_panel_id?: string | null;
+  tool_identities?: Array<{ name: string; version: string }>;
+  executable_sha256s?: Record<string, string>;
+}
+
+export interface CampaignSourceRef {
+  catalog_id: string;
+}
+
+export interface CreateCampaignConsensusRequest {
+  name: string;
+  variant_id: ConsensusVariantId;
+  sources: CampaignSourceRef[];
+  autogrid_map_set_id: string;
+  autodock4_backend?: AutoDock4RescoreBackend;
+  include_vinardo?: boolean;
+  gnina_function?: ScoringFunctionId;
+  k_max: number;
+  rmsd_threshold_angstrom?: number;
+  reference_panel_id?: string | null;
+}
+
+export interface FitPcL2Request {
+  calibration_id: string;
+  l2_regularization?: number;
+}
+
+export interface ConsensusRunRecord {
+  schema_version: 1;
+  consensus_id: string;
+  created_at: string;
+  name: string;
+  variant_id: ConsensusVariantId;
+  k_max: number;
+  rmsd_threshold_angstrom: number;
+  ecr_tau: number;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256: string;
+  source_catalog_ids: string[];
+  enabled_functions: ScoringFunctionId[];
+  block_weights: Partial<Record<ScoreObservationFamily, number>>;
+  within_block_weights: Partial<Record<ScoringFunctionId, number>>;
+  reference_panel: ReferencePanelArtifact;
+  ranking: RankingArtifact;
+  core_ranking?: RankingArtifact | null;
+  ecr_ranking: RankingArtifact;
+  pc_l2_model?: PcL2ModelArtifact | null;
+  pc_l2_ranking?: RankingArtifact | null;
+  parent_details: ConsensusParentDetail[];
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface ConsensusRunListResponse {
+  runs: ConsensusRunRecord[];
+}

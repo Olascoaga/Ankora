@@ -10,6 +10,7 @@ import {
 import { MethodsPanel } from "../export/MethodsPanel";
 import type { CatalogEntry, CompoundPage, CompoundRow } from "../../types/api";
 import { formatApplicationDateTime, formatScientificNumber } from "../../utils/format";
+import { ConsensusWorkspace } from "./ConsensusWorkspace";
 import { PoseInteractionPanel } from "./PoseInteractionPanel";
 import { reproducibilityDetail, reproducibilityTitle } from "./reproducibility";
 
@@ -37,6 +38,7 @@ const TERMINAL_RESULTS = new Set(["completed", "failed", "canceled"]);
 
 type ModeFilter = "all" | "screening" | "single_ligand";
 type FamilyFilter = "all" | "vina" | "autodock4" | "gnina";
+type ResultsViewMode = "campaigns" | "consensus";
 
 const EXPORTABLE = new Set<CampaignExportSourceKind>([
   "vina_batch",
@@ -47,6 +49,7 @@ const EXPORTABLE = new Set<CampaignExportSourceKind>([
 ]);
 
 export function ResultsWorkspace() {
+  const [activeView, setActiveView] = useState<ResultsViewMode>("campaigns");
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -243,25 +246,57 @@ export function ResultsWorkspace() {
           <div>
             <span className="eyebrow">06 / Results</span>
             <h2>
-              {inspectedMolecule
-                ? `Pose interactions · ${inspectedMolecule.name}`
-                : showingCampaignDetail
-                  ? "Molecules in this result"
-                  : "Every result this project holds"}
+              {activeView === "consensus"
+                ? "Pose-concordant consensus (PC-Q)"
+                : inspectedMolecule
+                  ? `Pose interactions · ${inspectedMolecule.name}`
+                  : showingCampaignDetail
+                    ? "Molecules in this result"
+                    : "Every result this project holds"}
             </h2>
           </div>
           <div className="workspace-actions">
+            <div className="results-view-switch" role="group" aria-label="Results view">
+              <button
+                type="button"
+                className={
+                  activeView === "campaigns"
+                    ? "results-view-button results-view-button-active"
+                    : "results-view-button"
+                }
+                aria-pressed={activeView === "campaigns"}
+                onClick={() => setActiveView("campaigns")}
+              >
+                Campaigns
+              </button>
+              <button
+                type="button"
+                className={
+                  activeView === "consensus"
+                    ? "results-view-button results-view-button-active"
+                    : "results-view-button"
+                }
+                aria-pressed={activeView === "consensus"}
+                onClick={() => setActiveView("consensus")}
+              >
+                PC-Q Consensus
+              </button>
+            </div>
             <span className="read-only-badge">
-              {inspectedMolecule
-                ? "M9 · pose interactions"
-                : showingCampaignDetail
-                  ? "M6 · campaign detail"
-                  : "M6 · result catalog"}
+              {activeView === "consensus"
+                ? "M5 · rank-space consensus"
+                : inspectedMolecule
+                  ? "M9 · pose interactions"
+                  : showingCampaignDetail
+                    ? "M6 · campaign detail"
+                    : "M6 · result catalog"}
             </span>
           </div>
         </div>
 
-        {showingCampaignDetail ? (
+        {activeView === "consensus" ? <ConsensusWorkspace campaigns={entries} /> : null}
+
+        {activeView === "campaigns" && showingCampaignDetail ? (
           <nav className="results-breadcrumb" aria-label="Results navigation">
             <button type="button" onClick={backToCatalog}>All results</button>
             <span aria-hidden="true">›</span>
@@ -281,7 +316,9 @@ export function ResultsWorkspace() {
 
         <div
           className="results-catalog-plane"
-          hidden={Boolean(inspectedMolecule) || showingCampaignDetail}
+          hidden={
+            activeView === "consensus" || Boolean(inspectedMolecule) || showingCampaignDetail
+          }
         >
           {error ? <div className="structure-error" role="alert">{error}</div> : null}
 
@@ -417,7 +454,7 @@ export function ResultsWorkspace() {
           />
         </div>
 
-        {selected && showingCampaignDetail && !inspectedMolecule ? (
+        {activeView === "campaigns" && selected && showingCampaignDetail && !inspectedMolecule ? (
           <div className="results-campaign-detail-plane">
             <div className="results-detail-navigation" role="toolbar" aria-label="Open result actions">
               <div>
@@ -441,7 +478,7 @@ export function ResultsWorkspace() {
           </div>
         ) : null}
 
-        {selected && inspectedMolecule ? (
+        {activeView === "campaigns" && selected && inspectedMolecule ? (
           <PoseInteractionPanel
             entry={selected}
             molecule={inspectedMolecule}

@@ -64,8 +64,13 @@ import type {
   CalibrationRunRecord,
   CalibrationSelectRequest,
   CalibrationSplitRequest,
+  CreateCampaignConsensusRequest,
   CreateInteractionRuleSetRequest,
+  CreateStructuredConsensusRequest,
+  ConsensusRunListResponse,
+  ConsensusRunRecord,
   EvaluateInteractionRulesRequest,
+  FitPcL2Request,
   InteractionRuleEvaluationRecord,
   InteractionRuleSetRecord,
   PoseQualityRecord,
@@ -987,6 +992,37 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
       `/results/campaigns/${catalogPath(catalogId)}/compounds/`
       + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}`
       + "/interaction-rules",
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  listConsensusRuns: (): Promise<ConsensusRunListResponse> =>
+    getJson<ConsensusRunListResponse>("/consensus/runs"),
+
+  getConsensusRun: (consensusId: string): Promise<ConsensusRunRecord> =>
+    getJson<ConsensusRunRecord>(`/consensus/runs/${encodeURIComponent(consensusId)}`),
+
+  createCampaignConsensus: (
+    request: CreateCampaignConsensusRequest,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>("/consensus/runs/campaigns", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  createStructuredConsensus: (
+    request: CreateStructuredConsensusRequest,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>("/consensus/runs/structured", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  fitConsensusPcL2: (
+    consensusId: string,
+    request: FitPcL2Request,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>(
+      `/consensus/runs/${encodeURIComponent(consensusId)}/pc-l2`,
       { method: "POST", body: JSON.stringify(request) },
     ),
 

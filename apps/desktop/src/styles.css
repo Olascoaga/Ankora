@@ -1180,3 +1180,327 @@ button { font: inherit; }
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
+
+/* M5: opt-in ADR-030 PC-Q / PC-ECR / gated PC-L2 rank-space consensus workspace. */
+.results-view-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.results-view-button {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.results-view-button-active {
+  background: var(--panel-raised);
+  color: var(--text);
+  font-weight: 600;
+}
+.consensus-workspace {
+  display: grid;
+  gap: 14px;
+}
+.consensus-banner,
+.consensus-form,
+.consensus-provenance,
+.consensus-tier-section,
+.consensus-tier-partial,
+.consensus-pcl2-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--panel);
+  display: grid;
+  gap: 10px;
+}
+.consensus-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.consensus-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.consensus-form label,
+.consensus-pcl2-form label,
+.consensus-run-selector label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.consensus-form input[type="text"],
+.consensus-form input[type="number"],
+.consensus-form select,
+.consensus-pcl2-form input[type="text"],
+.consensus-pcl2-form input[type="number"],
+.consensus-pcl2-form select,
+.consensus-run-selector select {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font: inherit;
+}
+.consensus-checkbox-inline {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+.consensus-campaign-picker {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel-raised);
+}
+.consensus-campaign-picker legend {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+.consensus-campaign-list {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+.consensus-campaign-option {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+.consensus-form-actions,
+.consensus-run-selector,
+.consensus-chip-row,
+.consensus-weights-strip,
+.consensus-pcl2-weights,
+.consensus-code-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.consensus-weights-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.consensus-weight-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-raised);
+  font-variant-numeric: tabular-nums;
+}
+.consensus-warning-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.consensus-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.consensus-section-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.consensus-table-scroll {
+  overflow: auto;
+  max-height: 460px;
+}
+.consensus-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.consensus-table th,
+.consensus-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.consensus-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.consensus-table .numeric-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.consensus-parent-toggle {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.consensus-sublabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.consensus-disagreement-high {
+  color: #f59e0b;
+  font-weight: 600;
+}
+.consensus-block-bars {
+  display: grid;
+  gap: 3px;
+  min-width: 148px;
+}
+.consensus-block-bar-row {
+  display: grid;
+  grid-template-columns: 42px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.consensus-block-bar-label {
+  color: var(--text-secondary);
+}
+.consensus-block-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-raised);
+  overflow: hidden;
+}
+.consensus-block-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+.consensus-bar-vina {
+  background: #38bdf8;
+}
+.consensus-bar-ad4 {
+  background: #a78bfa;
+}
+.consensus-bar-gnina {
+  background: #34d399;
+}
+.consensus-block-bar-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.consensus-convergence-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-raised);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.consensus-medoid-row td {
+  background: var(--panel-raised);
+}
+.consensus-medoid-drawer {
+  display: grid;
+  gap: 8px;
+  padding: 4px 2px;
+}
+.consensus-medoid-cards {
+  display: grid;
+  gap: 8px;
+}
+.consensus-medoid-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  display: grid;
+  gap: 6px;
+}
+.consensus-medoid-selected {
+  border-color: #38bdf8;
+}
+.consensus-medoid-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+.consensus-native-score-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.consensus-native-score-grid dt {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.consensus-native-score-grid dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.consensus-unit {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.consensus-failure-code {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+}
+.consensus-pcl2-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel-raised);
+  display: grid;
+  gap: 10px;
+}
+.consensus-pcl2-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-raised);
+  display: grid;
+  gap: 10px;
+}
+.consensus-pcl2-promoted {
+  border-color: #34d399;
+}
+.consensus-pcl2-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.consensus-pcl2-verdict {
+  margin-left: 8px;
+  font-size: 13px;
+}
