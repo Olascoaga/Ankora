@@ -8,7 +8,9 @@ preserved at `backend/tests/fixtures/autodock4_real_compound1.dlg`.
 import math
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
+from ankora_backend.adapters.chemistry.flex_pose_complex import split_coupled_pdbqt_model
 from ankora_backend.domain.errors import AnkoraDomainError
 
 _STAGE = "autodock4_docking"
@@ -61,6 +63,8 @@ class AutoDock4Pose:
     run: int
     binding_energy_kcal_mol: float
     content: bytes
+    flex_sidechains_content: bytes | None = None
+    flex_residue_markers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,12 +87,15 @@ def render_autodock4_dpf(
     ga_energy_evaluations: int,
     ga_generations: int,
     cluster_rmsd_tolerance_angstrom: float,
+    flexres_filename: str | None = None,
 ) -> str:
     """Render a stock AD4.2 Lamarckian-GA docking parameter file.
 
     The keyword order follows AutoDockTools' own
     `genetic_algorithm_local_search_list4_1`; `map` lines must appear in the
-    same order as `ligand_types`, which AutoDock matches positionally.
+    same order as `ligand_types`, which AutoDock matches positionally. When
+    `flexres_filename` is set, `ligand_atom_types` must already contain the
+    union of ligand and flexible side-chain atom types (ADR-032 A1).
     """
     if not ligand_atom_types:
         raise _invalid_request("a DPF requires at least one ligand atom type")
@@ -96,6 +103,13 @@ def render_autodock4_dpf(
         raise _invalid_request("a DPF requires at least one GA run")
     if not all(math.isfinite(value) for value in about):
         raise _invalid_request("the ligand centre of rotation must be finite")
+    if flexres_filename is not None and (
+        not flexres_filename
+        or Path(flexres_filename).name != flexres_filename
+        or any(ch.isspace() for ch in flexres_filename)
+        or not flexres_filename.isascii()
+    ):
+        raise _invalid_request("flexres filename must be a plain ASCII filename")
     lines = [
         "autodock_parameter_version 4.2",
         "outlev 1",
@@ -109,6 +123,7 @@ def render_autodock4_dpf(
         f"elecmap {map_prefix}.e.map",
         f"desolvmap {map_prefix}.d.map",
         f"move {ligand_filename}",
+        *([f"flexres {flexres_filename}"] if flexres_filename is not None else []),
         f"about {about[0]:.4f} {about[1]:.4f} {about[2]:.4f}",
         "tran0 random",
         "quaternion0 random",
@@ -146,11 +161,13 @@ def log_reports_success(document: str) -> bool:
     return _SUCCESS_MARKER in document
 
 
-def parse_autodock4_log(document: str) -> ParsedAutoDock4Log:
+def parse_autodock4_log(
+    document: str, *, expect_flex_sidechains: bool = False
+) -> ParsedAutoDock4Log:
     """Parse clusters, ranking, and per-run poses from a real DLG."""
     clusters = _parse_clusters(document)
     ranking = _parse_ranking(document)
-    poses = _parse_poses(document)
+    poses = _parse_poses(document, expect_flex_sidechains=expect_flex_sidechains)
     if not ranking:
         raise _invalid_output("no RANKING records")
     if not clusters:
@@ -221,12 +238,16 @@ def _parse_clusters(document: str) -> list[AutoDock4Cluster]:
     return clusters
 
 
-def _parse_poses(document: str) -> list[AutoDock4Pose]:
+def _parse_poses(
+    document: str, *, expect_flex_sidechains: bool = False
+) -> list[AutoDock4Pose]:
     """Recover each docked conformation as a standalone PDBQT.
 
     AutoDock embeds every pose in the log with a literal `DOCKED: ` prefix on
     each line; stripping it reproduces the PDBQT the viewer and any downstream
-    tool expect.
+    tool expect. When flexible side chains are present (`BEGIN_RES`), the block
+    is split deterministically into ligand PDBQT and coupled flex side-chain
+    PDBQT while keeping the raw `.dlg` file immutable on disk.
     """
     poses: list[AutoDock4Pose] = []
     block: list[str] = []
@@ -259,13 +280,38 @@ def _parse_poses(document: str) -> list[AutoDock4Pose]:
                 raise _invalid_output(
                     "a DOCKED conformation has no run number or binding energy"
                 )
-            poses.append(
-                AutoDock4Pose(
-                    run=run,
-                    binding_energy_kcal_mol=energy,
-                    content=("\n".join(block) + "\n").encode("utf-8"),
-                )
+            raw_block = "\n".join(block) + "\n"
+            has_flex = expect_flex_sidechains or any(
+                item.lstrip().startswith("BEGIN_RES") for item in block
             )
+            if not has_flex:
+                poses.append(
+                    AutoDock4Pose(
+                        run=run,
+                        binding_energy_kcal_mol=energy,
+                        content=raw_block.encode("utf-8"),
+                    )
+                )
+            else:
+                try:
+                    split = split_coupled_pdbqt_model(raw_block)
+                except AnkoraDomainError as error:
+                    raise _invalid_output(
+                        f"run {run} flex split failed: {error.message}"
+                    ) from error
+                if expect_flex_sidechains and split.flex_sidechains_pdbqt is None:
+                    raise _invalid_output(
+                        f"run {run} is missing expected BEGIN_RES flexible side chains"
+                    )
+                poses.append(
+                    AutoDock4Pose(
+                        run=run,
+                        binding_energy_kcal_mol=energy,
+                        content=split.ligand_pdbqt,
+                        flex_sidechains_content=split.flex_sidechains_pdbqt,
+                        flex_residue_markers=split.flex_residue_markers,
+                    )
+                )
             in_model = False
             block = []
     if in_model:

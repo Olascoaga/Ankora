@@ -107,6 +107,21 @@ class AutoDockGpuJobStore:
             raise self._not_found(job_id, artifact_id)
         return path
 
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        record = self.load_job(job_id)
+        artifact = next(
+            (item.artifact for item in record.runs if item.artifact.artifact_id == artifact_id),
+            None,
+        )
+        if artifact is None:
+            raise self._not_found(job_id, artifact_id)
+        if artifact.flex_filename is None:
+            return None
+        path = self.output_path(job_id, artifact.flex_filename)
+        if not path.is_file():
+            raise self._not_found(job_id, artifact_id)
+        return path
+
     def list_jobs(self) -> list[AutoDockGpuDockingJobRecord]:
         """Every single-ligand job this project holds."""
         directory = self._project_root / "results" / "autodock_gpu_jobs"
@@ -284,6 +299,25 @@ class AutoDockGpuJobStore:
         if artifact is None:
             raise self._not_found(batch_id, artifact_id)
         path = self.batch_ligand_directory(batch_id, ligand_id) / artifact.filename
+        if not path.is_file():
+            raise self._not_found(batch_id, artifact_id)
+        return path
+
+    def batch_pose_flex_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path | None:
+        entry = self.load_batch_entry(batch_id, ligand_id)
+        if entry is None:
+            raise self._not_found(batch_id, artifact_id)
+        artifact = next(
+            (item.artifact for item in entry.runs if item.artifact.artifact_id == artifact_id),
+            None,
+        )
+        if artifact is None:
+            raise self._not_found(batch_id, artifact_id)
+        if artifact.flex_filename is None:
+            return None
+        path = self.batch_ligand_directory(batch_id, ligand_id) / artifact.flex_filename
         if not path.is_file():
             raise self._not_found(batch_id, artifact_id)
         return path

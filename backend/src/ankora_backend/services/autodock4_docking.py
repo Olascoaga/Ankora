@@ -22,6 +22,7 @@ from ankora_backend.adapters.engines.autodock4_job import (
 from ankora_backend.adapters.engines.autodock4_runner import (
     DOCKING_LOG_FILENAME,
     DOCKING_PARAMETER_FILENAME,
+    FLEXRES_FILENAME,
     LIGAND_FILENAME,
     AutoDock4Installation,
     execute_autodock4_cancellable,
@@ -55,13 +56,19 @@ from ankora_backend.schemas.binding_sites import BindingSiteRecord
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
     ReceptorOutputArtifact,
+    ReceptorPreparationRecord,
 )
+from ankora_backend.schemas.v02_contracts import PoseComplexIdentity
 from ankora_backend.schemas.warnings import StructuredWarning
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import (
+    DockingReceptor,
+    flex_dof_warnings,
+    merge_ordered_atom_types,
     ordered_atom_types,
-    resolve_receptor_and_site,
+    resolve_docking_receptor_and_site,
     resolve_selected_chemical_state,
     torsional_degrees_of_freedom,
     validate_map_set_applies,
@@ -82,10 +89,12 @@ _STAGE = "autodock4_docking"
 class _PreparedDocking:
     request: AutoDock4DockingRequest
     installation: AutoDock4Installation
+    docking_receptor: DockingReceptor
     map_set: AutoGridMapSetRecord
     ligand_path: Path
     ligand_sha256: str
     ligand_atom_types: tuple[str, ...]
+    dpf_atom_types: tuple[str, ...]
     atom_count: int
     torsional_degrees_of_freedom: int
     about: tuple[float, float, float]
@@ -157,6 +166,8 @@ class AutoDock4DockingService:
         prepared = self._prepare(request)
         now = datetime.now(UTC)
         job_id = self._job_store.new_job_id()
+        flex_spec = prepared.docking_receptor.record.flex_spec
+        flex_output = prepared.docking_receptor.flex_output
         record = AutoDock4DockingJobRecord(
             job_id=job_id,
             status=AutoDock4JobStatus.QUEUED,
@@ -165,6 +176,13 @@ class AutoDock4DockingService:
             request=request,
             autodock4=prepared.installation.identity(),
             receptor_id=request.receptor_id,
+            receptor_flex_mode=prepared.docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
+            flex_atom_types=list(prepared.docking_receptor.flex_atom_types),
             binding_site_id=request.binding_site_id,
             map_set_id=prepared.map_set.map_set_id,
             map_set_identity_key=prepared.map_set.identity_key,
@@ -186,6 +204,9 @@ class AutoDock4DockingService:
 
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         return self._job_store.pose_content_path(job_id, artifact_id)
+
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        return self._job_store.pose_flex_content_path(job_id, artifact_id)
 
     def cancel(self, job_id: str) -> AutoDock4CancelResponse:
         with self._lock:
@@ -312,10 +333,11 @@ class AutoDock4DockingService:
         self._require_ascii_job_directory(job_directory)
         self._stage_inputs(job_directory, prepared)
 
+        is_flex = prepared.docking_receptor.flex_path is not None
         dpf = render_autodock4_dpf(
             ligand_filename=LIGAND_FILENAME,
             map_prefix=_map_prefix(prepared.map_set),
-            ligand_atom_types=prepared.ligand_atom_types,
+            ligand_atom_types=prepared.dpf_atom_types,
             about=prepared.about,
             torsional_degrees_of_freedom=prepared.torsional_degrees_of_freedom,
             seed=(
@@ -329,6 +351,7 @@ class AutoDock4DockingService:
             cluster_rmsd_tolerance_angstrom=(
                 prepared.request.parameters.cluster_rmsd_tolerance_angstrom
             ),
+            flexres_filename=FLEXRES_FILENAME if is_flex else None,
         )
         (job_directory / DOCKING_PARAMETER_FILENAME).write_text(dpf, encoding="ascii", newline="\n")
 
@@ -392,9 +415,34 @@ class AutoDock4DockingService:
                 }
             )
         )
-        parsed = parse_autodock4_log(document)
-        runs, clusters = self._persist_results(job_id, parsed)
+        parsed = parse_autodock4_log(document, expect_flex_sidechains=is_flex)
+        runs, clusters = self._persist_results(
+            job_id,
+            parsed,
+            receptor_rigid_sha256=prepared.docking_receptor.rigid_output.sha256,
+        )
         completed_at = datetime.now(UTC)
+        flex_output = prepared.docking_receptor.flex_output
+        provenance_inputs = [
+            prepared.map_set.map_set_id,
+            *(
+                [flex_output.artifact_id]
+                if flex_output is not None
+                else []
+            ),
+            prepared.binding_site.binding_site_id,
+            prepared.request.ligand_preparation_id,
+        ]
+        provenance_params: dict[str, object] = {
+            **prepared.request.parameters.model_dump(mode="json"),
+            "map_set_identity_key": prepared.map_set.identity_key,
+            "ligand_atom_types": list(prepared.ligand_atom_types),
+            "autodock4_sha256": prepared.installation.sha256,
+        }
+        if is_flex:
+            provenance_params["receptor_flex_mode"] = prepared.docking_receptor.flex_mode.value
+            provenance_params["flex_atom_types"] = list(prepared.docking_receptor.flex_atom_types)
+            provenance_params["dpf_atom_types"] = list(prepared.dpf_atom_types)
         self._job_store.update_job(
             record.model_copy(
                 update={
@@ -410,19 +458,10 @@ class AutoDock4DockingService:
                         event_id=f"autodock4-docking-{job_id}",
                         event_type="autodock4_docking_completed",
                         timestamp=completed_at,
-                        input_artifacts=[
-                            prepared.map_set.map_set_id,
-                            prepared.binding_site.binding_site_id,
-                            prepared.request.ligand_preparation_id,
-                        ],
+                        input_artifacts=provenance_inputs,
                         output_artifacts=[item.artifact.artifact_id for item in runs],
                         tool=prepared.installation.identity().tool,
-                        parameters={
-                            **prepared.request.parameters.model_dump(mode="json"),
-                            "map_set_identity_key": prepared.map_set.identity_key,
-                            "ligand_atom_types": list(prepared.ligand_atom_types),
-                            "autodock4_sha256": prepared.installation.sha256,
-                        },
+                        parameters=provenance_params,
                         command=execution.command,
                     ),
                 }
@@ -430,7 +469,11 @@ class AutoDock4DockingService:
         )
 
     def _persist_results(
-        self, job_id: str, parsed: ParsedAutoDock4Log
+        self,
+        job_id: str,
+        parsed: ParsedAutoDock4Log,
+        *,
+        receptor_rigid_sha256: str,
     ) -> tuple[list[AutoDock4RunResult], list[AutoDock4ClusterResult]]:
         ranking = {row.run: row for row in parsed.ranking}
         runs: list[AutoDock4RunResult] = []
@@ -439,6 +482,22 @@ class AutoDock4DockingService:
             artifact_id = str(uuid4())
             filename = f"run_{pose.run}.pdbqt"
             self._job_store.write_pose(job_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"run_{pose.run}_flex.pdbqt"
+                self._job_store.write_pose(job_id, flex_filename, pose.flex_sidechains_content)
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = f"/docking/autodock4/jobs/{job_id}/poses/{artifact_id}/flex"
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=receptor_rigid_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             runs.append(
                 AutoDock4RunResult(
                     run=pose.run,
@@ -452,11 +511,15 @@ class AutoDock4DockingService:
                         run=pose.run,
                         filename=filename,
                         format="pdbqt",
-                        sha256=sha256(pose.content).hexdigest(),
+                        sha256=lig_sha,
                         size_bytes=len(pose.content),
                         content_url=(
                             f"/docking/autodock4/jobs/{job_id}/poses/{artifact_id}/content"
                         ),
+                        flex_filename=flex_filename,
+                        pose_flex_sidechains_sha256=flex_sha,
+                        flex_content_url=flex_url,
+                        pose_complex_identity_sha256=complex_sha,
                     ),
                 )
             )
@@ -477,12 +540,22 @@ class AutoDock4DockingService:
         return runs, clusters
 
     def _stage_inputs(self, job_directory: Path, prepared: _PreparedDocking) -> None:
-        self._stage_directory(job_directory, prepared.map_set, prepared.ligand_path)
+        self._stage_directory(
+            job_directory,
+            prepared.map_set,
+            prepared.ligand_path,
+            flex_path=prepared.docking_receptor.flex_path,
+        )
 
     def _stage_directory(
-        self, job_directory: Path, map_set: AutoGridMapSetRecord, ligand_path: Path
+        self,
+        job_directory: Path,
+        map_set: AutoGridMapSetRecord,
+        ligand_path: Path,
+        *,
+        flex_path: Path | None = None,
     ) -> None:
-        """Place the ligand and the map set beside the job's relative filenames.
+        """Place the ligand, optional flex side chains, and maps beside relative filenames.
 
         Maps are hard-linked rather than copied: a map set is tens to hundreds
         of megabytes and AutoDock only ever reads it, so a link costs no disk
@@ -490,6 +563,8 @@ class AutoDock4DockingService:
         link is impossible, such as across volumes.
         """
         shutil.copyfile(ligand_path, job_directory / LIGAND_FILENAME)
+        if flex_path is not None:
+            shutil.copyfile(flex_path, job_directory / FLEXRES_FILENAME)
         source_directory = self._map_store.map_set_directory(map_set.map_set_id)
         for artifact in map_set.artifacts:
             if artifact.kind in {
@@ -511,10 +586,16 @@ class AutoDock4DockingService:
         )
         installation = probe_autodock4()
         map_set = self._map_store.load_record(request.map_set_id)
-        receptor_output, binding_site = self._validate_receptor_and_site(request)
-        warnings = self._validate_map_set_applies(
-            map_set, receptor_output=receptor_output, binding_site=binding_site
-        )
+        docking_receptor, binding_site = self._validate_receptor_and_site(request)
+        warnings = [
+            *self._validate_map_set_applies(
+                map_set,
+                receptor_output=docking_receptor.rigid_output,
+                binding_site=binding_site,
+                receptor=docking_receptor.record,
+            ),
+            *flex_dof_warnings(docking_receptor.record),
+        ]
 
         pdbqt = self._ligand_store.load_pdbqt_record(
             request.ligand_id, request.ligand_preparation_id
@@ -525,6 +606,7 @@ class AutoDock4DockingService:
         self._verify_hash(ligand_path, pdbqt.artifact.sha256)
         document = ligand_path.read_text(encoding="utf-8", errors="replace")
         atom_types = _ordered_atom_types(document)
+        dpf_atom_types = merge_ordered_atom_types(atom_types, docking_receptor.flex_atom_types)
         atom_lines = [
             line for line in document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
         ]
@@ -552,14 +634,18 @@ class AutoDock4DockingService:
             atom_count=len(atom_lines),
             torsional_degrees_of_freedom=_torsdof(document),
             map_count=len(available) + 2,
+            flex_atom_count=docking_receptor.flex_atom_count,
+            flex_torsions=docking_receptor.flex_torsion_count,
         )
         return _PreparedDocking(
             request=request,
             installation=installation,
+            docking_receptor=docking_receptor,
             map_set=map_set,
             ligand_path=ligand_path,
             ligand_sha256=pdbqt.artifact.sha256,
             ligand_atom_types=atom_types,
+            dpf_atom_types=dpf_atom_types,
             atom_count=len(atom_lines),
             torsional_degrees_of_freedom=_torsdof(document),
             about=_centroid(atom_lines),
@@ -685,16 +771,27 @@ class AutoDock4DockingService:
     def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
+    def batch_pose_flex_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path | None:
+        return self._job_store.batch_pose_flex_content_path(batch_id, ligand_id, artifact_id)
+
     def _create_batch(self, request: AutoDock4BatchRequest) -> AutoDock4BatchRecord:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
         installation = probe_autodock4()
         map_set = self._map_store.load_record(request.map_set_id)
-        receptor_output, binding_site = self._validate_receptor_and_site(request)
-        warnings = self._validate_map_set_applies(
-            map_set, receptor_output=receptor_output, binding_site=binding_site
-        )
+        docking_receptor, binding_site = self._validate_receptor_and_site(request)
+        warnings = [
+            *self._validate_map_set_applies(
+                map_set,
+                receptor_output=docking_receptor.rigid_output,
+                binding_site=binding_site,
+                receptor=docking_receptor.record,
+            ),
+            *flex_dof_warnings(docking_receptor.record),
+        ]
         filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         if not filter_run.selected_ligand_ids:
             raise self._input_error(
@@ -861,6 +958,8 @@ class AutoDock4DockingService:
             )
         runnable = sum(1 for entry in entries if entry.status is AutoDock4JobStatus.QUEUED)
         worker_count = max(1, min(request.parameters.parallel_ligands, runnable or 1))
+        flex_spec = docking_receptor.record.flex_spec
+        flex_output = docking_receptor.flex_output
         record = AutoDock4BatchRecord(
             batch_id=self._job_store.new_batch_id(),
             status=AutoDock4JobStatus.QUEUED,
@@ -869,6 +968,13 @@ class AutoDock4DockingService:
             request=request,
             autodock4=installation.identity(),
             receptor_id=request.receptor_id,
+            receptor_flex_mode=docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
+            flex_atom_types=list(docking_receptor.flex_atom_types),
             binding_site_id=request.binding_site_id,
             map_set_id=map_set.map_set_id,
             map_set_identity_key=map_set.identity_key,
@@ -1071,11 +1177,55 @@ class AutoDock4DockingService:
             atom_lines = [
                 line for line in document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
             ]
-            self._stage_directory(directory, map_set, ligand_path)
+            is_flex = batch.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+            flex_path: Path | None = None
+            flex_atom_count = 0
+            flex_torsions = 0
+            if is_flex:
+                if (
+                    batch.receptor_flex_output_artifact_id is None
+                    or batch.receptor_flex_sha256 is None
+                ):
+                    raise self._input_error(
+                        "AUTODOCK4_RECEPTOR_PDBQT_MISSING",
+                        "This flexible campaign is missing its preserved flex side-chain split.",
+                        {"batch_id": batch_id, "receptor_id": batch.receptor_id},
+                    )
+                flex_path = self._receptor_store.content_path(
+                    batch.receptor_id, batch.receptor_flex_output_artifact_id
+                )
+                self._verify_hash(flex_path, batch.receptor_flex_sha256)
+                flex_document = flex_path.read_text(encoding="utf-8", errors="replace")
+                flex_atom_count = sum(
+                    1
+                    for line in flex_document.splitlines()
+                    if line.startswith(("ATOM  ", "HETATM"))
+                )
+                receptor_record = self._receptor_store.load_record(batch.receptor_id)
+                if receptor_record.flex_spec is not None:
+                    flex_torsions = receptor_record.flex_spec.added_chi_torsion_count
+            installation = probe_autodock4()
+            available_maps = {
+                artifact.atom_type
+                for artifact in map_set.artifacts
+                if artifact.kind is AutoGridMapKind.AFFINITY
+            }
+            validate_ligand_against_autodock4_limits(
+                installation,
+                atom_count=len(atom_lines),
+                torsional_degrees_of_freedom=_torsdof(document),
+                map_count=len(available_maps) + 2,
+                flex_atom_count=flex_atom_count,
+                flex_torsions=flex_torsions,
+            )
+            dpf_atom_types = merge_ordered_atom_types(
+                _ordered_atom_types(document), tuple(batch.flex_atom_types)
+            )
+            self._stage_directory(directory, map_set, ligand_path, flex_path=flex_path)
             dpf = render_autodock4_dpf(
                 ligand_filename=LIGAND_FILENAME,
                 map_prefix=_map_prefix(map_set),
-                ligand_atom_types=_ordered_atom_types(document),
+                ligand_atom_types=dpf_atom_types,
                 about=_centroid(atom_lines),
                 torsional_degrees_of_freedom=_torsdof(document),
                 seed=(
@@ -1089,11 +1239,12 @@ class AutoDock4DockingService:
                 cluster_rmsd_tolerance_angstrom=(
                     batch.request.parameters.cluster_rmsd_tolerance_angstrom
                 ),
+                flexres_filename=FLEXRES_FILENAME if is_flex else None,
             )
             (directory / DOCKING_PARAMETER_FILENAME).write_text(dpf, encoding="ascii", newline="\n")
             started = time.monotonic()
             execution = execute_autodock4_cancellable(
-                installation=probe_autodock4(),
+                installation=installation,
                 job_directory=directory,
                 timeout_seconds=batch.request.parameters.timeout_minutes * 60,
                 cancel_event=cancel_event,
@@ -1142,9 +1293,24 @@ class AutoDock4DockingService:
                     ),
                 )
                 return
-            parsed = parse_autodock4_log(log)
-            runs, clusters = self._persist_batch_results(batch_id, ligand_id, parsed)
+            parsed = parse_autodock4_log(log, expect_flex_sidechains=is_flex)
+            runs, clusters = self._persist_batch_results(
+                batch_id,
+                ligand_id,
+                parsed,
+                receptor_rigid_sha256=map_set.receptor_sha256,
+            )
             completed_at = datetime.now(UTC)
+            batch_inputs = [
+                batch.map_set_id,
+                *(
+                    [batch.receptor_flex_output_artifact_id]
+                    if batch.receptor_flex_output_artifact_id is not None
+                    else []
+                ),
+                batch.binding_site_id,
+                entry.ligand_preparation_id,
+            ]
             self._finish_entry(
                 batch_id,
                 ligand_id,
@@ -1158,14 +1324,21 @@ class AutoDock4DockingService:
                     event_id=f"autodock4-batch-{batch_id}-{ligand_id}",
                     event_type="autodock4_library_ligand_completed",
                     timestamp=completed_at,
-                    input_artifacts=[
-                        batch.map_set_id,
-                        batch.binding_site_id,
-                        entry.ligand_preparation_id,
-                    ],
+                    input_artifacts=batch_inputs,
                     output_artifacts=[item.artifact.artifact_id for item in runs],
                     tool=batch.autodock4.tool,
-                    parameters=batch.request.parameters.model_dump(mode="json"),
+                    parameters={
+                        **batch.request.parameters.model_dump(mode="json"),
+                        **(
+                            {
+                                "receptor_flex_mode": batch.receptor_flex_mode.value,
+                                "flex_atom_types": list(batch.flex_atom_types),
+                                "dpf_atom_types": list(dpf_atom_types),
+                            }
+                            if is_flex
+                            else {}
+                        ),
+                    },
                     command=execution.command,
                 ),
             )
@@ -1180,7 +1353,12 @@ class AutoDock4DockingService:
             )
 
     def _persist_batch_results(
-        self, batch_id: str, ligand_id: str, parsed: ParsedAutoDock4Log
+        self,
+        batch_id: str,
+        ligand_id: str,
+        parsed: ParsedAutoDock4Log,
+        *,
+        receptor_rigid_sha256: str,
     ) -> tuple[list[AutoDock4RunResult], list[AutoDock4ClusterResult]]:
         ranking = {row.run: row for row in parsed.ranking}
         runs: list[AutoDock4RunResult] = []
@@ -1189,6 +1367,27 @@ class AutoDock4DockingService:
             artifact_id = str(uuid4())
             filename = f"run_{pose.run}.pdbqt"
             self._job_store.write_batch_pose(batch_id, ligand_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"run_{pose.run}_flex.pdbqt"
+                self._job_store.write_batch_pose(
+                    batch_id, ligand_id, flex_filename, pose.flex_sidechains_content
+                )
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = (
+                    f"/docking/autodock4/batches/{batch_id}/ligands/"
+                    f"{ligand_id}/poses/{artifact_id}/flex"
+                )
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=receptor_rigid_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             runs.append(
                 AutoDock4RunResult(
                     run=pose.run,
@@ -1202,12 +1401,16 @@ class AutoDock4DockingService:
                         run=pose.run,
                         filename=filename,
                         format="pdbqt",
-                        sha256=sha256(pose.content).hexdigest(),
+                        sha256=lig_sha,
                         size_bytes=len(pose.content),
                         content_url=(
                             f"/docking/autodock4/batches/{batch_id}/ligands/"
                             f"{ligand_id}/poses/{artifact_id}/content"
                         ),
+                        flex_filename=flex_filename,
+                        pose_flex_sidechains_sha256=flex_sha,
+                        flex_content_url=flex_url,
+                        pose_complex_identity_sha256=complex_sha,
                     ),
                 )
             )
@@ -1292,8 +1495,8 @@ class AutoDock4DockingService:
 
     def _validate_receptor_and_site(
         self, request: AutoDock4DockingRequest | AutoDock4BatchRequest
-    ) -> tuple[ReceptorOutputArtifact, BindingSiteRecord]:
-        return resolve_receptor_and_site(
+    ) -> tuple[DockingReceptor, BindingSiteRecord]:
+        return resolve_docking_receptor_and_site(
             receptor_id=request.receptor_id,
             binding_site_id=request.binding_site_id,
             receptor_store=self._receptor_store,
@@ -1308,6 +1511,7 @@ class AutoDock4DockingService:
         *,
         receptor_output: ReceptorOutputArtifact,
         binding_site: BindingSiteRecord,
+        receptor: ReceptorPreparationRecord | None = None,
     ) -> list[StructuredWarning]:
         return validate_map_set_applies(
             map_set,
@@ -1315,6 +1519,7 @@ class AutoDock4DockingService:
             binding_site=binding_site,
             stage=_STAGE,
             code_prefix="AUTODOCK4",
+            receptor=receptor,
         )
 
     def _finish(
