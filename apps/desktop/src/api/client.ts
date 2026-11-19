@@ -64,6 +64,10 @@ import type {
   CalibrationRunRecord,
   CalibrationSelectRequest,
   CalibrationSplitRequest,
+  CreateInteractionRuleSetRequest,
+  EvaluateInteractionRulesRequest,
+  InteractionRuleEvaluationRecord,
+  InteractionRuleSetRecord,
   PoseQualityRecord,
   PoseQualityRequest,
   PoseRescoreResult,
@@ -941,6 +945,50 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/quality`,
     { method: "POST", body: JSON.stringify(request) },
   ),
+
+  listInteractionRuleSets: (receptorId?: string): Promise<InteractionRuleSetRecord[]> =>
+    getJson<InteractionRuleSetRecord[]>(
+      receptorId
+        ? `/interactions/rule-sets?receptor_id=${encodeURIComponent(receptorId)}`
+        : "/interactions/rule-sets",
+    ),
+
+  createInteractionRuleSet: (
+    request: CreateInteractionRuleSetRequest,
+  ): Promise<InteractionRuleSetRecord> =>
+    requestJson<InteractionRuleSetRecord>("/interactions/rule-sets", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  getInteractionRuleSet: (ruleSetId: string): Promise<InteractionRuleSetRecord> =>
+    getJson<InteractionRuleSetRecord>(
+      `/interactions/rule-sets/${encodeURIComponent(ruleSetId)}`,
+    ),
+
+  listPoseInteractionRuleEvaluations: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): Promise<InteractionRuleEvaluationRecord[]> =>
+    getJson<InteractionRuleEvaluationRecord[]>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}`
+      + "/interaction-rules",
+    ),
+
+  evaluatePoseInteractionRules: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+    request: EvaluateInteractionRulesRequest,
+  ): Promise<InteractionRuleEvaluationRecord> =>
+    requestJson<InteractionRuleEvaluationRecord>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}`
+      + "/interaction-rules",
+      { method: "POST", body: JSON.stringify(request) },
+    ),
 
   /**
    * The deterministically materialized coupled complex for one pose (`E8`).

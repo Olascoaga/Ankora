@@ -3117,3 +3117,162 @@ export interface PoseQualityRecord {
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
 }
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M4 — declarative ProLIF pharmacophoric rules & Tanimoto IFP (PIC).
+ *
+ * Mirrors `schemas/interaction_rules.py`. Rule sets are validated against the
+ * prepared receptor's protonated PDB and sealed by `rule_set_identity_sha256`
+ * prior to Confirmation. Pose evaluations run directly on the coupled
+ * `PoseComplex` (`ADR-032 E8`) and never mutate parent pose bytes.
+ * ------------------------------------------------------------------------ */
+
+export type InteractionRuleKind = "required" | "alternative_or" | "forbidden";
+
+export type IfpSourceKind = "pose_analysis" | "explicit_bits";
+
+export interface IfpBit {
+  residue: ResidueLocator;
+  interaction_type: string;
+}
+
+export interface IfpCountEntry {
+  bit: IfpBit;
+  count: number;
+}
+
+export interface InteractionFingerprint {
+  profile: InteractionProfile;
+  bits: IfpBit[];
+  counts: IfpCountEntry[];
+  source_kind: IfpSourceKind;
+  source_analysis_id?: string | null;
+  source_catalog_id?: string | null;
+  source_ligand_id?: string | null;
+  source_pose_artifact_id?: string | null;
+  source_pose_complex_sha256?: string | null;
+  fingerprint_sha256: string;
+}
+
+export interface InteractionTarget {
+  residue: ResidueLocator;
+  interaction_types: string[];
+  max_distance_angstrom?: number | null;
+}
+
+export interface InteractionRuleClause {
+  clause_id: string;
+  label: string;
+  kind: InteractionRuleKind;
+  targets: InteractionTarget[];
+  min_satisfied?: number | null;
+}
+
+export interface ReferencePoseSelector {
+  catalog_id: string;
+  ligand_id: string;
+  pose_artifact_id: string;
+}
+
+export interface CreateInteractionRuleSetRequest {
+  name: string;
+  description?: string;
+  receptor_id: string;
+  profile?: InteractionProfile;
+  clauses?: InteractionRuleClause[];
+  reference_pose?: ReferencePoseSelector | null;
+  reference_bits?: IfpBit[] | null;
+  min_tanimoto_similarity?: number | null;
+}
+
+export interface InteractionRuleSetRecord {
+  schema_version: 1;
+  rule_set_id: string;
+  created_at: string;
+  name: string;
+  description: string;
+  receptor_id: string;
+  receptor_protonated_artifact_id: string;
+  receptor_protonated_sha256: string;
+  profile: InteractionProfile;
+  clauses: InteractionRuleClause[];
+  reference_ifp?: InteractionFingerprint | null;
+  min_tanimoto_similarity?: number | null;
+  rule_set_identity_sha256: string;
+  provenance: ProvenanceEvent;
+}
+
+export interface TargetEvaluationResult {
+  target: InteractionTarget;
+  matched: boolean;
+  matched_contact_ids: string[];
+  shortest_distance_angstrom?: number | null;
+}
+
+export interface ClauseEvaluationResult {
+  clause_id: string;
+  label: string;
+  kind: InteractionRuleKind;
+  status: DiagnosticStatus;
+  satisfied_target_count: number;
+  required_target_count: number;
+  matched_contact_ids: string[];
+  target_results: TargetEvaluationResult[];
+  explanation: string;
+}
+
+export interface IfpTanimotoResult {
+  reference_fingerprint_sha256: string;
+  pose_fingerprint_sha256: string;
+  status: DiagnosticStatus;
+  similarity?: number | null;
+  min_threshold?: number | null;
+  intersection_count: number;
+  union_count: number;
+  shared_bits: IfpBit[];
+  pose_only_bits: IfpBit[];
+  reference_only_bits: IfpBit[];
+}
+
+export interface EvaluateInteractionRulesRequest {
+  rule_set_id: string;
+  analysis_id?: string | null;
+}
+
+export interface InteractionRuleEvaluationRecord {
+  schema_version: 1;
+  evaluation_id: string;
+  created_at: string;
+  rule_set_id: string;
+  rule_set_name: string;
+  rule_set_identity_sha256: string;
+  catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  engine_label: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  conformer_id: string;
+  conformer_sha256: string;
+  receptor_id: string;
+  docking_receptor_artifact_id: string;
+  docking_receptor_sha256: string;
+  analysis_receptor_artifact_id: string;
+  analysis_receptor_sha256: string;
+  materialized_coupled_receptor_sha256?: string | null;
+  pose: PoseReference;
+  pose_complex: PoseComplexIdentity;
+  interaction_analysis_id?: string | null;
+  detector: { name: string; version: string };
+  profile: InteractionProfile;
+  pose_ifp: InteractionFingerprint;
+  contacts: InteractionContact[];
+  overall_status: DiagnosticStatus;
+  clause_results: ClauseEvaluationResult[];
+  passed_clause_count: number;
+  failed_clause_count: number;
+  tanimoto?: IfpTanimotoResult | null;
+  mutated_original_pose: false;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}

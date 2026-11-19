@@ -1090,3 +1090,93 @@ button { font: inherit; }
   color: var(--text-secondary);
   font-weight: 600;
 }
+
+/* M4: opt-in declarative ProLIF pharmacophoric rules & Tanimoto IFP panel. */
+.interaction-rules-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  display: grid;
+  gap: 12px;
+}
+.interaction-rules-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.interaction-rules-suggestions {
+  display: grid;
+  gap: 6px;
+}
+.interaction-rules-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.interaction-rules-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  min-height: 26px;
+}
+.interaction-rules-builder {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-raised);
+  display: grid;
+  gap: 10px;
+}
+.interaction-rules-builder-meta,
+.interaction-rules-clause-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.interaction-rules-builder label,
+.interaction-rules-eval-bar label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.interaction-rules-builder input[type="text"],
+.interaction-rules-builder input[type="number"],
+.interaction-rules-builder select,
+.interaction-rules-eval-bar select {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.interaction-rules-clauses {
+  display: grid;
+  gap: 10px;
+}
+.interaction-rules-clause-editor {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  display: grid;
+  gap: 8px;
+}
+.interaction-rules-builder-actions,
+.interaction-rules-eval-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.interaction-rules-result {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}

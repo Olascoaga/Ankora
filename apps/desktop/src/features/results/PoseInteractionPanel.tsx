@@ -17,6 +17,7 @@ import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { MolecularViewerHandle } from "../../viewer/MolecularViewer";
 import type { ViewerContact, ViewerSelection, ViewerSource } from "../../viewer/adapter";
 import { FigureExportControls } from "./FigureExportControls";
+import { InteractionRulesSection } from "./InteractionRulesSection";
 import { PoseComplexExportControls } from "./PoseComplexExportControls";
 import { PoseQualitySection } from "./PoseQualitySection";
 import {
@@ -98,6 +99,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [rescoreResult, setRescoreResult] = useState<PoseRescoreResult | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -469,6 +471,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
           >
             Pose quality (PoseBusters + MMFF94s)
           </button>
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={rulesOpen}
+            onClick={() => setRulesOpen((open) => !open)}
+          >
+            Pharmacophore rules (ProLIF PIC)
+          </button>
           {coupledFlexPose ? (
             <label className="check-row pose-flex-overlay-toggle">
               <input
@@ -645,6 +656,20 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
           catalogId={entry.catalog_id}
           ligandId={molecule.ligand_id}
           poseArtifactId={pose.artifact_id}
+        />
+      ) : null}
+
+      {rulesOpen && pose ? (
+        <InteractionRulesSection
+          catalogId={entry.catalog_id}
+          ligandId={molecule.ligand_id}
+          poseArtifactId={pose.artifact_id}
+          receptorId={entry.receptor_id}
+          currentAnalysis={analysis}
+          onFocusContact={(contact) => {
+            setContactType("");
+            setSelectedContact(contact);
+          }}
         />
       ) : null}
 
