@@ -53,7 +53,7 @@ Read these contracts before comparing campaigns, interpreting scores, or citing 
 
 ---
 
-## 5. Architecture & Key Decision Records (`ADR-001`–`ADR-029`)
+## 5. Architecture & Key Decision Records (`ADR-001`–`ADR-032`)
 
 Start with [System Architecture](architecture/ARCHITECTURE.md) for the end-to-end Tauri v2 (`WebView2` on Windows, `WebKitGTK` on Linux) + React/TypeScript + localhost FastAPI/Python 3.12 design, resource arbitration, and isolated toolchains. Full decision records live in [`docs/architecture/ADR/`](architecture/ADR):
 
@@ -63,6 +63,7 @@ Start with [System Architecture](architecture/ARCHITECTURE.md) for the end-to-en
 | **Chemistry & Sampling Rigor** | [ADR-012](architecture/ADR/ADR-012-validation-by-reference-cases.md) (reference-case validation), [ADR-015](architecture/ADR/ADR-015-autodock4-engine.md) (AutoDock4 & AutoGrid4), [ADR-016](architecture/ADR/ADR-016-explicit-screening-microstates.md) (explicit screening microstates), [ADR-017](architecture/ADR/ADR-017-explicit-receptor-protonation-decisions.md) (receptor protonation review), [ADR-018](architecture/ADR/ADR-018-exploratory-search-space-and-vina-sampling.md) & [ADR-019](architecture/ADR/ADR-019-purpose-labelled-vina-sampling-protocols.md) (box volume & Vina sampling), [ADR-025](architecture/ADR/ADR-025-topology-guarded-receptor-repair.md) (`topology_guard_v3` receptor reconstruction). |
 | **Execution Reliability & Windows Packaging** | [ADR-020](architecture/ADR/ADR-020-durable-work-recovery.md) (durable work leases & startup reconciliation), [ADR-021](architecture/ADR/ADR-021-incremental-batch-state.md) (incremental SQLite batch state), [ADR-022](architecture/ADR/ADR-022-global-resource-arbitration.md) (`ResourceArbiter` CPU/GPU/RAM/VRAM/disk), [ADR-024](architecture/ADR/ADR-024-complete-scientific-installer.md) (self-contained offline scientific installer). |
 | **Linux Port, GNINA & Modular Distribution** | [ADR-026](architecture/ADR/ADR-026-linux-port-and-native-acceptance.md) (Linux port & bare-metal workstation gate, superseding [ADR-001](architecture/ADR/ADR-001-windows-only-personal-workbench.md)), [ADR-027](architecture/ADR/ADR-027-linux-gnina.md) (Linux `GNINA 1.3.3` engine, superseding [ADR-008](architecture/ADR/ADR-008-vina-and-gnina.md) deferral on Linux), [ADR-028](architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md) (`CNN_VS`, CUDA `refinement`, built-in CNN ensembles & VRAM arbitration), [ADR-029](architecture/ADR/ADR-029-linux-offline-distribution.md) (modular `.deb`/`.tar.zst` Core installer + 1-click offline GNINA CUDA 12.8 pack). |
+| **v0.2 M0 Frozen Contracts (`Proposed`)** | [ADR-030](architecture/ADR/ADR-030-rank-space-consensus-prioritization.md) (opt-in rank-space `PC-Q`/`PC-ECR`/`PC-L2` consensus, amending the cross-engine non-pooling rule for dimensionless rank-space artifacts only), [ADR-031](architecture/ADR/ADR-031-external-benchmark-boundary.md) (external comparison benchmark boundary, out-of-sample discipline & CI installer-size budget guard), [ADR-032](architecture/ADR/ADR-032-explicit-flexibility-and-pose-complex-identity.md) (explicit semi-flexible ligand control, bounded receptor side-chain flexibility & coupled pose-complex identity). |
 
 ---
 
