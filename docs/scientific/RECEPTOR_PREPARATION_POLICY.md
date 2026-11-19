@@ -139,3 +139,25 @@ Meeko evidence may be folded after explicit removal choices, but remains
 available and is never reclassified as a successful preparation. Optional
 clash relief remains an explicit choice with the same 0.5 Å safety safeguard;
 its availability is not a guarantee of correct reconstruction.
+
+## Bounded receptor side-chain flexibility (`v0.2 M1`, `ADR-032`)
+
+- **Explicit side-chain split (`sidechain_flex`):** when the scientist explicitly
+  selects one or more pocket residues for flexible side-chain docking, Ankora
+  runs `mk_prepare_receptor -f <chain:resnum>` to produce two immutable,
+  SHA-256-locked artifacts: `PDBQT_RIGID` (rigid receptor core) and `PDBQT_FLEX`
+  (flexible side-chain torsion tree). The original rigid receptor and structure
+  remain untouched.
+- **Hard chemical guards:** residues with no rotatable side-chain torsions or
+  disulfide constraints (`GLY`, `ALA`, `PRO`, `CYX`) and duplicate locators are
+  rejected before invoking Meeko.
+- **Bounded DOF warning:** designating more than `4` flexible residues or more
+  than `12` added side-chain $\chi$ torsions emits a visible
+  `DOCKING_FLEXRES_DOF_HIGH` warning recorded on receptor and docking provenance
+  and disclosed in `Methods`.
+- **Map binding (`E7`):** `AutoGrid4 4.2.6` affinity maps for a `sidechain_flex`
+  receptor are generated strictly from `PDBQT_RIGID` over the union of ligand
+  and `PDBQT_FLEX` atom types (`AUTOGRID_FLEXRES_MAP_MISMATCH` fails closed).
+  Discrete multi-structure receptor ensemble docking (`apo`/`holo`) remains
+  deferred to `v0.3+`.
+

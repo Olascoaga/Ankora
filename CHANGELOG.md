@@ -2,6 +2,50 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestones `M0`–`M1`: Explicit Ligand Semi-Flexibility & Bounded Receptor Side-Chain `FlexRes` (`codex/v0.2-dev`) - 2026-11-19
+
+- **Governance & frozen `v0.2` contracts (`M0`, `ADR-030`–`ADR-032`):**
+  add `ADR-030` (opt-in rank-space `PC-Q`/`PC-ECR`/`PC-L2`), `ADR-031`
+  (external benchmark boundary & installer-size budget manifest
+  `environment/v02-installer-size-budget.json`), `ADR-032` + Addendum `A1`–`A6`
+  (explicit ligand/receptor flexibility & `E7`/`E8` coupled complex invariants),
+  and frozen Pydantic v2 contracts in `schemas/v02_contracts.py` (`0` new
+  runtime dependencies).
+- **Live cross-OS Gate 0 probe & explicit ligand flexibility (`M1a`):**
+  verify live CLI/format contracts across `Meeko 0.7.1`, `Vina 1.2.7`,
+  `AutoGrid4/AutoDock4 4.2.6`, `AutoDock-GPU 1.6`, and Linux `GNINA 1.3.3`
+  (`docs/validation/V02_M1_FLEXIBILITY_GATE0_PROBE.md`); expose explicit
+  `macrocycle_policy` (`flexible_pseudoatoms` vs `rigid_input_conformation`,
+  unlocking macrocycles in `AutoDock4`/`AutoDock-GPU`), `flexible_amides`,
+  SMARTS bond rigidification with `LIG_RIGIDIFY_SMARTS_NO_MATCH` zero-match
+  diagnostics, and recorded `effective_torsdof`.
+- **Bounded receptor side-chain split & `AutoGrid4` `E7` guard (`M1b`):**
+  integrate `mk_prepare_receptor -f` to emit immutable `PDBQT_RIGID` +
+  `PDBQT_FLEX` artifacts, enforce hard rejection of `GLY`/`ALA`/`PRO`/`CYX` and
+  duplicates, surface `DOCKING_FLEXRES_DOF_HIGH` (>4 residues or >12 added chi
+  torsions), and verify union atom-type coverage in `AutoGrid4` (`E7`).
+- **All four engines, coupled `E8` `PoseComplex`, refinement API, `Methods`, & `Export v4` (`M1c-1..4`):**
+  implement deterministic coupled complex reconstruction (`flex_pose_complex.py`),
+  `Vina 1.2.7` (`--flex`, `--scoring vinardo`, create-only `--local_only`
+  isolated in `adapters/engines/vina_v02.py` so frozen `v0.1` `vina.py` bytes
+  stay hash-identical to `LIT_PCBA_ANKORA_VS_V1`), `AutoDock4 4.2.6` CPU
+  (`flexres`), `AutoDock-GPU 1.6` (`--flexres`), Linux `GNINA 1.3.3` (`--flex`,
+  `--out_flex .pdb` guard, 0-based ordinal pairing + Meeko re-injection, and
+  `--local_only` with staging-copy stale score-`REMARK` cleanup), coupled
+  `PoseInteractionService`, 7 `/flex` + refinement HTTP endpoints,
+  `MethodsReportService`, and backward-compatible `CampaignExportService`.
+- **Desktop flexibility & coupled review UI (`M1d`):**
+  add `LigandFlexibilityControls.tsx`, receptor `FlexRes` picker & DOF badge
+  (`flexResidues.ts`), `ActiveFlexResBanner.tsx`, Vina `Vinardo` selector,
+  coupled `PoseComplex` default + translucent crystal-rotamer overlay in
+  `Mol*`, create-only `--local_only` refinement controls in
+  `PoseInteractionPanel.tsx`, and `FlexUiM1d.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M1_EXPLICIT_FLEXIBILITY.md`, `132` records):**
+  verified across Windows 11 x64 (`348` passed / `1` Linux-only skip in
+  `test_v02_*.py`, `380/380` Vitest, `3/3` Tauri Rust) and Linux x86\_64 WSL2
+  (`349/349` in `test_v02_*.py` with live `GNINA 1.3.3`, `380/380` Vitest,
+  `5/5` Tauri Rust). Frozen `v0.1.0-beta.2` (`main`) remains untouched.
+
 ## GNINA `refinement` wording alignment and reproducible `7AQF/RV2` beginner walkthrough (`v0.1.0-beta.2`) - 2026-11-16
 
 - Align `MethodsReportService`, `CampaignExportService` (`manifest.json` and

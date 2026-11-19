@@ -35,10 +35,10 @@ Contacts describe geometry—not measured affinity. [Capture provenance](docs/im
 | Workspace | What you can do |
 | --- | --- |
 | **Structure** | Import local `PDB`/`mmCIF` or fetch from RCSB PDB and AlphaFold DB; inspect chains, heterogens, waters, alternate locations, and missing atoms before creating any derivative. |
-| **Receptor** | Step through guided chain, component, and topology-guarded side-chain repair decisions (`topology_guard_v3`), review `PROPKA`/`PDB2PQR` protonation proposals, and generate `Meeko` receptor `PDBQT` with full failure diagnostics. |
-| **Ligands** | Prepare one compound or screen up to 10,000-record `SDF`/`MOL`/`SMILES` libraries with explicit stereochemistry and physiological-pH microstate selection (`ADR-016`), rule/alert evaluation, independent `ETKDGv3`/`MMFF94s` minimization, and `Meeko` `PDBQT` creation. |
+| **Receptor** | Step through guided chain, component, and topology-guarded side-chain repair decisions (`topology_guard_v3`), review `PROPKA`/`PDB2PQR` protonation proposals, optionally designate bounded `FlexRes` side chains (`1–4` pocket residues, `ADR-032`), and generate `Meeko` receptor `PDBQT` with full failure diagnostics. |
+| **Ligands** | Prepare one compound or screen up to 10,000-record `SDF`/`MOL`/`SMILES` libraries with explicit stereochemistry and physiological-pH microstate selection (`ADR-016`), rule/alert evaluation, independent `ETKDGv3`/`MMFF94s` minimization, and explicit semi-flexible `Meeko` `PDBQT` controls (`macrocycle_policy`, SMARTS bond rigidification, `flexible_amides`, recorded `effective_torsdof`). |
 | **Binding site** | Define an editable Cartesian box from co-crystallized ligands, selected residues, `P2Rank 2.5.1` pockets, manual coordinates, or acknowledged blind whole-protein coverage—translating and resizing directly in 3D. |
-| **Docking** | Execute single-ligand runs or library campaigns across **AutoDock Vina**, **AutoDock4 CPU**, **AutoDock-GPU**, and (on Linux) **GNINA**, governed by a unified CPU/GPU/RAM/VRAM resource arbiter with preserved row-level failures. |
+| **Docking** | Execute single-ligand runs or library campaigns across **AutoDock Vina** (`vina` and `vinardo` scoring), **AutoDock4 CPU**, **AutoDock-GPU**, and (on Linux) **GNINA**, with coupled `FlexRes` side-chain tracking (`E7`/`E8`), create-only `--local_only` refinement (Vina & GNINA), and unified CPU/GPU/RAM/VRAM arbitration with preserved row-level failures. |
 | **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, and manage records with atomic recoverable `Trash`. |
 | **Validation** | Compute symmetry-aware, **in-place** heavy-atom RMSD (never superposed) from completed individual Vina, AutoDock4 CPU/GPU, or Linux GNINA jobs against an immutable crystallographic extraction, separating **sampling** from **ranking** verdicts. |
 | **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` format 4). |
@@ -71,9 +71,34 @@ score proof of experimental affinity. For compatible **AutoDock Vina** and
 **AutoDock4 (CPU)** library campaigns sharing the exact receptor, finalized
 binding site, and selection manifest, Ankora reports **Spearman rank
 correlation (`ρ`) and Top-`N` overlap** without pooling scores; GNINA remains in
-its separate CNN catalog family. Under GNINA `refinement`, `minimizedAffinity`
-is evaluated on geometry jointly optimized with CNN and empirical gradients and
-is explicitly documented as non-independent (`docs/scientific/DOCKING_POLICY.md`).
+its separate CNN catalog family. Under GNINA `refinement` (`--cnn_mix_emp_force`
+off), coordinates are optimized under 3D CNN gradients and `minimizedAffinity`
+is evaluated post hoc on that CNN-refined geometry—explicitly documented as
+non-independent (`docs/scientific/DOCKING_POLICY.md`).
+
+### Active `v0.2` development (`codex/v0.2-dev`)
+
+On the dedicated `codex/v0.2-dev` development branch (keeping published
+`v0.1.0-beta.2` installers on `main` untouched until `v0.2` packaging closes),
+Milestones **`M0`** and **`M1`** are implemented and dual-OS verified across
+Windows 11 x64 and Linux x86\_64 (`WSL2` + `CUDA 12.8`):
+
+- **Explicit semi-flexible ligand control (`Meeko 0.7.1`, `ADR-032`):**
+  visible `macrocycle_policy` (`flexible_pseudoatoms` vs
+  `rigid_input_conformation`, unlocking macrocycles in `AutoDock4` /
+  `AutoDock-GPU`), `flexible_amides`, selective SMARTS bond rigidification with
+  explicit zero-match alerts (`LIG_RIGIDIFY_SMARTS_NO_MATCH`), and recorded
+  `effective_torsdof`.
+- **Bounded receptor side-chain flexibility (`FlexRes`, `ADR-032`):**
+  `mk_prepare_receptor -f` splits into immutable `PDBQT_RIGID` + `PDBQT_FLEX`
+  artifacts (`1–4` pocket residues / `<= 12` added $\chi$ torsions recommended
+  with `DOCKING_FLEXRES_DOF_HIGH`; `GLY`/`ALA`/`PRO`/`CYX` and duplicates
+  rejected), enforced by `AutoGrid4` map-union validation (`E7`), coupled
+  `PoseComplexIdentity` reconstruction (`E8`) across all four engines, `Mol*`
+  coupled view with translucent crystal-rotamer overlay, and create-only
+  `--local_only` pose refinement in Vina and Linux GNINA
+  ([`V02_M1_EXPLICIT_FLEXIBILITY.md`](docs/validation/V02_M1_EXPLICIT_FLEXIBILITY.md)).
+  Discrete multi-structure receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect
 
@@ -202,10 +227,10 @@ not imply a matched-input comparison between engines.
 | [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
 | [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
 | [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 128-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, and Linux/GNINA engineering smokes. |
-| [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 132-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1` dual-OS engineering records. |
+| [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, explicit flexibility (`ADR-032`), multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
 | [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
-| [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-029`). |
+| [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-032`). |
 | [Changelog](CHANGELOG.md) | Chronological log of verified scientific and engineering changes. |
 
 ## Build from source
