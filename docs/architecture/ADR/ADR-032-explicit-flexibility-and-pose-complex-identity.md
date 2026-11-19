@@ -134,6 +134,131 @@ These invariants bind to the M0 Pydantic contract module `backend/src/ankora_bac
 | `PoseComplexIdentity` | `pose_flex_sidechains_sha256` plus the deterministic coupled-complex identity consumed by `Mol*`, `PoseBusters`, `ProLIF`, `PC-Q`, and `Export v5`. |
 | `ProtocolSpec` | Carries both flexibility specs as part of the pre-declared, hash-recorded protocol identity, so a flexible run is never mistaken for a rigid one in provenance or comparison. |
 
+## Empirical Gate 0 Addendum (2026-11-18)
+
+The `M1 Gate 0` verification requirement of §2.4 has been **discharged**. Every upstream CLI
+surface named in this ADR was probed live against the pinned executables on **both Windows 11
+x64 and Linux `x86_64` (WSL2 Ubuntu 24.04)**, on labelled synthetic fixtures, and recorded in
+[`V02_M1_FLEXIBILITY_GATE0_PROBE.md`](../../validation/V02_M1_FLEXIBILITY_GATE0_PROBE.md).
+
+**Outcome: GATE 0 PASSED** for all four engines on both platforms. No path specified in this
+ADR is blocked. However, `7` surfaces behaved in ways that **add mandatory fail-closed
+engineering**, four of them *silently* — the tool exits `0` and writes an artifact that looks
+valid. The following contracts are therefore **locked**; they are binding refinements of the
+decisions above, not new scope.
+
+The probe record is **engineering evidence of upstream tool capability only**. It does not
+extend the frozen scientific benchmark claims of
+[`VALIDATION_STATUS.md`](../../validation/VALIDATION_STATUS.md), and it is not an acceptance
+record for any Ankora capability.
+
+### A1. `E7` tightening — `AutoGrid4` `ligand_types` MUST be the union
+
+Invariant `E7` (§3) is tightened. `AutoGrid4` `ligand_types` MUST be computed as
+`union(ligand_atom_types, flex_receptor_atom_types)`, validated against the **`14`-type stock
+AutoGrid4 ligand ceiling before map generation**, and map identity MUST bind the triple
+`(receptor_rigid_sha256, flex_residues, flex_atom_types)` — extending the pair in §3 with
+`flex_atom_types`. Any mismatched member fails closed with `AUTOGRID_FLEXRES_MAP_MISMATCH`.
+
+**Why this is now mandatory rather than defensive.** With maps built from the ligand atom
+types alone, omitting an atom type contributed only by a flexible side chain, the two
+platforms diverge irreconcilably: Linux `autodock4 4.2.6` **crashes** (`exit_code = -6`,
+`SIGABRT`, buffer overflow, `0` models written), while Windows `autodock4.exe 4.2.6`
+**exits `0`** with `Successful Completion` and writes docked models after silently
+substituting `default atom type = 1` for the missing type. The Windows result is numerically
+plausible and carries **no** detectable failure signal — so the union MUST be constructed and
+validated *before* `autogrid4` runs. Post-hoc detection is impossible by construction.
+
+The independent stock-AutoGrid4 ceiling of `20` *receptor* atom types continues to be checked
+against `receptor_rigid.pdbqt` per §3.
+
+### A2. Ligand SMARTS rigidification pre-check
+
+Before invoking `mk_prepare_ligand` with `--rigidify_bonds_smarts`, Ankora MUST run an RDKit
+`GetSubstructMatches` **pre-match** against the prepared ligand and emit structured
+`LIG_RIGIDIFY_SMARTS_NO_MATCH` when the match count is `0`.
+
+**Why.** `Meeko 0.7.1` **silently exits `0`** on a non-matching pattern, leaving the effective
+`TORSDOF` unchanged and emitting nothing on `stdout` — the result is byte-indistinguishable
+from not passing the flag at all. §1.2's requirement that a non-matching pattern be "reported
+as a structured outcome, never silently ignored" therefore **cannot be delegated to Meeko**;
+Ankora owns it. A matched pattern was independently confirmed to reduce `TORSDOF`, and
+`--flexible_amides` to increase it by `+1`, so the recorded effective `TORSDOF` of §1.4
+remains the correct audit quantity.
+
+### A3. `Meeko -f` split path resolution and pre-invocation `422` rejection
+
+- **Path resolution.** `mk_prepare_receptor -p <name>.pdbqt` **strips the `.pdbqt` suffix**
+  and always writes the pair `<stem>_rigid.pdbqt` + `<stem>_flex.pdbqt`. The file literally
+  named `<name>.pdbqt` is never created. Ankora MUST resolve the immutable split pair of §2.3
+  by that stem convention and never from the `-p` argument verbatim.
+- **`CA` is `ROOT`.** Inside each `BEGIN_RES ... END_RES` block, `CA` is the `ROOT` atom with
+  `CB` and beyond in `BRANCH` records, confirming that `-f` frees `chi` torsions while the
+  backbone stays fixed. Atom conservation across the split is exact.
+- **Mandatory pre-invocation rejection.** The §2.1 hard rejections of `GLY`, `ALA`, `PRO`,
+  `CYX`, and duplicate or non-uniquely-resolving locators MUST be enforced with `422`
+  **before `mk_prepare_receptor` is invoked at all**.
+
+**Why the rejection must precede invocation.** `GLY`, `ALA`, and `PRO` **all silently exit
+`0`** with corrupted or absent flex output: `GLY` and `PRO` emit **backbone** atoms into the
+flex file — modelling the backbone as freely rotating, which is not a side-chain rotation and
+not a meaningful docking model — while `ALA` writes no flex file whatsoever. Only a *missing*
+residue locator fails closed. The upstream tool provides no guard, so the guard is Ankora's
+and must run first.
+
+### A4. `Vina 1.2.7` parser and provenance contract
+
+- **Flat `--local_only` output.** `--local_only --out` writes a **flat single-pose PDBQT with
+  `0` `MODEL`/`ENDMDL` wrappers**. The pose parser MUST accept this shape; a parser requiring
+  `MODEL` wrappers reads `0` poses from a successful refinement.
+- **Authoritative `--local_only` energy.** The refined energy MUST be parsed from `stdout`
+  (`Estimated Free Energy of Binding`). The written PDBQT **echoes the stale inherited
+  `REMARK VINA RESULT`** of the parent pose, so trusting that header would attach the parent's
+  energy to the refined derivative of §1.5.
+- **Pure-NUL-line stripping on derived artifacts.** Windows `vina.exe 1.2.7` emits a line of
+  **`30` NUL bytes** immediately after `TORSDOF` and before `BEGIN_RES` in **every** `--flex`
+  model, under both scoring functions and under `--local_only`; Linux emits none. Derived pose
+  splitting and `PoseComplex` materialization MUST strip pure-NUL lines, because an embedded
+  NUL truncates input in the C/C++ string handling used by `RDKit`, `MDAnalysis`, and `Mol*` —
+  which would silently discard exactly the moved side chains `E8` exists to preserve. The
+  **raw `vina` output remains immutable on disk** per `ADR-004`: the corruption is repaired in
+  the derivative, never in the evidence.
+- **`UNBOUND` reference shift.** `--score_only --flex <moved_flex>` succeeds for both `vina`
+  and `vinardo`, but Vina **recomputes `(4) Unbound System's Energy` from the passed moved flex
+  geometry**, shifting the total affinity relative to the docking-time `UNBOUND`. That shift
+  MUST be recorded explicitly in `M5` `PC-Q` cross-family rescoring provenance, so a
+  `--score_only` total is never silently compared against a docking total.
+
+### A5. `GNINA 1.3.3` `FlexRes` contract
+
+- **Invoke `--out_flex <file>.pdb`, never `.pdbqt`.** With a `.pdbqt` target, GNINA fragments
+  output into `num_modes * num_flex_residues` `MODEL` blocks, **omits `BEGIN_RES`/`END_RES`**,
+  and re-roots side chains; feeding such a block back to `gnina --flex` **fails closed**
+  (`rc=1`, `Parse error ... Unknown or inappropriate tag`) for both `--score_only` and
+  `--local_only`. With a `.pdb` target, GNINA writes **exactly one `MODEL ... ENDMDL` block
+  per docking mode**, containing all moved flex residues.
+- **Pair by 0-based ordinal model index, never the literal `MODEL` integer.** GNINA's
+  OpenBabel writer **shares a model counter with `--out`**, so flex models are numbered from
+  `num_modes + 1`. Literal integer equality finds no match at best, and at worst pairs a
+  ligand pose with the wrong side-chain conformation — materializing a `PoseComplex` that never
+  existed.
+- **Re-inject coordinates into the immutable Meeko template.** The moved `(x, y, z)`
+  coordinates MUST be re-injected into the immutable Meeko `receptor_flex.pdbqt` template,
+  matched **1:1 and verified** by `(chain, resseq, icode, resname, atom_name)`, before
+  `--score_only` or `--local_only`. This was verified to unlock both paths (`rc=0`) on
+  otherwise-unusable GNINA flex output. GNINA's own flex output is a **coordinate source, never
+  a reusable topology**.
+
+### A6. `AutoDock4` CPU vs `AutoDock-GPU` serial-numbering note
+
+`AutoDock4` CPU **continues** atom serial numbers inside `BEGIN_RES`, whereas
+`AutoDock-GPU 1.6` **restarts them at `1`**, for otherwise equivalent flexible-side-chain
+output. `PoseComplex` reconstruction under `E8` MUST therefore match flex atoms by
+`(chain, resseq, icode, resname, atom_name)` and **never** by PDBQT serial number. Both
+engines were verified to emit balanced `BEGIN_RES`/`END_RES` blocks, and `AutoDock-GPU`
+succeeded in both single `--flexres` and `--filelist` batch modes on Linux CUDA and Windows
+OpenCL. The `DOCKING_GPU_REPRODUCIBILITY_UNVERIFIED` notice of §2.4 is unchanged.
+
 ## Primary-source references
 
 Bibliographic fields are recorded below only where independently verifiable in this repository or unambiguous from the DOI; remaining identifiers must be expanded under the DOI-verified citation rule of [`METHODS_REPORT_POLICY.md`](../../scientific/METHODS_REPORT_POLICY.md) before they appear in any generated `Methods` output.

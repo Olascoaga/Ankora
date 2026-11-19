@@ -1,6 +1,6 @@
 # Validation and Engineering Evidence Index
 
-This index catalogs all **130** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
+This index catalogs all **131** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
 
 > **Scientific reading rule:** Every historical record preserves the exact state, hashes, and limitations that held on the date it was recorded. Engineering smokes (including WSL2/WSLg checks on synthetic or single-complex fixtures) verify software mechanics and provenance integrity; they do **not** extend the frozen scientific benchmark claims summarized in [`VALIDATION_STATUS.md`](VALIDATION_STATUS.md).
 
@@ -15,6 +15,7 @@ This index catalogs all **130** immutable validation, benchmark, engineering-smo
 | [5. Linux `GNINA 1.3.3` Single-Ligand, Screening, Ensembles & `CNN_VS` (`ADR-027`, `ADR-028`)](#5-linux-gnina-133-single-ligand-screening-ensembles--cnn_vs-adr-027-adr-028) | 26 | Engineering and integration evidence for GNINA CPU/CUDA single jobs, sequential virtual screening, `CNNscore` / `CNNaffinity` / `CNN_VS` hit prioritization, CUDA `refinement`, built-in `dense_1_3` / `default_1_3_ensemble` / `default1.0` models, redocking, ProLIF interactions, `Methods`, and Export v4. |
 | [6. Offline Installers, Redistribution Compliance, Clean-Room Smoke & CI (`ADR-024`, `ADR-029`)](#6-offline-installers-redistribution-compliance-clean-room-smoke--ci-adr-024-adr-029) | 19 | Evidence for Windows NSIS installers, Linux `.deb` and zero-`sudo` `.tar.zst` Core bundles, the 1-click offline GNINA CUDA 12.8 pack (`D4`), the bare-metal Linux workstation protocol (`D6`), hash-locked environments, third-party legal inventories, and isolated CI. |
 | [7. Workbench Interface, Accessibility, Viewer CSP & Illustrated Guide](#7-workbench-interface-accessibility-viewer-csp--illustrated-guide) | 14 | Verification records for responsive layouts, accessible dialogs, strict-CSP Mol* viewer rendering, lossless 2D/3D contact presentation, and illustrated user-guide verification. |
+| [8. Ankora v0.2 Capability Probes & Engineering Evidence (`ADR-030`–`ADR-032`)](#8-ankora-v02-capability-probes--engineering-evidence-adr-030adr-032) | 1 | Pre-implementation cross-OS CLI and format capability probes that discharge v0.2 milestone gates on labelled synthetic fixtures, verifying upstream tool contracts without extending frozen scientific benchmark claims. |
 
 ## 1. Public Validation Status, Strategy & Frozen Reference Cases
 
@@ -194,3 +195,11 @@ Verification records for responsive layouts, accessible dialogs, strict-CSP Mol*
 | [`USER_GUIDE_7AQF_2026-10-09.md`](USER_GUIDE_7AQF_2026-10-09.md) | `Windows / Web UI` | Illustrated user-guide verification: 7AQF / RV2 |
 | [`USER_GUIDE_REFRESH_2026-10-21.md`](USER_GUIDE_REFRESH_2026-10-21.md) | `Windows (UI/docs)` | Illustrated manual refresh — 21 October 2026 |
 | [`USER_GUIDE_REVIEW_2026-10-06.md`](USER_GUIDE_REVIEW_2026-10-06.md) | `Windows / Web UI` | Illustrated user-guide review - 2026-10-06 |
+
+## 8. Ankora v0.2 Capability Probes & Engineering Evidence (`ADR-030`–`ADR-032`)
+
+Pre-implementation cross-OS CLI and format capability probes that discharge v0.2 milestone gates on labelled synthetic fixtures, verifying upstream tool contracts without extending frozen scientific benchmark claims.
+
+| Record | Environment / Scope | Title |
+| --- | --- | --- |
+| [`V02_M1_FLEXIBILITY_GATE0_PROBE.md`](V02_M1_FLEXIBILITY_GATE0_PROBE.md) | `Cross-platform (Windows + Linux WSL2)` | Ankora v0.2 `M1` Gate 0 explicit-flexibility CLI and format capability probe — predeclared |
