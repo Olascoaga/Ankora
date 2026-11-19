@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ankora_backend.adapters.chemistry.flex_pose_complex import (
     parse_gnina_flex_pdb_models,
@@ -63,6 +63,29 @@ _ENSEMBLE_MEMBERS: dict[GninaCnnModelSelector, tuple[str, ...]] = {
     ),
 }
 _SDF_PROPERTY = re.compile(rb"^>\s*<([^>]+)>")
+_GNINA_FLOAT = r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+_SCORE_ONLY_AFFINITY = re.compile(
+    rf"^Affinity:\s+{_GNINA_FLOAT}(?:\s+\(?kcal/mol\)?)?", re.MULTILINE
+)
+_SCORE_ONLY_INTRAMOL = re.compile(
+    rf"^Intramolecular energy:\s+{_GNINA_FLOAT}", re.MULTILINE
+)
+_SCORE_ONLY_CNN_SCORE = re.compile(rf"^CNNscore:\s+{_GNINA_FLOAT}", re.MULTILINE)
+_SCORE_ONLY_CNN_AFFINITY = re.compile(rf"^CNNaffinity:\s+{_GNINA_FLOAT}", re.MULTILINE)
+_SCORE_ONLY_CNN_VARIANCE = re.compile(rf"^CNNvariance:\s+{_GNINA_FLOAT}", re.MULTILINE)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedGninaScoreOnlyResult:
+    """In-place GNINA 1.3.3 `--score_only` scores parsed from stdout (no pose mutation)."""
+
+    minimized_affinity_kcal_mol: float
+    intramolecular_energy_kcal_mol: float | None = None
+    cnn_score: float | None = None
+    cnn_affinity: float | None = None
+    cnn_vs: float | None = None
+    cnn_affinity_variance: float | None = None
+    used_flex: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +359,159 @@ def _build_arguments(
             )
         arguments.extend(("--flex", str(flex_receptor_path), "--out_flex", str(out_flex_path)))
     return arguments
+
+
+def build_gnina_score_only_arguments(
+    *,
+    receptor_path: Path,
+    ligand_path: Path,
+    compute: Literal["cpu", "cuda"] = "cpu",
+    device_index: int = 0,
+    cpu_threads: int = 1,
+    cnn_scoring: Literal["none", "rescore", "all"] = "rescore",
+    cnn_model: GninaCnnModelSelector = "dense_1_3",
+    flex_receptor_path: Path | None = None,
+) -> list[str]:
+    """Build explicit `--score_only` arguments (evaluates fixed coordinates in place)."""
+    if cpu_threads < 1:
+        raise _error("GNINA_INPUT_INVALID", "GNINA --score_only requires cpu_threads >= 1.")
+    if receptor_path.suffix.lower() != ".pdbqt" or ligand_path.suffix.lower() != ".pdbqt":
+        raise _error(
+            "GNINA_INPUT_INVALID",
+            "GNINA --score_only requires prepared PDBQT receptor and ligand inputs.",
+        )
+    if flex_receptor_path is not None and flex_receptor_path.suffix.lower() != ".pdbqt":
+        raise _error(
+            "GNINA_INPUT_INVALID",
+            "GNINA --score_only --flex requires a prepared Meeko-template PDBQT file.",
+        )
+    arguments = [
+        "--receptor",
+        str(receptor_path),
+        "--ligand",
+        str(ligand_path),
+        "--cpu",
+        str(cpu_threads),
+        "--score_only",
+        "--cnn_scoring",
+        cnn_scoring,
+    ]
+    if cnn_scoring != "none" and cnn_model != "default_1_3_ensemble":
+        arguments.extend(("--cnn", cnn_model))
+    arguments.extend(("--addH", "0", "--stripH", "0"))
+    if compute == "cpu":
+        arguments.append("--no_gpu")
+    else:
+        arguments.extend(("--device", str(device_index)))
+    if flex_receptor_path is not None:
+        arguments.extend(("--flex", str(flex_receptor_path)))
+    return arguments
+
+
+def execute_gnina_score_only(
+    *,
+    installation: GninaInstallation,
+    receptor_path: Path,
+    ligand_path: Path,
+    working_dir: Path,
+    compute: Literal["cpu", "cuda"] = "cpu",
+    device_index: int = 0,
+    cpu_threads: int = 1,
+    cnn_scoring: Literal["none", "rescore", "all"] = "rescore",
+    cnn_model: GninaCnnModelSelector = "dense_1_3",
+    flex_receptor_path: Path | None = None,
+    timeout_minutes: int = 10,
+    cancel_event: threading.Event,
+) -> CancellableToolExecution:
+    """Execute GNINA 1.3.3 `--score_only` in place without mutating pose bytes."""
+    if not _linux_host():
+        raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition of Ankora.")
+    exe_path = Path(installation.executable)
+    if _sha256_executable(exe_path) != installation.sha256:
+        raise _error(
+            "GNINA_IDENTITY_CHANGED", "The GNINA executable changed after it was inspected."
+        )
+    arguments = build_gnina_score_only_arguments(
+        receptor_path=receptor_path,
+        ligand_path=ligand_path,
+        compute=compute,
+        device_index=device_index,
+        cpu_threads=cpu_threads,
+        cnn_scoring=cnn_scoring,
+        cnn_model=cnn_model,
+        flex_receptor_path=flex_receptor_path,
+    )
+    env = gnina_subprocess_environment(exe_path)
+    exec_kwargs: dict[str, Any] = {}
+    if env is not None:
+        exec_kwargs["environment"] = env
+    return run_cancellable_tool(
+        executable=installation.executable,
+        arguments=arguments,
+        cwd=working_dir,
+        stage="gnina_score_only",
+        cancel_event=cancel_event,
+        timeout_seconds=timeout_minutes * 60,
+        **exec_kwargs,
+    )
+
+
+def parse_gnina_score_only_stdout(
+    stdout: str,
+    *,
+    used_flex: bool = False,
+    require_cnn: bool = True,
+) -> ParsedGninaScoreOnlyResult:
+    """Strictly parse GNINA 1.3.3 `--score_only` stdout records."""
+    aff_match = _SCORE_ONLY_AFFINITY.search(stdout)
+    if aff_match is None:
+        raise _error(
+            "GNINA_OUTPUT_INVALID",
+            "GNINA --score_only stdout is missing Affinity record.",
+        )
+    affinity = float(aff_match.group(1))
+    if not math.isfinite(affinity):
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA --score_only Affinity is not finite.")
+
+    intramol_match = _SCORE_ONLY_INTRAMOL.search(stdout)
+    intramol = float(intramol_match.group(1)) if intramol_match else None
+    score_match = _SCORE_ONLY_CNN_SCORE.search(stdout)
+    cnn_aff_match = _SCORE_ONLY_CNN_AFFINITY.search(stdout)
+    var_match = _SCORE_ONLY_CNN_VARIANCE.search(stdout)
+
+    cnn_score = float(score_match.group(1)) if score_match else None
+    cnn_affinity = float(cnn_aff_match.group(1)) if cnn_aff_match else None
+    cnn_variance = float(var_match.group(1)) if var_match else None
+
+    if require_cnn and (cnn_score is None or cnn_affinity is None):
+        raise _error(
+            "GNINA_OUTPUT_INVALID",
+            "GNINA --score_only stdout is missing CNNscore or CNNaffinity.",
+        )
+    for label, value in (
+        ("Intramolecular energy", intramol),
+        ("CNNscore", cnn_score),
+        ("CNNaffinity", cnn_affinity),
+        ("CNNvariance", cnn_variance),
+    ):
+        if value is not None and not math.isfinite(value):
+            raise _error("GNINA_OUTPUT_INVALID", f"GNINA --score_only {label} is not finite.")
+    if cnn_variance is not None and cnn_variance < 0.0:
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA --score_only CNNvariance cannot be negative.")
+    cnn_vs = (
+        cnn_score * cnn_affinity
+        if cnn_score is not None and cnn_affinity is not None
+        else None
+    )
+    return ParsedGninaScoreOnlyResult(
+        minimized_affinity_kcal_mol=affinity,
+        intramolecular_energy_kcal_mol=intramol,
+        cnn_score=cnn_score,
+        cnn_affinity=cnn_affinity,
+        cnn_vs=cnn_vs,
+        cnn_affinity_variance=cnn_variance,
+        used_flex=used_flex,
+    )
 
 
 def execute_gnina(

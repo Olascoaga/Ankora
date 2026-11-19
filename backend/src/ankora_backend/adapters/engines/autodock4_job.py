@@ -31,8 +31,24 @@ _HISTOGRAM_PATTERN = re.compile(
     r"([+-]?\d+(?:\.\d+)?)\s*\|\s*(\d+)\s*\|"
 )
 _RUN_PATTERN = re.compile(r"^USER\s+Run\s+=\s+(\d+)\s*$")
+_FLOAT_PATTERN = r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
 _FREE_ENERGY_PATTERN = re.compile(
-    r"^USER\s+Estimated Free Energy of Binding\s+=\s+([+-]?\d+(?:\.\d+)?)\s+kcal/mol"
+    rf"^USER\s+Estimated Free Energy of Binding\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
+)
+_EPDB_FREE_ENERGY_PATTERN = re.compile(
+    rf"^epdb:\s+USER\s+Estimated Free Energy of Binding\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
+)
+_EPDB_INTERMOLECULAR_PATTERN = re.compile(
+    rf"^epdb:\s+USER\s+\(1\)\s+Final Intermolecular Energy\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
+)
+_EPDB_INTERNAL_PATTERN = re.compile(
+    rf"^epdb:\s+USER\s+\(2\)\s+Final Total Internal Energy\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
+)
+_EPDB_TORSIONAL_PATTERN = re.compile(
+    rf"^epdb:\s+USER\s+\(3\)\s+Torsional Free Energy\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
+)
+_EPDB_UNBOUND_PATTERN = re.compile(
+    rf"^epdb:\s+USER\s+\(4\)\s+Unbound System's Energy\s+=\s+{_FLOAT_PATTERN}\s+kcal/mol"
 )
 _MODEL_PATTERN = re.compile(r"^MODEL\s+(\d+)\s*$")
 
@@ -72,6 +88,120 @@ class ParsedAutoDock4Log:
     clusters: list[AutoDock4Cluster] = field(default_factory=list)
     ranking: list[AutoDock4RankingRow] = field(default_factory=list)
     poses: list[AutoDock4Pose] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedAutoDock4EpdbResult:
+    """Canonical in-place AutoDock4 4.2.6 `epdb` score-only evaluation."""
+
+    estimated_free_energy_kcal_mol: float
+    intermolecular_kcal_mol: float | None = None
+    total_internal_kcal_mol: float | None = None
+    torsional_free_energy_kcal_mol: float | None = None
+    unbound_system_energy_kcal_mol: float | None = None
+    used_flex: bool = False
+
+
+def render_autodock4_epdb_dpf(
+    *,
+    ligand_filename: str,
+    map_prefix: str,
+    ligand_atom_types: tuple[str, ...],
+    about: tuple[float, float, float],
+    flexres_filename: str | None = None,
+) -> str:
+    """Render a deterministic AutoDock4 4.2.6 `epdb` score-only DPF (zero search)."""
+    if not ligand_atom_types:
+        raise _invalid_request("an epdb DPF requires at least one ligand atom type")
+    if not all(math.isfinite(value) for value in about):
+        raise _invalid_request("the ligand centre of rotation must be finite")
+    for label, name in (("ligand", ligand_filename), ("flexres", flexres_filename)):
+        if name is not None and (
+            not name
+            or Path(name).name != name
+            or any(ch.isspace() for ch in name)
+            or not name.isascii()
+        ):
+            raise _invalid_request(f"{label} filename must be a plain ASCII filename")
+    lines = [
+        "autodock_parameter_version 4.2",
+        "outlev 1",
+        "intelec",
+        f"ligand_types {' '.join(ligand_atom_types)}",
+        f"fld {map_prefix}.maps.fld",
+        *(f"map {map_prefix}.{atom_type}.map" for atom_type in ligand_atom_types),
+        f"elecmap {map_prefix}.e.map",
+        f"desolvmap {map_prefix}.d.map",
+        f"move {ligand_filename}",
+    ]
+    if flexres_filename is not None:
+        lines.append(f"flexres {flexres_filename}")
+    lines.extend(
+        (
+            f"about {about[0]:.4f} {about[1]:.4f} {about[2]:.4f}",
+            "epdb",
+        )
+    )
+    return "\n".join(lines) + "\n"
+
+
+def parse_autodock4_epdb_dlg(
+    content: bytes,
+    *,
+    expect_flex: bool = False,
+) -> ParsedAutoDock4EpdbResult:
+    """Parse canonical `epdb:` energy lines from an AutoDock4 4.2.6 `.dlg` log."""
+    document = content.decode("utf-8", errors="replace")
+    if _SUCCESS_MARKER not in document:
+        raise _invalid_output("AutoDock4 epdb log did not record Successful Completion")
+    estimated: float | None = None
+    intermolecular: float | None = None
+    total_internal: float | None = None
+    torsional: float | None = None
+    unbound: float | None = None
+    saw_moving_receptor = False
+    for raw in document.splitlines():
+        line = raw.strip()
+        if "Moving Ligand-Moving Receptor" in line:
+            saw_moving_receptor = True
+        if estimated is None:
+            match = _EPDB_FREE_ENERGY_PATTERN.match(line)
+            if match is not None:
+                estimated = float(match.group(1))
+                continue
+        if intermolecular is None:
+            match = _EPDB_INTERMOLECULAR_PATTERN.match(line)
+            if match is not None:
+                intermolecular = float(match.group(1))
+                continue
+        if total_internal is None:
+            match = _EPDB_INTERNAL_PATTERN.match(line)
+            if match is not None:
+                total_internal = float(match.group(1))
+                continue
+        if torsional is None:
+            match = _EPDB_TORSIONAL_PATTERN.match(line)
+            if match is not None:
+                torsional = float(match.group(1))
+                continue
+        if unbound is None:
+            match = _EPDB_UNBOUND_PATTERN.match(line)
+            if match is not None:
+                unbound = float(match.group(1))
+    if estimated is None or not math.isfinite(estimated):
+        raise _invalid_output("AutoDock4 epdb log is missing Estimated Free Energy of Binding")
+    if expect_flex and not saw_moving_receptor:
+        raise _invalid_output(
+            "AutoDock4 flexres epdb log is missing Moving Ligand-Moving Receptor energy block"
+        )
+    return ParsedAutoDock4EpdbResult(
+        estimated_free_energy_kcal_mol=estimated,
+        intermolecular_kcal_mol=intermolecular,
+        total_internal_kcal_mol=total_internal,
+        torsional_free_energy_kcal_mol=torsional,
+        unbound_system_energy_kcal_mol=unbound,
+        used_flex=expect_flex or saw_moving_receptor,
+    )
 
 
 def render_autodock4_dpf(
