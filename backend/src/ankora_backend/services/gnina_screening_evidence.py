@@ -10,6 +10,7 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
     GninaScreeningEntry,
 )
+from ankora_backend.schemas.receptors import ReceptorFlexMode
 
 
 def verified_screening_pose(
@@ -41,11 +42,16 @@ def verified_screening_pose(
     ):
         raise _mismatch(job_id)
 
-    for filename, digest in (
+    inputs: list[tuple[str, str]] = [
         ("receptor.pdbqt", record.receptor_sha256),
         ("ligand.pdbqt", record.ligand_sha256),
         ("conformer.sdf", record.conformer_sha256),
-    ):
+    ]
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        if record.receptor_flex_sha256 is None:
+            raise _mismatch(job_id)
+        inputs.append(("receptor_flex.pdbqt", record.receptor_flex_sha256))
+    for filename, digest in inputs:
         try:
             content = store.output_path(job_id, filename).read_bytes()
         except OSError as error:
@@ -61,6 +67,7 @@ def verified_screening_pose(
             raise _mismatch(job_id)
     except OSError as error:
         raise _mismatch(job_id) from error
+    _verify_pose_flex(store, record, pose)
     return pose
 
 
@@ -103,6 +110,10 @@ def verified_campaign_entry_job(
         record.screening_campaign_id != campaign.campaign_id
         or record.box != campaign.box
         or record.receptor_output_artifact_id != campaign.receptor_output_artifact_id
+        or record.receptor_flex_mode != campaign.receptor_flex_mode
+        or record.receptor_flex_output_artifact_id != campaign.receptor_flex_output_artifact_id
+        or record.receptor_flex_sha256 != campaign.receptor_flex_sha256
+        or record.flex_residues != campaign.flex_residues
         or record.tool != campaign.tool
     ):
         raise _mismatch(job_id)
@@ -114,7 +125,16 @@ def verified_campaign_entry_job(
                 raise _mismatch(job_id)
         except OSError as error:
             raise _mismatch(job_id) from error
+        _verify_pose_flex(store, record, pose)
     return record
+
+
+def _verify_pose_flex(store: GninaJobStore, record: GninaJobRecord, pose: GninaPoseResult) -> None:
+    if (
+        record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        and store.pose_flex_content_path(record.job_id, pose.artifact.artifact_id) is None
+    ):
+        raise _mismatch(record.job_id)
 
 
 def _mismatch(job_id: str) -> AnkoraDomainError:

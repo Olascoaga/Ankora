@@ -34,7 +34,7 @@ from ankora_backend.schemas.system import (
 from ankora_backend.services.gnina_gpu_observer import query_single_gpu_memory_bytes
 
 if TYPE_CHECKING:
-    from ankora_backend.schemas.gnina import GninaDockingParameters
+    from ankora_backend.schemas.gnina import GninaDockingParameters, GninaLocalRefinementRequest
 
 _MIB = 1024 * 1024
 _GIB = 1024 * _MIB
@@ -452,7 +452,9 @@ def autodock_gpu_claim(owner_id: str, *, ligand_count: int) -> ResourceClaim:
     )
 
 
-def gnina_claim(owner_id: str, parameters: GninaDockingParameters) -> ResourceClaim:
+def gnina_claim(
+    owner_id: str, parameters: GninaDockingParameters | GninaLocalRefinementRequest
+) -> ResourceClaim:
     is_ensemble = parameters.cnn_model != "dense_1_3"
     is_refinement = parameters.cnn_scoring == "refinement"
     memory_bytes = (5 * _GIB) // 2 if (is_ensemble or is_refinement) else 2 * _GIB

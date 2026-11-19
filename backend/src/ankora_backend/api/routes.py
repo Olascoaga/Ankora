@@ -1,6 +1,7 @@
 """Bootstrap API routes."""
 
 import os
+from pathlib import Path
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
@@ -15,6 +16,7 @@ from ankora_backend.adapters.tools.discovery import (
     discover_tool,
     discover_vina,
 )
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
@@ -59,11 +61,18 @@ from ankora_backend.schemas.docking import (
     VinaBatchProgress,
     VinaDockingJobRecord,
     VinaDockingRequest,
+    VinaLocalRefinementRecord,
+    VinaLocalRefinementRequest,
 )
 from ankora_backend.schemas.engine_comparison import EngineComparison
 from ankora_backend.schemas.exports import ExportKind, ExportPage
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
-from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord
+from ankora_backend.schemas.gnina import (
+    GninaDockingRequest,
+    GninaJobRecord,
+    GninaLocalRefinementRecord,
+    GninaLocalRefinementRequest,
+)
 from ankora_backend.schemas.gnina_pack import GninaPackStatus, ImportGninaPackRequest
 from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
@@ -1124,6 +1133,176 @@ def create_vina_docking_job(
     http_request: Request,
 ) -> VinaDockingJobRecord:
     return _vina_docking_service(http_request).start(request)
+
+
+def _pose_file_response(path: Path | None) -> FileResponse:
+    if path is None:
+        raise AnkoraDomainError(
+            code="DOCKING_POSE_FLEX_NOT_FOUND",
+            stage="docking",
+            message="This pose has no preserved flexible side-chain artifact.",
+            status_code=404,
+        )
+    return FileResponse(
+        path,
+        media_type="text/plain; charset=utf-8",
+        filename=path.name,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/docking/jobs/{job_id}/poses/{artifact_id}/flex", response_class=FileResponse)
+def get_vina_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_vina_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get(
+    "/docking/autodock4/jobs/{job_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock4_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _autodock4_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/autodock4/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock4_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _autodock4_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get(
+    "/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock_gpu_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _autodock_gpu_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/autodock-gpu/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock_gpu_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _autodock_gpu_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get("/docking/gnina/jobs/{job_id}/poses/{artifact_id}/flex", response_class=FileResponse)
+def get_gnina_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.post("/docking/vina/refinements", response_model=VinaLocalRefinementRecord, status_code=201)
+def create_vina_refinement(
+    request: VinaLocalRefinementRequest, http_request: Request
+) -> VinaLocalRefinementRecord:
+    return _vina_docking_service(http_request).refine_pose_local_only(request)
+
+
+@router.get("/docking/refinements/{refinement_id}", response_model=VinaLocalRefinementRecord)
+def get_vina_refinement(refinement_id: str, request: Request) -> VinaLocalRefinementRecord:
+    return _vina_docking_service(request).get_refinement(refinement_id)
+
+
+@router.get(
+    "/docking/refinements/{refinement_id}/poses/{artifact_id}/content",
+    response_class=FileResponse,
+)
+def get_vina_refinement_pose_content(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).refinement_pose_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/refinements/{refinement_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_vina_refinement_pose_flex(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).refinement_pose_flex_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.post(
+    "/docking/gnina/refinements",
+    response_model=GninaLocalRefinementRecord,
+    status_code=201,
+)
+def create_gnina_refinement(
+    request: GninaLocalRefinementRequest, http_request: Request
+) -> GninaLocalRefinementRecord:
+    return _gnina_docking_service(http_request).refine_pose_local_only(request)
+
+
+@router.get("/docking/gnina/refinements/{refinement_id}", response_model=GninaLocalRefinementRecord)
+def get_gnina_refinement(refinement_id: str, request: Request) -> GninaLocalRefinementRecord:
+    return _gnina_docking_service(request).get_refinement(refinement_id)
+
+
+@router.get(
+    "/docking/gnina/refinements/{refinement_id}/poses/{artifact_id}/content",
+    response_class=FileResponse,
+)
+def get_gnina_refinement_pose_content(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).refinement_pose_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/gnina/refinements/{refinement_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_gnina_refinement_pose_flex(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).refinement_pose_flex_content_path(
+            refinement_id, artifact_id
+        )
+    )
 
 
 @router.get("/docking/jobs/{job_id}", response_model=VinaDockingJobRecord)
