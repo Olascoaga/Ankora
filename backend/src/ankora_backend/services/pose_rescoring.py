@@ -41,17 +41,33 @@ from ankora_backend.adapters.engines.vina_v02 import (
     probe_vina,
 )
 from ankora_backend.domain.errors import AnkoraDomainError
-from ankora_backend.schemas.receptors import ReceptorFlexMode, flex_residue_locator_key
+from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
+from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
+from ankora_backend.persistence.autogrid_store import AutoGridMapStore
+from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
+from ankora_backend.persistence.docking_store import DockingArtifactStore
+from ankora_backend.persistence.gnina_store import GninaJobStore
+from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.autogrid import AutoGridMapKind, AutoGridMapSetRecord
+from ankora_backend.schemas.binding_sites import BindingBox
+from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
+    ReceptorFlexSpec,
+    ResidueLocator,
+    flex_residue_locator_key,
+)
 from ankora_backend.schemas.rescoring import (
     AutoDock4RescoreBackend,
     PoseRescoreContext,
     PoseRescoreFunctionEvidence,
     PoseRescoreRequest,
     PoseRescoreResult,
+    SavedPoseRescoreRequest,
 )
 from ankora_backend.schemas.screening_benchmark import ScoreDirection
 from ankora_backend.schemas.v02_contracts import (
     ObservationStatus,
+    PoseComplexIdentity,
     ProtocolSpec,
     ScoreObservation,
     ScoringFamily,
@@ -283,6 +299,311 @@ def _verify_shared_context(
 
 class PoseRescoringService:
     """In-place multi-engine `--score_only` evaluator emitting canonical `ScoreObservation`s."""
+
+    def __init__(
+        self,
+        *,
+        receptors: ReceptorArtifactStore | None = None,
+        binding_sites: BindingSiteArtifactStore | None = None,
+        maps: AutoGridMapStore | None = None,
+        vina: DockingArtifactStore | None = None,
+        autodock4: AutoDock4JobStore | None = None,
+        autodock_gpu: AutoDockGpuJobStore | None = None,
+        gnina: GninaJobStore | None = None,
+    ) -> None:
+        self._receptors = receptors
+        self._binding_sites = binding_sites
+        self._maps = maps
+        self._vina = vina
+        self._autodock4 = autodock4
+        self._autodock_gpu = autodock_gpu
+        self._gnina = gnina
+
+    @classmethod
+    def from_environment(cls) -> PoseRescoringService:
+        return cls(
+            receptors=ReceptorArtifactStore.from_environment(),
+            binding_sites=BindingSiteArtifactStore.from_environment(),
+            maps=AutoGridMapStore.from_environment(),
+            vina=DockingArtifactStore.from_environment(),
+            autodock4=AutoDock4JobStore.from_environment(),
+            autodock_gpu=AutoDockGpuJobStore.from_environment(),
+            gnina=GninaJobStore.from_environment(),
+        )
+
+    def rescore_saved_pose(
+        self,
+        request: SavedPoseRescoreRequest,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> PoseRescoreResult:
+        """Resolve one saved single-ligand docking pose by ID and score it in place."""
+        receptors = self._receptors or ReceptorArtifactStore.from_environment()
+        sites = self._binding_sites or BindingSiteArtifactStore.from_environment()
+        maps_store = self._maps or AutoGridMapStore.from_environment()
+
+        receptor_id: str
+        receptor_output_id: str | None = None
+        receptor_sha256: str
+        flex_mode: ReceptorFlexMode
+        receptor_flex_sha256: str | None
+        flex_residues: tuple[ResidueLocator, ...]
+        box: BindingBox
+        parent_compound_id: str
+        parent_state_id: str
+        pose_path: Path
+        pose_sha256: str
+        flex_pose_path: Path | None
+        flex_pose_sha256: str | None
+        default_map_set_id: str | None = None
+
+        if request.source_engine == "vina":
+            store = self._vina or DockingArtifactStore.from_environment()
+            vina_job = store.load_record(request.job_id)
+            vina_pose = next(
+                (
+                    p.artifact
+                    for p in vina_job.poses
+                    if p.artifact.artifact_id == request.pose_artifact_id
+                ),
+                None,
+            )
+            if vina_pose is None:
+                raise AnkoraDomainError(
+                    code="DOCKING_POSE_NOT_FOUND",
+                    stage=_STAGE,
+                    message="The requested Vina pose artifact does not exist in this job.",
+                    status_code=404,
+                    details={
+                        "job_id": request.job_id,
+                        "pose_artifact_id": request.pose_artifact_id,
+                    },
+                )
+            receptor_id = vina_job.request.receptor_id
+            receptor_output_id = vina_job.receptor_output_artifact_id
+            receptor_sha256 = vina_job.receptor_sha256
+            flex_mode = vina_job.receptor_flex_mode
+            receptor_flex_sha256 = vina_job.receptor_flex_sha256
+            flex_residues = tuple(vina_job.flex_residues)
+            box = sites.load_record(vina_job.request.binding_site_id).box
+            parent_compound_id = vina_job.request.ligand_id
+            parent_state_id = vina_job.request.ligand_preparation_id
+            pose_path = store.pose_content_path(request.job_id, request.pose_artifact_id)
+            pose_sha256 = vina_pose.sha256
+            flex_pose_path = store.pose_flex_content_path(request.job_id, request.pose_artifact_id)
+            flex_pose_sha256 = vina_pose.pose_flex_sidechains_sha256
+        elif request.source_engine == "autodock4":
+            ad4_store = self._autodock4 or AutoDock4JobStore.from_environment()
+            ad4_job = ad4_store.load_job(request.job_id)
+            ad4_pose = next(
+                (
+                    r.artifact
+                    for r in ad4_job.runs
+                    if r.artifact.artifact_id == request.pose_artifact_id
+                ),
+                None,
+            )
+            if ad4_pose is None:
+                raise AnkoraDomainError(
+                    code="DOCKING_POSE_NOT_FOUND",
+                    stage=_STAGE,
+                    message="The requested AutoDock4 pose artifact does not exist in this job.",
+                    status_code=404,
+                    details={
+                        "job_id": request.job_id,
+                        "pose_artifact_id": request.pose_artifact_id,
+                    },
+                )
+            map_record = maps_store.load_record(ad4_job.map_set_id)
+            receptor_id = ad4_job.receptor_id
+            receptor_output_id = map_record.receptor_output_artifact_id
+            receptor_sha256 = map_record.receptor_sha256
+            flex_mode = ad4_job.receptor_flex_mode
+            receptor_flex_sha256 = ad4_job.receptor_flex_sha256
+            flex_residues = tuple(ad4_job.flex_residues)
+            box = map_record.box
+            parent_compound_id = ad4_job.request.ligand_id
+            parent_state_id = ad4_job.request.ligand_preparation_id
+            pose_path = ad4_store.pose_content_path(request.job_id, request.pose_artifact_id)
+            pose_sha256 = ad4_pose.sha256
+            flex_pose_path = ad4_store.pose_flex_content_path(
+                request.job_id, request.pose_artifact_id
+            )
+            flex_pose_sha256 = ad4_pose.pose_flex_sidechains_sha256
+            default_map_set_id = ad4_job.map_set_id
+        elif request.source_engine == "autodock_gpu":
+            gpu_store = self._autodock_gpu or AutoDockGpuJobStore.from_environment()
+            gpu_job = gpu_store.load_job(request.job_id)
+            gpu_pose = next(
+                (
+                    r.artifact
+                    for r in gpu_job.runs
+                    if r.artifact.artifact_id == request.pose_artifact_id
+                ),
+                None,
+            )
+            if gpu_pose is None:
+                raise AnkoraDomainError(
+                    code="DOCKING_POSE_NOT_FOUND",
+                    stage=_STAGE,
+                    message="The requested AutoDock-GPU pose artifact does not exist in this job.",
+                    status_code=404,
+                    details={
+                        "job_id": request.job_id,
+                        "pose_artifact_id": request.pose_artifact_id,
+                    },
+                )
+            map_record = maps_store.load_record(gpu_job.map_set_id)
+            receptor_id = gpu_job.receptor_id
+            receptor_output_id = map_record.receptor_output_artifact_id
+            receptor_sha256 = map_record.receptor_sha256
+            flex_mode = gpu_job.receptor_flex_mode
+            receptor_flex_sha256 = gpu_job.receptor_flex_sha256
+            flex_residues = tuple(gpu_job.flex_residues)
+            box = map_record.box
+            parent_compound_id = gpu_job.request.ligand_id
+            parent_state_id = gpu_job.request.ligand_preparation_id
+            pose_path = gpu_store.pose_content_path(request.job_id, request.pose_artifact_id)
+            pose_sha256 = gpu_pose.sha256
+            flex_pose_path = gpu_store.pose_flex_content_path(
+                request.job_id, request.pose_artifact_id
+            )
+            flex_pose_sha256 = gpu_pose.pose_flex_sidechains_sha256
+            default_map_set_id = gpu_job.map_set_id
+        else:
+            gnina_store = self._gnina or GninaJobStore.from_environment()
+            gnina_job = gnina_store.load_job(request.job_id)
+            gnina_pose = next(
+                (
+                    p.artifact
+                    for p in gnina_job.poses
+                    if p.artifact.artifact_id == request.pose_artifact_id
+                ),
+                None,
+            )
+            if gnina_pose is None:
+                raise AnkoraDomainError(
+                    code="DOCKING_POSE_NOT_FOUND",
+                    stage=_STAGE,
+                    message="The requested GNINA pose artifact does not exist in this job.",
+                    status_code=404,
+                    details={
+                        "job_id": request.job_id,
+                        "pose_artifact_id": request.pose_artifact_id,
+                    },
+                )
+            receptor_id = gnina_job.request.receptor_id
+            receptor_output_id = gnina_job.receptor_output_artifact_id
+            receptor_sha256 = gnina_job.receptor_sha256
+            flex_mode = gnina_job.receptor_flex_mode
+            receptor_flex_sha256 = gnina_job.receptor_flex_sha256
+            flex_residues = tuple(gnina_job.flex_residues)
+            box = gnina_job.box
+            parent_compound_id = gnina_job.request.ligand_id
+            parent_state_id = gnina_job.request.ligand_preparation_id
+            pose_path = gnina_store.pose_content_path(request.job_id, request.pose_artifact_id)
+            pose_sha256 = gnina_pose.sha256
+            flex_pose_path = gnina_store.pose_flex_content_path(
+                request.job_id, request.pose_artifact_id
+            )
+            flex_pose_sha256 = gnina_pose.pose_flex_sidechains_sha256
+
+        assert receptor_output_id is not None
+        receptor_bytes = receptors.content_path(receptor_id, receptor_output_id).read_bytes()
+        ligand_bytes = pose_path.read_bytes()
+        flex_bytes = flex_pose_path.read_bytes() if flex_pose_path is not None else None
+        if flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX and (
+            flex_bytes is None or flex_pose_sha256 is None or receptor_flex_sha256 is None
+        ):
+            raise _context_mismatch(
+                "Saved sidechain_flex pose is missing its coupled flexible side-chain artifact."
+            )
+
+        receptor_spec = ReceptorFlexSpec(
+            mode=flex_mode,
+            receptor_rigid_sha256=receptor_sha256,
+            receptor_flex_sha256=(
+                receptor_flex_sha256 if flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX else None
+            ),
+            flex_residues=flex_residues if flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX else (),
+        )
+        pose_complex = PoseComplexIdentity(
+            mode=flex_mode,
+            receptor_rigid_sha256=receptor_sha256,
+            pose_flex_sidechains_sha256=(
+                flex_pose_sha256 if flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX else None
+            ),
+            ligand_pose_sha256=pose_sha256,
+        )
+
+        maps_dir: Path | None = None
+        map_set: AutoGridMapSetRecord | None = None
+        map_prefix: str | None = None
+        if ScoringFunctionId.AUTODOCK4 in request.scoring_functions:
+            resolved_map_id = request.autogrid_job_id or default_map_set_id
+            if resolved_map_id is None:
+                raise _context_mismatch(
+                    "AutoDock4 cross-scoring requires an AutoGrid map set or job identifier."
+                )
+            try:
+                map_set = maps_store.load_record(resolved_map_id)
+            except AnkoraDomainError:
+                grid_job = maps_store.load_job(resolved_map_id)
+                if grid_job.map_set_id is None:
+                    raise _context_mismatch(
+                        "The referenced AutoGrid job has not produced a completed map set."
+                    ) from None
+                map_set = maps_store.load_record(grid_job.map_set_id)
+            maps_dir = maps_store.map_set_directory(map_set.map_set_id)
+            fld_art = next(
+                (a for a in map_set.artifacts if a.kind is AutoGridMapKind.FIELD),
+                None,
+            )
+            if fld_art is None or not fld_art.filename.endswith(".maps.fld"):
+                raise _context_mismatch("The AutoGrid map set has no valid .maps.fld artifact.")
+            map_prefix = fld_art.filename.removesuffix(".maps.fld")
+
+        context = PoseRescoreContext(
+            receptor_flex_spec=receptor_spec,
+            binding_box=box,
+            binding_box_sha256=canonical_contract_sha256(box),
+            autogrid_map_set_sha256=map_set.identity_key if map_set is not None else None,
+            autogrid_map_prefix=map_prefix,
+            autogrid_map_receptor_sha256=map_set.receptor_sha256 if map_set is not None else None,
+            autogrid_map_flex_residues=tuple(map_set.flex_residues) if map_set is not None else (),
+            autogrid_map_flex_atom_types=(
+                tuple(map_set.flex_atom_types) if map_set is not None else ()
+            ),
+            autogrid_map_affinity_atom_types=(
+                tuple(map_set.preflight.ligand_atom_types) if map_set is not None else None
+            ),
+            expected_flex_atom_types=(
+                collect_autodock_atom_types([flex_bytes.decode("utf-8", errors="replace")])
+                if flex_bytes is not None
+                else ()
+            ),
+        )
+        rescore_req = PoseRescoreRequest(
+            parent_compound_id=parent_compound_id,
+            parent_state_id=parent_state_id,
+            pose_complex=pose_complex,
+            scoring_functions=request.scoring_functions,
+            autodock4_backend=request.autodock4_backend,
+            gnina_compute=request.gnina_compute,
+            gnina_device_index=request.gnina_device_index,
+            gnina_cnn_model=request.gnina_cnn_model,
+            cpu_threads=request.cpu_threads,
+            timeout_minutes=request.timeout_minutes,
+        )
+        return self.rescore_pose(
+            request=rescore_req,
+            context=context,
+            receptor_rigid_pdbqt=receptor_bytes,
+            ligand_pose_pdbqt=ligand_bytes,
+            pose_flex_sidechains_pdbqt=flex_bytes,
+            autogrid_maps_dir=maps_dir,
+            cancel_event=cancel_event,
+        )
 
     def rescore_pose(
         self,

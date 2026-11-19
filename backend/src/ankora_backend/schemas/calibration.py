@@ -31,7 +31,11 @@ from pydantic import (
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.receptors import ReceptorFlexMode
 from ankora_backend.schemas.screening_benchmark import ScreeningTargetMetrics
-from ankora_backend.schemas.v02_contracts import ProtocolSpec, canonical_contract_sha256
+from ankora_backend.schemas.v02_contracts import (
+    ProtocolSpec,
+    ScoreObservation,
+    canonical_contract_sha256,
+)
 from ankora_backend.schemas.warnings import StructuredWarning
 
 type NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -862,3 +866,40 @@ class CalibrationRunRecord(BaseModel):
 
     def candidates_by_id(self) -> Mapping[str, CalibrationCandidateProtocol]:
         return {candidate.protocol_id: candidate for candidate in self.candidates}
+
+
+class CalibrationRunListResponse(BaseModel):
+    """Envelope listing saved calibration runs for the active project."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    runs: tuple[CalibrationRunRecord, ...] = ()
+
+
+class CalibrationSplitRequest(BaseModel):
+    """HTTP request to create and lock a scaffold-grouped calibration split."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    receptor_id: NonBlankStr
+    binding_site_id: NonBlankStr
+    compounds: tuple[CalibrationCompoundInput, ...] = Field(min_length=4)
+    policy: CalibrationSplitPolicy | None = None
+
+
+class CalibrationSelectRequest(BaseModel):
+    """HTTP request to evaluate candidates on Calibration and seal 1-SE selection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    baseline_protocol_id: NonBlankStr
+    candidates: tuple[CalibrationCandidateProtocol, ...] = Field(min_length=1)
+    observations_by_protocol: dict[str, tuple[ScoreObservation, ...]]
+
+
+class CalibrationConfirmRequest(BaseModel):
+    """HTTP request for single-use unlock and evaluation of locked Confirmation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    observations_by_protocol: dict[str, tuple[ScoreObservation, ...]]

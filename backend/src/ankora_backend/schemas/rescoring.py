@@ -102,3 +102,27 @@ class PoseRescoreResult(BaseModel):
     observations: tuple[ScoreObservation, ...] = Field(min_length=1)
     evidence: tuple[PoseRescoreFunctionEvidence, ...] = Field(min_length=1)
     mutated_original_pose: Literal[False] = False
+
+
+class SavedPoseRescoreRequest(BaseModel):
+    """HTTP request to cross-score one saved docking pose by immutable artifact IDs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_engine: Literal["vina", "autodock4", "autodock_gpu", "gnina"]
+    job_id: _NonBlank
+    pose_artifact_id: _NonBlank
+    scoring_functions: tuple[ScoringFunctionId, ...] = Field(min_length=1)
+    autogrid_job_id: _NonBlank | None = None
+    autodock4_backend: AutoDock4RescoreBackend = AutoDock4RescoreBackend.AUTODOCK4_EPDB
+    gnina_compute: Literal["cpu", "cuda"] = "cpu"
+    gnina_device_index: int = Field(default=0, ge=0)
+    gnina_cnn_model: GninaCnnModelSelector = "dense_1_3"
+    cpu_threads: int = Field(default=1, ge=1)
+    timeout_minutes: int = Field(default=10, ge=1, le=240)
+
+    @model_validator(mode="after")
+    def validate_unique_functions(self) -> Self:
+        if len(set(self.scoring_functions)) != len(self.scoring_functions):
+            raise ValueError("scoring_functions must not contain duplicate entries")
+        return self
