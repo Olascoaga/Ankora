@@ -40,6 +40,240 @@
 .redocking-workspace .docking-results { flex: none; }
 .redocking-workspace .docking-results-scroll { max-height: 420px; overflow: auto; }
 .redocking-workspace .docking-results-scroll > table { min-width: 600px; }
+
+.validation-mode-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+}
+.validation-mode-switch button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.validation-mode-switch button.selected {
+  background: var(--panel-elevated);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.validation-mode-switch button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.calibration-setup input[type="text"],
+.calibration-setup textarea,
+.calibration-stage textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+  font-size: 13px;
+}
+.calibration-setup textarea,
+.calibration-stage textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.calibration-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.calibration-stages {
+  display: grid;
+  gap: 18px;
+  margin-top: 8px;
+}
+.calibration-stage {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--panel);
+  display: grid;
+  gap: 14px;
+}
+.calibration-stage-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.calibration-stage-heading h3 {
+  margin: 2px 0 0;
+}
+.calibration-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-raised);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.calibration-stage-pill.status-calibration_selected {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.calibration-stage-pill.status-confirmation_completed {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  color: var(--success);
+}
+.calibration-audit-alert ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.calibration-split-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.calibration-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-raised);
+  font-size: 12px;
+}
+.calibration-details {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: var(--panel-raised);
+  font-size: 12px;
+}
+.calibration-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.calibration-bias-audit,
+.calibration-delta-block {
+  display: grid;
+  gap: 8px;
+}
+.calibration-lock-notice,
+.calibration-consumed-badge,
+.calibration-single-use-warning {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-raised);
+  font-size: 12px;
+}
+.calibration-single-use-warning {
+  border-color: color-mix(in srgb, var(--warning) 48%, transparent);
+  background: color-mix(in srgb, var(--warning) 8%, var(--panel));
+}
+.calibration-consumed-badge {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 7%, var(--panel));
+}
+.calibration-selection-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.calibration-highlight {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-raised);
+}
+.calibration-highlight.selected {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+.calibration-highlight small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.calibration-parsimony-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel-raised);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.calibration-json-label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+.calibration-caution-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, transparent);
+  color: var(--warning);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.calibration-verdict {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--success) 50%, transparent);
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
+}
+.calibration-verdict.null-result {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 9%, var(--panel));
+}
+.calibration-verdict-text {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.calibration-verdict small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.visually-quiet {
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 6px;
+}
+
 @media (max-width: 1100px) {
   .redocking-workspace .redocking-verdicts, .redocking-workspace .redocking-metrics { grid-template-columns: 1fr; }
 }

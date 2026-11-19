@@ -661,7 +661,11 @@ export function App() {
         : activeStep === "Results"
         ? <ResultsWorkspace />
         : activeStep === "Validation"
-        ? <RedockingWorkspace key={activeProject.project_id} />
+        ? <RedockingWorkspace
+            key={activeProject.project_id}
+            receptorId={receptorRecord?.receptor_id ?? null}
+            bindingSiteId={bindingSiteRecord?.binding_site_id ?? null}
+          />
         : activeStep === "Docking" && receptorRecord?.status === "docking_ready" && bindingSiteRecord ? <DockingWorkspace receptor={receptorRecord} bindingSite={bindingSiteRecord} ligand={ligandRecord} ligandInput={ligandDockingInput} libraryInput={ligandLibraryDockingInput} tools={state.tools} platform={state.system?.platform} onActivityChange={setWorkspaceActivity} onToolsRefresh={refreshTools} /> : <>
       <section className="workspace" aria-label="Structure workspace">
         <div className="workspace-heading">
