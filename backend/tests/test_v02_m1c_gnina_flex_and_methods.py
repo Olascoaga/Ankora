@@ -719,7 +719,17 @@ def test_gnina_service_flex_single_refinement_methods_and_export_synthetic(
         sites=BindingSiteArtifactStore(tmp_path),
         ligands=LigandArtifactStore(tmp_path),
         leases=WorkLeaseManager(WorkLeaseStore(tmp_path)),
-        resources=ResourceArbiter.from_environment(),
+        resources=ResourceArbiter(
+            cpu_threads=4,
+            gpu_slots=1,
+            memory_total_bytes=16 * 1024**3,
+            memory_reserve_bytes=0,
+            disk_path=tmp_path,
+            disk_total_bytes=16 * 1024**3,
+            disk_reserve_bytes=0,
+            memory_available=lambda: 16 * 1024**3,
+            disk_free=lambda: 16 * 1024**3,
+        ),
     )
     try:
         started = service.start(
@@ -1920,7 +1930,17 @@ def test_live_real_gnina_flex_end_to_end_with_local_only_and_e8_complex(
         sites=sites,
         ligands=ligands,
         leases=WorkLeaseManager(WorkLeaseStore(tmp_path)),
-        resources=ResourceArbiter.from_environment(),
+        resources=ResourceArbiter(
+            cpu_threads=4,
+            gpu_slots=1,
+            memory_total_bytes=16 * 1024**3,
+            memory_reserve_bytes=0,
+            disk_path=tmp_path,
+            disk_total_bytes=16 * 1024**3,
+            disk_reserve_bytes=0,
+            memory_available=lambda: 16 * 1024**3,
+            disk_free=lambda: 16 * 1024**3,
+        ),
     )
     try:
         started = service.start(
