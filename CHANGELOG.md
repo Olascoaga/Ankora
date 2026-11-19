@@ -2,6 +2,40 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M4`: Declarative ProLIF Pharmacophoric Rules (`PIC`) & Tanimoto IFP (`codex/v0.2-dev`) - 2026-11-19
+
+- **Declarative `REQUIRED` / `ALTERNATIVE_OR` / `FORBIDDEN` rules & Tanimoto IFP (`M4a`, `0` new dependencies):**
+  add `schemas/interaction_rules.py`, `adapters/interactions/pharmacophore_rules.py`,
+  and 4 warning codes (`INTERACTION_RULE_CLAUSES_FAILED`,
+  `INTERACTION_RULE_FORBIDDEN_CONTACT`, `INTERACTION_IFP_TANIMOTO_BELOW_THRESHOLD`,
+  `INTERACTION_IFP_EMPTY_UNION`) over already-locked `ProLIF 2.2.1`. Computes
+  order-invariant `rule_set_identity_sha256` (binding into
+  `ProtocolSpec.interaction_rule_set_sha256` prior to `M2` Confirmation),
+  validates target residues fail-closed against the prepared receptor's
+  `protonated.pdb`, reports empty `0 / 0` Tanimoto unions honestly as
+  `not_evaluable`, and provides denominator-invariant `M2` calibration gating
+  (`apply_interaction_rule_gate_to_observations`).
+- **Coupled `E8` service, create-only stores, stale DAG, API & `MethodsReport` (`M4b`):**
+  add `persistence/interaction_rules_store.py`, `services/interaction_rules.py`
+  (`InteractionRulesService` evaluating live `ProLIF 2.2.1` directly on coupled
+  `FlexRes` complexes with byte-level immutability checks), stale propagation
+  via `ProjectDependencyService` (`rule_set_id`), 5 localhost REST endpoints
+  (`/api/v1/interactions/rule-sets*` and
+  `/api/v1/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/{pose_artifact_id}/interaction-rules`),
+  and `render_interaction_rules_methods(...)` citing Crossref-verified
+  `Bouysset & Fiorucci, J. Cheminform. 2021, 13, 72 (DOI: 10.1186/s13321-021-00548-6)`.
+- **Desktop UI (`M4c`):**
+  add opt-in `InteractionRulesSection.tsx` inside `PoseInteractionPanel.tsx`
+  with declarative clause builder, 1-click quick-add from detected contacts,
+  optional current-pose Tanimoto IFP reference, coupled `FlexRes` (`E8`) banner,
+  clickable contact focus linked to both the 2D SVG diagram and 3D `Mol*` viewer,
+  and `InteractionRulesM4.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M4_INTERACTION_RULES.md`, `135` records):**
+  verified across Windows 11 x64 (`503` passed / `1` Linux-only skip combined
+  with `M0–M3` & frozen `LIT_PCBA`, `47/47` Vitest / `390/390` tests) and Linux
+  x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed, `404/404`
+  `test_v02_*.py` with 0 skips, `47/47` Vitest / `390/390` tests).
+
 ## Ankora `v0.2` Milestone `M3`: Coupled Physical Pose Plausibility (`PoseBusters 0.6.5`) & Dual `MMFF94s` Strain (`codex/v0.2-dev`) - 2026-11-19
 
 - **Pure-Python `posebusters==0.6.5` lock & budget compliance (`M3a`, `ADR-031`):**
