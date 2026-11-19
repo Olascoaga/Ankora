@@ -37,6 +37,9 @@ class PoseReference(BaseModel):
     reference_rmsd_angstrom: float | None = Field(default=None, ge=0)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     content_url: str = Field(min_length=1)
+    pose_flex_sidechains_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_content_url: str | None = None
+    pose_complex_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class PoseInventory(BaseModel):
@@ -160,6 +163,11 @@ class InteractionAnalysisRecord(BaseModel):
     analysis_receptor_artifact_id: str = Field(min_length=1)
     analysis_receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     analysis_receptor_content_url: str = Field(min_length=1)
+    pose_flex_sidechains_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    pose_complex_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    materialized_coupled_receptor_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     detector: ToolIdentity
     profile: InteractionProfile
     contacts: list[InteractionContact] = Field(default_factory=list)

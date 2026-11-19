@@ -4,9 +4,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
+from ankora_backend.adapters.chemistry.flex_pose_complex import (
+    MaterializedFlexReceptor,
+    materialize_coupled_receptor_pdb,
+)
 from ankora_backend.adapters.chemistry.redocking_rmsd import pdbqt_to_pdb_block
 from ankora_backend.adapters.interactions.prolif_adapter import ProlifInteractionAdapter
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -56,6 +61,7 @@ class _ResolvedPose:
     docking_receptor_sha256: str
     pose: PoseReference
     pose_path: Path
+    pose_flex_path: Path | None = None
     gnina_job_id: str | None = None
 
 
@@ -210,15 +216,45 @@ class PoseInteractionService:
         _verify_hash(conformer_path, conformer.artifact.sha256, "ligand conformer")
         _verify_hash(resolved.pose_path, resolved.pose.sha256, "docking pose")
 
-        contacts, diagram = self._adapter.analyze(
-            pose_path=resolved.pose_path,
-            conformer_path=conformer_path,
+        materialized = self._materialize_coupled_receptor(
             receptor_path=receptor_path,
-            profile=request.profile,
+            pose=resolved.pose,
+            pose_flex_path=resolved.pose_flex_path,
         )
+        if materialized is not None:
+            with TemporaryDirectory(prefix="ankora-coupled-prolif-") as temp_dir:
+                coupled_receptor_path = Path(temp_dir) / "coupled_receptor.pdb"
+                coupled_receptor_path.write_text(
+                    materialized.pdb_text, encoding="utf-8", newline="\n"
+                )
+                contacts, diagram = self._adapter.analyze(
+                    pose_path=resolved.pose_path,
+                    conformer_path=conformer_path,
+                    receptor_path=coupled_receptor_path,
+                    profile=request.profile,
+                )
+        else:
+            contacts, diagram = self._adapter.analyze(
+                pose_path=resolved.pose_path,
+                conformer_path=conformer_path,
+                receptor_path=receptor_path,
+                profile=request.profile,
+            )
         created_at = datetime.now(UTC)
         analysis_id = self._interactions.new_analysis_id()
         detector = ToolIdentity(name="ProLIF", version=self._adapter.version())
+        parameters: dict[str, object] = {
+            "catalog_id": catalog_id,
+            "profile": request.profile.model_dump(mode="json"),
+            "topology_validation": "Meeko PDBQT reconstruction matched to exact conformer SDF",
+        }
+        if materialized is not None:
+            parameters["pose_flex_sidechains_sha256"] = resolved.pose.pose_flex_sidechains_sha256
+            parameters["pose_complex_identity_sha256"] = resolved.pose.pose_complex_identity_sha256
+            parameters["materialized_coupled_receptor_sha256"] = materialized.sha256
+            parameters["repositioned_nonpolar_hydrogen_count"] = (
+                materialized.repositioned_nonpolar_hydrogen_count
+            )
         provenance = ProvenanceEvent(
             event_id=str(uuid4()),
             event_type="pose_interactions_analyzed",
@@ -232,11 +268,7 @@ class PoseInteractionService:
             ],
             output_artifacts=[analysis_id],
             tool=detector,
-            parameters={
-                "catalog_id": catalog_id,
-                "profile": request.profile.model_dump(mode="json"),
-                "topology_validation": "Meeko PDBQT reconstruction matched to exact conformer SDF",
-            },
+            parameters=parameters,
         )
         record = InteractionAnalysisRecord(
             analysis_id=analysis_id,
@@ -256,6 +288,11 @@ class PoseInteractionService:
             analysis_receptor_artifact_id=analysis_output.artifact_id,
             analysis_receptor_sha256=analysis_output.sha256,
             analysis_receptor_content_url=analysis_output.content_url,
+            pose_flex_sidechains_sha256=resolved.pose.pose_flex_sidechains_sha256,
+            pose_complex_identity_sha256=resolved.pose.pose_complex_identity_sha256,
+            materialized_coupled_receptor_sha256=(
+                materialized.sha256 if materialized is not None else None
+            ),
             detector=detector,
             profile=request.profile,
             contacts=contacts,
@@ -316,10 +353,18 @@ class PoseInteractionService:
         _verify_hash(receptor_path, analysis_output.sha256, "analysis receptor")
         _verify_hash(resolved.pose_path, resolved.pose.sha256, "docking pose")
 
+        materialized = self._materialize_coupled_receptor(
+            receptor_path=receptor_path,
+            pose=resolved.pose,
+            pose_flex_path=resolved.pose_flex_path,
+        )
+        receptor_text = (
+            materialized.pdb_text
+            if materialized is not None
+            else receptor_path.read_text(encoding="utf-8")
+        )
         receptor_lines = [
-            line
-            for line in receptor_path.read_text(encoding="utf-8").splitlines()
-            if line.startswith(("ATOM", "HETATM"))
+            line for line in receptor_text.splitlines() if line.startswith(("ATOM", "HETATM"))
         ]
         if not receptor_lines:
             raise _failure(
@@ -347,6 +392,19 @@ class PoseInteractionService:
             if resolved.pose.cnn_score is not None
             else []
         )
+        flex_lines = (
+            [
+                f"REMARK   1 FLEX SIDECHAIN  {resolved.pose.pose_flex_sidechains_sha256}",
+                *(
+                    [f"REMARK   1 POSE COMPLEX ID {resolved.pose.pose_complex_identity_sha256}"]
+                    if resolved.pose.pose_complex_identity_sha256 is not None
+                    else []
+                ),
+                f"REMARK   1 COUPLED REC SHA {materialized.sha256}",
+            ]
+            if materialized is not None and resolved.pose.pose_flex_sidechains_sha256 is not None
+            else []
+        )
         header = [
             "REMARK   1 Ankora ligand-receptor complex",
             f"REMARK   1 RESULT          {catalog_id}",
@@ -357,6 +415,7 @@ class PoseInteractionService:
             f"REMARK   1 POSE VALUE      {resolved.pose.result_kcal_mol:.3f} kcal/mol"
             f" ({_ascii(resolved.pose.value_label)})",
             f"REMARK   1 POSE SHA256     {resolved.pose.sha256}",
+            *flex_lines,
             f"REMARK   1 RECEPTOR        {analysis_output.artifact_id}",
             f"REMARK   1 RECEPTOR SHA256 {analysis_output.sha256}",
             f"REMARK   1 LIGAND CHAIN    {ligand_chain} (assigned by Ankora; free here)",
@@ -397,6 +456,13 @@ class PoseInteractionService:
             docking_receptor_sha256=str(context["receptor_sha256"]),
             pose=pose,
             pose_path=self._pose_path(
+                engine_key,
+                record_id,
+                ligand_id,
+                pose_artifact_id,
+                gnina_job_id=gnina_job_id,
+            ),
+            pose_flex_path=self._pose_flex_path(
                 engine_key,
                 record_id,
                 ligand_id,
@@ -519,6 +585,76 @@ class PoseInteractionService:
             return self._gpu.pose_content_path(record_id, artifact_id)
         raise _failure("RESULT_CATALOG_ENGINE_UNKNOWN", "Unknown result engine.")
 
+    def _pose_flex_path(
+        self,
+        engine_key: str,
+        record_id: str,
+        ligand_id: str,
+        artifact_id: str,
+        *,
+        gnina_job_id: str | None = None,
+    ) -> Path | None:
+        if engine_key == VINA_BATCH:
+            return _optional_flex_path(
+                self._docking, "batch_pose_flex_content_path", record_id, ligand_id, artifact_id
+            )
+        if engine_key == VINA_JOB:
+            return _optional_flex_path(
+                self._docking, "pose_flex_content_path", record_id, artifact_id
+            )
+        if engine_key == GNINA_JOB and self._gnina is not None:
+            return _optional_flex_path(
+                self._gnina, "pose_flex_content_path", record_id, artifact_id
+            )
+        if engine_key == GNINA_SCREENING and self._gnina is not None and gnina_job_id is not None:
+            return _optional_flex_path(
+                self._gnina, "pose_flex_content_path", gnina_job_id, artifact_id
+            )
+        if engine_key == AUTODOCK4_BATCH:
+            return _optional_flex_path(
+                self._autodock4, "batch_pose_flex_content_path", record_id, ligand_id, artifact_id
+            )
+        if engine_key == AUTODOCK4_JOB:
+            return _optional_flex_path(
+                self._autodock4, "pose_flex_content_path", record_id, artifact_id
+            )
+        if engine_key == AUTODOCK_GPU_BATCH:
+            return _optional_flex_path(
+                self._gpu, "batch_pose_flex_content_path", record_id, ligand_id, artifact_id
+            )
+        if engine_key == AUTODOCK_GPU_JOB:
+            return _optional_flex_path(self._gpu, "pose_flex_content_path", record_id, artifact_id)
+        return None
+
+    @staticmethod
+    def _materialize_coupled_receptor(
+        *,
+        receptor_path: Path,
+        pose: PoseReference,
+        pose_flex_path: Path | None,
+    ) -> MaterializedFlexReceptor | None:
+        if pose.pose_flex_sidechains_sha256 is None:
+            return None
+        if pose_flex_path is None or not pose_flex_path.is_file():
+            raise _failure(
+                "POSE_COMPLEX_FLEX_SIDECHAINS_MISSING",
+                "This flexible pose is missing its preserved moved side-chain artifact.",
+                details={"pose_artifact_id": pose.artifact_id},
+            )
+        _verify_hash(pose_flex_path, pose.pose_flex_sidechains_sha256, "flexible side chains")
+        return materialize_coupled_receptor_pdb(
+            protonated_pdb_text=receptor_path.read_text(encoding="utf-8"),
+            pose_flex_sidechains_pdbqt=pose_flex_path.read_text(encoding="utf-8"),
+        )
+
+
+def _optional_flex_path(store: object, method_name: str, *args: str) -> Path | None:
+    resolver = getattr(store, method_name, None)
+    if not callable(resolver):
+        return None
+    result = resolver(*args)
+    return result if isinstance(result, Path) else None
+
 
 def _gnina_pose(item: Any, record_id: str) -> PoseReference:
     return PoseReference(
@@ -532,6 +668,9 @@ def _gnina_pose(item: Any, record_id: str) -> PoseReference:
         cnn_affinity_pk=item.cnn_affinity,
         sha256=item.artifact.sha256,
         content_url=f"/docking/gnina/jobs/{record_id}/poses/{item.artifact.artifact_id}/content",
+        pose_flex_sidechains_sha256=getattr(item.artifact, "pose_flex_sidechains_sha256", None),
+        flex_content_url=getattr(item.artifact, "flex_content_url", None),
+        pose_complex_identity_sha256=getattr(item.artifact, "pose_complex_identity_sha256", None),
     )
 
 
@@ -547,6 +686,9 @@ def _vina_pose(item: Any) -> PoseReference:
         rmsd_upper_bound_angstrom=item.rmsd_upper_bound_angstrom,
         sha256=item.artifact.sha256,
         content_url=item.artifact.content_url,
+        pose_flex_sidechains_sha256=item.artifact.pose_flex_sidechains_sha256,
+        flex_content_url=item.artifact.flex_content_url,
+        pose_complex_identity_sha256=item.artifact.pose_complex_identity_sha256,
     )
 
 
@@ -564,6 +706,9 @@ def _autodock_pose(item: Any) -> PoseReference:
         reference_rmsd_angstrom=item.reference_rmsd_angstrom,
         sha256=item.artifact.sha256,
         content_url=item.artifact.content_url,
+        pose_flex_sidechains_sha256=getattr(item.artifact, "pose_flex_sidechains_sha256", None),
+        flex_content_url=getattr(item.artifact, "flex_content_url", None),
+        pose_complex_identity_sha256=getattr(item.artifact, "pose_complex_identity_sha256", None),
     )
 
 
