@@ -54,6 +54,7 @@ _REFERENCE_KEYS = {
     "record_id",
     "reference_ligand_id",
     "report_id",
+    "rule_set_id",
     "selection_manifest_artifact_id",
     "source_artifact_id",
     "source_id",
@@ -399,7 +400,12 @@ def _kind_for(parts: tuple[str, ...]) -> DependencyNodeKind:
         return DependencyNodeKind.DOCKING_CAMPAIGN
     if parts[:2] == ("validation", "redocking"):
         return DependencyNodeKind.VALIDATION
-    if parts[:2] == ("analysis", "pose_interactions"):
+    if parts[:2] in {
+        ("analysis", "pose_interactions"),
+        ("analysis", "pose_quality"),
+        ("analysis", "interaction_rule_sets"),
+        ("analysis", "interaction_rule_evaluations"),
+    }:
         return DependencyNodeKind.POSE_ANALYSIS
     return DependencyNodeKind.UNKNOWN
 

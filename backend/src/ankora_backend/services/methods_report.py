@@ -43,6 +43,11 @@ from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.calibration import CalibrationRunRecord
+from ankora_backend.schemas.interaction_rules import (
+    InteractionRuleEvaluationRecord,
+    InteractionRuleSetRecord,
+    format_residue_label,
+)
 from ankora_backend.schemas.methods import MethodsReport, MethodsSoftware
 from ankora_backend.schemas.pose_quality import PoseQualityRecord
 from ankora_backend.schemas.rescoring import PoseRescoreResult
@@ -3138,5 +3143,114 @@ def render_pose_quality_methods(records: Sequence[PoseQualityRecord]) -> str:
             f"({rec.passed_count} pass, {rec.failed_count} fail, "
             f"{rec.not_applicable_count} N/A, {rec.not_evaluable_count} not evaluable)"
             f"{strain_part}{flex_part}."
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_interaction_rules_methods(
+    rule_sets: Sequence[InteractionRuleSetRecord],
+    evaluations: Sequence[InteractionRuleEvaluationRecord] = (),
+) -> str:
+    """Render record-derived Methods prose for M4 declarative ProLIF rules & Tanimoto IFP."""
+    if not rule_sets and not evaluations:
+        return ""
+
+    prolif_versions = sorted(
+        {
+            *(rs.provenance.tool.version for rs in rule_sets),
+            *(ev.detector.version for ev in evaluations),
+        }
+    )
+    ver_str = ", ".join(prolif_versions) if prolif_versions else "2.x"
+    any_flex = any(ev.materialized_coupled_receptor_sha256 is not None for ev in evaluations)
+    any_tanimoto = any(rs.reference_ifp is not None for rs in rule_sets) or any(
+        ev.tanimoto is not None for ev in evaluations
+    )
+
+    lines: list[str] = [
+        "### Declarative Pharmacophoric Interaction Rules and Tanimoto IFP",
+        "",
+        (
+            f"Pharmacophoric interaction hypotheses ({len(rule_sets)} sealed rule "
+            f"set{'s' if len(rule_sets) != 1 else ''}; {len(evaluations)} pose "
+            f"evaluation{'s' if len(evaluations) != 1 else ''}) were evaluated over geometric "
+            f"contacts detected by ProLIF ({ver_str}; Bouysset & Fiorucci, J. Cheminform. "
+            "2021, 13, 72, DOI: 10.1186/s13321-021-00548-6). Each rule set was validated "
+            "against the prepared receptor's protonated PDB and sealed by an order-invariant "
+            "SHA-256 identity (`rule_set_identity_sha256`) prior to protocol confirmation so "
+            "pharmacophoric gates cannot be modified post hoc. Pose evaluations are create-only, "
+            "read-only annotations (`mutated_original_pose = false`) that preserve non-passing "
+            "compounds in the operative campaign denominator and never alter docking scores."
+        ),
+    ]
+    if any_flex:
+        lines.append(
+            "For `sidechain_flex` poses, ProLIF interaction graphs and Tanimoto fingerprints were "
+            "computed directly on the deterministically materialized coupled receptor PDB "
+            "(`receptor_rigid + pose_flex_sidechains`, ADR-032 E8) so contacts gained or lost by "
+            "induced side-chain rotations reflect actual per-pose geometry rather than static "
+            "crystal rotamers."
+        )
+    if any_tanimoto:
+        lines.append(
+            "Binary residue-by-interaction Tanimoto similarity (`|A ∩ B| / |A ∪ B|`) was computed "
+            "against each rule set's sealed reference fingerprint under the identical ProLIF "
+            "profile; empty unions (`0 / 0`) were reported explicitly as `not_evaluable` rather "
+            "than assigned a synthetic value."
+        )
+
+    for rs in rule_sets:
+        clause_summaries = []
+        for clause in rs.clauses:
+            targets_str = ", ".join(
+                f"{format_residue_label(t.residue)} [{'/'.join(t.interaction_types)}]"
+                + (f" <= {t.max_distance_angstrom:g} Å" if t.max_distance_angstrom else "")
+                for t in clause.targets
+            )
+            op = clause.kind.value.upper()
+            if clause.kind.value == "alternative_or":
+                op = f"ALTERNATIVE_OR (min {clause.effective_min_satisfied}/{len(clause.targets)})"
+            clause_summaries.append(f"{op} `{clause.clause_id}`: {targets_str}")
+        ref_note = (
+            f"; reference IFP SHA-256 `{rs.reference_ifp.fingerprint_sha256[:12]}` "
+            f"({len(rs.reference_ifp.bits)} bits"
+            + (
+                f", min Tanimoto {rs.min_tanimoto_similarity:.2f}"
+                if rs.min_tanimoto_similarity is not None
+                else ""
+            )
+            + ")"
+            if rs.reference_ifp is not None
+            else ""
+        )
+        clauses_text = "; ".join(clause_summaries) if clause_summaries else "Tanimoto IFP only"
+        lines.append(
+            f"- Rule set `{rs.name}` (SHA-256 `{rs.rule_set_identity_sha256[:12]}`, "
+            f"vicinity cutoff {rs.profile.vicinity_cutoff_angstrom:g} Å): "
+            f"{clauses_text}{ref_note}."
+        )
+
+    for ev in evaluations:
+        tanimoto_part = ""
+        if ev.tanimoto is not None:
+            if ev.tanimoto.similarity is not None:
+                tanimoto_part = (
+                    f"; Tanimoto IFP = {ev.tanimoto.similarity:.3f} "
+                    f"({ev.tanimoto.intersection_count}/{ev.tanimoto.union_count} bits, "
+                    f"{ev.tanimoto.status.value})"
+                )
+            else:
+                tanimoto_part = "; Tanimoto IFP = not_evaluable (0/0 empty union)"
+        flex_part = (
+            f" [coupled FlexRes receptor SHA-256 `{ev.materialized_coupled_receptor_sha256[:12]}`]"
+            if ev.materialized_coupled_receptor_sha256
+            else ""
+        )
+        lines.append(
+            f"- Evaluation `{ev.evaluation_id[:8]}` on `{ev.catalog_id}` · `{ev.ligand_id}` · "
+            f"`{ev.pose.label}` against `{ev.rule_set_name}` "
+            f"(`{ev.rule_set_identity_sha256[:12]}`): overall `{ev.overall_status.value}` "
+            f"({ev.passed_clause_count} passed, {ev.failed_clause_count} failed"
+            f"{tanimoto_part}){flex_part}."
         )
     return "\n".join(lines).strip() + "\n"

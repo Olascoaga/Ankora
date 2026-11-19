@@ -87,6 +87,12 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningProgress,
     GninaScreeningRequest,
 )
+from ankora_backend.schemas.interaction_rules import (
+    CreateInteractionRuleSetRequest,
+    EvaluateInteractionRulesRequest,
+    InteractionRuleEvaluationRecord,
+    InteractionRuleSetRecord,
+)
 from ankora_backend.schemas.ligand_library_preparation import LigandLibraryPreparationRecord
 from ankora_backend.schemas.ligands import (
     ApplyLigandLibraryFilterRequest,
@@ -187,6 +193,7 @@ from ankora_backend.services.figure_export import FigureExportService
 from ankora_backend.services.gnina_docking import GninaDockingService
 from ankora_backend.services.gnina_pack import GninaPackService
 from ankora_backend.services.gnina_screening_service import GninaScreeningService
+from ankora_backend.services.interaction_rules import InteractionRulesService
 from ankora_backend.services.ligand_extraction import extract_crystallographic_ligand
 from ankora_backend.services.ligand_filtering import (
     apply_library_filters,
@@ -2015,6 +2022,63 @@ def assess_pose_quality(
     payload: PoseQualityRequest,
 ) -> PoseQualityRecord:
     return PoseQualityService.from_environment().assess(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
+    )
+
+
+@router.get("/interactions/rule-sets", response_model=list[InteractionRuleSetRecord])
+def list_interaction_rule_sets(
+    receptor_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[InteractionRuleSetRecord]:
+    return InteractionRulesService.from_environment().list_rule_sets(receptor_id=receptor_id)
+
+
+@router.post(
+    "/interactions/rule-sets",
+    response_model=InteractionRuleSetRecord,
+    status_code=201,
+)
+def create_interaction_rule_set(
+    payload: CreateInteractionRuleSetRequest,
+) -> InteractionRuleSetRecord:
+    return InteractionRulesService.from_environment().create_rule_set(payload)
+
+
+@router.get(
+    "/interactions/rule-sets/{rule_set_id}",
+    response_model=InteractionRuleSetRecord,
+)
+def get_interaction_rule_set(rule_set_id: str) -> InteractionRuleSetRecord:
+    return InteractionRulesService.from_environment().get_rule_set(rule_set_id)
+
+
+@router.get(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/interaction-rules",
+    response_model=list[InteractionRuleEvaluationRecord],
+)
+def list_pose_interaction_rule_evaluations(
+    engine: str, record_id: str, ligand_id: str, pose_artifact_id: str
+) -> list[InteractionRuleEvaluationRecord]:
+    return InteractionRulesService.from_environment().list_pose_evaluations(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id
+    )
+
+
+@router.post(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/interaction-rules",
+    response_model=InteractionRuleEvaluationRecord,
+    status_code=201,
+)
+def evaluate_pose_interaction_rules(
+    engine: str,
+    record_id: str,
+    ligand_id: str,
+    pose_artifact_id: str,
+    payload: EvaluateInteractionRulesRequest,
+) -> InteractionRuleEvaluationRecord:
+    return InteractionRulesService.from_environment().evaluate_pose(
         f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
     )
 
