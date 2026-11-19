@@ -38,6 +38,11 @@ import type {
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import { SingleLigandPreparation } from "./SingleLigandPreparation";
 import type { PreparationStep } from "./SingleLigandPreparation";
+import {
+  buildLigandFlexibilitySpec,
+  emptyLigandFlexibilityDraft,
+  type LigandFlexibilityDraft,
+} from "./ligandFlexibility";
 import type { ViewerSource } from "../../viewer/adapter";
 import {
   LigandLibraryTable,
@@ -170,6 +175,9 @@ export function LigandWorkspace({
   const [stateConfirmed, setStateConfirmed] = useState(false);
   const [protonationError, setProtonationError] = useState<string | null>(null);
   const [useSourceGeometry, setUseSourceGeometry] = useState(false);
+  // Semi-flexible Meeko options for this one molecule (ADR-032 §1). Left at
+  // their defaults they contribute no `flexibility` key to the request.
+  const [flexibility, setFlexibility] = useState<LigandFlexibilityDraft>(emptyLigandFlexibilityDraft);
   const [preparationStep, setPreparationStep] = useState<PreparationStep>(null);
 
   useEffect(() => {
@@ -784,10 +792,17 @@ export function LigandWorkspace({
     setError(null);
     let prepared: LigandPdbqtRecord | null = null;
     try {
+      // A customized spec is sent only for this explicitly inspected molecule.
+      // `null` means nothing was changed, and the key is then omitted so the
+      // request stays identical to the recorded v0.1 shape.
+      const flexibilitySpec = buildLigandFlexibilitySpec(flexibility);
       const next = await ankoraApi.prepareLigandPdbqt(
         record.artifact.ligand_id,
         source.artifact.conformer_id,
-        { charge_model: "gasteiger" },
+        {
+          charge_model: "gasteiger",
+          ...(flexibilitySpec ? { flexibility: flexibilitySpec } : {}),
+        },
       );
       setPdbqt(next);
       prepared = next;
@@ -1405,6 +1420,8 @@ export function LigandWorkspace({
           setAcknowledged={setStateConfirmed}
           conformer={conformer}
           pdbqt={pdbqt}
+          flexibility={flexibility}
+          setFlexibility={setFlexibility}
           meekoAvailable={Boolean(tools?.meeko_ligand.available)}
           blocked={Boolean(blockers) && !activeState}
           step={preparationStep}

@@ -82,6 +82,10 @@ import type {
   VinaBatchProgress,
   VinaDockingJobRecord,
   VinaDockingRequest,
+  VinaLocalRefinementRecord,
+  VinaLocalRefinementRequest,
+  GninaLocalRefinementRecord,
+  GninaLocalRefinementRequest,
   InteractionAnalysisRecord,
   PoseInventory,
   ProjectCatalog,
@@ -508,6 +512,29 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     }),
   dockingPoseUrl: (contentUrl: string): string => `${API_BASE_URL}${contentUrl}`,
 
+  /**
+   * Create one immutable `--local_only` derivative of an already recorded pose.
+   *
+   * The parent job and parent pose are left exactly as they were: this writes a
+   * new record (ADR-005) rather than refining anything in place (ADR-004).
+   */
+  refineVinaPoseLocalOnly: (
+    request: VinaLocalRefinementRequest,
+  ): Promise<VinaLocalRefinementRecord> =>
+    requestJson<VinaLocalRefinementRecord>("/docking/vina/refinements", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  /** The same create-only derivative on Linux GNINA (ADR-027). */
+  refineGninaPoseLocalOnly: (
+    request: GninaLocalRefinementRequest,
+  ): Promise<GninaLocalRefinementRecord> =>
+    requestJson<GninaLocalRefinementRecord>("/docking/gnina/refinements", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
   latestAutoDock4Batch: (
     receptorId: string,
     bindingSiteId: string,
@@ -810,6 +837,21 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/interactions`,
     { method: "POST", body: JSON.stringify({}) },
   ),
+
+  /**
+   * The deterministically materialized coupled complex for one pose (`E8`).
+   *
+   * Under `sidechain_flex` this is what every consumer must read: the rigid
+   * receptor, the moved side chains, and the ligand pose as one document, so
+   * nothing downstream reconstructs its own version of the complex.
+   */
+  poseComplexUrl: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): string =>
+    `${API_BASE_URL}/results/campaigns/${catalogPath(catalogId)}/compounds/`
+    + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/complex`,
 
   exportPoseComplex: (
     catalogId: string,

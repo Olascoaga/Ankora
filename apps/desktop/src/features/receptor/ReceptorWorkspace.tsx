@@ -7,6 +7,7 @@ import type {
   ComponentAction,
   ProtonationOverride,
   ReceptorDecisionAction,
+  ReceptorFlexMode,
   ReceptorInspectionReport,
   ReceptorIssue,
   ReceptorPreparationRecord,
@@ -19,7 +20,19 @@ import type {
   ToolsResponse,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
-import type { ViewerSelection, ViewerSource } from "../../viewer/adapter";
+import type { ViewerResidueSelection, ViewerSelection, ViewerSource } from "../../viewer/adapter";
+import {
+  admitFlexResidues,
+  exceedsFlexDofBudget,
+  findDockingReceptorPdbqt,
+  findFlexReceptorPdbqt,
+  flexResidueLabel,
+  flexResiduePositionKey,
+  FLEXRES_DOF_HIGH_CODE,
+  RECOMMENDED_MAX_FLEX_CHI_TORSIONS,
+  RECOMMENDED_MAX_FLEX_RESIDUES,
+  type FlexResidueRejection,
+} from "./flexResidues";
 
 type ViewMode = "original" | "prepared" | "overlay";
 type IssueFilter = "all" | "near" | "blocking" | "undecided" | "affected";
@@ -69,6 +82,19 @@ export function ReceptorWorkspace({
     restoredRecord?.decisions.protonation.authorized_terminal_heavy_atom_additions ?? [],
   );
   const [generatePdbqt, setGeneratePdbqt] = useState(restoredRecord?.decisions.generate_pdbqt ?? false);
+  // Receptor side-chain flexibility (ADR-032 §2). `rigid` is the default and
+  // reproduces v0.1 exactly, so nothing here reaches the request until the
+  // scientist explicitly switches modes.
+  const [flexMode, setFlexMode] = useState<ReceptorFlexMode>(restoredRecord?.flex_spec?.mode ?? "rigid");
+  // The two selection sources are kept apart because the viewer reports its
+  // whole picked set on every change, while the structured control appends one
+  // residue at a time. The admitted selection is derived from both.
+  const [flexManualResidues, setFlexManualResidues] = useState<ResidueLocator[]>(
+    restoredRecord?.flex_spec?.flex_residues ?? [],
+  );
+  const [flexPickedResidues, setFlexPickedResidues] = useState<ResidueLocator[]>([]);
+  const [flexPickMode, setFlexPickMode] = useState(false);
+  const [flexDraft, setFlexDraft] = useState<ResidueLocator>(emptyFlexDraft);
   const [protonationPreview, setProtonationPreview] = useState<{
     signature: string;
     analysis: ReceptorProtonationAnalysis;
@@ -108,6 +134,11 @@ export function ReceptorWorkspace({
       restored?.decisions.protonation.authorized_terminal_heavy_atom_additions ?? [],
     );
     setGeneratePdbqt(restored?.decisions.generate_pdbqt ?? false);
+    setFlexMode(restored?.flex_spec?.mode ?? "rigid");
+    setFlexManualResidues(restored?.flex_spec?.flex_residues ?? []);
+    setFlexPickedResidues([]);
+    setFlexPickMode(false);
+    setFlexDraft(emptyFlexDraft());
     setProtonationPreview(restoredProtonationPreview(restored));
     setProtonationOverrides(protonationOverrideMap(restored));
     setProposalFilter("all");
@@ -234,6 +265,25 @@ export function ReceptorWorkspace({
     && protonationBlockingIssues.length === 0
     && (!relax || plannedRepairCount > 0);
 
+  // One admission over both sources, so the rules are applied once and every
+  // refusal stays visible rather than being resolved away silently.
+  const flexAdmission = useMemo(
+    () => admitFlexResidues([...flexManualResidues, ...flexPickedResidues]),
+    [flexManualResidues, flexPickedResidues],
+  );
+  const flexResidues = flexAdmission.accepted;
+  const flexRejections: FlexResidueRejection[] = flexAdmission.rejections;
+
+  // FlexRes only reaches the request once a PDBQT is actually being generated
+  // and at least one admissible residue has been chosen. An empty selection is
+  // not a flexible receptor, so it blocks the plan instead of sending a spec
+  // the backend would have to reject.
+  const flexSelectionEmpty = generatePdbqt && flexMode === "sidechain_flex" && flexResidues.length === 0;
+  const flexibilityRequested = protonate && generatePdbqt
+    && flexMode === "sidechain_flex" && flexResidues.length > 0;
+  const flexDofHigh = flexMode === "sidechain_flex"
+    && exceedsFlexDofBudget(flexResidues.length, record?.flex_spec?.added_chi_torsion_count ?? null);
+
   function buildRequest(overrides: ProtonationOverride[]): ReceptorPreparationRequest | null {
     if (!report || !waterAction || !structuralPlanComplete) return null;
     return {
@@ -262,6 +312,11 @@ export function ReceptorWorkspace({
         overrides,
       },
       generate_pdbqt: protonate && generatePdbqt,
+      // A rigid receptor sends no spec at all, so the frozen v0.1 payload is
+      // byte-identical and only an explicit FlexRes choice changes the request.
+      ...(flexibilityRequested
+        ? { flexibility: { mode: "sidechain_flex" as const, flex_residues: flexResidues } }
+        : {}),
       ...(repairMethod !== "legacy" ? { repair_method: repairMethod, repair_seed: repairSeed } : {}),
       ...(inspectionMethod !== "reported_only" ? { inspection_method: inspectionMethod } : {}),
     };
@@ -272,7 +327,8 @@ export function ReceptorWorkspace({
   const activeProtonationAnalysis = protonationPreview?.signature === protonationSignature
     ? protonationPreview.analysis
     : null;
-  const planComplete = structuralPlanComplete && (!protonate || activeProtonationAnalysis !== null);
+  const planComplete = structuralPlanComplete && (!protonate || activeProtonationAnalysis !== null)
+    && !flexSelectionEmpty;
   const applyReady = planComplete && (uiMode === "advanced" || (reviewConfirmed && protonate && generatePdbqt));
   const systemComplete = selectedChains.length > 0 && waterAction !== null
     && selectedComponents.every((item) => componentActions[item.component_id] !== undefined);
@@ -305,6 +361,7 @@ export function ReceptorWorkspace({
     ...(protonationBlockingIssues.length ? [`Repair or remove ${protonationBlockingIssues.length} incomplete/ambiguous residue issue(s), or disable protonation.`] : []),
     ...(relax && !plannedRepairCount ? ["Disable relaxation or explicitly mark missing atoms for repair."] : []),
     ...(!terminalAuthorizationsValid ? ["Clear terminal oxygen authorizations for deselected chains or removed residues."] : []),
+    ...(flexSelectionEmpty ? ["Choose at least one flexible side chain, or return to a rigid receptor."] : []),
   ];
   // Capture attempted decisions even when later edits make the plan incomplete.
   const decisionSignature = JSON.stringify({
@@ -315,11 +372,14 @@ export function ReceptorWorkspace({
     relax, restraintForceConstant, relaxationMaxIterations, protonate, ph,
     repairMethod, repairSeed,
     authorizedTerminalAdditions, generatePdbqt,
+    flexMode, flexResidues: flexResidues.map(flexResiduePositionKey).sort(),
     protonationOverrides: Object.entries(protonationOverrides).sort(),
   });
   const errorFromPreviousPlan = errorPlanSignature !== null && errorPlanSignature !== decisionSignature;
 
   const displayOutput = record?.outputs.find((item) => item.artifact_id === record.display_output_artifact_id);
+  const preparedRigidOutput = record ? findDockingReceptorPdbqt(record.outputs) : undefined;
+  const preparedFlexOutput = record ? findFlexReceptorPdbqt(record.outputs) : undefined;
   const removedIssueCount = record?.decisions.issue_decisions.filter((item) => item.action === "remove").length ?? 0;
   const repairedIssueCount = record?.decisions.issue_decisions.filter((item) => item.action === "repair").length ?? 0;
   const removedComponentCount = record?.decisions.component_decisions.filter((item) => item.action === "remove").length ?? 0;
@@ -339,6 +399,27 @@ export function ReceptorWorkspace({
     };
     return viewMode === "prepared" ? [prepared] : [original, prepared];
   }, [displayOutput, structure, viewMode]);
+
+  /**
+   * Take a candidate selection and keep every refusal visible.
+   *
+   * Both selection routes land here, so a `GLY` picked in 3D and a `PRO` typed
+   * into the structured control are refused identically and for a stated
+   * reason. Admissible residues are added; refused ones are reported and never
+   * silently discarded (ADR-032 §2.1).
+   */
+  /**
+   * Drop a residue from whichever source contributed it.
+   *
+   * A residue picked in 3D is removed from the picked set as well, so the
+   * viewer cannot immediately re-assert it on its next selection report.
+   */
+  function removeFlexResidue(residue: ResidueLocator) {
+    const key = flexResiduePositionKey(residue);
+    const without = (list: ResidueLocator[]) => list.filter((item) => flexResiduePositionKey(item) !== key);
+    setFlexManualResidues(without);
+    setFlexPickedResidues(without);
+  }
 
   function toggleChain(chainId: string) {
     setSelectedChains((current) => current.includes(chainId)
@@ -522,7 +603,12 @@ export function ReceptorWorkspace({
               <strong>{viewModeLabel(viewMode)}</strong>
               <span>{viewModeDescription(viewMode, displayOutput.filename)}</span>
             </div> : null}
-            <MolecularViewer sources={viewerSources} selection={selection} />
+            <MolecularViewer
+              sources={viewerSources}
+              selection={selection}
+              residueSelectionEnabled={flexPickMode}
+              onResidueSelectionChange={(residues: ViewerResidueSelection[]) => setFlexPickedResidues(residues)}
+            />
           </div>
           <section className="data-panel receptor-issues-panel" aria-label="Structural issues workbench">
             <div className="data-panel-heading">
@@ -685,6 +771,53 @@ export function ReceptorWorkspace({
             </div> : null}
             <label className="check-row" hidden={uiMode === "guided"}><input type="checkbox" checked={generatePdbqt} disabled={!protonate} onChange={(event) => setGeneratePdbqt(event.target.checked)} /><span><strong>Generate receptor PDBQT with Meeko</strong><small>{toolLabel(tools?.meeko)}</small></span></label>
             <p className="field-note">PDBFixer is invoked only for residues explicitly marked Repair. {toolLabel(tools?.pdbfixer)}</p>
+            {generatePdbqt ? <div className="flexres-panel" role="region" aria-label="Receptor side-chain flexibility (FlexRes)">
+              <strong>Receptor side-chain flexibility (FlexRes)</strong>
+              <p className="field-note">A rigid receptor is the default and is what every v0.1 protocol recorded. Freeing side chains samples pocket rotamers at the cost of search-space volume against the same sampling budget, so it is an explicit decision per campaign.</p>
+              <div className="filter-tabs" aria-label="Receptor flexibility mode">
+                <button type="button" aria-pressed={flexMode === "rigid"} onClick={() => { setFlexMode("rigid"); setFlexPickMode(false); }}>Rigid receptor (default)</button>
+                <button type="button" aria-pressed={flexMode === "sidechain_flex"} onClick={() => setFlexMode("sidechain_flex")}>Flexible pocket side chains (FlexRes)</button>
+              </div>
+              {flexMode === "sidechain_flex" ? <>
+                <div className="flexres-count-badges">
+                  <span className={flexResidues.length > RECOMMENDED_MAX_FLEX_RESIDUES ? "warning" : ""}>{flexResidues.length} flexible residue{flexResidues.length === 1 ? "" : "s"} · recommended ≤ {RECOMMENDED_MAX_FLEX_RESIDUES}</span>
+                  {record?.flex_spec?.added_chi_torsion_count !== undefined && record?.flex_spec?.added_chi_torsion_count !== null
+                    ? <span className={record.flex_spec.added_chi_torsion_count > RECOMMENDED_MAX_FLEX_CHI_TORSIONS ? "warning" : ""}>{record.flex_spec.added_chi_torsion_count} added chi torsions · recommended ≤ {RECOMMENDED_MAX_FLEX_CHI_TORSIONS}</span>
+                    : <span>Added chi torsions reported after preparation</span>}
+                </div>
+                {flexDofHigh ? <div className="protonation-blocker flexres-dof-advisory" role="status">
+                  <strong>{FLEXRES_DOF_HIGH_CODE}</strong>
+                  <p>This selection exceeds the recommended degrees-of-freedom budget. Docking is not blocked, but the same exhaustiveness now covers a larger search space, which is a less converged search rather than a better one. Ankora will not truncate the selection or raise sampling effort to compensate.</p>
+                </div> : null}
+                <label className="check-row"><input type="checkbox" checked={flexPickMode} onChange={(event) => { setFlexPickMode(event.target.checked); if (!event.target.checked) setFlexPickedResidues([]); }} /><span><strong>Pick residues in the 3D viewer</strong><small>Click side chains in the structure; refused residues are reported rather than dropped.</small></span></label>
+                <fieldset className="flexres-manual-add">
+                  <legend>Add a residue explicitly</legend>
+                  <label className="numeric-field">Chain<input aria-label="Flexible residue chain" value={flexDraft.chain_id} onChange={(event) => setFlexDraft({ ...flexDraft, chain_id: event.target.value.trim().toUpperCase() })} /></label>
+                  <label className="numeric-field">Residue name<input aria-label="Flexible residue name" value={flexDraft.residue_name} onChange={(event) => setFlexDraft({ ...flexDraft, residue_name: event.target.value.trim().toUpperCase() })} /></label>
+                  <label className="numeric-field">Sequence number<input type="number" aria-label="Flexible residue sequence number" value={Number.isFinite(flexDraft.sequence_number) ? flexDraft.sequence_number : ""} onChange={(event) => setFlexDraft({ ...flexDraft, sequence_number: Number.parseInt(event.target.value, 10) })} /></label>
+                  <label className="numeric-field">Insertion code<input aria-label="Flexible residue insertion code" value={flexDraft.insertion_code} onChange={(event) => setFlexDraft({ ...flexDraft, insertion_code: event.target.value.trim().toUpperCase() })} /></label>
+                  <button type="button" disabled={!flexDraft.residue_name || !Number.isFinite(flexDraft.sequence_number)} onClick={() => { setFlexManualResidues((current) => [...current, flexDraft]); setFlexDraft(emptyFlexDraft()); }}>Add flexible residue</button>
+                </fieldset>
+                {flexRejections.length ? <div className="protonation-blocker flexres-rejections" role="alert">
+                  <strong>{flexRejections.length} residue{flexRejections.length === 1 ? "" : "s"} cannot be made flexible.</strong>
+                  <ul>{flexRejections.map((item, index) => <li key={`${flexResiduePositionKey(item.residue)}-${index}`}>{flexResidueLabel(item.residue)} · {item.reason}</li>)}</ul>
+                  <small>Meeko exits successfully on most of these while emitting backbone atoms instead of a rotatable side chain, so Ankora refuses them before the tool runs.</small>
+                </div> : null}
+                {flexResidues.length ? <ul className="flexres-selection">
+                  {flexResidues.map((residue) => <li key={flexResiduePositionKey(residue)}>
+                    <span>{flexResidueLabel(residue)}</span>
+                    <button type="button" aria-label={`Remove ${flexResidueLabel(residue)} from flexible selection`} onClick={() => removeFlexResidue(residue)}>Remove</button>
+                  </li>)}
+                </ul> : <p className="plan-status">No flexible side chain selected yet. Choose at least one, or return to a rigid receptor.</p>}
+              </> : null}
+              {record?.flex_spec?.mode === "sidechain_flex" ? <div className="flexres-prepared-split" role="status">
+                <strong>Prepared FlexRes split</strong>
+                <span>{preparedRigidOutput?.filename ?? "receptor_rigid.pdbqt"} · {record.flex_spec.receptor_rigid_sha256.slice(0, 12)}…</span>
+                <span>{preparedFlexOutput?.filename ?? "receptor_flex.pdbqt"} · {record.flex_spec.receptor_flex_sha256?.slice(0, 12) ?? "—"}…</span>
+                <span>{record.flex_spec.added_chi_torsion_count} added chi torsion{record.flex_spec.added_chi_torsion_count === 1 ? "" : "s"} · {record.flex_spec.flex_residues.length} residue{record.flex_spec.flex_residues.length === 1 ? "" : "s"}</span>
+                {record.flex_atom_types?.length ? <span>Flexible atom types · {record.flex_atom_types.join(" ")}</span> : null}
+              </div> : null}
+            </div> : null}
             {protonationBlockingIssues.length ? <div className="protonation-blocker" role="alert">
               <strong>{protonationBlockingIssues.length} observed residue issue{protonationBlockingIssues.length === 1 ? "" : "s"} must be resolved before protonation.</strong>
               <p>Choose an explicit bulk action below, edit residues individually, or disable protonation to preserve “Leave unchanged”. Bulk actions only fill the plan; nothing is applied until you confirm it.</p>
@@ -1028,6 +1161,16 @@ function issueDecisionMap(record: ReceptorPreparationRecord | null): Record<stri
     action: item.action,
     selectedAltloc: item.selected_altloc ?? undefined,
   }]) ?? []);
+}
+
+/**
+ * A blank structured FlexRes entry.
+ *
+ * `sequence_number` starts as `NaN` rather than `0` so an untouched field
+ * reads as "nothing entered" instead of residue 0, which exists in no PDB.
+ */
+function emptyFlexDraft(): ResidueLocator {
+  return { chain_id: "", residue_name: "", sequence_number: Number.NaN, insertion_code: "" };
 }
 
 function protonationPlanSignature(request: ReceptorPreparationRequest): string {

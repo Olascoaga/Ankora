@@ -782,23 +782,76 @@ export class MolstarViewerAdapter implements MolecularViewerAdapter {
     const structures = manager.hierarchy.current.structures;
     structures.forEach((structure, index) => {
       const appearance = this.currentSources[index]?.appearance ?? "default";
-      if (appearance === "interaction-ligand") {
+      if (appearance === "interaction-ligand" || appearance === "flex-moved-sidechains") {
+        // The moved side chains are the subject of the E8 overlay, so they
+        // keep full element coloring and full opacity against the reference.
         void manager.component.updateRepresentationsTheme(
           structure.components,
           { color: "element-symbol" },
         );
+        void this._applyStructureOpacity(structure, 1);
         return;
       }
       const value = appearance === "interaction-context"
         ? mutedInteractionContextColor(accentColor)
-        : accentColor;
+        : appearance === "flex-crystal-reference"
+          ? CRYSTAL_REFERENCE_COLOR
+          : accentColor;
       void manager.component.updateRepresentationsTheme(
         structure.components,
         { color: "uniform", colorParams: { value } },
       );
+      void this._applyStructureOpacity(
+        structure,
+        appearance === "flex-crystal-reference" ? CRYSTAL_REFERENCE_OPACITY : 1,
+      );
     });
   }
+
+  /**
+   * Make one loaded structure translucent, as presentation only.
+   *
+   * The crystal rotamers sit behind the moved side chains, so they are drawn
+   * see-through rather than moved, hidden, or recolored into the ligand's
+   * palette. Opacity is a representation parameter rather than a theme one, so
+   * this walks the representations directly; losing the effect is a cosmetic
+   * failure and must never take the overlay itself down with it.
+   */
+  private async _applyStructureOpacity(
+    structure: { components: readonly { representations: readonly { cell: { transform: { ref: string } } }[] }[] },
+    alpha: number,
+  ): Promise<void> {
+    const state = this.viewer?.plugin.state.data;
+    if (!state) return;
+    const update = state.build();
+    let touched = false;
+    for (const component of structure.components) {
+      for (const representation of component.representations) {
+        update.to(representation.cell.transform.ref).update(
+          (old: { type?: { params?: { alpha?: number } } }) => {
+            if (old.type?.params) old.type.params.alpha = alpha;
+          },
+        );
+        touched = true;
+      }
+    }
+    if (!touched) return;
+    try {
+      await update.commit();
+    } catch (reason: unknown) {
+      this._reportError(reason);
+    }
+  }
 }
+
+/**
+ * The crystal reference rotamers: dim, desaturated, and see-through.
+ *
+ * Deliberately outside the theme accent range so "what the crystal showed" and
+ * "what the search moved" cannot be mistaken for each other in any theme.
+ */
+const CRYSTAL_REFERENCE_COLOR = Color(0x8a8f99);
+const CRYSTAL_REFERENCE_OPACITY = 0.35;
 
 function mutedInteractionContextColor(accentColor: Color): Color {
   const red = (accentColor >> 16) & 0xff;

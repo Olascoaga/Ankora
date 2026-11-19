@@ -16,6 +16,8 @@ import type {
   ReceptorPreparationRecord,
   ToolsResponse,
 } from "../../types/api";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { formatScientificNumber } from "../../utils/format";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import {
@@ -65,7 +67,7 @@ export function AutoDock4Workspace({
   const displayOutput = receptor.outputs.find(
     (item) => item.artifact_id === receptor.display_output_artifact_id,
   );
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const matchingLigandInput = ligandInput
     && ligandInput.ligand_id === ligand?.artifact.ligand_id
     ? ligandInput
@@ -278,6 +280,7 @@ export function AutoDock4Workspace({
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
           <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand and generate PDBQT."} />
+          <ActiveFlexResBanner receptor={receptor} engineFamily="autodock4" />
         </section>
         <section className="receptor-section">
           <div className="filter-heading">

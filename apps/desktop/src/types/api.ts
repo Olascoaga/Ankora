@@ -130,13 +130,35 @@ export type ReceptorIssueSeverity = "unassessed" | "near_reference" | "remote";
 export type ReceptorDecisionAction = "leave" | "repair" | "remove" | "manual_review";
 export type ComponentAction = "keep" | "remove";
 export type ReceptorPreparationStatus = "selected" | "protonated" | "docking_ready";
-export type ReceptorOutputStage = "selected" | "repaired" | "relaxed" | "protonated_pdb" | "protonated_pqr" | "meeko_input_pqr" | "pdbqt";
+export type ReceptorOutputStage = "selected" | "repaired" | "relaxed" | "protonated_pdb" | "protonated_pqr" | "meeko_input_pqr" | "pdbqt" | "pdbqt_rigid" | "pdbqt_flex";
 
 export interface ResidueLocator {
   chain_id: string;
   residue_name: string;
   sequence_number: number;
   insertion_code: string;
+}
+
+/**
+ * ADR-032 §2 — bounded receptor side-chain flexibility.
+ *
+ * `rigid` reproduces the frozen v0.1 behavior exactly and is the default, so a
+ * rigid request omits the spec entirely rather than sending an empty one.
+ */
+export type ReceptorFlexMode = "rigid" | "sidechain_flex";
+
+export interface ReceptorFlexRequest {
+  mode: ReceptorFlexMode;
+  flex_residues: ResidueLocator[];
+}
+
+/** The recorded, hash-bound identity of one immutable `mk_prepare_receptor -f` split. */
+export interface ReceptorFlexSpec {
+  mode: ReceptorFlexMode;
+  flex_residues: ResidueLocator[];
+  receptor_rigid_sha256: string;
+  receptor_flex_sha256: string | null;
+  added_chi_torsion_count: number;
 }
 
 export interface ReceptorIssue {
@@ -332,6 +354,8 @@ export interface ReceptorPreparationRequest {
   repair_method?: "legacy" | "topology_guard_v3";
   repair_seed?: number;
   inspection_method?: "reported_only" | "templates_v1";
+  /** Omitted entirely for a rigid receptor, preserving the exact v0.1 request. */
+  flexibility?: ReceptorFlexRequest | null;
 }
 
 export interface ReceptorOutputArtifact {
@@ -356,6 +380,9 @@ export interface ReceptorPreparationRecord {
   provenance: ProvenanceEvent[];
   display_output_artifact_id: string;
   protonation_analysis?: ReceptorProtonationAnalysis | null;
+  flex_spec?: ReceptorFlexSpec | null;
+  /** Atom types contributed by the moving side chains; AutoGrid4 needs their union. */
+  flex_atom_types?: string[];
 }
 
 export type BindingSiteSource = "co_crystallized_ligand" | "selected_residues" | "manual" | "full_protein_blind" | "pocket_detected";
@@ -930,12 +957,45 @@ export interface LigandConformerRecord {
 
 export type LigandChargeModel = "gasteiger";
 
+/**
+ * ADR-032 §1.1 — an explicit, recorded two-valued choice with no silent
+ * substitution. `flexible_pseudoatoms` samples ring conformations through
+ * Meeko's `CG0`/`G0` glue pseudoatoms and stays engine-incompatible with the
+ * whole AutoDock4 family; `rigid_input_conformation` surrenders that sampling
+ * to keep the prepared input ring and emits no pseudoatoms at all.
+ */
+export type MacrocyclePolicy = "flexible_pseudoatoms" | "rigid_input_conformation";
+
+export interface LigandFlexibilitySpec {
+  macrocycle_policy: MacrocyclePolicy;
+  rigidified_smarts: string[];
+  rigidified_bond_indices: [number, number][];
+  flexible_amides: boolean;
+  local_only_refinement: boolean;
+}
+
+/**
+ * What one `--rigidify_bonds_smarts` pattern actually matched (ADR-032 A2).
+ *
+ * Meeko exits 0 on a pattern that matches nothing, so Ankora owns the
+ * pre-match and reports a zero match count rather than leaving it invisible.
+ */
+export interface LigandSmartsRigidificationOutcome {
+  smarts: string;
+  bond_indices: [number, number];
+  match_count: number;
+  matched_bonds_zero_based?: [number, number][];
+  applied: boolean;
+}
+
 export interface PrepareLigandPdbqtRequest {
   charge_model: LigandChargeModel;
   /** Informational only: how many of these requests we're issuing concurrently
    * this batch run, recorded into provenance. The server never uses this to
    * size its own execution. */
   client_concurrency_hint?: number | null;
+  /** Omitted entirely at default rigid/standard behavior, preserving v0.1. */
+  flexibility?: LigandFlexibilitySpec | null;
 }
 
 export interface LigandPdbqtArtifact {
@@ -958,6 +1018,12 @@ export interface LigandPdbqtRecord {
   stderr: string;
   provenance: ProvenanceEvent;
   content_url: string;
+  flexibility?: LigandFlexibilitySpec | null;
+  /** The TORSDOF actually present in the produced PDBQT (ADR-032 §1.4). */
+  effective_torsdof?: number | null;
+  atom_types?: string[];
+  warnings?: StructuredWarning[];
+  smarts_rigidification_outcomes?: LigandSmartsRigidificationOutcome[];
 }
 
 export interface LigandDockingInput {
@@ -975,8 +1041,13 @@ export interface LigandLibraryDockingInput {
   prepared_count: number;
 }
 
+/** Explicit Vina 1.2.7 scoring-function selection (ADR-032 / M1). */
+export type VinaScoringFunction = "vina" | "vinardo";
+
 export interface VinaDockingParameters {
   sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
+  /** Omitted when "vina", preserving the exact v0.1 parameter shape. */
+  scoring?: VinaScoringFunction;
   cpu_threads: number;
   seed: number;
   exhaustiveness: number;
@@ -997,6 +1068,8 @@ export interface VinaDockingRequest {
 
 export interface VinaBatchDockingParameters {
   sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
+  /** Omitted when "vina", preserving the exact v0.1 parameter shape. */
+  scoring?: VinaScoringFunction;
   total_cpu_threads: number;
   parallel_ligands: number;
   seed: number;
@@ -1056,6 +1129,15 @@ export interface GninaDockingRequest {
 export type GninaCnnVsSource = "engine_emitted" | "derived_from_recorded_axes";
 export type GninaHitRankingMetric = "cnn_score" | "cnn_vs";
 
+export interface GninaPoseArtifact extends PoseFlexIdentity {
+  artifact_id: string;
+  mode: number;
+  filename: string;
+  sha256: string;
+  size_bytes: number;
+  content_url?: string | null;
+}
+
 export interface GninaPoseResult {
   mode: number;
   minimized_affinity_kcal_mol: number;
@@ -1064,7 +1146,7 @@ export interface GninaPoseResult {
   cnn_vs?: number | null;
   cnn_vs_source?: GninaCnnVsSource | null;
   cnn_affinity_variance?: number | null;
-  artifact: { artifact_id: string; mode: number; filename: string; sha256: string; size_bytes: number };
+  artifact: GninaPoseArtifact;
 }
 
 export interface GninaDockingJobRecord {
@@ -1082,6 +1164,10 @@ export interface GninaDockingJobRecord {
   box: BindingBox;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   ligand_sha256: string;
   conformer_sha256: string;
   command: string[];
@@ -1196,7 +1282,19 @@ export interface GninaScreeningCampaignRecord {
   revision: number;
 }
 
-export interface DockingPoseArtifact {
+/**
+ * ADR-032 §4 `E8` — under `sidechain_flex` a pose is a coupled complex, so its
+ * identity carries the moved side chains alongside the ligand coordinates.
+ * Rigid poses leave every field absent and take the frozen-baseline path.
+ */
+export interface PoseFlexIdentity {
+  flex_filename?: string | null;
+  pose_flex_sidechains_sha256?: string | null;
+  flex_content_url?: string | null;
+  pose_complex_identity_sha256?: string | null;
+}
+
+export interface DockingPoseArtifact extends PoseFlexIdentity {
   artifact_id: string;
   mode: number;
   filename: string;
@@ -1235,6 +1333,10 @@ export interface VinaDockingJobRecord {
   tool: { name: string; version: string };
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   ligand_sha256: string;
   command: string[];
   execution: DockingExecutionEvidence | null;
@@ -1324,6 +1426,88 @@ export interface DockingCancelResponse {
 export interface DockingBatchCancelResponse {
   batch_id: string;
   status: DockingJobStatus;
+}
+
+/**
+ * ADR-032 §1.5 — `--local_only` refinement exists only as an explicit,
+ * traceable derivative of an already recorded pose. The parent job and parent
+ * pose are never mutated (ADR-004); creating one writes a new record.
+ */
+export interface VinaLocalRefinementRequest {
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  scoring?: VinaScoringFunction;
+  cpu_threads?: number;
+  seed?: number;
+  timeout_minutes?: number;
+}
+
+export interface VinaLocalRefinementRecord {
+  refinement_id: string;
+  created_at: string;
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  parent_pose_sha256: string;
+  parent_pose_flex_sha256?: string | null;
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  flex_residues?: ResidueLocator[];
+  scoring: VinaScoringFunction;
+  tool: { name: string; version: string };
+  command: string[];
+  estimated_free_energy_kcal_mol: number;
+  intermolecular_kcal_mol?: number | null;
+  total_internal_kcal_mol?: number | null;
+  torsional_free_energy_kcal_mol?: number | null;
+  unbound_system_energy_kcal_mol?: number | null;
+  refined_pose: DockingPoseArtifact;
+  execution: DockingExecutionEvidence;
+  provenance: ProvenanceEvent;
+}
+
+export interface GninaLocalRefinementRequest {
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  compute?: "cpu" | "cuda";
+  device_index?: number;
+  cpu_threads?: number;
+  seed?: number;
+  cnn_scoring?: GninaCnnScoringMode;
+  cnn_model?: GninaCnnModelSelector;
+  timeout_minutes?: number;
+}
+
+export interface GninaLocalRefinementRecord {
+  refinement_id: string;
+  created_at: string;
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  parent_pose_sha256: string;
+  parent_pose_flex_sha256?: string | null;
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  flex_residues?: ResidueLocator[];
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  cnn_model_identity?: GninaCnnModelIdentity | null;
+  command: string[];
+  minimized_affinity_kcal_mol: number;
+  cnn_score?: number | null;
+  cnn_affinity?: number | null;
+  cnn_vs?: number | null;
+  cnn_vs_source?: GninaCnnVsSource | null;
+  cnn_affinity_variance?: number | null;
+  refined_pose: GninaPoseArtifact;
+  execution: DockingExecutionEvidence;
 }
 
 export interface ErrorResponse {
@@ -1502,7 +1686,7 @@ export interface AutoDock4ToolIdentity {
   max_maps: number;
 }
 
-export interface AutoDock4PoseArtifact {
+export interface AutoDock4PoseArtifact extends PoseFlexIdentity {
   artifact_id: string;
   run: number;
   filename: string;
@@ -2136,7 +2320,7 @@ export interface CompoundPage {
 
 export type PoseKind = "vina_mode" | "autodock_run" | "gnina_mode";
 
-export interface PoseReference {
+export interface PoseReference extends PoseFlexIdentity {
   artifact_id: string;
   kind: PoseKind;
   ordinal: number;
@@ -2239,6 +2423,10 @@ export interface InteractionAnalysisRecord {
   };
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
+  pose_flex_sidechains_sha256?: string | null;
+  pose_complex_identity_sha256?: string | null;
+  /** The deterministic coupled complex ProLIF actually read (`E8`). */
+  materialized_coupled_receptor_sha256?: string | null;
 }
 
 /** One exact preserved pose combined with its prepared receptor on disk. */
