@@ -1,6 +1,6 @@
 # Linux CPython 3.12 inputs, preserving common accepted Windows package versions.
 # Windows-only win32-setctime is excluded; Linux uvloop and dev pefile are explicit.
-# Source Windows pip lock SHA256: bf72c9b8eb95db8a356650ce4737be0fe234848ac7fe92526645b93a29bc127e
+# Source Windows pip lock SHA256: abb3841c023038c2aea58d51357edea9b0c8d24d8b360e4bed30f9bca8e796cb
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
@@ -48,6 +48,7 @@ pdb2pqr==3.7.1
 pefile==2024.8.26
 pillow==12.3.0
 pluggy==1.6.0
+posebusters==0.6.5
 prolif==2.2.1
 propka==3.5.1
 psutil==7.2.2

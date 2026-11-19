@@ -54,6 +54,7 @@ SPDX_OVERRIDES = {
     "griddataformats": "LGPL-3.0-or-later",
     "meeko": "LGPL-2.1-or-later",
     "openmm": "LGPL-3.0-or-later",
+    "posebusters": "MIT",
     "propka": "LGPL-2.1-or-later",
 }
 PYTHON_LICENSE_SUPPLEMENTS = {

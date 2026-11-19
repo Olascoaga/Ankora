@@ -54,7 +54,10 @@
       "max_delta_bytes": 1048576,
       "new_dependencies": [
         "posebusters (MIT, pure-Python wheel only)"
-      ]
+      ],
+      "measured_wheel_filename": "posebusters-0.6.5-py3-none-any.whl",
+      "measured_wheel_bytes": 567794,
+      "measured_wheel_sha256": "3e0cbca6481079d5ab7d1989a8a8f184dbba27366613c4b515658ea52fb95ea3"
     },
     "M4": {
       "max_delta_bytes": 0,
