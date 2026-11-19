@@ -44,6 +44,7 @@ from ankora_backend.persistence.pocket_detection_store import PocketDetectionArt
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.calibration import CalibrationRunRecord
 from ankora_backend.schemas.methods import MethodsReport, MethodsSoftware
+from ankora_backend.schemas.pose_quality import PoseQualityRecord
 from ankora_backend.schemas.rescoring import PoseRescoreResult
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
@@ -3074,4 +3075,68 @@ def render_calibration_methods(
                 "geometry, so total energies cannot be compared directly against docking-time "
                 "totals without accounting for the shifted unbound reference."
             )
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_pose_quality_methods(records: Sequence[PoseQualityRecord]) -> str:
+    """Render record-derived Methods prose for M3 PoseBusters & dual MMFF94s strain."""
+    if not records:
+        return ""
+    pb_versions = sorted({rec.posebusters_version for rec in records})
+    ver_str = ", ".join(pb_versions)
+    any_flex = any(rec.materialized_coupled_receptor_sha256 is not None for rec in records)
+    any_strain = any(rec.assessment.strain is not None for rec in records)
+
+    lines: list[str] = [
+        "### Coupled Physical Pose Plausibility and Conformational Strain",
+        "",
+        (
+            f"Recorded poses ({len(records)} assessment{'s' if len(records) != 1 else ''}) were "
+            f"audited with PoseBusters ({ver_str}; Buttenschoen et al., Chem. Sci. 2024, 15, "
+            "3130-3139, DOI: 10.1039/D3SC04185A) using its `dock` configuration. Each check was "
+            "recorded individually across four explicit states (`pass`, `fail`, `not_applicable`, "
+            "`not_evaluable`); absent chemical motifs or removed receptor species (such as "
+            "waters or cofactors) were labelled `not_applicable` rather than `pass`. Assessments "
+            "are strictly read-only annotations (`mutated_original_pose = false`) and never "
+            "silently delete poses or alter docking scores."
+        ),
+    ]
+    if any_flex:
+        lines.append(
+            "For `sidechain_flex` poses, PoseBusters and Ankora's flexible side-chain covalent "
+            "geometry checks (bond lengths, tetrahedral chirality, and distal rigid-receptor "
+            "clashes) were evaluated directly against the deterministically materialized coupled "
+            "receptor PDB (`receptor_rigid + pose_flex_sidechains`, ADR-032 E8) rather than "
+            "against static crystal rotamers."
+        )
+    if any_strain:
+        lines.append(
+            "Conformational strain (delta_E_ref) was computed on the identical explicit-hydrogen "
+            "chemical state (`parent_state_id`) under RDKit MMFF94s as the unconstrained MMFF94s "
+            "energy of the locally relaxed pose (heavy atoms position-tethered during relaxation "
+            "only) minus the lowest MMFF94s energy across a deterministic ETKDGv3 free-conformer "
+            "ensemble. When MMFF94s lacked parameters for a ligand, strain was recorded as "
+            "`not_evaluable` without UFF fallback. Strain is reported solely as a diagnostic flag "
+            "and is never added to or subtracted from any docking score."
+        )
+    for rec in records:
+        strain = rec.assessment.strain
+        strain_part = (
+            f"; MMFF94s delta_E_ref = {strain.delta_e_ref_kcal_mol:.2f} kcal/mol "
+            f"(budget N={strain.conformer_budget}, seed {strain.conformer_seed})"
+            if strain is not None
+            else ""
+        )
+        flex_part = (
+            f" [coupled FlexRes receptor SHA-256 `{rec.materialized_coupled_receptor_sha256[:12]}`]"
+            if rec.materialized_coupled_receptor_sha256
+            else ""
+        )
+        lines.append(
+            f"- `{rec.catalog_id}` · `{rec.ligand_id}` · `{rec.pose.label}` "
+            f"(assessment `{rec.assessment_id[:8]}`): overall `{rec.assessment.overall_status}` "
+            f"({rec.passed_count} pass, {rec.failed_count} fail, "
+            f"{rec.not_applicable_count} N/A, {rec.not_evaluable_count} not evaluable)"
+            f"{strain_part}{flex_part}."
+        )
     return "\n".join(lines).strip() + "\n"

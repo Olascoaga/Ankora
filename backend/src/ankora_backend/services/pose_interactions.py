@@ -24,6 +24,7 @@ from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pose_interaction_store import PoseInteractionStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.ligands import LigandConformerRecord, LigandPdbqtRecord
 from ankora_backend.schemas.pose_interactions import (
     InteractionAnalysisRecord,
     InteractionAnalysisRequest,
@@ -32,7 +33,11 @@ from ankora_backend.schemas.pose_interactions import (
     PoseReference,
 )
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
-from ankora_backend.schemas.receptors import ReceptorOutputStage
+from ankora_backend.schemas.receptors import (
+    ReceptorOutputArtifact,
+    ReceptorOutputStage,
+    ReceptorPreparationRecord,
+)
 from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
 from ankora_backend.services.result_catalog import (
     AUTODOCK4_BATCH,
@@ -63,6 +68,21 @@ class _ResolvedPose:
     pose_path: Path
     pose_flex_path: Path | None = None
     gnina_job_id: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedPoseInputs:
+    """Hash-verified receptor, conformer, pose, and optional coupled FlexRes PDB."""
+
+    resolved: _ResolvedPose
+    receptor_record: ReceptorPreparationRecord
+    docking_output: ReceptorOutputArtifact
+    analysis_output: ReceptorOutputArtifact
+    receptor_path: Path
+    preparation: LigandPdbqtRecord
+    conformer: LigandConformerRecord
+    conformer_path: Path
+    materialized: MaterializedFlexReceptor | None
 
 
 class PoseInteractionService:
@@ -136,13 +156,10 @@ class PoseInteractionService:
         self._resolve(catalog_id, ligand_id, pose_artifact_id)
         return self._interactions.list_for_pose(catalog_id, ligand_id, pose_artifact_id)
 
-    def analyze(
-        self,
-        catalog_id: str,
-        ligand_id: str,
-        pose_artifact_id: str,
-        request: InteractionAnalysisRequest,
-    ) -> InteractionAnalysisRecord:
+    def resolve_verified_pose_inputs(
+        self, catalog_id: str, ligand_id: str, pose_artifact_id: str
+    ) -> VerifiedPoseInputs:
+        """Resolve and hash-verify every artifact required by coupled pose consumers (E8)."""
         resolved = self._resolve(catalog_id, ligand_id, pose_artifact_id)
         receptor_record = self._receptors.load_record(resolved.receptor_id)
         docking_output = next(
@@ -221,6 +238,33 @@ class PoseInteractionService:
             pose=resolved.pose,
             pose_flex_path=resolved.pose_flex_path,
         )
+        return VerifiedPoseInputs(
+            resolved=resolved,
+            receptor_record=receptor_record,
+            docking_output=docking_output,
+            analysis_output=analysis_output,
+            receptor_path=receptor_path,
+            preparation=preparation,
+            conformer=conformer,
+            conformer_path=conformer_path,
+            materialized=materialized,
+        )
+
+    def analyze(
+        self,
+        catalog_id: str,
+        ligand_id: str,
+        pose_artifact_id: str,
+        request: InteractionAnalysisRequest,
+    ) -> InteractionAnalysisRecord:
+        verified = self.resolve_verified_pose_inputs(catalog_id, ligand_id, pose_artifact_id)
+        resolved = verified.resolved
+        analysis_output = verified.analysis_output
+        receptor_path = verified.receptor_path
+        preparation = verified.preparation
+        conformer = verified.conformer
+        conformer_path = verified.conformer_path
+        materialized = verified.materialized
         if materialized is not None:
             with TemporaryDirectory(prefix="ankora-coupled-prolif-") as temp_dir:
                 coupled_receptor_path = Path(temp_dir) / "coupled_receptor.pdb"

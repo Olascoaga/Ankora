@@ -123,6 +123,7 @@ from ankora_backend.schemas.pose_interactions import (
     InteractionAnalysisRequest,
     PoseInventory,
 )
+from ankora_backend.schemas.pose_quality import PoseQualityRecord, PoseQualityRequest
 from ankora_backend.schemas.projects import (
     CreateProjectRequest,
     MarkArtifactStaleRequest,
@@ -217,6 +218,7 @@ from ankora_backend.services.methods_report import MethodsReportService
 from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
 from ankora_backend.services.pose_interactions import PoseInteractionService
+from ankora_backend.services.pose_quality import PoseQualityService
 from ankora_backend.services.pose_rescoring import PoseRescoringService
 from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.project_runtime import ProjectRuntime
@@ -1982,6 +1984,37 @@ def analyze_pose_interactions(
     payload: InteractionAnalysisRequest,
 ) -> InteractionAnalysisRecord:
     return PoseInteractionService.from_environment().analyze(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
+    )
+
+
+@router.get(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/quality",
+    response_model=list[PoseQualityRecord],
+)
+def list_pose_quality_assessments(
+    engine: str, record_id: str, ligand_id: str, pose_artifact_id: str
+) -> list[PoseQualityRecord]:
+    return PoseQualityService.from_environment().list_assessments(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id
+    )
+
+
+@router.post(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/quality",
+    response_model=PoseQualityRecord,
+    status_code=201,
+)
+def assess_pose_quality(
+    engine: str,
+    record_id: str,
+    ligand_id: str,
+    pose_artifact_id: str,
+    payload: PoseQualityRequest,
+) -> PoseQualityRecord:
+    return PoseQualityService.from_environment().assess(
         f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
     )
 
