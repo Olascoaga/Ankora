@@ -60,6 +60,13 @@ from ankora_backend.schemas.calibration import (
     CalibrationSplitRequest,
 )
 from ankora_backend.schemas.campaign_history import CampaignHistory
+from ankora_backend.schemas.consensus import (
+    ConsensusRunListResponse,
+    ConsensusRunRecord,
+    CreateCampaignConsensusRequest,
+    CreateStructuredConsensusRequest,
+    FitPcL2Request,
+)
 from ankora_backend.schemas.docking import (
     DockingBatchCancelResponse,
     DockingCancelResponse,
@@ -224,6 +231,7 @@ from ankora_backend.services.ligand_state_resolution import (
 from ankora_backend.services.methods_report import MethodsReportService
 from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
+from ankora_backend.services.pose_consensus import PoseConsensusService
 from ankora_backend.services.pose_interactions import PoseInteractionService
 from ankora_backend.services.pose_quality import PoseQualityService
 from ankora_backend.services.pose_rescoring import PoseRescoringService
@@ -2218,3 +2226,47 @@ def confirm_calibration_protocol(
 def rescore_saved_pose_only(payload: SavedPoseRescoreRequest) -> PoseRescoreResult:
     """Evaluate one saved docking pose in place across requested scoring functions."""
     return PoseRescoringService.from_environment().rescore_saved_pose(payload)
+
+
+@router.get("/consensus/runs", response_model=ConsensusRunListResponse)
+def list_consensus_runs() -> ConsensusRunListResponse:
+    return ConsensusRunListResponse(runs=tuple(PoseConsensusService.from_environment().list_runs()))
+
+
+@router.get("/consensus/runs/{consensus_id}", response_model=ConsensusRunRecord)
+def get_consensus_run(consensus_id: str) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().get_run(consensus_id)
+
+
+@router.post(
+    "/consensus/runs/structured",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def create_structured_consensus(
+    payload: CreateStructuredConsensusRequest,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().create_structured_consensus(payload)
+
+
+@router.post(
+    "/consensus/runs/campaigns",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def create_campaign_consensus(
+    payload: CreateCampaignConsensusRequest,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().create_campaign_consensus(payload)
+
+
+@router.post(
+    "/consensus/runs/{consensus_id}/pc-l2",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def fit_consensus_pc_l2(
+    consensus_id: str,
+    payload: FitPcL2Request,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().fit_pc_l2(consensus_id, payload)

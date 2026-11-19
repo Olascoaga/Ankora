@@ -412,6 +412,15 @@ class ConsensusRunRecord(BaseModel):
         return self
 
 
+class FitPcL2Request(BaseModel):
+    """Fit a create-only strictly convex PC-L2 derivative against a Calibration run (ADR-030 §3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    calibration_id: NonBlankStr
+    l2_regularization: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
+
+
 class ConsensusRunListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

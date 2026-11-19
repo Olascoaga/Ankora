@@ -34,9 +34,11 @@ _REFERENCE_KEYS = {
     "analysis_id",
     "analysis_receptor_artifact_id",
     "binding_site_id",
+    "calibration_id",
     "catalog_id",
     "chemical_state_id",
     "conformer_id",
+    "consensus_id",
     "docking_receptor_artifact_id",
     "filter_run_id",
     "interaction_analysis_id",
@@ -44,6 +46,7 @@ _REFERENCE_KEYS = {
     "ligand_id",
     "ligand_preparation_id",
     "map_set_id",
+    "panel_id",
     "parent_binding_site_id",
     "parent_compound_id",
     "parent_state_id",
@@ -405,6 +408,8 @@ def _kind_for(parts: tuple[str, ...]) -> DependencyNodeKind:
         ("analysis", "pose_quality"),
         ("analysis", "interaction_rule_sets"),
         ("analysis", "interaction_rule_evaluations"),
+        ("analysis", "consensus"),
+        ("analysis", "consensus_panels"),
     }:
         return DependencyNodeKind.POSE_ANALYSIS
     return DependencyNodeKind.UNKNOWN

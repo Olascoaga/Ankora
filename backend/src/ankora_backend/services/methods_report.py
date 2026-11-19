@@ -43,6 +43,7 @@ from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
 from ankora_backend.schemas.calibration import CalibrationRunRecord
+from ankora_backend.schemas.consensus import ConsensusRunRecord
 from ankora_backend.schemas.interaction_rules import (
     InteractionRuleEvaluationRecord,
     InteractionRuleSetRecord,
@@ -3252,5 +3253,81 @@ def render_interaction_rules_methods(
             f"(`{ev.rule_set_identity_sha256[:12]}`): overall `{ev.overall_status.value}` "
             f"({ev.passed_clause_count} passed, {ev.failed_clause_count} failed"
             f"{tanimoto_part}){flex_part}."
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_consensus_methods(record: ConsensusRunRecord) -> str:
+    """Render record-derived Methods prose for ADR-030 rank-space consensus (`M5`)."""
+    panel = record.reference_panel
+    block_str = ", ".join(
+        f"`{fam.value}` = {w:.4g}"
+        for fam, w in sorted(record.block_weights.items(), key=lambda pair: pair[0].value)
+    )
+    fn_str = ", ".join(
+        f"`{fn.value}` ({record.within_block_weights[fn]:.4g})"
+        for fn in record.enabled_functions
+    )
+    flex_clause = (
+        "joint `(ligand, flex_sidechains)` heavy-atom coordinates (`ADR-032 E8`, requiring both "
+        "`RMSD_lig` and `RMSD_flex` within the diameter bound)"
+        if record.receptor_flex_spec.mode.value == "sidechain_flex"
+        else "in-place symmetry-aware ligand heavy-atom coordinates (never superposed)"
+    )
+
+    lines: list[str] = [
+        "### Rank-Space Pose-Concordant Consensus Prioritization (`PC-Q` & `PC-ECR`)",
+        "",
+        (
+            f"Opt-in rank-space consensus prioritization (`{record.variant_id.value}`, run "
+            f"`{record.consensus_id[:8]}`) was performed strictly Pose-First, Molecule-Second "
+            f"without averaging or pooling native engine units (`ADR-030`). Per parent compound, "
+            f"saved poses sharing verified receptor, flexibility, binding-box, and AutoGrid4 "
+            f"map-set identities (`E4`/`E7`) were clustered via deterministic complete-linkage "
+            f"clustering over {flex_clause} at a hard diameter bound of "
+            f"<= {record.rmsd_threshold_angstrom:g} Å (`E3`), breaking exact medoid ties by "
+            f"lowest canonical coordinate SHA-256. At most `K_max = {record.k_max}` cluster "
+            f"medoids per parent entered cross-family `--score_only` evaluation (`E2`) across "
+            f"{fn_str}."
+        ),
+        (
+            f"Per-function parent-weighted midrank quantiles `q_j` were computed against the "
+            f"hash-locked reference panel (`panel_id = {panel.panel_id[:8]}`, SHA-256 "
+            f"`{panel.reference_panel_sha256[:12]}`, {panel.total_panel_parents} panel parents; "
+            f"`E1`), aggregated within methodological family blocks and combined using fixed "
+            f"variant weights ({block_str}) onto the dimensionless `0–100` `PC-Q` scale together "
+            f"with per-pose inter-family disagreement `D_ic`. Exponential consensus ranking "
+            f"(`PC-ECR`, frozen `tau = {record.ecr_tau:g}`, `sigma = tau * N_panel`; "
+            f"Palacio-Rodríguez et al., Sci. Rep. 2019, 9, 5142, "
+            f"DOI: 10.1038/s41598-019-41594-3) was recorded in a separate column on its own "
+            f"`1/sigma` scale (`E5`) and was never blended with `PC-Q`. Neither `PC-Q` nor "
+            f"`PC-ECR` is a measured or predicted binding affinity."
+        ),
+        (
+            f"Under the two-tier `E6` denominator invariant, {record.ranking.full_profile_count} "
+            f"of {record.ranking.total_parents} parent compounds achieved a complete multi-family "
+            f"profile (`full_profile`), while {record.ranking.partial_or_unscored_count} remained "
+            f"explicitly unranked in `partial_or_unscored` without score imputation."
+        ),
+    ]
+    if record.core_ranking is not None:
+        lines.append(
+            "Because `pcq-neural-v1` includes Linux-only GNINA neural scoring, Ankora "
+            "simultaneously computed and recorded the Windows-comparable `pcq-core-v1` "
+            "(`1/2 Vina/Vinardo + 1/2 AutoDock4`) ranking alongside it."
+        )
+    if record.pc_l2_model is not None:
+        model = record.pc_l2_model
+        w_str = ", ".join(
+            f"`{fn.value}` = {model.weights[fn]:.4f}" for fn in model.feature_functions
+        )
+        lines.append(
+            f"A strictly convex non-negative L2-penalized logistic consensus model (`PC-L2`, "
+            f"lambda = {model.l2_regularization:g}, solver `{model.solver_name}`, converged in "
+            f"{model.iterations} iterations; weights {w_str}) was fit strictly on Calibration "
+            f"quantiles of frozen `PC-Q` medoids (`calibration_id = {model.calibration_id[:8]}`) "
+            f"and gated against every admitted single scoring function via paired parent "
+            f"bootstrap on locked Confirmation (`promoted = {str(model.promoted).lower()}`; "
+            f'verdict: "{model.promotion_verdict_text}").'
         )
     return "\n".join(lines).strip() + "\n"
