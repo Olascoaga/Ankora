@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
-from ankora_backend.adapters.engines.vina import (
+from ankora_backend.adapters.engines.vina_v02 import (
     VinaInstallation,
     build_vina_arguments,
     build_vina_local_only_arguments,

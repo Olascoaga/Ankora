@@ -434,6 +434,7 @@ def test_the_api_exposes_the_gpu_engine_on_its_own_paths() -> None:
         "/api/v1/docking/autodock-gpu/jobs/{job_id}",
         "/api/v1/docking/autodock-gpu/jobs/{job_id}/cancel",
         "/api/v1/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/content",
+        "/api/v1/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/flex",
         "/api/v1/docking/autodock-gpu/batches",
         "/api/v1/docking/autodock-gpu/batches/latest",
         "/api/v1/docking/autodock-gpu/batches/{batch_id}",
@@ -441,6 +442,8 @@ def test_the_api_exposes_the_gpu_engine_on_its_own_paths() -> None:
         "/api/v1/docking/autodock-gpu/batches/{batch_id}/cancel",
         "/api/v1/docking/autodock-gpu/batches/{batch_id}"
         "/ligands/{ligand_id}/poses/{artifact_id}/content",
+        "/api/v1/docking/autodock-gpu/batches/{batch_id}"
+        "/ligands/{ligand_id}/poses/{artifact_id}/flex",
     }
     # The CPU engine keeps its own, untouched, and nothing is shared.
     assert "/api/v1/docking/autodock4/jobs" in specification["paths"]
