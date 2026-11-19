@@ -879,3 +879,58 @@ button { font: inherit; }
 .docking-mode-switch {
   flex-wrap: wrap;
 }
+
+/* M2c: opt-in cross-engine --score_only rescoring panel inside PoseInteractionPanel. */
+.pose-rescore-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  display: grid;
+  gap: 10px;
+}
+.pose-rescore-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.pose-rescore-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.pose-rescore-options small {
+  color: var(--muted);
+}
+.pose-rescore-result {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.pose-rescore-f4-notice {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, transparent);
+  background: color-mix(in srgb, var(--warning) 9%, var(--panel));
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pose-rescore-result table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pose-rescore-result th,
+.pose-rescore-result td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.pose-rescore-result th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}

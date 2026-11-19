@@ -2643,3 +2643,398 @@ export interface WorkRetryResponse {
   status: string;
   created_at: string;
 }
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M2a / M2c — cross-engine `--score_only` scoring contracts.
+ *
+ * Mirrors `backend/src/ankora_backend/schemas/v02_contracts.py` and
+ * `schemas/rescoring.py` field for field. A score is only ever read beside the
+ * exact scoring function, unit and direction that produced it: the families
+ * below are deliberately separate scales and are never pooled or converted.
+ * ------------------------------------------------------------------------ */
+
+export type RescoreSourceEngine = "vina" | "autodock4" | "autodock_gpu" | "gnina";
+
+export type ScoringFunctionId =
+  | "vina"
+  | "vinardo"
+  | "autodock4"
+  | "gnina_cnn_score"
+  | "gnina_cnn_affinity"
+  | "gnina_cnn_vs"
+  | "gnina_minimized_affinity";
+
+/**
+ * The scoring *family* of one observation.
+ *
+ * Distinct from the catalog-level `ScoringFamily` above, which labels the
+ * engine that produced a campaign. This one names the scale an individual
+ * `ScoreObservation` lives on, and crossing those scales is what the
+ * contract forbids.
+ */
+export type ScoreObservationFamily = "vina_vinardo" | "autodock4" | "gnina_neural";
+
+export type ObservationStatus = "scored" | "failed" | "not_evaluable";
+
+/** Which numerical direction an engine ranks more favorably. */
+export type ScoreDirection = "lower_is_better" | "higher_is_better";
+
+/** `E8` identity of the receptor and ligand coordinates for one pose. */
+export interface PoseComplexIdentity {
+  mode: ReceptorFlexMode;
+  receptor_rigid_sha256: string;
+  pose_flex_sidechains_sha256?: string | null;
+  ligand_pose_sha256: string;
+}
+
+export interface ProtocolSpec {
+  schema_version: 1;
+  engine: RescoreSourceEngine;
+  scoring_function: ScoringFunctionId;
+  ligand_flexibility: LigandFlexibilitySpec;
+  receptor_flexibility: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256?: string | null;
+  interaction_rule_set_sha256?: string | null;
+  random_seed?: number | null;
+}
+
+export interface ScoreObservation {
+  schema_version: 1;
+  protocol_identity_sha256: string;
+  parent_compound_id: string;
+  parent_state_id: string;
+  pose_complex?: PoseComplexIdentity | null;
+  scoring_family: ScoreObservationFamily;
+  scoring_function: ScoringFunctionId;
+  direction: ScoreDirection;
+  unit: string;
+  tool_name: string;
+  tool_version: string;
+  status: ObservationStatus;
+  raw_score?: number | null;
+  failure_code?: string | null;
+}
+
+export type AutoDock4RescoreBackend = "autodock4_epdb" | "vina_ad4_maps";
+
+/** Recorded raw execution provenance for one `--score_only` invocation. */
+export interface PoseRescoreFunctionEvidence {
+  scoring_functions: ScoringFunctionId[];
+  tool_name: string;
+  tool_version: string;
+  tool_sha256?: string | null;
+  command: string[];
+  exit_code: number;
+  stdout_sha256: string;
+  stderr_sha256: string;
+  used_flex: boolean;
+  /**
+   * `Gate 0 F4` — Vina `--score_only --flex` recomputes the unbound reference
+   * from the moved side chains, so the returned total is not on the same
+   * reference as the docking-time total and must not be differenced with it.
+   */
+  unbound_reference_shifted: boolean;
+  intermolecular_kcal_mol?: number | null;
+  total_internal_kcal_mol?: number | null;
+  torsional_free_energy_kcal_mol?: number | null;
+  unbound_system_energy_kcal_mol?: number | null;
+  intramolecular_energy_kcal_mol?: number | null;
+  cnn_affinity_variance?: number | null;
+}
+
+export interface PoseRescoreResult {
+  schema_version: 1;
+  pose_complex: PoseComplexIdentity;
+  observations: ScoreObservation[];
+  evidence: PoseRescoreFunctionEvidence[];
+  /** Always `false`: cross-scoring reads the saved pose and writes nothing. */
+  mutated_original_pose: false;
+}
+
+/** `POST /rescoring/score-only` — one saved pose, evaluated exactly in place. */
+export interface SavedPoseRescoreRequest {
+  source_engine: RescoreSourceEngine;
+  job_id: string;
+  pose_artifact_id: string;
+  scoring_functions: ScoringFunctionId[];
+  autogrid_job_id?: string | null;
+  autodock4_backend?: AutoDock4RescoreBackend;
+  gnina_compute?: "cpu" | "cuda";
+  gnina_device_index?: number;
+  gnina_cnn_model?: GninaCnnModelSelector;
+  cpu_threads?: number;
+  timeout_minutes?: number;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M2b / M2c — two-stage out-of-sample protocol calibration.
+ *
+ * Mirrors `backend/src/ankora_backend/schemas/calibration.py`. Every record is
+ * an append-only, hash-identified decision: the protocol is chosen on the
+ * Calibration split alone and sealed before the locked Confirmation split is
+ * ever opened, and the Confirmation split is single-use (`ADR-031` §3).
+ * ------------------------------------------------------------------------ */
+
+export type SplitName = "calibration" | "confirmation";
+
+export type SplitGroupingStrategy = "parent_and_murcko_scaffold";
+
+export type BiasPropertyName =
+  | "molecular_weight"
+  | "clogp"
+  | "hbd"
+  | "hba"
+  | "rotatable_bonds"
+  | "formal_charge";
+
+export type ConfirmationVerdict =
+  | "preferred_over_baseline"
+  | "insufficient_evidence_to_prefer_over_baseline"
+  | "baseline_retained_by_one_se";
+
+export type CalibrationRunStatus =
+  | "split_locked"
+  | "calibration_selected"
+  | "confirmation_completed";
+
+/** `ADR-031` §3 fixes this exact phrase as the null verdict. */
+export const INSUFFICIENT_EVIDENCE_TEXT = "Insufficient evidence to prefer over baseline";
+
+/** Everything about the split and its statistics that is fixed in advance. */
+export interface CalibrationSplitPolicy {
+  grouping_strategy: SplitGroupingStrategy;
+  calibration_fraction: number;
+  split_seed: number;
+  min_confirmation_actives: number;
+  bedroc_alpha: number;
+  top_fraction: number;
+  bootstrap_replicates: number;
+  bootstrap_seed: number;
+  confidence_level: number;
+}
+
+/** One parent compound offered to the split, with its frozen class label. */
+export interface CalibrationCompoundInput {
+  parent_id: string;
+  canonical_smiles: string;
+  is_active: boolean;
+  state_ids?: string[];
+}
+
+export interface CompoundPropertyProfile {
+  parent_id: string;
+  canonical_smiles: string;
+  is_active: boolean;
+  murcko_scaffold: string;
+  is_acyclic: boolean;
+  molecular_weight: number;
+  clogp: number;
+  hbd: number;
+  hba: number;
+  rotatable_bonds: number;
+  formal_charge: number;
+}
+
+/** Active-versus-inactive separation on one physicochemical property. */
+export interface PropertyBiasMetric {
+  property_name: BiasPropertyName;
+  active_median: number;
+  active_iqr: number;
+  inactive_median: number;
+  inactive_iqr: number;
+  standardized_mean_difference: number;
+  ks_statistic: number;
+  ks_p_value: number;
+  flagged_bias: boolean;
+}
+
+/** The decoy-property audit that qualifies every enrichment read on this set. */
+export interface PhysicochemicalBiasAudit {
+  active_count: number;
+  inactive_count: number;
+  metrics: PropertyBiasMetric[];
+  any_bias_flagged: boolean;
+  flagged_properties: string[];
+}
+
+export interface CalibrationSplitArtifact {
+  schema_version: 1;
+  split_id: string;
+  created_at: string;
+  policy: CalibrationSplitPolicy;
+  calibration_parent_ids: string[];
+  confirmation_parent_ids: string[];
+  calibration_scaffolds: string[];
+  confirmation_scaffolds: string[];
+  calibration_active_count: number;
+  calibration_inactive_count: number;
+  confirmation_active_count: number;
+  confirmation_inactive_count: number;
+  confirmation_underpowered: boolean;
+  compounds: CompoundPropertyProfile[];
+  bias_audit: PhysicochemicalBiasAudit;
+  split_identity_sha256: string;
+}
+
+/** One pre-declared protocol competing on the Calibration split. */
+export interface CalibrationCandidateProtocol {
+  protocol_id: string;
+  label: string;
+  protocol_spec: ProtocolSpec;
+  added_chi_torsion_count?: number;
+  fitted_parameter_count?: number;
+  engine_count?: number;
+  is_neural_scoring?: boolean;
+}
+
+/**
+ * Scored and unscored parents, kept separate for actives and inactives.
+ *
+ * A decoy that fails to prepare and an active that fails to prepare have
+ * opposite consequences for an enrichment metric, so one pooled failure count
+ * would hide the bias that matters most.
+ */
+export interface FailureCensusBreakdown {
+  total_parents: number;
+  scored_count: number;
+  failed_count: number;
+  scored_active_count: number;
+  failed_active_count: number;
+  scored_inactive_count: number;
+  failed_inactive_count: number;
+  failure_codes_active: Record<string, number>;
+  failure_codes_inactive: Record<string, number>;
+}
+
+/** Tie-aware enrichment metrics for one target and one exact protocol. */
+export interface ScreeningTargetMetrics {
+  target_id: string;
+  total_count: number;
+  active_count: number;
+  inactive_count: number;
+  scored_count: number;
+  failed_count: number;
+  top_fraction: number;
+  top_count: number;
+  expected_active_hits_at_top_fraction: number;
+  enrichment_factor: number;
+  bedroc_alpha: number;
+  bedroc: number;
+  roc_auc: number;
+  pr_auc: number;
+  score_direction: ScoreDirection;
+  tie_policy: string;
+  failure_policy: string;
+  pr_auc_definition: string;
+}
+
+/** One protocol evaluated on exactly one side of the split. */
+export interface ProtocolEvaluationSummary {
+  protocol_id: string;
+  protocol_identity_sha256: string;
+  label: string;
+  split_name: SplitName;
+  metrics: ScreeningTargetMetrics;
+  bedroc_ci_lower: number;
+  bedroc_ci_upper: number;
+  bedroc_bootstrap_se: number;
+  ef_small_sample_caution: boolean;
+  failure_census: FailureCensusBreakdown;
+}
+
+/**
+ * Paired parent-bootstrap difference in `BEDROC_alpha`, `candidate - reference`.
+ *
+ * Resampling is over parent compounds, and the same resampled parent indices
+ * are applied to both protocols in every replicate.
+ */
+export interface PairedBootstrapDelta {
+  candidate_protocol_id: string;
+  reference_protocol_id: string;
+  split_name: SplitName;
+  metric_name: "bedroc";
+  bedroc_alpha: number;
+  point_delta: number;
+  bootstrap_se: number;
+  ci_lower: number;
+  ci_upper: number;
+  confidence_level: number;
+  replicates: number;
+  bootstrap_seed: number;
+  excludes_zero_positively: boolean;
+  within_one_se_of_reference: boolean;
+}
+
+/** Stage 1 — the sealed protocol choice, made on Calibration data only. */
+export interface CalibrationSelectionRecord {
+  schema_version: 1;
+  selected_at: string;
+  split_identity_sha256: string;
+  baseline_protocol_id: string;
+  best_point_protocol_id: string;
+  selected_protocol_id: string;
+  selected_by_one_se_parsimony: boolean;
+  evaluations: ProtocolEvaluationSummary[];
+  deltas_vs_best: PairedBootstrapDelta[];
+  deltas_vs_baseline: PairedBootstrapDelta[];
+  selection_identity_sha256: string;
+}
+
+/** Stage 2 — the single-use unlock of the locked Confirmation split. */
+export interface ConfirmationEvaluationRecord {
+  schema_version: 1;
+  evaluated_at: string;
+  split_identity_sha256: string;
+  selection_identity_sha256: string;
+  baseline_protocol_id: string;
+  selected_protocol_id: string;
+  verdict: ConfirmationVerdict;
+  verdict_text: string;
+  selected_evaluation: ProtocolEvaluationSummary;
+  baseline_evaluation: ProtocolEvaluationSummary;
+  paired_delta_vs_baseline: PairedBootstrapDelta;
+  all_candidate_audit_evaluations?: ProtocolEvaluationSummary[];
+  confirmation_identity_sha256: string;
+}
+
+/** The whole calibration campaign: split, sealed selection, and verdict. */
+export interface CalibrationRunRecord {
+  schema_version: 1;
+  calibration_id: string;
+  project_id: string;
+  receptor_id: string;
+  binding_site_id: string;
+  created_at: string;
+  status: CalibrationRunStatus;
+  confirmation_locked: boolean;
+  confirmation_consumed: boolean;
+  split: CalibrationSplitArtifact;
+  baseline_protocol_id?: string | null;
+  candidates?: CalibrationCandidateProtocol[];
+  calibration_selection?: CalibrationSelectionRecord | null;
+  confirmation_evaluation?: ConfirmationEvaluationRecord | null;
+  warnings?: StructuredWarning[];
+  provenance?: ProvenanceEvent[];
+}
+
+export interface CalibrationRunList {
+  runs: CalibrationRunRecord[];
+}
+
+export interface CalibrationSplitRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  compounds: CalibrationCompoundInput[];
+  policy?: CalibrationSplitPolicy;
+}
+
+export interface CalibrationSelectRequest {
+  baseline_protocol_id: string;
+  candidates: CalibrationCandidateProtocol[];
+  observations_by_protocol: Record<string, ScoreObservation[]>;
+}
+
+export interface CalibrationConfirmRequest {
+  observations_by_protocol: Record<string, ScoreObservation[]>;
+}

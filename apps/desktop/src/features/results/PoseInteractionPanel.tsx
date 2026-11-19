@@ -9,6 +9,9 @@ import type {
   InteractionContact,
   PoseInventory,
   PoseReference,
+  PoseRescoreResult,
+  RescoreSourceEngine,
+  ScoringFunctionId,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { MolecularViewerHandle } from "../../viewer/MolecularViewer";
@@ -38,6 +41,40 @@ interface LocalRefinementSummary {
   poseComplexIdentitySha256: string | null;
 }
 
+interface RescoreFunctionOption {
+  id: ScoringFunctionId;
+  label: string;
+  note: string;
+  requiresMaps?: boolean;
+}
+
+const RESCORE_FUNCTION_OPTIONS: RescoreFunctionOption[] = [
+  { id: "vina", label: "AutoDock Vina", note: "kcal/mol · lower is better" },
+  { id: "vinardo", label: "Vinardo", note: "kcal/mol · lower is better" },
+  {
+    id: "autodock4",
+    label: "AutoDock4 (epdb)",
+    note: "kcal/mol · requires AutoGrid4 maps",
+    requiresMaps: true,
+  },
+  { id: "gnina_cnn_score", label: "GNINA CNNscore", note: "dimensionless · Linux" },
+  { id: "gnina_cnn_affinity", label: "GNINA CNNaffinity", note: "pK · Linux" },
+  { id: "gnina_cnn_vs", label: "GNINA CNN_VS", note: "pK_weighted · Linux" },
+  {
+    id: "gnina_minimized_affinity",
+    label: "GNINA Affinity",
+    note: "kcal/mol · Linux",
+  },
+];
+
+function rescoreSourceEngineFor(engineKey: string): RescoreSourceEngine | null {
+  if (engineKey === "vina_job") return "vina";
+  if (engineKey === "autodock4_job") return "autodock4";
+  if (engineKey === "autodock_gpu_job") return "autodock_gpu";
+  if (engineKey === "gnina_job") return "gnina";
+  return null;
+}
+
 export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteractionPanelProps) {
   const [inventory, setInventory] = useState<PoseInventory | null>(null);
   const [selectedPoseId, setSelectedPoseId] = useState<string | null>(null);
@@ -54,6 +91,11 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [overlayCrystalRotamers, setOverlayCrystalRotamers] = useState(false);
   const [refinement, setRefinement] = useState<LocalRefinementSummary | null>(null);
   const [refining, setRefining] = useState(false);
+  const [rescoreOpen, setRescoreOpen] = useState(false);
+  const [rescoreFunctions, setRescoreFunctions] = useState<ScoringFunctionId[]>(["vina", "vinardo"]);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState<PoseRescoreResult | null>(null);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -88,6 +130,8 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     setAnalysis(null);
     setSelectedContact(null);
     setRefinement(null);
+    setRescoreResult(null);
+    setRescoreError(null);
     setOverlayCrystalRotamers(false);
     setError(null);
     void ankoraApi.listPoseInteractionAnalyses(
@@ -140,6 +184,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
       : entry.engine_key === "gnina_job"
         ? "gnina"
         : null;
+  const rescoreSourceEngine = rescoreSourceEngineFor(entry.engine_key);
   const viewerSources = useMemo(
     () => sourcesFor(inventory, pose, {
       catalogId: entry.catalog_id,
@@ -291,6 +336,41 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     }
   }
 
+  function toggleRescoreFunction(id: ScoringFunctionId) {
+    setRescoreFunctions((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }
+
+  /**
+   * Evaluate the exact saved pose in place (`--score_only`) across explicit
+   * compatible scoring functions without mutating the parent pose. Each
+   * returned observation stays strictly in its native unit (`ADR-031`).
+   */
+  async function crossScorePose() {
+    if (!pose || !rescoreSourceEngine || rescoreFunctions.length === 0) return;
+    setRescoring(true);
+    setRescoreError(null);
+    try {
+      const result = await ankoraApi.rescorePoseOnly({
+        source_engine: rescoreSourceEngine,
+        job_id: entry.record_id,
+        pose_artifact_id: pose.artifact_id,
+        scoring_functions: rescoreFunctions,
+        ...(rescoreFunctions.includes("autodock4") && entry.map_set_id
+          ? { autogrid_job_id: entry.map_set_id }
+          : {}),
+      });
+      setRescoreResult(result);
+    } catch (reason: unknown) {
+      setRescoreError(message(reason, "The --score_only evaluation could not be completed."));
+    } finally {
+      setRescoring(false);
+    }
+  }
+
   return (
     <section className="pose-interaction-panel" aria-label={`Pose interactions for ${molecule.name}`}>
       <header className="pose-interaction-heading">
@@ -362,6 +442,17 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
               {refining ? "Refining locally (--local_only)…" : "Refine locally (--local_only)"}
             </button>
           ) : null}
+          {rescoreSourceEngine ? (
+            <button
+              type="button"
+              className="quiet-button"
+              disabled={!pose}
+              aria-expanded={rescoreOpen}
+              onClick={() => setRescoreOpen((open) => !open)}
+            >
+              Cross-score (--score_only)
+            </button>
+          ) : null}
           {coupledFlexPose ? (
             <label className="check-row pose-flex-overlay-toggle">
               <input
@@ -424,6 +515,113 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
             ) : null}
           </dl>
         </div>
+      ) : null}
+
+      {rescoreSourceEngine && rescoreOpen && pose ? (
+        <section
+          className="pose-rescore-panel"
+          aria-label="Cross-score pose (--score_only)"
+        >
+          <div>
+            <strong>Cross-engine --score_only evaluation</strong>
+            <p className="field-note">
+              Evaluate this exact saved pose in place across compatible scoring
+              functions without mutating the parent pose. Returned values remain
+              strictly in their native engine units and are never pooled or averaged.
+            </p>
+          </div>
+          <div className="pose-rescore-options" role="group" aria-label="Scoring functions">
+            {RESCORE_FUNCTION_OPTIONS.map((option) => {
+              const disabled = Boolean(option.requiresMaps && !entry.map_set_id);
+              return (
+                <label key={option.id}>
+                  <input
+                    type="checkbox"
+                    checked={rescoreFunctions.includes(option.id)}
+                    disabled={disabled || rescoring}
+                    onChange={() => toggleRescoreFunction(option.id)}
+                  />
+                  <span>
+                    {option.label} <small>({option.note})</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {rescoreError ? (
+            <div className="structure-error" role="alert">{rescoreError}</div>
+          ) : null}
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={rescoring || rescoreFunctions.length === 0}
+              onClick={() => void crossScorePose()}
+            >
+              {rescoring ? "Cross-scoring (--score_only)…" : "Cross-score pose (--score_only)"}
+            </button>
+          </div>
+          {rescoreResult ? (
+            <div
+              className="pose-rescore-result"
+              role="region"
+              aria-label="Cross-score (--score_only) results"
+            >
+              <p className="field-note">
+                {rescoreResult.mutated_original_pose === false
+                  ? "Original pose bytes were not mutated (mutated_original_pose: false)."
+                  : "Pose immutability flag was not confirmed."}{" "}
+                Each row stays in its native unit; scales are never combined.
+              </p>
+              {rescoreResult.evidence.some((ev) => ev.unbound_reference_shifted) ? (
+                <div className="pose-rescore-f4-notice" role="alert">
+                  <strong>Unbound reference shifted (Gate 0 F4):</strong> AutoDock Vina{" "}
+                  <code>--score_only --flex</code> recomputes the unbound system energy
+                  from the moved side chains. Do not compare or subtract this score
+                  directly against a docking-time total without noting the unbound
+                  reference shift.
+                </div>
+              ) : null}
+              <table>
+                <thead>
+                  <tr>
+                    <th>Scoring function</th>
+                    <th>Family</th>
+                    <th>Score</th>
+                    <th>Unit</th>
+                    <th>Direction</th>
+                    <th>Tool</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rescoreResult.observations.map((obs) => (
+                    <tr key={`${obs.scoring_function}-${obs.protocol_identity_sha256}`}>
+                      <td><code>{obs.scoring_function}</code></td>
+                      <td>{obs.scoring_family}</td>
+                      <td>
+                        {obs.raw_score !== null && obs.raw_score !== undefined
+                          ? formatScientificNumber(obs.raw_score, 4)
+                          : "—"}
+                      </td>
+                      <td>{obs.unit}</td>
+                      <td>
+                        {obs.direction === "higher_is_better"
+                          ? "Higher is better"
+                          : "Lower is better"}
+                      </td>
+                      <td>{obs.tool_name} {obs.tool_version}</td>
+                      <td>
+                        {obs.status}
+                        {obs.failure_code ? ` (${obs.failure_code})` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       {analysis ? (

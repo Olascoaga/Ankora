@@ -59,6 +59,13 @@ import type {
   ToolsResponse,
   AutoDock4BatchProgress,
   AutoDock4BatchRecord,
+  CalibrationConfirmRequest,
+  CalibrationRunList,
+  CalibrationRunRecord,
+  CalibrationSelectRequest,
+  CalibrationSplitRequest,
+  PoseRescoreResult,
+  SavedPoseRescoreRequest,
   AutoDockGpuBatchProgress,
   AutoDockGpuBatchRecord,
   AutoDockGpuBatchRequest,
@@ -170,6 +177,20 @@ function gninaScreeningEntryList(
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.entries)) return payload.entries;
   throw new Error("The GNINA screening entries response did not contain entries.");
+}
+
+/**
+ * The calibration runs out of their documented `{ runs: [...] }` envelope.
+ *
+ * A missing envelope is an error rather than an empty history: a calibration
+ * list that silently reads as empty would invite starting a second split over a
+ * campaign whose Confirmation set is already locked or consumed.
+ */
+function calibrationRuns(payload: CalibrationRunList): CalibrationRunRecord[] {
+  if (!Array.isArray(payload?.runs)) {
+    throw new Error("The calibration runs response did not contain runs.");
+  }
+  return payload.runs;
 }
 
 function campaignHistoryQuery(receptorId: string, bindingSiteId: string): string {
@@ -684,6 +705,66 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
 
   getRedockingValidation: (validationId: string): Promise<RedockingRunRecord> =>
     getJson<RedockingRunRecord>(`/validation/redocking/${validationId}`),
+
+  /**
+   * Every recorded two-stage protocol calibration run, so a sealed decision and
+   * a consumed Confirmation split stay readable across restarts (`ADR-031` §3).
+   */
+  listCalibrations: (signal?: AbortSignal): Promise<CalibrationRunRecord[]> =>
+    getJson<CalibrationRunList>("/calibrations", signal).then(calibrationRuns),
+
+  getCalibration: (calibrationId: string): Promise<CalibrationRunRecord> =>
+    getJson<CalibrationRunRecord>(`/calibrations/${encodeURIComponent(calibrationId)}`),
+
+  /**
+   * Construct and freeze the scaffold-grouped split before any comparison
+   * number exists. The Confirmation side is locked by the same call.
+   */
+  createCalibrationSplit: (
+    request: CalibrationSplitRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>("/calibrations/splits", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  /** Stage 1 — choose a protocol on Calibration alone and seal the decision. */
+  selectCalibrationProtocol: (
+    calibrationId: string,
+    request: CalibrationSelectRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>(
+      `/calibrations/${encodeURIComponent(calibrationId)}/select`,
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  /**
+   * Stage 2 — unlock, evaluate, and permanently consume the Confirmation split.
+   *
+   * Single-use by contract: a second call is rejected with
+   * `CALIBRATION_CONFIRMATION_ALREADY_CONSUMED` rather than re-evaluated.
+   */
+  confirmCalibration: (
+    calibrationId: string,
+    request: CalibrationConfirmRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>(
+      `/calibrations/${encodeURIComponent(calibrationId)}/confirm`,
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  /**
+   * Evaluate one already saved pose in place across scoring functions
+   * (`--score_only`).
+   *
+   * Read-only on the pose: the result carries `mutated_original_pose: false`,
+   * and each returned `ScoreObservation` stays in its own native unit.
+   */
+  rescorePoseOnly: (request: SavedPoseRescoreRequest): Promise<PoseRescoreResult> =>
+    requestJson<PoseRescoreResult>("/rescoring/score-only", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
 
   /**
    * Everything already exported, newest first.
