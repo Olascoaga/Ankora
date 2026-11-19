@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Annotated, Literal, Self
 
 from pydantic import (
-    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -16,18 +15,33 @@ from pydantic import (
 )
 
 from ankora_backend.domain.errors import AnkoraDomainError
-from ankora_backend.schemas.receptors import ResidueLocator
+from ankora_backend.schemas.receptors import (
+    DISALLOWED_FLEX_RESIDUE_NAMES as DISALLOWED_FLEX_RESIDUE_NAMES,
+)
+from ankora_backend.schemas.receptors import (
+    RECOMMENDED_MAX_FLEX_CHI_TORSIONS as RECOMMENDED_MAX_FLEX_CHI_TORSIONS,
+)
+from ankora_backend.schemas.receptors import (
+    RECOMMENDED_MAX_FLEX_RESIDUES as RECOMMENDED_MAX_FLEX_RESIDUES,
+)
+from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode as ReceptorFlexMode,
+)
+from ankora_backend.schemas.receptors import (
+    ReceptorFlexSpec as ReceptorFlexSpec,
+)
+from ankora_backend.schemas.receptors import (
+    ResidueLocator as ResidueLocator,
+)
+from ankora_backend.schemas.receptors import (
+    _Sha256,
+    flex_residue_locator_key,
+)
 from ankora_backend.schemas.screening_benchmark import ScoreDirection
 
-type _Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 type _AtomIndex = Annotated[int, Field(ge=1)]
 type _NonBlankString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-type _FlexLocatorKey = tuple[str, str, int, str]
 type _Engine = Literal["vina", "autodock4", "autodock_gpu", "gnina"]
-
-DISALLOWED_FLEX_RESIDUE_NAMES = frozenset({"GLY", "ALA", "PRO", "CYX"})
-RECOMMENDED_MAX_FLEX_RESIDUES = 4
-RECOMMENDED_MAX_FLEX_CHI_TORSIONS = 12
 
 
 def canonical_contract_sha256(payload: BaseModel | dict[str, object]) -> str:
@@ -42,11 +56,6 @@ def canonical_contract_sha256(payload: BaseModel | dict[str, object]) -> str:
 class MacrocyclePolicy(StrEnum):
     FLEXIBLE_PSEUDOATOMS = "flexible_pseudoatoms"
     RIGID_INPUT_CONFORMATION = "rigid_input_conformation"
-
-
-class ReceptorFlexMode(StrEnum):
-    RIGID = "rigid"
-    SIDECHAIN_FLEX = "sidechain_flex"
 
 
 class ScoringFamily(StrEnum):
@@ -135,72 +144,6 @@ class LigandFlexibilitySpec(BaseModel):
         return self
 
 
-class _FrozenResidueLocator(ResidueLocator):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-def _freeze_residue_locator(residue: ResidueLocator) -> ResidueLocator:
-    # Snapshot the v0.1 locator so it cannot be edited through either model.
-    return _FrozenResidueLocator.model_validate(residue.model_dump())
-
-
-def _flex_locator_key(residue: ResidueLocator) -> _FlexLocatorKey:
-    return (
-        residue.chain_id,
-        residue.residue_name.upper(),
-        residue.sequence_number,
-        residue.insertion_code,
-    )
-
-
-class ReceptorFlexSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
-    flex_residues: tuple[
-        Annotated[ResidueLocator, AfterValidator(_freeze_residue_locator)], ...
-    ] = ()
-    receptor_rigid_sha256: _Sha256
-    receptor_flex_sha256: _Sha256 | None = None
-    added_chi_torsion_count: int = Field(default=0, ge=0)
-
-    @model_validator(mode="after")
-    def validate_receptor_split(self) -> Self:
-        if self.mode == ReceptorFlexMode.RIGID:
-            if (
-                self.flex_residues
-                or self.receptor_flex_sha256 is not None
-                or self.added_chi_torsion_count != 0
-            ):
-                raise ValueError(
-                    "Rigid receptors cannot declare flexible residues, a flex hash, or chi torsions"
-                )
-            return self
-
-        if not self.flex_residues or self.receptor_flex_sha256 is None:
-            raise ValueError("Side-chain flexibility requires flex residues and a flex hash")
-        positions = set()
-        for residue in self.flex_residues:
-            if residue.residue_name.upper() in DISALLOWED_FLEX_RESIDUE_NAMES:
-                raise ValueError(f"Residue {residue.residue_name} is disallowed for FlexRes")
-            position = (residue.chain_id, residue.sequence_number, residue.insertion_code)
-            if position in positions:
-                raise ValueError("Flexible residue locators must have unique positions")
-            positions.add(position)
-        return self
-
-    def canonical_flex_locators(self) -> tuple[_FlexLocatorKey, ...]:
-        """Return sorted (chain, uppercase residue name, sequence number, insertion code) keys."""
-        return tuple(sorted(map(_flex_locator_key, self.flex_residues)))
-
-    @property
-    def high_dof_warning_required(self) -> bool:
-        return (
-            len(self.flex_residues) > RECOMMENDED_MAX_FLEX_RESIDUES
-            or self.added_chi_torsion_count > RECOMMENDED_MAX_FLEX_CHI_TORSIONS
-        )
-
-
 class PoseComplexIdentity(BaseModel):
     """E8 identity of the receptor and ligand coordinates for one pose."""
 
@@ -260,7 +203,7 @@ class ProtocolSpec(BaseModel):
         receptor_payload = receptor.model_dump(mode="json", exclude={"flex_residues"})
         receptor_payload["flex_residues"] = [
             residue.model_dump(mode="json")
-            for residue in sorted(receptor.flex_residues, key=_flex_locator_key)
+            for residue in sorted(receptor.flex_residues, key=flex_residue_locator_key)
         ]
         payload["receptor_flexibility"] = receptor_payload
 
@@ -279,14 +222,26 @@ class ProtocolSpec(BaseModel):
         *,
         map_receptor_sha256: str,
         map_flex_residues: tuple[ResidueLocator, ...] = (),
+        expected_flex_atom_types: tuple[str, ...] = (),
+        map_flex_atom_types: tuple[str, ...] = (),
+        map_affinity_atom_types: tuple[str, ...] | None = None,
     ) -> None:
-        """Enforce E7 by matching the receptor hash and exact flex-residue keys."""
+        """Enforce E7 against the rigid hash, flex locators, and affinity-map coverage."""
         receptor = self.receptor_flexibility
         expected_locators = receptor.canonical_flex_locators()
-        map_locators = tuple(sorted(map(_flex_locator_key, map_flex_residues)))
+        map_locators = tuple(sorted(map(flex_residue_locator_key, map_flex_residues)))
+        expected_flex_types = tuple(
+            sorted(set(expected_flex_atom_types), key=lambda t: (t.casefold(), t))
+        )
+        map_flex_types = tuple(sorted(set(map_flex_atom_types), key=lambda t: (t.casefold(), t)))
         if (
             map_receptor_sha256 != receptor.receptor_rigid_sha256
             or map_locators != expected_locators
+            or map_flex_types != expected_flex_types
+            or (
+                map_affinity_atom_types is not None
+                and not set(expected_flex_types).issubset(map_affinity_atom_types)
+            )
         ):
             raise AnkoraDomainError(
                 code="AUTOGRID_FLEXRES_MAP_MISMATCH",
@@ -294,13 +249,16 @@ class ProtocolSpec(BaseModel):
                 status_code=422,
                 message=(
                     "The AutoGrid map set must match the protocol's rigid receptor and "
-                    "flexible residue selection."
+                    "flexible residue selection and atom types."
                 ),
                 details={
                     "expected_receptor_sha256": receptor.receptor_rigid_sha256,
                     "map_receptor_sha256": map_receptor_sha256,
                     "expected_flex_locators": expected_locators,
                     "map_flex_locators": map_locators,
+                    "expected_flex_atom_types": expected_flex_types,
+                    "map_flex_atom_types": map_flex_types,
+                    "map_affinity_atom_types": map_affinity_atom_types,
                 },
             )
 
