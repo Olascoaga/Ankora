@@ -11,6 +11,7 @@ import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from ankora_backend.adapters.chemistry.flex_pose_complex import split_coupled_pdbqt_model
 from ankora_backend.adapters.engines.vina import VinaInstallation, probe_vina
@@ -22,39 +23,47 @@ from ankora_backend.execution.cancellable_subprocess import (
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.docking import VinaDockingParameters, VinaScoringFunction
 
+type VinaScoreOnlyFunction = Literal["vina", "vinardo", "ad4"]
+
 __all__ = [
     "ParsedVinaEnergyBreakdown",
     "ParsedVinaLocalOnlyPose",
     "ParsedVinaPose",
+    "ParsedVinaScoreOnlyResult",
     "VinaInstallation",
+    "VinaScoreOnlyFunction",
     "build_vina_arguments",
     "build_vina_local_only_arguments",
+    "build_vina_score_only_arguments",
     "execute_vina",
     "execute_vina_local_only",
+    "execute_vina_score_only",
     "parse_vina_local_only_output",
     "parse_vina_poses",
+    "parse_vina_score_only_output",
     "parse_vina_stdout_energy",
     "probe_vina",
 ]
 
+_FLOAT_TOKEN = r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
 _RESULT_PATTERN = re.compile(
     r"^REMARK VINA RESULT:\s+(-?\d+(?:\.\d+)?)\s+"
     r"(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$"
 )
 _STDOUT_BINDING_ENERGY_PATTERN = re.compile(
-    r"Estimated Free Energy of Binding\s*:\s*(-?\d+(?:\.\d+)?)\s*\(kcal/mol\)"
+    rf"Estimated Free Energy of Binding\s*:\s*{_FLOAT_TOKEN}\s*\(kcal/mol\)"
 )
 _STDOUT_INTERMOLECULAR_PATTERN = re.compile(
-    r"\(1\)\s+Final Intermolecular Energy\s*:\s*(-?\d+(?:\.\d+)?)\s*\(kcal/mol\)"
+    rf"\(1\)\s+Final Intermolecular Energy\s*:\s*{_FLOAT_TOKEN}\s*\(kcal/mol\)"
 )
 _STDOUT_INTERNAL_PATTERN = re.compile(
-    r"\(2\)\s+Final Total Internal Energy\s*:\s*(-?\d+(?:\.\d+)?)\s*\(kcal/mol\)"
+    rf"\(2\)\s+Final Total Internal Energy\s*:\s*{_FLOAT_TOKEN}\s*\(kcal/mol\)"
 )
 _STDOUT_TORSIONAL_PATTERN = re.compile(
-    r"\(3\)\s+Torsional Free Energy\s*:\s*(-?\d+(?:\.\d+)?)\s*\(kcal/mol\)"
+    rf"\(3\)\s+Torsional Free Energy\s*:\s*{_FLOAT_TOKEN}\s*\(kcal/mol\)"
 )
 _STDOUT_UNBOUND_PATTERN = re.compile(
-    r"\(4\)\s+Unbound System's Energy\s*:\s*(-?\d+(?:\.\d+)?)\s*\(kcal/mol\)"
+    rf"\(4\)\s+Unbound System's Energy(?:\s*\[[^\]]+\])?\s*:\s*{_FLOAT_TOKEN}\s*\(kcal/mol\)"
 )
 
 
@@ -90,6 +99,16 @@ class ParsedVinaLocalOnlyPose:
     flex_sidechains_content: bytes | None = None
     flex_residue_markers: tuple[str, ...] = ()
     stripped_nul_line_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedVinaScoreOnlyResult:
+    """Authoritative `--score_only` energy breakdown with Gate 0 Finding F4 provenance."""
+
+    energy: ParsedVinaEnergyBreakdown
+    scoring: VinaScoreOnlyFunction
+    used_flex: bool
+    unbound_reference_shifted: bool
 
 
 def build_vina_arguments(
@@ -202,6 +221,115 @@ def build_vina_local_only_arguments(
         ]
     )
     return arguments
+
+
+def build_vina_score_only_arguments(
+    *,
+    ligand_path: Path,
+    scoring: VinaScoreOnlyFunction = "vina",
+    receptor_path: Path | None = None,
+    box: BindingBox | None = None,
+    maps_prefix: Path | None = None,
+    flex_receptor_path: Path | None = None,
+    cpu_threads: int = 1,
+) -> list[str]:
+    """Construct explicit `--score_only` arguments for `vina`, `vinardo`, or `ad4` maps."""
+    if cpu_threads < 1:
+        raise _invalid_output("score_only requires cpu_threads >= 1")
+    arguments: list[str] = []
+    if scoring == "ad4":
+        if maps_prefix is None:
+            raise AnkoraDomainError(
+                code="VINA_SCORE_ONLY_MAPS_REQUIRED",
+                stage="pose_rescoring",
+                message="Vina `--scoring ad4 --score_only` requires AutoGrid4 `--maps` prefix.",
+                status_code=422,
+                details={"scoring": scoring},
+            )
+        arguments.extend(["--maps", str(maps_prefix)])
+    else:
+        if receptor_path is None or box is None:
+            raise AnkoraDomainError(
+                code="VINA_SCORE_ONLY_CONTEXT_REQUIRED",
+                stage="pose_rescoring",
+                message="Vina `--score_only` requires receptor_path and binding box.",
+                status_code=422,
+                details={"scoring": scoring},
+            )
+        arguments.extend(["--receptor", str(receptor_path)])
+    if flex_receptor_path is not None:
+        arguments.extend(["--flex", str(flex_receptor_path)])
+    arguments.extend(["--ligand", str(ligand_path)])
+    if scoring != "ad4":
+        assert box is not None
+        arguments.extend(
+            [
+                "--center_x",
+                _number(box.center_x),
+                "--center_y",
+                _number(box.center_y),
+                "--center_z",
+                _number(box.center_z),
+                "--size_x",
+                _number(box.size_x),
+                "--size_y",
+                _number(box.size_y),
+                "--size_z",
+                _number(box.size_z),
+            ]
+        )
+    if scoring != "vina":
+        arguments.extend(["--scoring", scoring])
+    arguments.extend(["--cpu", str(cpu_threads), "--score_only", "--verbosity", "1"])
+    return arguments
+
+
+def execute_vina_score_only(
+    *,
+    installation: VinaInstallation,
+    ligand_path: Path,
+    working_dir: Path,
+    scoring: VinaScoreOnlyFunction = "vina",
+    receptor_path: Path | None = None,
+    box: BindingBox | None = None,
+    maps_prefix: Path | None = None,
+    flex_receptor_path: Path | None = None,
+    cpu_threads: int = 1,
+    timeout_minutes: int = 10,
+    cancel_event: threading.Event,
+) -> CancellableToolExecution:
+    return run_cancellable_tool(
+        executable=installation.executable,
+        arguments=build_vina_score_only_arguments(
+            ligand_path=ligand_path,
+            scoring=scoring,
+            receptor_path=receptor_path,
+            box=box,
+            maps_prefix=maps_prefix,
+            flex_receptor_path=flex_receptor_path,
+            cpu_threads=cpu_threads,
+        ),
+        cwd=working_dir,
+        stage="vina_score_only",
+        cancel_event=cancel_event,
+        timeout_seconds=timeout_minutes * 60,
+    )
+
+
+def parse_vina_score_only_output(
+    *,
+    stdout: str,
+    scoring: VinaScoreOnlyFunction = "vina",
+    used_flex: bool = False,
+) -> ParsedVinaScoreOnlyResult:
+    """Parse Vina `--score_only` stdout and record Gate 0 F4 unbound shift when flex is passed."""
+    energy = parse_vina_stdout_energy(stdout)
+    return ParsedVinaScoreOnlyResult(
+        energy=energy,
+        scoring=scoring,
+        used_flex=used_flex,
+        unbound_reference_shifted=used_flex,
+    )
 
 
 def execute_vina(
