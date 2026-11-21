@@ -1,11 +1,12 @@
-"""Standalone zero-dependency verifier for Ankora campaign export bundles (Export v4).
+"""Standalone zero-dependency verifier for Ankora export bundles (Export v2–v5).
 
 Usage:
     python scripts/verify_export_bundle.py path/to/Ankora_..._bundle.zip
     python scripts/verify_export_bundle.py path/to/export_directory --json
 
-Designed for manuscript reviewers, collaborators, and CI audits: relies strictly on
-the Python 3.12 standard library with zero Ankora or third-party package imports.
+Designed for manuscript reviewers, collaborators, external benchmark harnesses
+(ADR-031), and CI audits: relies strictly on the Python 3.12 standard library
+with zero Ankora or third-party package imports.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
-SUPPORTED_EXPORT_FORMATS = frozenset({2, 3, 4})
+SUPPORTED_EXPORT_FORMATS = frozenset({2, 3, 4, 5})
 BUNDLE_IDENTITY_PROTOCOL = "ankora-campaign-bundle-identity-v1"
 ALLOWED_SOURCE_INTEGRITY = frozenset({"matches_recorded_sha256", "export_time_digest_only"})
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -280,14 +281,21 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
         table_section = manifest.get("table")
         if fmt >= 4 and not isinstance(table_section, dict):
             raise BundleVerificationError(f"Format {fmt} bundle requires a 'table' section")
-        row_kind = "pose" if "poses" in manifest["counts"] else "molecule"
+        if fmt >= 5 and not isinstance(manifest.get("v02_provenance"), dict):
+            raise BundleVerificationError("Format 5 bundle requires a 'v02_provenance' section")
+        if "total_parents" in manifest["counts"]:
+            row_kind = "consensus_parent"
+        elif "poses" in manifest["counts"]:
+            row_kind = "pose"
+        else:
+            row_kind = "molecule"
         if isinstance(table_section, dict):
             if table_section.get("file") != "results.csv":
                 raise BundleVerificationError(
                     f"Unsupported table.file: {table_section.get('file')!r}"
                 )
             declared_row = table_section.get("row")
-            if declared_row not in {"molecule", "pose"}:
+            if declared_row not in {"molecule", "pose", "consensus_parent"}:
                 raise BundleVerificationError(f"Invalid table.row: {declared_row!r}")
             row_kind = declared_row
             declared_cols = table_section.get("columns")
@@ -297,7 +305,71 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                 )
 
         counts = manifest["counts"]
-        if row_kind == "pose":
+        if row_kind == "consensus_parent":
+            total_parents = counts.get("total_parents")
+            full_profile = counts.get("full_profile")
+            partial_unscored = counts.get("partial_or_unscored")
+            if (
+                not isinstance(total_parents, int)
+                or isinstance(total_parents, bool)
+                or not isinstance(full_profile, int)
+                or isinstance(full_profile, bool)
+                or not isinstance(partial_unscored, int)
+                or isinstance(partial_unscored, bool)
+                or total_parents != full_profile + partial_unscored
+                or len(rows) != total_parents
+            ):
+                raise BundleVerificationError(
+                    f"Consensus parent row count ({len(rows)}) disagrees with manifest counts {counts}"
+                )
+            seen_partial = False
+            observed_full = 0
+            observed_partial = 0
+            prev_rank = 0
+            for idx, row in enumerate(rows, start=1):
+                tier = row.get("tier")
+                if tier == "full_profile":
+                    if seen_partial:
+                        raise BundleVerificationError(
+                            "ADR-030 E6 violation: full_profile row appears after partial_or_unscored row"
+                        )
+                    observed_full += 1
+                    raw_rank = (row.get("rank") or "").strip()
+                    raw_pcq = (row.get("pcq_score") or "").strip()
+                    if not raw_rank.isdigit() or int(raw_rank) < prev_rank or int(raw_rank) > idx:
+                        raise BundleVerificationError(
+                            f"Invalid full_profile rank {raw_rank!r} at row {idx}"
+                        )
+                    prev_rank = int(raw_rank)
+                    try:
+                        pcq_val = float(raw_pcq)
+                    except ValueError as err:
+                        raise BundleVerificationError(
+                            f"Invalid full_profile pcq_score {raw_pcq!r} at row {idx}"
+                        ) from err
+                    if not (0.0 <= pcq_val <= 100.0):
+                        raise BundleVerificationError(
+                            f"Out-of-range pcq_score {pcq_val} at row {idx}"
+                        )
+                elif tier == "partial_or_unscored":
+                    seen_partial = True
+                    observed_partial += 1
+                    if (row.get("rank") or "").strip() or (row.get("pcq_score") or "").strip():
+                        raise BundleVerificationError(
+                            f"ADR-030 E6 violation: partial_or_unscored row {idx} carries rank or imputed score"
+                        )
+                    if not (row.get("failure_or_exclusion_codes") or "").strip():
+                        raise BundleVerificationError(
+                            f"ADR-030 E6 violation: partial_or_unscored row {idx} lacks failure_or_exclusion_codes"
+                        )
+                else:
+                    raise BundleVerificationError(f"Unknown consensus tier {tier!r} at row {idx}")
+            if observed_full != full_profile or observed_partial != partial_unscored:
+                raise BundleVerificationError(
+                    f"Consensus tier counts (full={observed_full}, partial={observed_partial}) "
+                    f"disagree with manifest counts {counts}"
+                )
+        elif row_kind == "pose":
             if counts.get("ligands") != 1 or counts.get("poses") != len(rows):
                 raise BundleVerificationError(
                     f"Pose row count ({len(rows)}) disagrees with manifest counts {counts}"
@@ -375,6 +447,84 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                     label=f"redocking reference {val.get('validation_id')}",
                 )
                 verified_evidence_files += 1
+
+        # Verify v0.2 M2/M3/M4/M5 recorded evidence files (Export v5)
+        v02_verified_evidence_files = 0
+        for item in evidence.get("pose_quality_assessments") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"pose_quality {item.get('assessment_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+
+        for item in evidence.get("interaction_rule_evaluations") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"interaction_rule_evaluation {item.get('evaluation_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+
+        for item in evidence.get("interaction_rule_sets") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"interaction_rule_set {item.get('rule_set_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+
+        for item in evidence.get("consensus_records") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"consensus_record {item.get('consensus_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+
+        for item in evidence.get("reference_panels") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"reference_panel {item.get('panel_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+
+        for item in evidence.get("calibration_records") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"calibration_record {item.get('calibration_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+            for stage_item in item.get("stage_files") or []:
+                _verify_referenced_blob(
+                    source,
+                    rel_path=stage_item.get("path"),
+                    expected_sha256=stage_item.get("sha256"),
+                    expected_size=stage_item.get("size_bytes"),
+                    label=f"calibration stage {item.get('calibration_id')}/{stage_item.get('filename')}",
+                )
+                verified_evidence_files += 1
+                v02_verified_evidence_files += 1
 
         # Verify preserved source_files (GNINA single-job & screening bundles)
         verified_source_files = 0
@@ -454,6 +604,7 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             "input_identity_sha256": computed_input_sha256,
             "bundle_identity_sha256": computed_bundle_sha256,
             "verified_evidence_files": verified_evidence_files,
+            "v02_verified_evidence_files": v02_verified_evidence_files,
             "verified_source_files": verified_source_files,
             "matched_recorded_hashes": matched_recorded_hashes,
             "embedded_zip_verified": embedded_zip_verified,

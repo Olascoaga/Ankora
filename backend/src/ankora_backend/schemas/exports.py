@@ -25,6 +25,7 @@ from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 
 class ExportKind(StrEnum):
     CAMPAIGN = "campaign"
+    CONSENSUS = "consensus"
     FIGURE = "figure"
     POSE_COMPLEX = "pose_complex"
 
@@ -68,6 +69,7 @@ class ExportEntry(BaseModel):
     directory: str = Field(min_length=1)
     """Where the payload was written."""
 
+    ankora_export_format: int | None = Field(default=None, ge=1)
     outside_project: bool = False
     files: list[ExportFile] = Field(default_factory=list)
 

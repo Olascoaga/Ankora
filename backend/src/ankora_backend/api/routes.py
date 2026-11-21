@@ -194,6 +194,7 @@ from ankora_backend.services.binding_site_definition import (
 )
 from ankora_backend.services.campaign_export import CampaignExportService
 from ankora_backend.services.campaign_history import CampaignHistoryService
+from ankora_backend.services.consensus_export import ConsensusExportService
 from ankora_backend.services.engine_comparison import EngineComparisonService
 from ankora_backend.services.export_catalog import ExportCatalogService
 from ankora_backend.services.figure_export import FigureExportService
@@ -2270,3 +2271,17 @@ def fit_consensus_pc_l2(
     payload: FitPcL2Request,
 ) -> ConsensusRunRecord:
     return PoseConsensusService.from_environment().fit_pc_l2(consensus_id, payload)
+
+
+@router.post("/consensus/runs/{consensus_id}/export", status_code=201)
+def export_consensus_run(
+    consensus_id: str,
+    destination: Annotated[str | None, Query(min_length=1)] = None,
+    display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+) -> dict[str, object]:
+    """Write a self-contained Export v5 bundle for an immutable ADR-030 consensus run."""
+    return ConsensusExportService.from_environment().export_consensus_run(
+        consensus_id,
+        destination=destination,
+        display_name=display_name,
+    )

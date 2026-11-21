@@ -71,8 +71,13 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
     GninaScreeningEntry,
 )
+from ankora_backend.schemas.interaction_rules import (
+    InteractionRuleEvaluationRecord,
+    InteractionRuleSetRecord,
+)
 from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.pose_quality import PoseQualityRecord
 from ankora_backend.schemas.receptors import ReceptorFlexMode
 from ankora_backend.schemas.redocking import RedockingRunRecord
 from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
@@ -183,15 +188,26 @@ class ExportedCampaign:
 
 @dataclass(frozen=True, slots=True)
 class RecordedEvidence:
-    """M9 records copied into one campaign bundle without recomputation."""
+    """M9 and v0.2 records copied into one campaign bundle without recomputation."""
 
     analyses: list[dict[str, Any]]
     figures: list[dict[str, Any]]
     collection_warnings: list[dict[str, str]]
     validations: list[dict[str, Any]] = field(default_factory=list)
+    pose_quality_assessments: list[dict[str, Any]] = field(default_factory=list)
+    interaction_rule_evaluations: list[dict[str, Any]] = field(default_factory=list)
+    interaction_rule_sets: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def has_v02_evidence(self) -> bool:
+        return bool(
+            self.pose_quality_assessments
+            or self.interaction_rule_evaluations
+            or self.interaction_rule_sets
+        )
 
     def manifest_payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "pose_interaction_analyses": self.analyses,
             "figures": self.figures,
             "redocking_validations": self.validations,
@@ -207,6 +223,16 @@ class RecordedEvidence:
                 "system and is not validation of the engine in general.",
             ],
         }
+        if self.has_v02_evidence:
+            payload["pose_quality_assessments"] = self.pose_quality_assessments
+            payload["interaction_rule_evaluations"] = self.interaction_rule_evaluations
+            payload["interaction_rule_sets"] = self.interaction_rule_sets
+            payload["notes"].append(
+                "PoseBusters physical quality assessments, MMFF94s conformational strain "
+                "diagnostics, and declarative ProLIF pharmacophoric rule evaluations were "
+                "copied verbatim from immutable v0.2 records without recomputation."
+            )
+        return payload
 
 
 def _empty_evidence() -> RecordedEvidence:
@@ -294,9 +320,17 @@ def manifest(
     }
     if campaign.cnn_model_identity is not None:
         engine_payload["cnn_model_identity"] = campaign.cnn_model_identity
+    resolved_evidence = evidence or _empty_evidence()
+    has_v02_features = (
+        campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value
+        or resolved_evidence.has_v02_evidence
+    )
+    export_format = (
+        (5 if has_v02_features else 4) if bundle_identity is not None else 2
+    )
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
-        "ankora_export_format": 4 if bundle_identity is not None else 2,
+        "ankora_export_format": export_format,
         "source_kind": source_kind,
         "source_id": source_id,
         "engine": engine_payload,
@@ -308,9 +342,19 @@ def manifest(
         "protocol": campaign.parameters,
         "counts": _campaign_counts(campaign),
         "table": table_payload,
-        "recorded_evidence": (evidence or _empty_evidence()).manifest_payload(),
+        "recorded_evidence": resolved_evidence.manifest_payload(),
         "scientific_notes": _scientific_notes(campaign),
     }
+    if export_format >= 5:
+        payload["v02_provenance"] = {
+            "receptor_flex_mode": campaign.receptor_flex_mode or ReceptorFlexMode.RIGID.value,
+            "flex_residue_count": len(campaign.flex_residues),
+            "pose_quality_assessment_count": len(resolved_evidence.pose_quality_assessments),
+            "interaction_rule_evaluation_count": len(
+                resolved_evidence.interaction_rule_evaluations
+            ),
+            "interaction_rule_set_count": len(resolved_evidence.interaction_rule_sets),
+        }
     if campaign.warnings:
         payload["warnings"] = campaign.warnings
     if bundle_identity is not None:
@@ -1413,11 +1457,196 @@ def collect_recorded_evidence(
     validations, validation_warnings = collect_recorded_validations(
         root=resolved_root, catalog_id=catalog_id, export_directory=destination
     )
+    (
+        pose_quality_assessments,
+        interaction_rule_evaluations,
+        interaction_rule_sets,
+        v02_warnings,
+    ) = collect_v02_recorded_evidence(
+        root=resolved_root, catalog_ids=[catalog_id], export_directory=destination
+    )
     return RecordedEvidence(
         analyses=sorted(analyses, key=lambda item: str(item["analysis_id"])),
         figures=sorted(figures, key=lambda item: str(item["figure_id"])),
-        collection_warnings=[*warnings, *validation_warnings],
+        collection_warnings=[*warnings, *validation_warnings, *v02_warnings],
         validations=validations,
+        pose_quality_assessments=pose_quality_assessments,
+        interaction_rule_evaluations=interaction_rule_evaluations,
+        interaction_rule_sets=interaction_rule_sets,
+    )
+
+
+def collect_v02_recorded_evidence(
+    *,
+    root: Path,
+    catalog_ids: list[str],
+    export_directory: Path,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, str]],
+]:
+    """Copy existing immutable M3 pose-quality and M4 interaction-rule records verbatim."""
+    resolved_root = root.resolve()
+    destination = export_directory.resolve()
+    project_root = resolve_project_root(resolved_root)
+    target_catalogs = set(catalog_ids)
+
+    quality_entries: list[dict[str, Any]] = []
+    rule_eval_entries: list[dict[str, Any]] = []
+    rule_set_entries: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+
+    quality_root = project_root / "analysis" / "pose_quality"
+    for source in sorted(quality_root.glob("*/record.json")):
+        identity = source.parent.name
+        try:
+            raw = source.read_text(encoding="utf-8")
+            qrec = PoseQualityRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "pose_quality_record_unreadable",
+                    "identity": identity,
+                    "reason": str(error),
+                }
+            )
+            continue
+        if qrec.catalog_id not in target_catalogs:
+            continue
+        if qrec.assessment_id != identity:
+            warnings.append(
+                {
+                    "kind": "pose_quality_record_identity_mismatch",
+                    "identity": identity,
+                    "reason": "Folder and record identifiers do not match.",
+                }
+            )
+            continue
+        target = destination / "evidence" / "pose_quality" / identity / "record.json"
+        digest, size = _copy_preserved(source, target)
+        quality_entries.append(
+            {
+                "assessment_id": qrec.assessment_id,
+                "catalog_id": qrec.catalog_id,
+                "ligand_id": qrec.ligand_id,
+                "pose_artifact_id": qrec.pose.artifact_id,
+                "pose_complex_sha256": qrec.assessment.pose_complex.complex_identity_sha256,
+                "overall_status": qrec.assessment.overall_status.value,
+                "passed_count": qrec.passed_count,
+                "failed_count": qrec.failed_count,
+                "not_applicable_count": qrec.not_applicable_count,
+                "not_evaluable_count": qrec.not_evaluable_count,
+                "strain_delta_e_ref_kcal_mol": (
+                    qrec.assessment.strain.delta_e_ref_kcal_mol
+                    if qrec.assessment.strain is not None
+                    else None
+                ),
+                "posebusters_version": qrec.posebusters_version,
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    referenced_rule_set_ids: set[str] = set()
+    evals_root = project_root / "analysis" / "interaction_rule_evaluations"
+    for source in sorted(evals_root.glob("*/record.json")):
+        identity = source.parent.name
+        try:
+            raw = source.read_text(encoding="utf-8")
+            erec = InteractionRuleEvaluationRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_evaluation_unreadable",
+                    "identity": identity,
+                    "reason": str(error),
+                }
+            )
+            continue
+        if erec.catalog_id not in target_catalogs:
+            continue
+        if erec.evaluation_id != identity:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_evaluation_identity_mismatch",
+                    "identity": identity,
+                    "reason": "Folder and record identifiers do not match.",
+                }
+            )
+            continue
+        target = (
+            destination / "evidence" / "interaction_rule_evaluations" / identity / "record.json"
+        )
+        digest, size = _copy_preserved(source, target)
+        referenced_rule_set_ids.add(erec.rule_set_id)
+        rule_eval_entries.append(
+            {
+                "evaluation_id": erec.evaluation_id,
+                "rule_set_id": erec.rule_set_id,
+                "rule_set_identity_sha256": erec.rule_set_identity_sha256,
+                "catalog_id": erec.catalog_id,
+                "ligand_id": erec.ligand_id,
+                "pose_artifact_id": erec.pose.artifact_id,
+                "pose_complex_sha256": erec.pose_complex.complex_identity_sha256,
+                "overall_status": erec.overall_status.value,
+                "passed_clause_count": erec.passed_clause_count,
+                "failed_clause_count": erec.failed_clause_count,
+                "tanimoto_similarity": (
+                    erec.tanimoto.similarity if erec.tanimoto is not None else None
+                ),
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    rule_sets_root = project_root / "analysis" / "interaction_rule_sets"
+    for rule_set_id in sorted(referenced_rule_set_ids):
+        source = rule_sets_root / rule_set_id / "record.json"
+        if not source.is_file():
+            warnings.append(
+                {
+                    "kind": "interaction_rule_set_missing",
+                    "identity": rule_set_id,
+                    "reason": "Referenced sealed rule set record was not found on disk.",
+                }
+            )
+            continue
+        try:
+            raw = source.read_text(encoding="utf-8")
+            rs_rec = InteractionRuleSetRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_set_unreadable",
+                    "identity": rule_set_id,
+                    "reason": str(error),
+                }
+            )
+            continue
+        target = destination / "evidence" / "interaction_rule_sets" / rule_set_id / "record.json"
+        digest, size = _copy_preserved(source, target)
+        rule_set_entries.append(
+            {
+                "rule_set_id": rs_rec.rule_set_id,
+                "name": rs_rec.name,
+                "receptor_id": rs_rec.receptor_id,
+                "rule_set_identity_sha256": rs_rec.rule_set_identity_sha256,
+                "clause_count": len(rs_rec.clauses),
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    return (
+        sorted(quality_entries, key=lambda item: str(item["assessment_id"])),
+        sorted(rule_eval_entries, key=lambda item: str(item["evaluation_id"])),
+        sorted(rule_set_entries, key=lambda item: str(item["rule_set_id"])),
+        warnings,
     )
 
 

@@ -99,13 +99,22 @@ class ExportCatalogService:
                 and isinstance(source_id, str)
             ):
                 catalog_id = f"{source_kind}:{source_id}"
+            raw_format = manifest.get("ankora_export_format")
+            export_format = (
+                raw_format
+                if isinstance(raw_format, int) and not isinstance(raw_format, bool)
+                else None
+            )
+            entry_kind = (
+                ExportKind.CONSENSUS if source_kind == "consensus_run" else ExportKind.CAMPAIGN
+            )
             entries.append(
                 ExportEntry(
                     export_id=directory.name,
-                    kind=ExportKind.CAMPAIGN,
+                    kind=entry_kind,
                     exported_at=_moment(manifest.get("exported_at"), directory),
                     title=display_name or _engine_label(engine),
-                    subtitle=_campaign_subtitle(counts),
+                    subtitle=_campaign_subtitle(counts, engine=engine),
                     catalog_id=catalog_id,
                     source_kind=source_kind,
                     source_id=source_id,
@@ -116,6 +125,7 @@ class ExportCatalogService:
                     reproducibility=assessment,
                     bitwise_reproducible=reproducibility.get("bitwise_reproducible"),
                     directory=str(directory),
+                    ankora_export_format=export_format,
                     files=_files(
                         directory,
                         served=served,
@@ -281,13 +291,21 @@ def _files(directory: Path, *, served: set[str] | None, url_prefix: str | None) 
     ]
 
 
-def _campaign_subtitle(counts: dict[str, Any]) -> str:
+def _campaign_subtitle(
+    counts: dict[str, Any], *, engine: dict[str, Any] | None = None
+) -> str:
     """What this bundle counted, in the units it actually counted in.
 
     A single job's bundle counts poses of one ligand. Describing it as
     "0/0 molecules docked" would read as a screening campaign that produced
     nothing, which is a different result from the one that was exported.
     """
+    if "total_parents" in counts:
+        full_count = counts.get("full_profile", 0)
+        total_count = counts.get("total_parents", 0)
+        variant = (engine or {}).get("backend")
+        suffix = f" · {variant}" if isinstance(variant, str) and variant else ""
+        return f"{full_count}/{total_count} parents full-profile{suffix}"
     if "poses" in counts:
         poses = counts.get("poses") or 0
         return f"1 ligand · {poses} pose{'s' if poses != 1 else ''}"
