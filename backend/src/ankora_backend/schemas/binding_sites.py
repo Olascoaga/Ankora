@@ -16,6 +16,7 @@ class BindingSiteSource(StrEnum):
     MANUAL = "manual"
     FULL_PROTEIN_BLIND = "full_protein_blind"
     POCKET_DETECTED = "pocket_detected"
+    POSE_FOCUSED = "pose_focused"
 
 
 class BindingBox(BaseModel):
@@ -100,6 +101,45 @@ class PocketSelection(BaseModel):
     pocket_id: str = Field(min_length=1)
 
 
+class PoseFocusedOrigin(BaseModel):
+    """Immutable reference to a saved pose or consensus medoid used to derive a focused site."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_catalog_id: str = Field(min_length=1)
+    ligand_id: str = Field(min_length=1)
+    pose_artifact_id: str = Field(min_length=1)
+    padding_angstrom: float = Field(default=5.0, ge=0.0, le=50.0)
+    flex_containment_margin_angstrom: float = Field(default=1.5, ge=0.0, le=20.0)
+    box_override: BindingBox | None = None
+    source_consensus_id: str | None = Field(default=None, min_length=1)
+    source_cluster_id: str | None = Field(default=None, min_length=1)
+
+
+class PoseFocusedEvidence(BaseModel):
+    """Verified coordinate-hash and FlexRes containment evidence for a POSE_FOCUSED site."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_catalog_id: str = Field(min_length=1)
+    engine_key: str = Field(min_length=1)
+    record_id: str = Field(min_length=1)
+    ligand_id: str = Field(min_length=1)
+    ligand_preparation_id: str = Field(min_length=1)
+    pose_artifact_id: str = Field(min_length=1)
+    pose_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pose_flex_sidechains_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_consensus_id: str | None = Field(default=None, min_length=1)
+    source_cluster_id: str | None = Field(default=None, min_length=1)
+    heavy_atom_count: int = Field(ge=1)
+    excluded_hydrogen_count: int = Field(ge=0)
+    excluded_pseudoatom_count: int = Field(ge=0)
+    computed_base_box: BindingBox
+    box_overridden: bool = False
+    flex_containment_checked: bool = False
+    flex_containment_margin_angstrom: float = Field(default=1.5, ge=0.0)
+
+
 class BindingSiteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -110,6 +150,7 @@ class BindingSiteRequest(BaseModel):
     blind_margin_angstrom: float = Field(default=6.0, ge=0)
     acknowledge_exploratory_full_protein: bool = False
     pocket_selection: PocketSelection | None = None
+    pose_focused: PoseFocusedOrigin | None = None
     parent_binding_site_id: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
@@ -119,13 +160,19 @@ class BindingSiteRequest(BaseModel):
             BindingSiteSource.SELECTED_RESIDUES: ("residue_selection", self.residue_selection),
             BindingSiteSource.MANUAL: ("manual_box", self.manual_box),
             BindingSiteSource.POCKET_DETECTED: ("pocket_selection", self.pocket_selection),
+            BindingSiteSource.POSE_FOCUSED: ("pose_focused", self.pose_focused),
         }
         if self.source in required:
             field_name, value = required[self.source]
             if value is None:
                 raise ValueError(f"source '{self.source}' requires '{field_name}'")
-        if self.parent_binding_site_id is not None and self.source is not BindingSiteSource.MANUAL:
-            raise ValueError("'parent_binding_site_id' is only valid for a manual adjustment")
+        if self.parent_binding_site_id is not None and self.source not in {
+            BindingSiteSource.MANUAL,
+            BindingSiteSource.POSE_FOCUSED,
+        }:
+            raise ValueError(
+                "'parent_binding_site_id' is only valid for manual or pose-focused sites"
+            )
         return self
 
 
@@ -138,6 +185,7 @@ class BindingSitePreview(BaseModel):
     source: BindingSiteSource
     box: BindingBox
     warnings: list[StructuredWarning]
+    pose_focused_evidence: PoseFocusedEvidence | None = None
 
 
 class BindingSiteRecord(BaseModel):
@@ -152,3 +200,4 @@ class BindingSiteRecord(BaseModel):
     stale: bool = False
     warnings: list[StructuredWarning]
     provenance: list[ProvenanceEvent]
+    pose_focused_evidence: PoseFocusedEvidence | None = None

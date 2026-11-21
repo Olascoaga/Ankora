@@ -60,6 +60,7 @@ _REFERENCE_KEYS = {
     "rule_set_id",
     "selection_manifest_artifact_id",
     "source_artifact_id",
+    "source_consensus_id",
     "source_id",
     "source_output_artifact_id",
     "source_structure_id",

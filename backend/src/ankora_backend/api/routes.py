@@ -1038,6 +1038,8 @@ def create_binding_site_preview(
         structure_store=StructureArtifactStore.from_environment(),
         receptor_store=ReceptorArtifactStore.from_environment(),
         pocket_detection_store=PocketDetectionArtifactStore.from_environment(),
+        pose_interaction_service=PoseInteractionService.from_environment(),
+        dependency_service=ProjectDependencyService.from_environment(),
     )
 
 
@@ -1054,6 +1056,8 @@ def create_binding_site(receptor_id: str, request: BindingSiteRequest) -> Bindin
         receptor_store=ReceptorArtifactStore.from_environment(),
         binding_site_store=BindingSiteArtifactStore.from_environment(),
         pocket_detection_store=PocketDetectionArtifactStore.from_environment(),
+        pose_interaction_service=PoseInteractionService.from_environment(),
+        dependency_service=ProjectDependencyService.from_environment(),
     )
 
 
