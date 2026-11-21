@@ -83,6 +83,9 @@ NEURAL_BLOCK_WEIGHTS: dict[ScoringFamily, float] = {
 }
 
 HIGH_DISAGREEMENT_WARNING_THRESHOLD = 25.0
+#: Minimum reference-panel parent count before emitting ADR-033 §2.3 quantile-resolution warning.
+SMALL_PANEL_WARNING_THRESHOLD = 50
+_UPPER_TAIL_SATURATION_THRESHOLD = 99.9999
 
 
 @dataclass(frozen=True)
@@ -344,6 +347,7 @@ def compute_pcq_and_ecr_consensus(
     reference_panel: ReferencePanelArtifact,
     parents: Sequence[ConsensusParentInput],
     search_engine_count: int,
+    panel_unique_scaffolds: int | None = None,
 ) -> ConsensusComputationOutput:
     """Evaluate Pose-First, Molecule-Second PC-Q, D_ic, and separate-scale PC-ECR (ADR-030)."""
     block_weights, within_block_weights = resolve_variant_weights(
@@ -609,6 +613,55 @@ def compute_pcq_and_ecr_consensus(
                     f"inter-family disagreement (D_ic >= {HIGH_DISAGREEMENT_WARNING_THRESHOLD:g})."
                 ),
                 details={"parent_compound_ids": high_disagreement_parents},
+            )
+        )
+
+    is_small_panel = reference_panel.total_panel_parents < SMALL_PANEL_WARNING_THRESHOLD
+    is_monoscaffold_panel = (
+        panel_unique_scaffolds is not None
+        and panel_unique_scaffolds <= 1
+        and reference_panel.total_panel_parents >= 2
+    )
+    if is_small_panel or is_monoscaffold_panel:
+        n_panel = reference_panel.total_panel_parents
+        quantile_step = round(100.0 / float(n_panel), 4)
+        full_count = len(full_pcq_rows)
+        saturated_parents = [
+            row[0].parent_compound_id
+            for row in full_pcq_rows
+            if row[1] >= _UPPER_TAIL_SATURATION_THRESHOLD
+        ]
+        saturation_fraction = (
+            round(float(len(saturated_parents)) / float(full_count), 4) if full_count > 0 else 0.0
+        )
+        reasons: list[str] = []
+        if is_small_panel:
+            reasons.append(
+                f"total_panel_parents={n_panel} < {SMALL_PANEL_WARNING_THRESHOLD} "
+                f"(quantile step resolution {quantile_step:g}%)"
+            )
+        if is_monoscaffold_panel:
+            reasons.append(
+                f"congeneric single-scaffold reference panel "
+                f"(panel_unique_scaffolds={panel_unique_scaffolds})"
+            )
+        warnings.append(
+            StructuredWarning(
+                code=WarningCode.CONSENSUS_SMALL_OR_CONGENERIC_PANEL,
+                stage=_STAGE,
+                message=(
+                    "Reference panel has limited empirical quantile resolution ("
+                    + "; ".join(reasons)
+                    + "). Interpret PC-Q scores cautiously (ADR-033 §2.3)."
+                ),
+                details={
+                    "total_panel_parents": n_panel,
+                    "small_panel_threshold": SMALL_PANEL_WARNING_THRESHOLD,
+                    "quantile_step_resolution": quantile_step,
+                    "upper_tail_saturated_parents": saturated_parents,
+                    "upper_tail_saturation_fraction": saturation_fraction,
+                    "panel_unique_scaffolds": panel_unique_scaffolds,
+                },
             )
         )
 

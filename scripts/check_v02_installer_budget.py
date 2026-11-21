@@ -123,7 +123,7 @@ def load_budget_manifest(repo_root: Path = ROOT) -> dict[str, Any]:
     milestones = data.get("milestone_budgets_bytes")
     if not isinstance(milestones, dict):
         raise BudgetGuardError("Missing milestone_budgets_bytes in budget manifest")
-    for zero_ms in ("M0", "M1", "M2", "M4", "M5", "M6"):
+    for zero_ms in ("M0", "M1", "M2", "M4", "M5", "M6", "M6.5"):
         entry = milestones.get(zero_ms)
         if not isinstance(entry, dict) or entry.get("max_delta_bytes") != 0:
             raise BudgetGuardError(
@@ -247,7 +247,7 @@ def check_packaged_artifact(
     cumulative_budget_bytes = sum(
         int(entry["max_delta_bytes"])
         for name, entry in milestones.items()
-        if name in {"M0", "M1", "M2", "M3", "M4", "M5", "M6"}
+        if name in {"M0", "M1", "M2", "M3", "M4", "M5", "M6", "M6.5"}
         and isinstance(entry, dict)
         and isinstance(entry.get("max_delta_bytes"), int)
     )
@@ -299,7 +299,7 @@ def run_budget_guard(
     cumulative_budget_bytes = sum(
         int(entry["max_delta_bytes"])
         for name, entry in milestones.items()
-        if name in {"M0", "M1", "M2", "M3", "M4", "M5", "M6"}
+        if name in {"M0", "M1", "M2", "M3", "M4", "M5", "M6", "M6.5"}
         and isinstance(entry, dict)
         and isinstance(entry.get("max_delta_bytes"), int)
     )

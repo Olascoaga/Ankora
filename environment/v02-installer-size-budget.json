@@ -71,6 +71,10 @@
       "max_delta_bytes": 0,
       "new_dependencies": []
     },
+    "M6.5": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
     "M7": {
       "max_delta_bytes": null,
       "status": "gated_behind_offline_spike_and_optional_pack_if_exceeding_budget"

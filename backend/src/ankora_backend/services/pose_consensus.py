@@ -13,7 +13,7 @@ Orchestrates:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -158,6 +158,8 @@ class PoseConsensusService:
                 binding_box_sha256=request.binding_box_sha256,
                 autogrid_map_set_sha256=request.autogrid_map_set_sha256,
                 enabled_functions=request.enabled_functions,
+                k_max=request.k_max,
+                executable_sha256s=request.executable_sha256s,
             )
             created_new_panel = False
         else:
@@ -208,6 +210,8 @@ class PoseConsensusService:
                 "reference_panel_id": panel.panel_id,
                 "reference_panel_sha256": panel.reference_panel_sha256,
                 "created_new_panel": created_new_panel,
+                "frozen_panel_parent_count": panel.total_panel_parents,
+                "scored_target_parent_count": len(request.parents),
                 "enabled_functions": [fn.value for fn in request.enabled_functions],
                 "source_catalog_ids": list(source_catalog_ids),
             },
@@ -686,7 +690,19 @@ class PoseConsensusService:
         binding_box_sha256: str,
         autogrid_map_set_sha256: str,
         enabled_functions: Sequence[ScoringFunctionId],
+        k_max: int,
+        executable_sha256s: Mapping[str, str],
     ) -> None:
+        panel_exec = dict(panel.executable_sha256s)
+        req_exec = dict(executable_sha256s)
+        same_function_set = set(enabled_functions) == set(panel.enabled_functions)
+        if same_function_set:
+            exec_mismatch = panel_exec != req_exec
+        else:
+            exec_mismatch = (
+                bool(panel_exec) != bool(req_exec)
+                or any(panel_exec.get(k) != v for k, v in req_exec.items())
+            )
         if (
             panel.receptor_id != receptor_id
             or panel.receptor_flex_spec.mode != receptor_flex_spec.mode
@@ -697,12 +713,18 @@ class PoseConsensusService:
             or panel.binding_box_sha256 != binding_box_sha256
             or panel.autogrid_map_set_sha256 != autogrid_map_set_sha256
             or not set(enabled_functions).issubset(panel.enabled_functions)
+            or panel.k_max != k_max
+            or exec_mismatch
         ):
             raise _consensus_error(
                 "CONSENSUS_SHARED_CONTEXT_MISMATCH",
                 "Locked ReferencePanelArtifact context does not match this consensus request.",
                 panel_id=panel.panel_id,
                 panel_sha256=panel.reference_panel_sha256,
+                panel_k_max=panel.k_max,
+                request_k_max=k_max,
+                panel_executable_sha256s=panel_exec,
+                request_executable_sha256s=req_exec,
             )
 
 
