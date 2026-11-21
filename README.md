@@ -37,11 +37,11 @@ Contacts describe geometry—not measured affinity. [Capture provenance](docs/im
 | **Structure** | Import local `PDB`/`mmCIF` or fetch from RCSB PDB and AlphaFold DB; inspect chains, heterogens, waters, alternate locations, and missing atoms before creating any derivative. |
 | **Receptor** | Step through guided chain, component, and topology-guarded side-chain repair decisions (`topology_guard_v3`), review `PROPKA`/`PDB2PQR` protonation proposals, optionally designate bounded `FlexRes` side chains (`1–4` pocket residues, `ADR-032`), and generate `Meeko` receptor `PDBQT` with full failure diagnostics. |
 | **Ligands** | Prepare one compound or screen up to 10,000-record `SDF`/`MOL`/`SMILES` libraries with explicit stereochemistry and physiological-pH microstate selection (`ADR-016`), rule/alert evaluation, independent `ETKDGv3`/`MMFF94s` minimization, and explicit semi-flexible `Meeko` `PDBQT` controls (`macrocycle_policy`, SMARTS bond rigidification, `flexible_amides`, recorded `effective_torsdof`). |
-| **Binding site** | Define an editable Cartesian box from co-crystallized ligands, selected residues, `P2Rank 2.5.1` pockets, manual coordinates, or acknowledged blind whole-protein coverage—translating and resizing directly in 3D. |
+| **Binding site** | Define an editable Cartesian box from co-crystallized ligands, selected residues, `P2Rank 2.5.1` pockets, prior docked hit poses (`POSE_FOCUSED` with full-atom `FlexRes` containment, `ADR-033`), manual coordinates, or acknowledged blind whole-protein coverage—translating and resizing directly in 3D. |
 | **Docking** | Execute single-ligand runs or library campaigns across **AutoDock Vina** (`vina` and `vinardo` scoring), **AutoDock4 CPU**, **AutoDock-GPU**, and (on Linux) **GNINA**, with coupled `FlexRes` side-chain tracking (`E7`/`E8`), create-only `--local_only` refinement (Vina & GNINA), and unified CPU/GPU/RAM/VRAM arbitration with preserved row-level failures. |
-| **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, inspect coupled `PoseBusters` + `MMFF94s` strain (`M3`) and declarative `ProLIF` pharmacophoric rules / Tanimoto IFP (`M4`), run opt-in rank-space `PC-Q` / `PC-ECR` / gated `PC-L2` consensus (`ADR-030`), and manage records with atomic recoverable `Trash`. |
+| **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, inspect coupled `PoseBusters` + `MMFF94s` strain (`M3`) and declarative `ProLIF` pharmacophoric rules / Tanimoto IFP (`M4`), run opt-in rank-space `PC-Q` / `PC-ECR` / gated `PC-L2` consensus (`ADR-030`), expand selected leads into curated analog mini-libraries (offline `RDKit` or opt-in PubChem/ChEMBL behind an explicit IP consent gate, `ADR-033`), and manage records with atomic recoverable `Trash`. |
 | **Validation** | Compute symmetry-aware, **in-place** heavy-atom RMSD (never superposed) from completed individual Vina, AutoDock4 CPU/GPU, or Linux GNINA jobs against an immutable crystallographic extraction separating **sampling** from **ranking**, and run two-stage out-of-sample **Protocol Calibration** (parent + Bemis–Murcko scaffold splits, `1-SE` parsimony, locked Confirmation, `ADR-031`). |
-| **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` formats `4` & `5`, including `M1`–`M5` provenance and consensus bundles verified via `scripts/verify_export_bundle.py`). |
+| **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` formats `4`, `5` & `6`, including `M1`–`M6.5` provenance, consensus, and hit-to-analog expansion bundles verified via `scripts/verify_export_bundle.py`). |
 
 ### Prepare libraries deliberately
 
@@ -84,7 +84,7 @@ geometry—explicitly documented as non-independent
 
 On the dedicated `codex/v0.2-dev` development branch (keeping published
 `v0.1.0-beta.2` installers on `main` untouched until `v0.2` packaging and
-bare-metal Linux Gate `D6` close), all six core milestones **`M0`–`M6`** are
+bare-metal Linux Gate `D6` close), milestones **`M0`–`M6.5`** are
 implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
 (`WSL2` + `CUDA 12.8`):
 
@@ -123,6 +123,15 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   strictly external two-axis benchmark harness under `benchmarks/external_comparison/`
   ([`V02_EXTERNAL_BENCHMARK_PROTOCOL.md`](docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md),
   [`V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`](docs/validation/V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md)).
+- **`M6.5` Hit-to-analog structural similarity expansion, pose-focused mini-library VS & `Export v6` (`ADR-033`, `0` new dependencies):**
+  100% offline `RDKit` Morgan (`r=2, 2048`, chirality-aware) + SMARTS local catalog
+  search with SQLite fingerprint caching, opt-in PubChem PUG-REST & ChEMBL REST
+  connectors behind a cryptographic IP consent gate (`consent_payload_sha256`) with
+  mandatory local RDKit rescoring, immutable `POSE_FOCUSED` boxes with full-atom
+  `FlexRes` containment, mandatory `seed_control` injection into standard
+  `ADR-016` mini-libraries, receptor-frame in-place `MCS core RMSD`, hardened `E1`
+  panel reuse, and additive `Export v6` (`python -S` verified;
+  [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)).
   Conditional `M7` (`OpenMM` offline parameterization) remains gated behind an
   offline spike; discrete receptor ensemble docking remains deferred to `v0.3+`.
 
@@ -253,10 +262,10 @@ not imply a matched-input comparison between engines.
 | [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
 | [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
 | [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 138-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6` dual-OS engineering records. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 139-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6.5` dual-OS engineering records. |
 | [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, explicit flexibility (`ADR-032`), multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
 | [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
-| [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-032`). |
+| [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-033`). |
 | [Changelog](CHANGELOG.md) | Chronological log of verified scientific and engineering changes. |
 
 ## Build from source
