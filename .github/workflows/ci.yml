@@ -77,6 +77,9 @@ jobs:
       - name: Verify platform status and validation index
         run: python scripts/check_platform_docs.py
 
+      - name: Verify ADR-031 installer budget and benchmark separation
+        run: python scripts/check_v02_installer_budget.py
+
       - name: Verify Windows environment locks
         run: python scripts/verify_windows_environment_lock.py
 
@@ -276,6 +279,9 @@ jobs:
 
       - name: Verify platform status and validation index
         run: python scripts/check_platform_docs.py
+
+      - name: Verify ADR-031 installer budget and benchmark separation
+        run: python scripts/check_v02_installer_budget.py
 
       - name: Install frontend dependencies
         run: npm ci
