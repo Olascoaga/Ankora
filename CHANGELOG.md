@@ -2,6 +2,53 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M6.5`: Hit-to-Analog Structural Similarity Expansion, Pose-Focused Mini-Library Screening & `Export v6` (`codex/v0.2-dev`) - 2026-11-21
+
+- **Governance (`ADR-033`), `0`-byte budget guard & prerequisite `E1` panel-reuse hardening (`M6.5a`, `0` new dependencies):**
+  publish [`ADR-033`](docs/architecture/ADR/ADR-033-hit-to-analog-expansion-and-pose-focused-screening.md),
+  register `M6.5` (`max_delta_bytes: 0`) in `environment/v02-installer-size-budget.json` and
+  `scripts/check_v02_installer_budget.py`, add 5 `WarningCode`s and 3 `DependencyNodeKind`s
+  (`ANALOG_CATALOG`, `ANALOG_SEARCH`, `ANALOG_SELECTION`), enforce `k_max` and `executable_sha256s`
+  in `PoseConsensusService._verify_reused_panel_context`, record `frozen_panel_parent_count` vs
+  `scored_target_parent_count`, and emit `CONSENSUS_SMALL_OR_CONGENERIC_PANEL` for small (`< 50`)
+  or monoscaffold consensus panels.
+- **Immutable `BindingSiteSource.POSE_FOCUSED` with full-atom `FlexRes` containment (`M6.5b`):**
+  add `BindingSiteSource.POSE_FOCUSED`, `PoseFocusedOrigin`, and `PoseFocusedEvidence` in
+  `schemas/binding_sites.py` and `services/binding_site_definition.py`; extract heavy atoms from
+  docked pose PDBQT (excluding H and Meeko glue pseudoatoms `G0..G9`/`CG0..CG9`), support explicit
+  `box_override`, fail closed (`422 BINDING_SITE_FLEXRES_OUTSIDE_BOX`) when any flexible side-chain
+  atom leaves interior box bounds, preserve `ADR-018` `27,000 Å³` warnings, and block stale source
+  artifacts (`409`).
+- **100% offline RDKit analog search, SQLite fingerprint cache & in-place `MCS core RMSD` (`M6.5c`):**
+  add `schemas/analog_expansion.py`, `adapters/chemistry/analog_similarity.py` (bounded SDF/SMI/CSV
+  catalog ingestion, Morgan `r=2, 2048, includeChirality=True` Tanimoto + graph-verified SMARTS,
+  stereo-preserving dedup, ephemeral search-only salt strip, `SqliteFingerprintCache`),
+  `adapters/chemistry/mcs_core_rmsd.py` (receptor-frame in-place heavy-atom MCS RMSD,
+  `superposition_applied=False`, Meeko glue-atom stripping, timeout disclosure), and create-only
+  `persistence/analog_expansion_store.py`.
+- **Gate 0 live probe & opt-in PubChem PUG-REST / ChEMBL REST behind IP consent gate (`M6.5d`):**
+  add `adapters/external/analog_providers.py` enforcing cryptographic `consent_payload_sha256`
+  verification before HTTP client creation, `1` concurrent request, `<= 1 req/s`, `<= 500`
+  candidates, `<= 10 MiB`, `<= 2` retries honoring `Retry-After`, verbatim raw response archiving,
+  and mandatory local RDKit Tanimoto recalculation separate from provider similarity.
+- **Service, derived mini-library, acyclic DAG, REST API, `MethodsReport` & `Export v6` (`M6.5e`):**
+  add `LigandSource.ANALOG_EXPANSION`, `services/analog_expansion.py` (materializing curated analogs
+  plus mandatory `seed_control` into standard immutable `LigandLibraryRecord` entering `ADR-016` /
+  existing docking / `M3`–`M5`), acyclic upstream-only stale-DAG tracking, `/api/v1/analog-expansion/*`
+  endpoints, `render_analog_expansion_methods`, additive `Export v6` in `campaign_export.py` &
+  `consensus_export.py` (keeping `Export v2`–`v5` byte-compatible), and upgraded stdlib-only
+  `scripts/verify_export_bundle.py` (`v2`–`v6`) verified under `python -S`.
+- **Opt-in Desktop UI (`M6.5f`):**
+  add `AnalogExpansionPanel.tsx`, opt-in triggers in `PoseInteractionPanel.tsx` and
+  `ConsensusWorkspace.tsx` (`MedoidDrawer`), `pose_focused` support in `BindingSiteWorkspace.tsx`,
+  `Export v6` badge in `ExportWorkspace.tsx`, and `AnalogExpansionM65.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md`, `139` records):**
+  verified across Windows 11 x64 (`583` passed / `1` Linux-only skip combined across `M0`–`M6.5`,
+  binding sites, `Export v2`–`v6`, GPU, methods, interactions, & frozen `LIT_PCBA`; `50/50` Vitest /
+  `398/398` tests; Vite build `9.60s`) and Linux x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime`
+  passed `45` Conda / `76` pip unchanged; `484/484` pytest with 0 skips including live `GNINA 1.3.3 CUDA`;
+  `50/50` Vitest / `398/398` tests; Vite build `8.17s`).
+
 ## Ankora `v0.2` Milestone `M6`: `Export v5`, `ADR-031` CI Budget Guard & External Two-Axis Benchmark Harness (`codex/v0.2-dev`) - 2026-11-20
 
 - **`Export v5` full `M1`–`M5` provenance & zero-dependency verifier (`M6a`, `0` new dependencies):**
