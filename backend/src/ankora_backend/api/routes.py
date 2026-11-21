@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from ankora_backend.adapters.tools.discovery import (
@@ -23,6 +23,20 @@ from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.project_store import ProjectStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.analog_expansion import (
+    AnalogCatalogRecord,
+    AnalogCatalogSummary,
+    AnalogSearchRecord,
+    AnalogSelectionRecord,
+    CreateAnalogSelectionRequest,
+    CsvCatalogSchema,
+    ExternalConsentPreview,
+    ExternalConsentPreviewRequest,
+    McsCoreRmsdRequest,
+    McsCoreRmsdResult,
+    RunOfflineAnalogSearchRequest,
+    RunOnlineAnalogSearchRequest,
+)
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchProgress,
     AutoDock4BatchRecord,
@@ -185,6 +199,7 @@ from ankora_backend.schemas.work_recovery import (
     WorkRetryRequest,
     WorkRetryResponse,
 )
+from ankora_backend.services.analog_expansion import AnalogExpansionService
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
@@ -2283,9 +2298,154 @@ def export_consensus_run(
     destination: Annotated[str | None, Query(min_length=1)] = None,
     display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
 ) -> dict[str, object]:
-    """Write a self-contained Export v5 bundle for an immutable ADR-030 consensus run."""
+    """Write a self-contained Export v5/v6 bundle for an immutable ADR-030 consensus run."""
     return ConsensusExportService.from_environment().export_consensus_run(
         consensus_id,
         destination=destination,
         display_name=display_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# ADR-033 Hit-to-Analog Structural Similarity Expansion & MCS Core RMSD (M6.5)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/analog-expansion/catalogs", response_model=list[AnalogCatalogSummary])
+def list_analog_catalogs() -> list[AnalogCatalogSummary]:
+    return AnalogExpansionService.from_environment().list_catalogs()
+
+
+@router.get(
+    "/analog-expansion/catalogs/{analog_catalog_id}",
+    response_model=AnalogCatalogRecord,
+)
+def get_analog_catalog(analog_catalog_id: str) -> AnalogCatalogRecord:
+    return AnalogExpansionService.from_environment().get_catalog(analog_catalog_id)
+
+
+@router.post(
+    "/analog-expansion/catalogs",
+    response_model=AnalogCatalogRecord,
+    status_code=201,
+)
+async def import_analog_catalog(
+    file: Annotated[UploadFile, File(...)],
+    name: Annotated[str | None, Form()] = None,
+    smiles_column: Annotated[str | None, Form()] = None,
+    id_column: Annotated[str | None, Form()] = None,
+    delimiter: Annotated[str, Form()] = ",",
+    encoding: Annotated[str, Form()] = "utf-8",
+) -> AnalogCatalogRecord:
+    content = await file.read()
+    filename = file.filename or "analog_catalog.smi"
+    csv_schema: CsvCatalogSchema | None = None
+    if smiles_column is not None and smiles_column.strip():
+        csv_schema = CsvCatalogSchema(
+            smiles_column=smiles_column.strip(),
+            id_column=id_column.strip() if id_column and id_column.strip() else None,
+            delimiter=delimiter or ",",
+            encoding=encoding or "utf-8",
+        )
+    return AnalogExpansionService.from_environment().import_local_catalog(
+        content=content,
+        filename=filename,
+        name=name,
+        csv_schema=csv_schema,
+    )
+
+
+@router.post(
+    "/analog-expansion/catalogs/from-library/{library_id}",
+    response_model=AnalogCatalogRecord,
+    status_code=201,
+)
+def snapshot_library_as_analog_catalog(
+    library_id: str,
+    name: Annotated[str | None, Query(min_length=1, max_length=120)] = None,
+) -> AnalogCatalogRecord:
+    return AnalogExpansionService.from_environment().snapshot_project_library_as_catalog(
+        library_id=library_id,
+        name=name,
+    )
+
+
+@router.post(
+    "/analog-expansion/external-consent-preview",
+    response_model=ExternalConsentPreview,
+)
+def preview_external_analog_consent(
+    payload: ExternalConsentPreviewRequest,
+) -> ExternalConsentPreview:
+    return AnalogExpansionService.from_environment().prepare_external_consent_preview(payload)
+
+
+@router.get("/analog-expansion/searches", response_model=list[AnalogSearchRecord])
+def list_analog_searches() -> list[AnalogSearchRecord]:
+    return AnalogExpansionService.from_environment().list_searches()
+
+
+@router.get(
+    "/analog-expansion/searches/{analog_search_id}",
+    response_model=AnalogSearchRecord,
+)
+def get_analog_search(analog_search_id: str) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().get_search(analog_search_id)
+
+
+@router.post(
+    "/analog-expansion/searches/offline",
+    response_model=AnalogSearchRecord,
+    status_code=201,
+)
+def run_offline_analog_search(
+    payload: RunOfflineAnalogSearchRequest,
+) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().run_offline_search(payload)
+
+
+@router.post(
+    "/analog-expansion/searches/online",
+    response_model=AnalogSearchRecord,
+    status_code=201,
+)
+def run_online_analog_search(
+    payload: RunOnlineAnalogSearchRequest,
+) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().run_online_search(payload)
+
+
+@router.get("/analog-expansion/selections", response_model=list[AnalogSelectionRecord])
+def list_analog_selections() -> list[AnalogSelectionRecord]:
+    return AnalogExpansionService.from_environment().list_selections()
+
+
+@router.get(
+    "/analog-expansion/selections/{analog_selection_id}",
+    response_model=AnalogSelectionRecord,
+)
+def get_analog_selection(analog_selection_id: str) -> AnalogSelectionRecord:
+    return AnalogExpansionService.from_environment().get_selection(analog_selection_id)
+
+
+@router.post(
+    "/analog-expansion/searches/{analog_search_id}/selections",
+    response_model=AnalogSelectionRecord,
+    status_code=201,
+)
+def create_analog_selection(
+    analog_search_id: str,
+    payload: CreateAnalogSelectionRequest,
+) -> AnalogSelectionRecord:
+    return AnalogExpansionService.from_environment().create_selection_and_derived_library(
+        analog_search_id=analog_search_id,
+        request=payload,
+    )
+
+
+@router.post(
+    "/analog-expansion/mcs-core-rmsd",
+    response_model=McsCoreRmsdResult,
+)
+def compute_analog_mcs_core_rmsd(payload: McsCoreRmsdRequest) -> McsCoreRmsdResult:
+    return AnalogExpansionService.from_environment().evaluate_mcs_core_rmsd(payload)

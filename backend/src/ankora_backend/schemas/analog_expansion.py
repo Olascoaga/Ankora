@@ -315,6 +315,31 @@ class RunOfflineAnalogSearchRequest(BaseModel):
     )
 
 
+class ExternalConsentPreviewRequest(BaseModel):
+    """Prepare the exact IP disclosure and consent hash before any external HTTP call."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_catalog_id: str = Field(min_length=1)
+    source_ligand_id: str = Field(min_length=1)
+    source_pose_artifact_id: str = Field(min_length=1)
+    provider: Literal["pubchem_pug_rest", "chembl_rest"]
+
+
+class ExternalConsentPreview(BaseModel):
+    """Exact disclosure payload shown to the scientist prior to opt-in online lookup."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["pubchem_pug_rest", "chembl_rest"]
+    endpoint_url: str = Field(min_length=1)
+    seed_name: str = Field(min_length=1)
+    seed_chemical_state_id: str | None = None
+    query_canonical_isomeric_smiles: str = Field(min_length=1)
+    consent_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    disclosure_message: str = Field(min_length=1)
+
+
 class RunOnlineAnalogSearchRequest(BaseModel):
     """Explicit opt-in request for PubChem PUG-REST or ChEMBL REST similarity search."""
 

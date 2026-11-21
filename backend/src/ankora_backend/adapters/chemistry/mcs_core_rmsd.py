@@ -8,6 +8,7 @@ Kabsch / ligand-alignment superposition, which would mask core translation or fl
 from __future__ import annotations
 
 import math
+import re
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -26,12 +27,26 @@ rdFMCS: Any = import_module("rdkit.Chem.rdFMCS")
 
 _STAGE = "analog_mcs_core_rmsd"
 _MAX_SUBSTRUCT_MATCHES = 1000
+_PSEUDOATOM_TYPE_RE = re.compile(r"^(?:C?G\d+|G|DU|LP)$", re.IGNORECASE)
+
+
+def _strip_macrocycle_pseudoatoms(pdbqt_text: str) -> str:
+    kept: list[str] = []
+    for line in pdbqt_text.splitlines():
+        if line.startswith(("ATOM  ", "HETATM")):
+            atom_name = line[12:16].strip()
+            ad_type = line[77:].strip() if len(line) > 77 else ""
+            if _PSEUDOATOM_TYPE_RE.match(ad_type) or _PSEUDOATOM_TYPE_RE.match(atom_name):
+                continue
+        kept.append(line)
+    return "\n".join(kept) + "\n"
 
 
 def _load_pose_heavy_mol(*, pose_pdbqt_text: str, conformer_sdf_path: Path) -> Any:
     """Parse docked PDBQT pose into an RDKit heavy-atom Mol with verified template bond orders."""
     template = load_reference(conformer_sdf_path)
-    pdb_block = pdbqt_to_pdb_block(pose_pdbqt_text, keep_hydrogens=False)
+    cleaned_pdbqt = _strip_macrocycle_pseudoatoms(pose_pdbqt_text)
+    pdb_block = pdbqt_to_pdb_block(cleaned_pdbqt, keep_hydrogens=False)
     pose_mol = Chem.MolFromPDBBlock(pdb_block, removeHs=True, sanitize=True)
     if pose_mol is None:
         raise AnkoraDomainError(

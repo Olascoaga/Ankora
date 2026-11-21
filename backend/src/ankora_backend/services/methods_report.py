@@ -42,6 +42,12 @@ from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.analog_expansion import (
+    AnalogSearchMode,
+    AnalogSearchRecord,
+    AnalogSelectionRecord,
+)
+from ankora_backend.schemas.binding_sites import BindingSiteRecord, BindingSiteSource
 from ankora_backend.schemas.calibration import CalibrationRunRecord
 from ankora_backend.schemas.consensus import ConsensusRunRecord
 from ankora_backend.schemas.interaction_rules import (
@@ -3330,4 +3336,89 @@ def render_consensus_methods(record: ConsensusRunRecord) -> str:
             f"bootstrap on locked Confirmation (`promoted = {str(model.promoted).lower()}`; "
             f'verdict: "{model.promotion_verdict_text}").'
         )
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_analog_expansion_methods(
+    *,
+    search: AnalogSearchRecord | None = None,
+    selection: AnalogSelectionRecord | None = None,
+    focused_site: BindingSiteRecord | None = None,
+) -> str:
+    """Render record-derived Methods prose for ADR-033 Hit-to-Analog & POSE_FOCUSED runs."""
+    lines: list[str] = [
+        "### Hit-to-Analog Structural Similarity Expansion & Pose-Focused Re-Screening",
+        "",
+    ]
+    if search is not None:
+        fp = search.fingerprint_profile
+        mode_desc = (
+            f"100% offline local catalog similarity search (`analog_catalog_id = "
+            f"{(search.analog_catalog_id or '')[:8]}`)"
+            if search.mode is AnalogSearchMode.OFFLINE_CATALOG
+            else (
+                f"explicit opt-in external similarity search via `{search.mode.value}` "
+                f"(retrieved {search.external_evidence.retrieved_at.isoformat()}, "
+                f"IP consent SHA-256 "
+                f"`{search.external_evidence.consent.consent_payload_sha256[:12]}`, "
+                f"raw response SHA-256 "
+                f"`{search.external_evidence.raw_response_sha256[:12]}`)"
+                if search.external_evidence is not None
+                else f"mode `{search.mode.value}`"
+            )
+        )
+        smarts_clause = (
+            f" with graph-verified SMARTS core filter `{search.smarts_filter}`"
+            if search.smarts_filter
+            else ""
+        )
+        lines.append(
+            f"Structural analogs around seed `{search.seed_name}` (query canonical isomeric "
+            f"SMILES resolved from ADR-016 chemical state, never reconstructed from PDBQT) were "
+            f"retrieved via {mode_desc} using RDKit {search.rdkit_version} Morgan fingerprints "
+            f"(radius={fp.radius}, fpSize={fp.fp_size}, includeChirality={fp.include_chirality}) "
+            f"and Tanimoto similarity >= {search.min_tanimoto:g} (top_k={search.top_k})"
+            f"{smarts_clause}. All candidates were scored locally by RDKit; provider similarity "
+            "values (when present) were kept in a separate column. Search-time salt stripping "
+            "operated only on ephemeral search copies and never substituted ADR-016 microstate "
+            "curation."
+        )
+    if selection is not None:
+        seed_clause = (
+            "including the parent `seed_control` for mandatory in-box re-docking"
+            if selection.include_seed_control
+            else "with explicit recorded exclusion of the parent `seed_control`"
+        )
+        lines.append(
+            f"Following explicit scientist review (`analog_selection_id = "
+            f"{selection.analog_selection_id[:8]}`), {selection.selected_count} compound(s) "
+            f"were curated ({selection.excluded_count} excluded; {seed_clause}) into immutable "
+            f"derived library `{selection.derived_library_id[:8]}` "
+            f"(SHA-256 `{selection.derived_library_sha256[:12]}`)."
+        )
+    if focused_site is not None and focused_site.decisions.source is BindingSiteSource.POSE_FOCUSED:
+        ev = focused_site.pose_focused_evidence
+        box = focused_site.box
+        flex_clause = (
+            f" Full-atom FlexRes containment was verified with a "
+            f"{ev.flex_containment_margin_angstrom:g} A interior margin."
+            if ev is not None and ev.flex_containment_checked
+            else ""
+        )
+        lines.append(
+            f"A pose-focused binding site (`binding_site_id = {focused_site.binding_site_id[:8]}`, "
+            f"center=({box.center_x:.3f}, {box.center_y:.3f}, {box.center_z:.3f}) A, "
+            f"size=({box.size_x:.3f}, {box.size_y:.3f}, {box.size_z:.3f}) A) was derived "
+            f"deterministically from real heavy atoms of saved pose "
+            f"`{ev.pose_artifact_id if ev else 'unknown'}` (SHA-256 "
+            f"`{ev.pose_sha256[:12] if ev else 'unknown'}`) in the immutable receptor coordinate "
+            f"frame.{flex_clause}"
+        )
+    lines.append(
+        "Epistemological scope (ADR-033 §1): all prioritized analogs represent computational "
+        "hypotheses compatible with the selected seed binding mode, not confirmed biological "
+        "activity or experimental affinity; 2D Tanimoto similarity does not exclude activity "
+        "cliffs, and scores from a narrowed pose-focused box are not directly comparable to "
+        "wider parent-campaign boxes (ADR-030 E4)."
+    )
     return "\n".join(lines).strip() + "\n"

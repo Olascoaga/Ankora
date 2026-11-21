@@ -1,4 +1,4 @@
-"""Standalone zero-dependency verifier for Ankora export bundles (Export v2–v5).
+"""Standalone zero-dependency verifier for Ankora export bundles (Export v2–v6).
 
 Usage:
     python scripts/verify_export_bundle.py path/to/Ankora_..._bundle.zip
@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
-SUPPORTED_EXPORT_FORMATS = frozenset({2, 3, 4, 5})
+SUPPORTED_EXPORT_FORMATS = frozenset({2, 3, 4, 5, 6})
 BUNDLE_IDENTITY_PROTOCOL = "ankora-campaign-bundle-identity-v1"
 ALLOWED_SOURCE_INTEGRITY = frozenset({"matches_recorded_sha256", "export_time_digest_only"})
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -526,6 +526,31 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                 verified_evidence_files += 1
                 v02_verified_evidence_files += 1
 
+        # Verify ADR-033 Hit-to-Analog & POSE_FOCUSED artifacts (Export v6)
+        analog_verified_files = 0
+        for item in evidence.get("analog_expansion_artifacts") or []:
+            _verify_referenced_blob(
+                source,
+                rel_path=item.get("path"),
+                expected_sha256=item.get("sha256"),
+                expected_size=item.get("size_bytes"),
+                label=f"analog_expansion {item.get('kind')}:{item.get('artifact_id')}",
+            )
+            verified_evidence_files += 1
+            v02_verified_evidence_files += 1
+            analog_verified_files += 1
+
+        if fmt >= 6:
+            analog_prov = manifest.get("analog_expansion_provenance")
+            if not isinstance(analog_prov, dict) or not analog_prov:
+                raise BundleVerificationError(
+                    "Export v6 bundle is missing required analog_expansion_provenance metadata"
+                )
+            if analog_verified_files < 1:
+                raise BundleVerificationError(
+                    "Export v6 bundle must carry at least one verified analog_expansion artifact"
+                )
+
         # Verify preserved source_files (GNINA single-job & screening bundles)
         verified_source_files = 0
         matched_recorded_hashes = 0
@@ -605,6 +630,7 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             "bundle_identity_sha256": computed_bundle_sha256,
             "verified_evidence_files": verified_evidence_files,
             "v02_verified_evidence_files": v02_verified_evidence_files,
+            "analog_verified_evidence_files": analog_verified_files,
             "verified_source_files": verified_source_files,
             "matched_recorded_hashes": matched_recorded_hashes,
             "embedded_zip_verified": embedded_zip_verified,

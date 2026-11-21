@@ -14,6 +14,7 @@ from ankora_backend.schemas.warnings import StructuredWarning
 class LigandSource(StrEnum):
     CRYSTALLOGRAPHIC = "crystallographic"
     LOCAL = "local"
+    ANALOG_EXPANSION = "analog_expansion"
 
 
 class LigandFormat(StrEnum):
@@ -332,6 +333,8 @@ class LigandLibraryArtifact(BaseModel):
     size_bytes: int = Field(ge=1)
     record_count: int = Field(ge=1)
     created_at: datetime
+    origin_analog_selection_id: str | None = None
+    origin_analog_search_id: str | None = None
 
 
 class LigandLibrarySummary(BaseModel):

@@ -33,6 +33,7 @@ from ankora_backend.services.campaign_export import (
     _normalize_display_name,
     _relative,
     _write_portable_bundle,
+    collect_analog_expansion_evidence,
     collect_v02_recorded_evidence,
 )
 from ankora_backend.services.export_destinations import (
@@ -40,7 +41,10 @@ from ankora_backend.services.export_destinations import (
     slug,
     validated_destination,
 )
-from ankora_backend.services.methods_report import render_consensus_methods
+from ankora_backend.services.methods_report import (
+    render_analog_expansion_methods,
+    render_consensus_methods,
+)
 
 _STAGE = "consensus_export"
 _BUNDLE_IDENTITY_PROTOCOL = "ankora-campaign-bundle-identity-v1"
@@ -403,10 +407,26 @@ class ConsensusExportService:
         )
         collection_warnings.extend(v02_warnings)
 
+        (
+            analog_artifacts,
+            analog_provenance,
+            analog_warnings,
+            analog_search,
+            analog_selection,
+            focused_site,
+        ) = collect_analog_expansion_evidence(
+            root=self._root,
+            binding_site_id=record.binding_site_id,
+            library_id=None,
+            export_directory=directory,
+        )
+        collection_warnings.extend(analog_warnings)
+        export_format = 6 if (analog_artifacts and analog_provenance) else 5
+
         columns = consensus_table_columns(record)
         manifest_payload: dict[str, Any] = {
             "exported_at": exported_at.isoformat(),
-            "ankora_export_format": 5,
+            "ankora_export_format": export_format,
             "source_kind": "consensus_run",
             "source_id": record.consensus_id,
             "engine": {
@@ -507,8 +527,20 @@ class ConsensusExportService:
                 "archive_filename": archive_filename,
             },
         }
+        if export_format >= 6 and analog_provenance is not None:
+            manifest_payload["analog_expansion_provenance"] = analog_provenance
+            manifest_payload["recorded_evidence"]["analog_expansion_artifacts"] = analog_artifacts
 
         methods_markdown = render_consensus_methods(record)
+        if analog_search is not None or analog_selection is not None or focused_site is not None:
+            methods_markdown = (
+                f"{methods_markdown.rstrip()}\n\n"
+                + render_analog_expansion_methods(
+                    search=analog_search,
+                    selection=analog_selection,
+                    focused_site=focused_site,
+                )
+            )
         files = {
             "results.csv": consensus_results_csv(record),
             "manifest.json": json.dumps(manifest_payload, indent=2, ensure_ascii=False) + "\n",
@@ -544,7 +576,7 @@ class ConsensusExportService:
 
         return {
             "exported_at": exported_at,
-            "ankora_export_format": 5,
+            "ankora_export_format": export_format,
             "source_kind": "consensus_run",
             "source_id": record.consensus_id,
             "export_id": export_id,

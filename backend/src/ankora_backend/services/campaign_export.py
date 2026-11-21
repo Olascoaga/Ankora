@@ -55,6 +55,7 @@ from uuid import UUID, uuid4
 from ankora_backend.adapters.engines.gnina import pair_gnina_flex_models, parse_gnina_pdbqt
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.analog_expansion_store import AnalogExpansionStore
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
@@ -62,8 +63,13 @@ from ankora_backend.persistence.docking_store import DockingArtifactStore
 from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
+from ankora_backend.schemas.analog_expansion import (
+    AnalogSearchRecord,
+    AnalogSelectionRecord,
+)
 from ankora_backend.schemas.autodock4 import AutoDock4BatchRecord
 from ankora_backend.schemas.autodock_gpu import AutoDockGpuBatchRecord
+from ankora_backend.schemas.binding_sites import BindingSiteRecord, BindingSiteSource
 from ankora_backend.schemas.docking import DockingJobStatus, VinaBatchDockingRecord
 from ankora_backend.schemas.figures import FigureManifest
 from ankora_backend.schemas.gnina import GninaJobRecord
@@ -197,6 +203,8 @@ class RecordedEvidence:
     pose_quality_assessments: list[dict[str, Any]] = field(default_factory=list)
     interaction_rule_evaluations: list[dict[str, Any]] = field(default_factory=list)
     interaction_rule_sets: list[dict[str, Any]] = field(default_factory=list)
+    analog_expansion_artifacts: list[dict[str, Any]] = field(default_factory=list)
+    analog_expansion_provenance: dict[str, Any] | None = None
 
     @property
     def has_v02_evidence(self) -> bool:
@@ -205,6 +213,10 @@ class RecordedEvidence:
             or self.interaction_rule_evaluations
             or self.interaction_rule_sets
         )
+
+    @property
+    def has_analog_expansion_evidence(self) -> bool:
+        return bool(self.analog_expansion_artifacts and self.analog_expansion_provenance)
 
     def manifest_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -231,6 +243,13 @@ class RecordedEvidence:
                 "PoseBusters physical quality assessments, MMFF94s conformational strain "
                 "diagnostics, and declarative ProLIF pharmacophoric rule evaluations were "
                 "copied verbatim from immutable v0.2 records without recomputation."
+            )
+        if self.has_analog_expansion_evidence:
+            payload["analog_expansion_artifacts"] = self.analog_expansion_artifacts
+            payload["notes"].append(
+                "ADR-033 Hit-to-Analog similarity search, human curation selection, optional "
+                "raw external provider responses, and POSE_FOCUSED binding-site records were "
+                "copied verbatim without recomputation."
             )
         return payload
 
@@ -321,12 +340,16 @@ def manifest(
     if campaign.cnn_model_identity is not None:
         engine_payload["cnn_model_identity"] = campaign.cnn_model_identity
     resolved_evidence = evidence or _empty_evidence()
+    has_analog_expansion = resolved_evidence.has_analog_expansion_evidence
     has_v02_features = (
         campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value
         or resolved_evidence.has_v02_evidence
+        or has_analog_expansion
     )
     export_format = (
-        (5 if has_v02_features else 4) if bundle_identity is not None else 2
+        (6 if has_analog_expansion else (5 if has_v02_features else 4))
+        if bundle_identity is not None
+        else 2
     )
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
@@ -355,6 +378,8 @@ def manifest(
             ),
             "interaction_rule_set_count": len(resolved_evidence.interaction_rule_sets),
         }
+    if export_format >= 6 and resolved_evidence.analog_expansion_provenance is not None:
+        payload["analog_expansion_provenance"] = resolved_evidence.analog_expansion_provenance
     if campaign.warnings:
         payload["warnings"] = campaign.warnings
     if bundle_identity is not None:
@@ -1476,6 +1501,254 @@ def collect_recorded_evidence(
     )
 
 
+def collect_analog_expansion_evidence(
+    *,
+    root: Path,
+    binding_site_id: str | None,
+    library_id: str | None,
+    export_directory: Path,
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    list[dict[str, str]],
+    AnalogSearchRecord | None,
+    AnalogSelectionRecord | None,
+    BindingSiteRecord | None,
+]:
+    """Copy immutable ADR-033 POSE_FOCUSED / Analog Expansion records verbatim into Export v6."""
+    resolved_root = root.resolve()
+    destination = export_directory.resolve()
+    project_root = resolve_project_root(resolved_root)
+    artifacts: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+    provenance_summary: dict[str, Any] = {}
+    focused_site: BindingSiteRecord | None = None
+    selection_rec: AnalogSelectionRecord | None = None
+    search_rec: AnalogSearchRecord | None = None
+
+    if binding_site_id:
+        site_path = project_root / "derived" / "binding_sites" / binding_site_id / "record.json"
+        if site_path.is_file():
+            try:
+                site = BindingSiteRecord.model_validate_json(site_path.read_text(encoding="utf-8"))
+                if site.decisions.source is BindingSiteSource.POSE_FOCUSED:
+                    focused_site = site
+                    target = (
+                        destination
+                        / "evidence"
+                        / "analog_expansion"
+                        / "pose_focused_site"
+                        / binding_site_id
+                        / "record.json"
+                    )
+                    digest, size = _copy_preserved(site_path, target)
+                    artifacts.append(
+                        {
+                            "kind": "pose_focused_binding_site",
+                            "artifact_id": binding_site_id,
+                            "path": _relative(target, destination),
+                            "sha256": digest,
+                            "size_bytes": size,
+                        }
+                    )
+                    provenance_summary["pose_focused_binding_site_id"] = binding_site_id
+                    if site.pose_focused_evidence is not None:
+                        provenance_summary["source_pose_artifact_id"] = (
+                            site.pose_focused_evidence.pose_artifact_id
+                        )
+                        provenance_summary["source_pose_sha256"] = (
+                            site.pose_focused_evidence.pose_sha256
+                        )
+            except (OSError, ValueError) as error:
+                warnings.append(
+                    {
+                        "kind": "pose_focused_site_unreadable",
+                        "identity": binding_site_id,
+                        "reason": str(error),
+                    }
+                )
+
+    if library_id:
+        lig_store = LigandArtifactStore(root=resolved_root)
+        analog_store = AnalogExpansionStore(root=resolved_root)
+        try:
+            lib = lig_store.load_library_record(library_id)
+        except AnkoraDomainError:
+            lib = None
+        if lib is not None and (
+            lib.artifact.origin_analog_selection_id or lib.artifact.origin_analog_search_id
+        ):
+            sel_id = lib.artifact.origin_analog_selection_id
+            search_id = lib.artifact.origin_analog_search_id
+            if sel_id:
+                sel_path = (
+                    project_root
+                    / "derived"
+                    / "analog_expansion"
+                    / "selections"
+                    / sel_id
+                    / "record.json"
+                )
+                if sel_path.is_file():
+                    try:
+                        selection_rec = analog_store.load_selection(sel_id)
+                        target = (
+                            destination
+                            / "evidence"
+                            / "analog_expansion"
+                            / "selections"
+                            / sel_id
+                            / "record.json"
+                        )
+                        digest, size = _copy_preserved(sel_path, target)
+                        artifacts.append(
+                            {
+                                "kind": "analog_selection",
+                                "artifact_id": sel_id,
+                                "path": _relative(target, destination),
+                                "sha256": digest,
+                                "size_bytes": size,
+                            }
+                        )
+                        provenance_summary["analog_selection_id"] = sel_id
+                        provenance_summary["include_seed_control"] = (
+                            selection_rec.include_seed_control
+                        )
+                        if not search_id:
+                            search_id = selection_rec.analog_search_id
+                    except (AnkoraDomainError, OSError, ValueError) as error:
+                        warnings.append(
+                            {
+                                "kind": "analog_selection_unreadable",
+                                "identity": sel_id,
+                                "reason": str(error),
+                            }
+                        )
+            if search_id:
+                search_path = (
+                    project_root
+                    / "derived"
+                    / "analog_expansion"
+                    / "searches"
+                    / search_id
+                    / "record.json"
+                )
+                if search_path.is_file():
+                    try:
+                        search_rec = analog_store.load_search(search_id)
+                        target = (
+                            destination
+                            / "evidence"
+                            / "analog_expansion"
+                            / "searches"
+                            / search_id
+                            / "record.json"
+                        )
+                        digest, size = _copy_preserved(search_path, target)
+                        artifacts.append(
+                            {
+                                "kind": "analog_search",
+                                "artifact_id": search_id,
+                                "path": _relative(target, destination),
+                                "sha256": digest,
+                                "size_bytes": size,
+                            }
+                        )
+                        provenance_summary["analog_search_id"] = search_id
+                        provenance_summary["search_mode"] = search_rec.mode.value
+                        provenance_summary["rdkit_version"] = search_rec.rdkit_version
+                        raw_resp = analog_store.search_raw_response_path(search_id)
+                        if raw_resp is not None and raw_resp.is_file():
+                            raw_target = (
+                                destination
+                                / "evidence"
+                                / "analog_expansion"
+                                / "searches"
+                                / search_id
+                                / raw_resp.name
+                            )
+                            r_sha, r_size = _copy_preserved(raw_resp, raw_target)
+                            artifacts.append(
+                                {
+                                    "kind": "external_provider_raw_response",
+                                    "artifact_id": search_id,
+                                    "path": _relative(raw_target, destination),
+                                    "sha256": r_sha,
+                                    "size_bytes": r_size,
+                                }
+                            )
+                        if search_rec.analog_catalog_id:
+                            cat_id = search_rec.analog_catalog_id
+                            cat_path = (
+                                project_root
+                                / "derived"
+                                / "analog_expansion"
+                                / "catalogs"
+                                / cat_id
+                                / "record.json"
+                            )
+                            if cat_path.is_file():
+                                cat_rec = analog_store.load_catalog(cat_id)
+                                cat_target = (
+                                    destination
+                                    / "evidence"
+                                    / "analog_expansion"
+                                    / "catalogs"
+                                    / cat_id
+                                    / "record.json"
+                                )
+                                c_sha, c_size = _copy_preserved(cat_path, cat_target)
+                                artifacts.append(
+                                    {
+                                        "kind": "analog_catalog_record",
+                                        "artifact_id": cat_id,
+                                        "path": _relative(cat_target, destination),
+                                        "sha256": c_sha,
+                                        "size_bytes": c_size,
+                                    }
+                                )
+                                raw_cat = analog_store.catalog_content_path(cat_id)
+                                if raw_cat.stat().st_size <= 5 * 1024 * 1024:
+                                    raw_cat_dst = (
+                                        destination
+                                        / "evidence"
+                                        / "analog_expansion"
+                                        / "catalogs"
+                                        / cat_id
+                                        / raw_cat.name
+                                    )
+                                    rc_sha, rc_size = _copy_preserved(raw_cat, raw_cat_dst)
+                                    artifacts.append(
+                                        {
+                                            "kind": "analog_catalog_snapshot",
+                                            "artifact_id": cat_id,
+                                            "path": _relative(raw_cat_dst, destination),
+                                            "sha256": rc_sha,
+                                            "size_bytes": rc_size,
+                                        }
+                                    )
+                                    provenance_summary["catalog_snapshot_embedded"] = True
+                                else:
+                                    provenance_summary["catalog_snapshot_embedded"] = False
+                                    provenance_summary["catalog_snapshot_omitted_size_policy"] = (
+                                        True
+                                    )
+                                    provenance_summary["catalog_sha256"] = cat_rec.sha256
+                    except (AnkoraDomainError, OSError, ValueError) as error:
+                        warnings.append(
+                            {
+                                "kind": "analog_search_unreadable",
+                                "identity": search_id,
+                                "reason": str(error),
+                            }
+                        )
+
+    if not artifacts:
+        return [], None, warnings, None, None, None
+    provenance_summary["artifact_count"] = len(artifacts)
+    return artifacts, provenance_summary, warnings, search_rec, selection_rec, focused_site
+
+
 def collect_v02_recorded_evidence(
     *,
     root: Path,
@@ -2495,6 +2768,26 @@ class CampaignExportService:
             catalog_id=f"{source_kind}:{batch_id}",
             export_directory=directory,
         )
+        (
+            analog_artifacts,
+            analog_provenance,
+            analog_warnings,
+            analog_search,
+            analog_selection,
+            focused_site,
+        ) = collect_analog_expansion_evidence(
+            root=self._root,
+            binding_site_id=campaign.binding_site_id,
+            library_id=campaign.library_id,
+            export_directory=directory,
+        )
+        if analog_artifacts or analog_warnings:
+            evidence = replace(
+                evidence,
+                collection_warnings=[*evidence.collection_warnings, *analog_warnings],
+                analog_expansion_artifacts=analog_artifacts,
+                analog_expansion_provenance=analog_provenance,
+            )
         # The single job's or screening campaign's own preserved bytes: required
         # inputs, so a failure aborts the export before any partial bundle exists.
         source_files: list[dict[str, Any]] = []
@@ -2538,6 +2831,17 @@ class CampaignExportService:
         # here rather than left for the author to reconstruct from the
         # manifest, and omitted rather than faked if it cannot be produced.
         methods = _methods_markdown(source_kind, batch_id)
+        if analog_search is not None or analog_selection is not None or focused_site is not None:
+            from ankora_backend.services.methods_report import render_analog_expansion_methods
+
+            analog_methods = render_analog_expansion_methods(
+                search=analog_search,
+                selection=analog_selection,
+                focused_site=focused_site,
+            )
+            methods = (
+                f"{methods.rstrip()}\n\n{analog_methods}" if methods is not None else analog_methods
+            )
         if methods is not None:
             files["methods.md"] = methods
         for name, content in files.items():
