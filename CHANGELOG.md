@@ -2,6 +2,36 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Offline Installer Attestation (`ADR-031`), Clean-Room `D4` Smoke & `M7` Spike Closure (`codex/v0.2-dev`) - 2026-11-21
+
+- **PyInstaller specs & Windows locked WebView2 pinning (`142e904`, `d856178`):**
+  update `backend/packaging/{ankora_backend,ankora_backend_linux}.spec` to bundle
+  `posebusters==0.6.5` YAML configs while omitting `2.37 MB` of demo `posebusters/datasets/`
+  files and freezing all `ankora_backend` submodules; add `--locked-webview2` pinning and fix
+  `--preserve` default append in `scripts/build_slim_windows_installer.py` after detecting
+  Microsoft Evergreen WebView2 upstream drift (`+81.74 MB` on 2026-11-21) while preserving full
+  SHA-256 + Authenticode verification.
+- **Unified three-artifact `ADR-031` byte-delta attestation (`docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md`, `140`):**
+  all three freshly built `v0.2` (`M0`–`M6.5`) offline installers pass
+  `python -S scripts/check_v02_installer_budget.py` well under `1.00 MiB` (`1,048,576 B`) delta vs
+  `v0.1.0-beta.2` (`Windows .exe` `428,043,636 B` / `+806,079 B` / `+787.19 KiB`;
+  `Linux .deb` `285,972,040 B` / `+404,424 B` / `+394.95 KiB`;
+  `Linux .tar.zst` `329,873,529 B` / `+655,342 B` / `+639.98 KiB`); Windows packaged backend
+  clean-PATH smoke passes `10/10` tools + `v0.2` endpoints; Linux clean-room `D4` smoke passes
+  (`package-smoke-evidence.json` SHA-256 `9bf9402c...`, `10/10` Core + 1-click `GNINA 1.3.3 CUDA`
+  import `11/11` + live CUDA `rescore`/`refinement` + `.tar.zst` persistence). Bare-metal Linux
+  `Gate D6` remains open for physical non-WSL workstation sign-off.
+- **Conditional `M7` OpenMM offline spike closed as `DEFER` (`docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md`, `141`):**
+  dual-OS zero-network (`socket.socket` blocked) probing of locked `OpenMM 8.5.2` confirms
+  protein-only `amber14-all` + `gbn2` minimization passes offline on both OSes while native
+  `OpenMM` fails `0/10` on diverse drug-like small molecules (`0/8` external parameterizers
+  installed vs `9/10` under locked `RDKit MMFF94s`) and real offline parameterizers
+  (`AmberTools`/`OpenFF` or `torch` neural charge models) exceed `ADR-031` Core size/policy caps
+  by `200×–350×`. Conditional `M7` is formally deferred out of `v0.2.0` Core.
+- **External benchmark target pinned (`docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md`):**
+  pinned `DrugBud-Suite/DockM8` release tag `v1.1.1` (commit `3b765ea1122d01b6d3484ea25ec789f4456d8f8a`)
+  awaiting isolated external Conda/container provisioning and dedicated two-axis compute execution.
+
 ## Ankora `v0.2` Milestone `M6.5`: Hit-to-Analog Structural Similarity Expansion, Pose-Focused Mini-Library Screening & `Export v6` (`codex/v0.2-dev`) - 2026-11-21
 
 - **Governance (`ADR-033`), `0`-byte budget guard & prerequisite `E1` panel-reuse hardening (`M6.5a`, `0` new dependencies):**

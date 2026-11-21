@@ -132,8 +132,15 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   `ADR-016` mini-libraries, receptor-frame in-place `MCS core RMSD`, hardened `E1`
   panel reuse, and additive `Export v6` (`python -S` verified;
   [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)).
-  Conditional `M7` (`OpenMM` offline parameterization) remains gated behind an
-  offline spike; discrete receptor ensemble docking remains deferred to `v0.3+`.
+- **`v0.2` Offline installer attestation & `M7` spike closure:**
+  all three packaged `v0.2` offline installers pass `python -S scripts/check_v02_installer_budget.py`
+  under `ADR-031`'s `1.00 MiB` cap (`Windows .exe` `+787.19 KiB`, `Linux .deb`
+  `+394.95 KiB`, `Linux .tar.zst` `+639.98 KiB`) and Linux clean-room `D4` smoke
+  with 1-click `GNINA 1.3.3 CUDA` ([`V02_OFFLINE_INSTALLER_ATTESTATION.md`](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md));
+  conditional `M7` (`OpenMM` offline small-molecule parameterization) is formally
+  **deferred** out of `v0.2.0` Core following dual-OS zero-network probing
+  ([`V02_M7_OPENMM_OFFLINE_SPIKE.md`](docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md)),
+  and discrete receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect
 
@@ -262,7 +269,7 @@ not imply a matched-input comparison between engines.
 | [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
 | [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
 | [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 139-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6.5` dual-OS engineering records. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 141-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6.5` dual-OS engineering & packaging records. |
 | [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, explicit flexibility (`ADR-032`), multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
 | [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
 | [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-033`). |

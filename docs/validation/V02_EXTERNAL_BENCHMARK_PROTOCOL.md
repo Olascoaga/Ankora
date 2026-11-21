@@ -1,10 +1,10 @@
 # Ankora v0.2 Preregistered External Comparison Benchmark Protocol (`Ankora v0.2` vs. Pinned `DockM8`)
 
-- **Date:** 2026-11-20
-- **Status:** Preregistered Protocol (Frozen Before External Confirmation Execution)
-- **Governance:** [`ADR-030`](../architecture/ADR/ADR-030-rank-space-consensus-prioritization.md), [`ADR-031`](../architecture/ADR/ADR-031-external-benchmark-boundary.md), [`ADR-032`](../architecture/ADR/ADR-032-explicit-flexibility-and-pose-complex-identity.md), [`ADR-012`](../architecture/ADR/ADR-012-validation-by-reference-cases.md)
+- **Date:** 2026-11-20 (external target identity pinned 2026-11-21)
+- **Status:** Preregistered Protocol & Pinned Target Identity (`DrugBud-Suite/DockM8` tag **`v1.1.1`**, commit **`3b765ea1122d01b6d3484ea25ec789f4456d8f8a`**, `2026-07-05T07:25:43Z`); Awaiting Isolated External Conda/Container Provisioning & Dedicated Two-Axis Compute Execution
+- **Governance:** [`ADR-030`](../architecture/ADR/ADR-030-rank-space-consensus-prioritization.md), [`ADR-031`](../architecture/ADR/ADR-031-external-benchmark-boundary.md), [`ADR-032`](../architecture/ADR/ADR-032-explicit-flexibility-and-pose-complex-identity.md), [`ADR-033`](../architecture/ADR/ADR-033-hit-to-analog-expansion-and-pose-focused-screening.md), [`ADR-012`](../architecture/ADR/ADR-012-validation-by-reference-cases.md)
 - **External Harness Location:** `benchmarks/external_comparison/` (strictly excluded from every Ankora installer, lockfile, and runtime per `ADR-031 §1`)
-- **Scope Boundary:** This document preregisters the prospective scientific comparison protocol, statistical hypotheses, admissibility rules, and bare-metal execution requirements. It records **zero** empirical comparison results against `DockM8` yet and does **not** alter the frozen `v0.1` claims in [`VALIDATION_STATUS.md`](VALIDATION_STATUS.md).
+- **Scope Boundary:** This document preregisters the prospective scientific comparison protocol, pinned third-party commit identity, statistical hypotheses, admissibility rules, and bare-metal execution requirements. It records **zero** empirical comparison results against `DockM8` yet and does **not** alter the frozen `v0.1` claims in [`VALIDATION_STATUS.md`](VALIDATION_STATUS.md).
 
 ---
 

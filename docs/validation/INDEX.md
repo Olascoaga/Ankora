@@ -1,6 +1,6 @@
 # Validation and Engineering Evidence Index
 
-This index catalogs all **139** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
+This index catalogs all **141** immutable validation, benchmark, engineering-smoke, and protocol records under `docs/validation/`.
 
 > **Scientific reading rule:** Every historical record preserves the exact state, hashes, and limitations that held on the date it was recorded. Engineering smokes (including WSL2/WSLg checks on synthetic or single-complex fixtures) verify software mechanics and provenance integrity; they do **not** extend the frozen scientific benchmark claims summarized in [`VALIDATION_STATUS.md`](VALIDATION_STATUS.md).
 
@@ -15,7 +15,7 @@ This index catalogs all **139** immutable validation, benchmark, engineering-smo
 | [5. Linux `GNINA 1.3.3` Single-Ligand, Screening, Ensembles & `CNN_VS` (`ADR-027`, `ADR-028`)](#5-linux-gnina-133-single-ligand-screening-ensembles--cnn_vs-adr-027-adr-028) | 26 | Engineering and integration evidence for GNINA CPU/CUDA single jobs, sequential virtual screening, `CNNscore` / `CNNaffinity` / `CNN_VS` hit prioritization, CUDA `refinement`, built-in `dense_1_3` / `default_1_3_ensemble` / `default1.0` models, redocking, ProLIF interactions, `Methods`, and Export v4. |
 | [6. Offline Installers, Redistribution Compliance, Clean-Room Smoke & CI (`ADR-024`, `ADR-029`)](#6-offline-installers-redistribution-compliance-clean-room-smoke--ci-adr-024-adr-029) | 19 | Evidence for Windows NSIS installers, Linux `.deb` and zero-`sudo` `.tar.zst` Core bundles, the 1-click offline GNINA CUDA 12.8 pack (`D4`), the bare-metal Linux workstation protocol (`D6`), hash-locked environments, third-party legal inventories, and isolated CI. |
 | [7. Workbench Interface, Accessibility, Viewer CSP & Illustrated Guide](#7-workbench-interface-accessibility-viewer-csp--illustrated-guide) | 14 | Verification records for responsive layouts, accessible dialogs, strict-CSP Mol* viewer rendering, lossless 2D/3D contact presentation, and illustrated user-guide verification. |
-| [8. Ankora v0.2 Capability Probes & Engineering Evidence (`ADR-030`–`ADR-033`)](#8-ankora-v02-capability-probes--engineering-evidence-adr-030adr-033) | 9 | Pre-implementation cross-OS CLI/format capability probes and engineering verification records for `v0.2` milestones on labelled synthetic fixtures, without extending frozen scientific benchmark claims. |
+| [8. Ankora v0.2 Capability Probes & Engineering Evidence (`ADR-030`–`ADR-033`)](#8-ankora-v02-capability-probes--engineering-evidence-adr-030adr-033) | 11 | Pre-implementation cross-OS CLI/format capability probes and engineering verification records for `v0.2` milestones on labelled synthetic fixtures, without extending frozen scientific benchmark claims. |
 
 ## 1. Public Validation Status, Strategy & Frozen Reference Cases
 
@@ -211,3 +211,5 @@ Pre-implementation cross-OS CLI and format capability probes that discharge v0.2
 | [`V02_M5_PCQ_CONSENSUS.md`](V02_M5_PCQ_CONSENSUS.md) | `Cross-platform (Windows + Linux WSL2)` | Ankora v0.2 `M5` pose-concordant quantile consensus (`PC-Q`, `PC-ECR`, gated `PC-L2`) — dual-OS engineering verification |
 | [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](V02_M65_HIT_TO_ANALOG_EXPANSION.md) | `Cross-platform (Windows + Linux WSL2)` | Ankora v0.2 `M6.5` hit-to-analog structural similarity expansion, pose-focused mini-library screening & `Export v6` — dual-OS engineering verification |
 | [`V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`](V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md) | `Cross-platform (Windows + Linux WSL2)` | Ankora v0.2 `M6` `Export v5`, `ADR-031` installer-size CI guard & external two-axis benchmark harness — dual-OS engineering verification |
+| [`V02_M7_OPENMM_OFFLINE_SPIKE.md`](V02_M7_OPENMM_OFFLINE_SPIKE.md) | `Cross-platform (Windows + Linux WSL2)` | Ankora v0.2 conditional `M7` feasibility spike — zero-network `OpenMM` small-molecule parameterization (`DEFER` verdict) |
+| [`V02_OFFLINE_INSTALLER_ATTESTATION.md`](V02_OFFLINE_INSTALLER_ATTESTATION.md) | `Cross-platform (Windows + Linux WSL2 clean-room)` | Ankora v0.2 offline installer packaging (`.exe`, `.deb`, `.tar.zst`), `ADR-031` byte attestation & Linux clean-room smoke (`D4`) |
