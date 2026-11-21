@@ -2,6 +2,40 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Milestone `M6`: `Export v5`, `ADR-031` CI Budget Guard & External Two-Axis Benchmark Harness (`codex/v0.2-dev`) - 2026-11-20
+
+- **`Export v5` full `M1`–`M5` provenance & zero-dependency verifier (`M6a`, `0` new dependencies):**
+  extend `services/campaign_export.py` so legacy rigid `v0.1` campaigns remain byte-compatible at
+  `ankora_export_format: 4` while campaigns with `sidechain_flex` or recorded `M3`/`M4` pose
+  diagnostics automatically emit `ankora_export_format: 5` with `v02_provenance` and verbatim
+  SHA-256-verified copies of `pose_quality`, `interaction_rule_evaluations`, and
+  `interaction_rule_sets`. Add `services/consensus_export.py` and
+  `POST /api/v1/consensus/runs/{consensus_id}/export` emitting two-tier `E6` consensus bundles
+  (`row: "consensus_parent"`, `methods.md` citing `10.1038/s41598-019-41594-3`, `consensus`,
+  `consensus_panels`, optional `calibrations`, and portable `.zip`), register
+  `ExportKind.CONSENSUS` + `ankora_export_format` in `ExportCatalogService`, and upgrade
+  stdlib-only `scripts/verify_export_bundle.py` (`v2`–`v5`) with `E6` anti-imputation and `v0.2`
+  blob integrity checks verified under `python -S`.
+- **`ADR-031` installer-size CI guard & strictly external two-axis benchmark harness (`M6b`):**
+  add stdlib-only `scripts/check_v02_installer_budget.py` (enforcing `M0`–`M6` byte caps,
+  reconciling release/tracked baselines, and AST + lockfile auditing `184` backend Python modules
+  for zero external harness/container coupling), wired into both `verify` and `verify-linux` jobs
+  in `.github/workflows/ci.yml`. Create strictly external `benchmarks/external_comparison/`
+  (`protocol_manifest.py`, `evaluate_comparison.py`) consuming Ankora exclusively via verified
+  `Export v4`/`v5` bundles, enforcing mandatory two-axis admissibility (`controlled` +
+  `end_to_end`), tie-aware `BEDROC_20` / `EF_1%` / `ROC-AUC` / `PR-AUC`, `PoseBusters` stratified
+  enrichment, paired parent-compound bootstrap `95% CI`, verbatim
+  `"Insufficient evidence to prefer over baseline"` null verdict, and honest negative-result
+  publication; preregister protocol in `docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md`.
+- **Desktop UI (`M6c`):**
+  add opt-in `Export v5 bundle` button & hash/download banner in `ConsensusWorkspace.tsx`,
+  `Consensus bundles` filter & `Export v5` badge in `ExportWorkspace.tsx`, and `ExportV5M6.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`, `138` records):**
+  verified across Windows 11 x64 (`554` passed / `1` Linux-only skip combined with `M0`–`M5`,
+  legacy `Export v4`, & frozen `LIT_PCBA`, `49/49` Vitest / `395/395` tests, Vite build `9.43s`)
+  and Linux x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed `45` Conda / `76` pip
+  unchanged, `433/433` pytest with 0 skips, `49/49` Vitest / `395/395` tests, Vite build `6.96s`).
+
 ## Ankora `v0.2` Milestone `M5`: Pose-Concordant Quantile Consensus (`PC-Q`, `PC-ECR`, Gated `PC-L2`) (`codex/v0.2-dev`) - 2026-11-19
 
 - **Joint `(ligand, flex)` clustering & ADR-030 rank-space consensus math (`M5a`, `0` new dependencies):**
