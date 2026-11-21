@@ -2505,7 +2505,7 @@ export interface FigureExport {
 }
 
 /** Everything this project has sent out of Ankora (workflow step 8). */
-export type ExportKind = "campaign" | "figure" | "pose_complex";
+export type ExportKind = "campaign" | "consensus" | "figure" | "pose_complex";
 
 export interface ExportFile {
   filename: string;
@@ -2533,8 +2533,32 @@ export interface ExportEntry {
   /** Legacy campaign manifests only; never interpreted as measured evidence. */
   bitwise_reproducible: boolean | null;
   directory: string;
+  ankora_export_format?: number | null;
   outside_project: boolean;
   files: ExportFile[];
+}
+
+export interface ConsensusExport {
+  exported_at: string;
+  ankora_export_format: 5;
+  source_kind: "consensus_run";
+  source_id: string;
+  export_id: string;
+  catalog_id: string;
+  display_name: string | null;
+  input_identity_sha256: string;
+  bundle_identity_sha256: string;
+  archive_filename: string;
+  variant_id: ConsensusVariantId;
+  row_count: number;
+  full_profile_count: number;
+  partial_or_unscored_count: number;
+  pose_quality_count: number;
+  interaction_rule_evaluation_count: number;
+  directory: string;
+  outside_project: boolean;
+  record_directory: string;
+  files: string[];
 }
 
 export interface ExportPage {

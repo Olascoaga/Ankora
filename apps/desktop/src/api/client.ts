@@ -67,6 +67,7 @@ import type {
   CreateCampaignConsensusRequest,
   CreateInteractionRuleSetRequest,
   CreateStructuredConsensusRequest,
+  ConsensusExport,
   ConsensusRunListResponse,
   ConsensusRunRecord,
   EvaluateInteractionRulesRequest,
@@ -1025,6 +1026,20 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
       `/consensus/runs/${encodeURIComponent(consensusId)}/pc-l2`,
       { method: "POST", body: JSON.stringify(request) },
     ),
+
+  exportConsensusRun: (
+    consensusId: string,
+    options: { destination?: string; displayName?: string } = {},
+  ): Promise<ConsensusExport> => {
+    const query = new URLSearchParams();
+    if (options.destination) query.set("destination", options.destination);
+    if (options.displayName) query.set("display_name", options.displayName);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return requestJson<ConsensusExport>(
+      `/consensus/runs/${encodeURIComponent(consensusId)}/export${suffix}`,
+      { method: "POST" },
+    );
+  },
 
   /**
    * The deterministically materialized coupled complex for one pose (`E8`).

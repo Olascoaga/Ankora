@@ -7,6 +7,7 @@ import {
   type AutoDock4RescoreBackend,
   type CalibrationRunRecord,
   type CatalogEntry,
+  type ConsensusExport,
   type ConsensusParentDetail,
   type ConsensusRunRecord,
   type ConsensusVariantId,
@@ -114,6 +115,11 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
   const [l2RegInput, setL2RegInput] = useState("1.0");
   const [fittingPcL2, setFittingPcL2] = useState(false);
   const [pcL2Error, setPcL2Error] = useState<string | null>(null);
+
+  // Opt-in Export v5 state (`M6c`).
+  const [exportingBundle, setExportingBundle] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportedBundle, setExportedBundle] = useState<ConsensusExport | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -322,6 +328,24 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
       setPcL2Error(reason instanceof Error ? reason.message : "PC-L2 calibration failed.");
     } finally {
       setFittingPcL2(false);
+    }
+  }
+
+  async function handleExportBundle() {
+    if (!selectedRun) return;
+    setExportError(null);
+    setExportingBundle(true);
+    try {
+      const result = await ankoraApi.exportConsensusRun(selectedRun.consensus_id, {
+        displayName: selectedRun.name.slice(0, 80),
+      });
+      setExportedBundle(result);
+    } catch (reason: unknown) {
+      setExportError(
+        reason instanceof Error ? reason.message : "Consensus Export v5 bundle could not be written.",
+      );
+    } finally {
+      setExportingBundle(false);
     }
   }
 
@@ -568,6 +592,8 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
                   setSelectedConsensusId(e.target.value);
                   setExpandedParents({});
                   setPcL2Error(null);
+                  setExportedBundle(null);
+                  setExportError(null);
                 }}
               >
                 {runs.map((run) => (
@@ -582,7 +608,52 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
             <span className="field-note">
               Created {formatApplicationDateTime(selectedRun.created_at)}
             </span>
+            <button
+              type="button"
+              className="quiet-button"
+              disabled={exportingBundle}
+              onClick={() => void handleExportBundle()}
+            >
+              {exportingBundle ? "Exporting v5 bundle…" : "Export v5 bundle"}
+            </button>
           </div>
+
+          {exportError ? (
+            <div className="structure-error" role="alert">
+              {exportError}
+            </div>
+          ) : null}
+
+          {exportedBundle && exportedBundle.source_id === selectedRun.consensus_id ? (
+            <div
+              className="consensus-provenance"
+              role="status"
+              aria-label="Export v5 consensus bundle"
+            >
+              <div className="consensus-chip-row">
+                <span className="read-only-badge">Export v{exportedBundle.ankora_export_format}</span>
+                <span className="read-only-badge" title={exportedBundle.input_identity_sha256}>
+                  Inputs {shortHash(exportedBundle.input_identity_sha256)}
+                </span>
+                <span className="read-only-badge" title={exportedBundle.bundle_identity_sha256}>
+                  Bundle {shortHash(exportedBundle.bundle_identity_sha256)}
+                </span>
+              </div>
+              <div className="export-files">
+                {exportedBundle.files.map((filename) => (
+                  <a
+                    key={filename}
+                    href={ankoraApi.exportContentUrl(
+                      `/exports/${exportedBundle.export_id}/${filename}`,
+                    )}
+                    download={filename}
+                  >
+                    {filename}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <section className="consensus-provenance" aria-label="Consensus provenance">
             <div className="consensus-chip-row">

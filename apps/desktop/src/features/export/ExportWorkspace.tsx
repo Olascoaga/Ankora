@@ -36,6 +36,7 @@ const PAGE_SIZE = 25;
 const KINDS: { value: ExportKind | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "campaign", label: "Campaign bundles" },
+  { value: "consensus", label: "Consensus bundles" },
   { value: "figure", label: "Figures" },
   { value: "pose_complex", label: "Complexes" },
 ];
@@ -233,22 +234,31 @@ function ExportCard({ entry }: { entry: ExportEntry }) {
     <article className="export-card" role="listitem">
       <div className="export-card-heading">
         <strong>{entry.title}</strong>
-        <span className={`docking-status ${entry.kind === "campaign" ? "completed" : ""}`}>
+        <span
+          className={`docking-status ${
+            entry.kind === "campaign" || entry.kind === "consensus" ? "completed" : ""
+          }`}
+        >
           {label(entry)}
         </span>
       </div>
       <div className="export-card-meta">
         <span>
-          {entry.kind === "campaign"
+          {entry.kind === "campaign" || entry.kind === "consensus"
             ? formatApplicationTimestamp(entry.exported_at)
             : formatApplicationDateTime(entry.exported_at)}
         </span>
         {entry.subtitle ? <span>{entry.subtitle}</span> : null}
       </div>
-      {entry.kind === "campaign" ? (
+      {entry.kind === "campaign" || entry.kind === "consensus" ? (
         <div className="export-identity" aria-label="Export identity">
           <span>
-            {entry.source_kind === "gnina_job" ? "GNINA job" : "Campaign"} <code title={entry.catalog_id ?? undefined}>{shortIdentity(entry.source_id)}</code>
+            {entry.kind === "consensus"
+              ? "Consensus"
+              : entry.source_kind === "gnina_job"
+                ? "GNINA job"
+                : "Campaign"}{" "}
+            <code title={entry.catalog_id ?? undefined}>{shortIdentity(entry.source_id)}</code>
           </span>
           <span>
             Inputs <code title={entry.input_identity_sha256 ?? undefined}>{shortIdentity(entry.input_identity_sha256)}</code>
@@ -297,8 +307,12 @@ function exportOptionLabel(item: CatalogEntry): string {
 }
 
 function label(entry: ExportEntry): string {
+  const formatTag = entry.ankora_export_format === 5 ? " · Export v5" : "";
+  if (entry.kind === "consensus") {
+    return `Consensus bundle${formatTag}`;
+  }
   if (entry.kind === "campaign") {
-    return entry.source_kind === "gnina_job" ? "GNINA result bundle" : "Campaign bundle";
+    return `${entry.source_kind === "gnina_job" ? "GNINA result bundle" : "Campaign bundle"}${formatTag}`;
   }
   if (entry.kind === "figure") return "Figure";
   return "Complex";
