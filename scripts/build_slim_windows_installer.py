@@ -328,6 +328,7 @@ def rewrite_nsis_script(
     slim_resources: Path,
     desktop_exe: Path,
     dictionary_mb: int = 128,
+    locked_webview2: Path | None = None,
 ) -> str:
     if dictionary_mb not in (32, 64, 128):
         raise ValueError("Unsupported LZMA dictionary size")
@@ -407,6 +408,17 @@ def rewrite_nsis_script(
         rewritten,
         count=1,
     )
+    if locked_webview2 is not None:
+        escaped_webview2 = str(locked_webview2.resolve()).replace("$", "$$")
+        rewritten, replaced = re.subn(
+            r'^!define WEBVIEW2INSTALLERPATH ".*"$',
+            lambda _m: f'!define WEBVIEW2INSTALLERPATH "{escaped_webview2}"',
+            rewritten,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if replaced != 1:
+            raise ValueError("Could not locate unique WEBVIEW2INSTALLERPATH directive in NSIS template")
     return rewritten
 
 
@@ -423,6 +435,7 @@ def build_slim_release(
     slim_resources_dir: Path,
     release_dir: Path,
     preserve_installers: list[Path],
+    locked_webview2: Path | None = None,
 ) -> dict:
     preserved_hashes = {str(p.resolve()): sha256(p.resolve()) for p in preserve_installers}
     if not preserved_hashes:
@@ -475,6 +488,7 @@ def build_slim_release(
         slim_resources=slim_resources_dir,
         desktop_exe=desktop_exe,
         dictionary_mb=128,
+        locked_webview2=locked_webview2,
     )
     generated_nsi = nsis_work_dir / "installer.nsi"
     generated_nsi.write_text(rewritten_nsi, encoding="utf-8")
@@ -591,11 +605,20 @@ def main() -> int:
         "--preserve",
         type=Path,
         action="append",
-        default=[
-            root / "build/windows-runtime/private-beta-20261015/Ankora_0.1.0_x64-setup.exe"
-        ],
+        default=None,
+    )
+    parser.add_argument(
+        "--locked-webview2",
+        type=Path,
+        default=None,
+        help="Optional local path to the SHA-256 & Authenticode-locked offline WebView2 installer.",
     )
     args = parser.parse_args()
+    preserve_list = (
+        args.preserve
+        if args.preserve
+        else [root / "build/windows-runtime/private-beta-20261015/Ankora_0.1.0_x64-setup.exe"]
+    )
     summary = build_slim_release(
         project_root=args.project_root,
         built_backend=args.built_backend,
@@ -607,7 +630,8 @@ def main() -> int:
         makensis_path=args.makensis,
         slim_resources_dir=args.slim_resources,
         release_dir=args.release_dir,
-        preserve_installers=args.preserve,
+        preserve_installers=preserve_list,
+        locked_webview2=args.locked_webview2,
     )
     print(json.dumps(summary, indent=2))
     return 0
