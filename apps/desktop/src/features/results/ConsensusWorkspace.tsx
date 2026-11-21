@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { ankoraApi } from "../../api/client";
+import { AnalogExpansionPanel } from "../expansion/AnalogExpansionPanel";
 import {
   DEFAULT_CLUSTER_RMSD_THRESHOLD_ANGSTROM,
   FROZEN_ECR_TAU,
@@ -842,7 +843,7 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
                           {expanded && detail ? (
                             <tr className="consensus-medoid-row">
                               <td colSpan={colCount}>
-                                <MedoidDrawer detail={detail} />
+                                <MedoidDrawer detail={detail} run={selectedRun} />
                               </td>
                             </tr>
                           ) : null}
@@ -1032,7 +1033,26 @@ function FamilyBlockBars({
   );
 }
 
-function MedoidDrawer({ detail }: { detail: ConsensusParentDetail }) {
+function parseMedoidPoseRef(
+  medoidPoseId: string,
+): { catalogId: string; ligandId: string; poseArtifactId: string } | null {
+  const parts = medoidPoseId.split(":");
+  if (parts.length < 4) return null;
+  return {
+    catalogId: `${parts[0]}:${parts[1]}`,
+    ligandId: parts[2],
+    poseArtifactId: parts.slice(3).join(":"),
+  };
+}
+
+function MedoidDrawer({
+  detail,
+  run,
+}: {
+  detail: ConsensusParentDetail;
+  run: ConsensusRunRecord;
+}) {
+  const [expandingClusterId, setExpandingClusterId] = useState<string | null>(null);
   return (
     <div className="consensus-medoid-drawer">
       <div className="consensus-medoid-drawer-title">
@@ -1045,6 +1065,8 @@ function MedoidDrawer({ detail }: { detail: ConsensusParentDetail }) {
       <div className="consensus-medoid-cards">
         {detail.medoids.map((medoid) => {
           const isSelected = medoid.cluster_id === detail.selected_medoid_cluster_id;
+          const poseRef = parseMedoidPoseRef(medoid.medoid_pose_id);
+          const isExpanding = expandingClusterId === medoid.cluster_id;
           return (
             <div
               key={medoid.cluster_id}
@@ -1086,6 +1108,32 @@ function MedoidDrawer({ detail }: { detail: ConsensusParentDetail }) {
                   },
                 )}
               </dl>
+              {poseRef ? (
+                <div className="analog-medoid-action">
+                  <button
+                    type="button"
+                    className="quiet-button"
+                    aria-expanded={isExpanding}
+                    onClick={() =>
+                      setExpandingClusterId(isExpanding ? null : medoid.cluster_id)
+                    }
+                  >
+                    {isExpanding ? "Hide analog expansion" : "Expand analogs from medoid (ADR-033)"}
+                  </button>
+                  {isExpanding ? (
+                    <AnalogExpansionPanel
+                      sourceCatalogId={poseRef.catalogId}
+                      sourceLigandId={poseRef.ligandId}
+                      sourcePoseArtifactId={poseRef.poseArtifactId}
+                      receptorId={run.receptor_id}
+                      parentBindingSiteId={run.binding_site_id}
+                      sourceConsensusId={run.consensus_id}
+                      sourceClusterId={medoid.cluster_id}
+                      seedLabel={detail.parent_compound_id}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}

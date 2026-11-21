@@ -307,7 +307,12 @@ function exportOptionLabel(item: CatalogEntry): string {
 }
 
 function label(entry: ExportEntry): string {
-  const formatTag = entry.ankora_export_format === 5 ? " · Export v5" : "";
+  const formatTag =
+    entry.ankora_export_format === 6
+      ? " · Export v6"
+      : entry.ankora_export_format === 5
+        ? " · Export v5"
+        : "";
   if (entry.kind === "consensus") {
     return `Consensus bundle${formatTag}`;
   }

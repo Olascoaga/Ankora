@@ -385,7 +385,13 @@ export interface ReceptorPreparationRecord {
   flex_atom_types?: string[];
 }
 
-export type BindingSiteSource = "co_crystallized_ligand" | "selected_residues" | "manual" | "full_protein_blind" | "pocket_detected";
+export type BindingSiteSource =
+  | "co_crystallized_ligand"
+  | "selected_residues"
+  | "manual"
+  | "full_protein_blind"
+  | "pocket_detected"
+  | "pose_focused";
 
 export interface BindingBox {
   center_x: number;
@@ -438,6 +444,37 @@ export interface PocketSelection {
   pocket_id: string;
 }
 
+export interface PoseFocusedOrigin {
+  source_catalog_id: string;
+  ligand_id: string;
+  pose_artifact_id: string;
+  padding_angstrom?: number;
+  flex_containment_margin_angstrom?: number;
+  box_override?: BindingBox | null;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+}
+
+export interface PoseFocusedEvidence {
+  source_catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  pose_artifact_id: string;
+  pose_sha256: string;
+  pose_flex_sidechains_sha256?: string | null;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  heavy_atom_count: number;
+  excluded_hydrogen_count: number;
+  excluded_pseudoatom_count: number;
+  computed_base_box: BindingBox;
+  box_overridden: boolean;
+  flex_containment_checked: boolean;
+  flex_containment_margin_angstrom: number;
+}
+
 export interface BindingSiteRequest {
   source: BindingSiteSource;
   ligand_origin: LigandDerivedOrigin | null;
@@ -446,6 +483,7 @@ export interface BindingSiteRequest {
   blind_margin_angstrom: number;
   acknowledge_exploratory_full_protein?: boolean;
   pocket_selection: PocketSelection | null;
+  pose_focused?: PoseFocusedOrigin | null;
   parent_binding_site_id: string | null;
 }
 
@@ -454,6 +492,7 @@ export interface BindingSitePreview {
   source: BindingSiteSource;
   box: BindingBox;
   warnings: StructuredWarning[];
+  pose_focused_evidence?: PoseFocusedEvidence | null;
 }
 
 export interface BindingSiteRecord {
@@ -466,9 +505,10 @@ export interface BindingSiteRecord {
   stale: boolean;
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent[];
+  pose_focused_evidence?: PoseFocusedEvidence | null;
 }
 
-export type LigandSource = "crystallographic" | "local";
+export type LigandSource = "crystallographic" | "local" | "analog_expansion";
 export type LigandFormat = "sdf" | "mol" | "smiles";
 
 export interface LigandLocator {
@@ -3554,4 +3594,229 @@ export interface ConsensusRunRecord {
 
 export interface ConsensusRunListResponse {
   runs: ConsensusRunRecord[];
+}
+
+// --- ADR-033 Hit-to-Analog Structural Similarity Expansion & MCS Core RMSD (M6.5) ---
+
+export type AnalogCatalogFormat =
+  | "sdf"
+  | "smi"
+  | "smiles"
+  | "csv"
+  | "project_library_snapshot";
+
+export type AnalogSearchMode =
+  | "offline_catalog"
+  | "online_pubchem"
+  | "online_chembl";
+
+export type AnalogCandidateRole = "seed_control" | "analog";
+
+export type ExternalAnalogProvider = "pubchem_pug_rest" | "chembl_rest";
+
+export interface CsvCatalogSchema {
+  smiles_column: string;
+  id_column?: string | null;
+  delimiter?: string;
+  encoding?: string;
+}
+
+export interface AnalogFingerprintProfile {
+  algorithm: "morgan";
+  radius: number;
+  fp_size: number;
+  include_chirality: boolean;
+  strip_salts_for_search_only: boolean;
+  canonicalize_tautomers_for_search_only: boolean;
+}
+
+export interface AnalogCatalogSummary {
+  analog_catalog_id: string;
+  name: string;
+  source_format: AnalogCatalogFormat;
+  filename: string;
+  sha256: string;
+  size_bytes: number;
+  created_at: string;
+  source_library_id: string | null;
+  total_records: number;
+  valid_records: number;
+  invalid_records: number;
+}
+
+export interface AnalogCatalogRecord extends AnalogCatalogSummary {
+  csv_schema: CsvCatalogSchema | null;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface AnalogSearchHit {
+  hit_id: string;
+  role: AnalogCandidateRole;
+  identifier: string;
+  source_record_index: number | null;
+  canonical_isomeric_smiles: string;
+  search_smiles: string;
+  local_rdkit_tanimoto: number;
+  provider_similarity: number | null;
+  provider_compound_id: string | null;
+  smarts_matched: boolean | null;
+  molecular_weight_g_mol: number | null;
+  heavy_atom_count: number;
+  rotatable_bond_count: number;
+  undefined_stereocenter_count: number;
+  had_multiple_fragments: boolean;
+  duplicate_of_hit_id: string | null;
+}
+
+export interface ExternalTransmissionConsent {
+  provider: ExternalAnalogProvider;
+  query_canonical_smiles: string;
+  consent_payload_sha256: string;
+  acknowledge_external_transmission: boolean;
+}
+
+export interface ExternalConsentPreviewRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  provider: ExternalAnalogProvider;
+}
+
+export interface ExternalConsentPreview {
+  provider: ExternalAnalogProvider;
+  endpoint_url: string;
+  seed_name: string;
+  seed_chemical_state_id: string | null;
+  query_canonical_isomeric_smiles: string;
+  consent_payload_sha256: string;
+  disclosure_message: string;
+}
+
+export interface ExternalProviderEvidence {
+  provider: ExternalAnalogProvider;
+  endpoint_url: string;
+  request_parameters: Record<string, unknown>;
+  http_status_codes: number[];
+  retrieved_at: string;
+  provider_version: string | null;
+  raw_response_filename: string;
+  raw_response_sha256: string;
+  raw_response_bytes: number;
+  truncated_or_capped: boolean;
+  consent: ExternalTransmissionConsent;
+}
+
+export interface AnalogSearchRecord {
+  analog_search_id: string;
+  created_at: string;
+  mode: AnalogSearchMode;
+  source_catalog_id: string;
+  source_record_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_pose_sha256: string;
+  source_consensus_id: string | null;
+  source_cluster_id: string | null;
+  seed_name: string;
+  seed_chemical_state_id: string | null;
+  query_canonical_isomeric_smiles: string;
+  query_search_smiles: string;
+  analog_catalog_id: string | null;
+  fingerprint_profile: AnalogFingerprintProfile;
+  rdkit_version: string;
+  min_tanimoto: number;
+  top_k: number;
+  smarts_filter: string | null;
+  total_evaluated: number;
+  invalid_skipped: number;
+  truncated_by_top_k: boolean;
+  cache_hit: boolean;
+  hits: AnalogSearchHit[];
+  external_evidence: ExternalProviderEvidence | null;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface RunOfflineAnalogSearchRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  analog_catalog_id: string;
+  min_tanimoto?: number;
+  top_k?: number;
+  smarts_filter?: string | null;
+}
+
+export interface RunOnlineAnalogSearchRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  provider: ExternalAnalogProvider;
+  provider_min_similarity?: number;
+  min_local_rdkit_tanimoto?: number;
+  max_candidates?: number;
+  smarts_filter?: string | null;
+  consent: ExternalTransmissionConsent;
+}
+
+export interface CreateAnalogSelectionRequest {
+  library_name: string;
+  selected_hit_ids: string[];
+  include_seed_control: boolean;
+  seed_exclusion_reason?: string | null;
+  exclusion_reasons_by_hit_id?: Record<string, string>;
+}
+
+export interface AnalogSelectionRecord {
+  analog_selection_id: string;
+  analog_search_id: string;
+  created_at: string;
+  library_name: string;
+  derived_library_id: string;
+  derived_library_sha256: string;
+  include_seed_control: boolean;
+  selected_count: number;
+  excluded_count: number;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface McsCoreRmsdRequest {
+  seed_catalog_id: string;
+  seed_ligand_id: string;
+  seed_pose_artifact_id: string;
+  target_catalog_id: string;
+  target_ligand_id: string;
+  target_pose_artifact_id: string;
+  timeout_seconds?: number;
+  ring_matches_ring_only?: boolean;
+  complete_rings_only?: boolean;
+}
+
+export interface McsCoreRmsdResult {
+  seed_pose_artifact_id: string;
+  seed_pose_sha256: string;
+  target_pose_artifact_id: string;
+  target_pose_sha256: string;
+  status: "evaluated" | "no_common_substructure" | "not_evaluable";
+  mcs_smarts: string | null;
+  mcs_heavy_atom_count: number;
+  seed_heavy_atom_count: number;
+  target_heavy_atom_count: number;
+  mcs_coverage_seed: number | null;
+  mcs_coverage_target: number | null;
+  mcs_timed_out: boolean;
+  receptor_frame_rmsd_angstrom: number | null;
+  superposition_applied: false;
+  timeout_seconds: number;
+  atom_compare: string;
+  bond_compare: string;
+  ring_matches_ring_only: boolean;
+  complete_rings_only: boolean;
+  warnings: StructuredWarning[];
 }

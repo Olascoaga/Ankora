@@ -1,5 +1,16 @@
 import type {
+  AnalogCatalogRecord,
+  AnalogCatalogSummary,
+  AnalogSearchRecord,
+  AnalogSelectionRecord,
   ApplyLigandLibraryFilterRequest,
+  CreateAnalogSelectionRequest,
+  ExternalConsentPreview,
+  ExternalConsentPreviewRequest,
+  McsCoreRmsdRequest,
+  McsCoreRmsdResult,
+  RunOfflineAnalogSearchRequest,
+  RunOnlineAnalogSearchRequest,
   BindingSitePreview,
   CatalogEntry,
   CatalogPage,
@@ -1040,6 +1051,88 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
       { method: "POST" },
     );
   },
+
+  listAnalogCatalogs: (): Promise<AnalogCatalogSummary[]> =>
+    getJson<AnalogCatalogSummary[]>("/analog-expansion/catalogs"),
+
+  importAnalogCatalog: (
+    file: File,
+    options: {
+      name?: string;
+      smilesColumn?: string;
+      idColumn?: string;
+      delimiter?: string;
+      encoding?: string;
+    } = {},
+  ): Promise<AnalogCatalogRecord> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (options.name) form.append("name", options.name);
+    if (options.smilesColumn) form.append("smiles_column", options.smilesColumn);
+    if (options.idColumn) form.append("id_column", options.idColumn);
+    if (options.delimiter) form.append("delimiter", options.delimiter);
+    if (options.encoding) form.append("encoding", options.encoding);
+    return requestJson<AnalogCatalogRecord>("/analog-expansion/catalogs", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  snapshotLibraryAsAnalogCatalog: (
+    libraryId: string,
+    name?: string,
+  ): Promise<AnalogCatalogRecord> => {
+    const suffix = name ? `?name=${encodeURIComponent(name)}` : "";
+    return requestJson<AnalogCatalogRecord>(
+      `/analog-expansion/catalogs/from-library/${encodeURIComponent(libraryId)}${suffix}`,
+      { method: "POST" },
+    );
+  },
+
+  previewExternalAnalogConsent: (
+    request: ExternalConsentPreviewRequest,
+  ): Promise<ExternalConsentPreview> =>
+    requestJson<ExternalConsentPreview>("/analog-expansion/external-consent-preview", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  runOfflineAnalogSearch: (
+    request: RunOfflineAnalogSearchRequest,
+  ): Promise<AnalogSearchRecord> =>
+    requestJson<AnalogSearchRecord>("/analog-expansion/searches/offline", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  runOnlineAnalogSearch: (
+    request: RunOnlineAnalogSearchRequest,
+  ): Promise<AnalogSearchRecord> =>
+    requestJson<AnalogSearchRecord>("/analog-expansion/searches/online", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  listAnalogSearches: (): Promise<AnalogSearchRecord[]> =>
+    getJson<AnalogSearchRecord[]>("/analog-expansion/searches"),
+
+  createAnalogSelection: (
+    analogSearchId: string,
+    request: CreateAnalogSelectionRequest,
+  ): Promise<AnalogSelectionRecord> =>
+    requestJson<AnalogSelectionRecord>(
+      `/analog-expansion/searches/${encodeURIComponent(analogSearchId)}/selections`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
+
+  computeAnalogMcsCoreRmsd: (request: McsCoreRmsdRequest): Promise<McsCoreRmsdResult> =>
+    requestJson<McsCoreRmsdResult>("/analog-expansion/mcs-core-rmsd", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
 
   /**
    * The deterministically materialized coupled complex for one pose (`E8`).

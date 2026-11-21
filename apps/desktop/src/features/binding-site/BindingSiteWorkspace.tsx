@@ -26,7 +26,13 @@ interface BindingSiteWorkspaceProps {
   onContinue: (record: BindingSiteRecord) => void;
 }
 
-type BindingSiteUiSource = "co_crystallized_ligand" | "selected_residues" | "manual" | "full_protein_blind" | "pocket_detected";
+type BindingSiteUiSource =
+  | "co_crystallized_ligand"
+  | "selected_residues"
+  | "manual"
+  | "full_protein_blind"
+  | "pocket_detected"
+  | "pose_focused";
 
 export function BindingSiteWorkspace({ structure, receptor, tools, record, onRecordChange, onContinue }: BindingSiteWorkspaceProps) {
   const candidates = structure.metadata.heterogens.filter(
@@ -300,6 +306,11 @@ export function BindingSiteWorkspace({ structure, receptor, tools, record, onRec
             <button type="button" className={source === "pocket_detected" ? "selected" : ""} onClick={() => selectSource("pocket_detected")}>Detected pocket</button>
             <button type="button" className={source === "manual" ? "selected" : ""} onClick={() => selectSource("manual")}>Manual coordinates</button>
           </div>
+          {source === "pose_focused" ? (
+            <p className="field-note">
+              Pose-focused search space derived from a prior docked hit pose (ADR-033). Editing box coordinates creates a new immutable manual child record without overwriting the pose-focused site.
+            </p>
+          ) : null}
           {source === "co_crystallized_ligand" ? <>
             <p className="field-note">Choose the originally co-crystallized ligand. Ankora proposes a box centered on its bounding box, padded on every side — nothing is guessed for you.</p>
             {candidates.length ? <div className="selection-list compact-list">{candidates.map((candidate, index) => {

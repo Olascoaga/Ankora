@@ -16,6 +16,7 @@ import type {
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { MolecularViewerHandle } from "../../viewer/MolecularViewer";
 import type { ViewerContact, ViewerSelection, ViewerSource } from "../../viewer/adapter";
+import { AnalogExpansionPanel } from "../expansion/AnalogExpansionPanel";
 import { FigureExportControls } from "./FigureExportControls";
 import { InteractionRulesSection } from "./InteractionRulesSection";
 import { PoseComplexExportControls } from "./PoseComplexExportControls";
@@ -100,6 +101,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [expansionOpen, setExpansionOpen] = useState(false);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -133,6 +135,7 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     setRescoreResult(null);
     setRescoreError(null);
     setOverlayCrystalRotamers(false);
+    setExpansionOpen(false);
   }, [selectedPoseId]);
 
   useEffect(() => {
@@ -480,6 +483,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
           >
             Pharmacophore rules (ProLIF PIC)
           </button>
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={expansionOpen}
+            onClick={() => setExpansionOpen((open) => !open)}
+          >
+            Expand analogs (ADR-033)
+          </button>
           {coupledFlexPose ? (
             <label className="check-row pose-flex-overlay-toggle">
               <input
@@ -670,6 +682,17 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
             setContactType("");
             setSelectedContact(contact);
           }}
+        />
+      ) : null}
+
+      {expansionOpen && pose ? (
+        <AnalogExpansionPanel
+          sourceCatalogId={entry.catalog_id}
+          sourceLigandId={molecule.ligand_id}
+          sourcePoseArtifactId={pose.artifact_id}
+          receptorId={entry.receptor_id}
+          parentBindingSiteId={entry.binding_site_id}
+          seedLabel={molecule.name}
         />
       ) : null}
 

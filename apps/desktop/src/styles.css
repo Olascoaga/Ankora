@@ -1504,3 +1504,61 @@ button { font: inherit; }
   margin-left: 8px;
   font-size: 13px;
 }
+
+
+/* ADR-033 Hit-to-Analog Structural Similarity Expansion & POSE_FOCUSED (M6.5f) */
+.analog-expansion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.analog-source-tabs,
+.analog-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.analog-step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle, #2d3748);
+  border-radius: 6px;
+}
+
+.analog-step-card h4 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.analog-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.55rem;
+}
+
+.analog-ip-consent-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem;
+  border: 1px solid var(--warning-border, #b7791f);
+  border-radius: 6px;
+  background: var(--warning-bg, rgba(183, 121, 31, 0.08));
+}
+
+.analog-hit-table-scroll {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.analog-medoid-action {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
