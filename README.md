@@ -39,9 +39,9 @@ Contacts describe geometry—not measured affinity. [Capture provenance](docs/im
 | **Ligands** | Prepare one compound or screen up to 10,000-record `SDF`/`MOL`/`SMILES` libraries with explicit stereochemistry and physiological-pH microstate selection (`ADR-016`), rule/alert evaluation, independent `ETKDGv3`/`MMFF94s` minimization, and explicit semi-flexible `Meeko` `PDBQT` controls (`macrocycle_policy`, SMARTS bond rigidification, `flexible_amides`, recorded `effective_torsdof`). |
 | **Binding site** | Define an editable Cartesian box from co-crystallized ligands, selected residues, `P2Rank 2.5.1` pockets, manual coordinates, or acknowledged blind whole-protein coverage—translating and resizing directly in 3D. |
 | **Docking** | Execute single-ligand runs or library campaigns across **AutoDock Vina** (`vina` and `vinardo` scoring), **AutoDock4 CPU**, **AutoDock-GPU**, and (on Linux) **GNINA**, with coupled `FlexRes` side-chain tracking (`E7`/`E8`), create-only `--local_only` refinement (Vina & GNINA), and unified CPU/GPU/RAM/VRAM arbitration with preserved row-level failures. |
-| **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, and manage records with atomic recoverable `Trash`. |
-| **Validation** | Compute symmetry-aware, **in-place** heavy-atom RMSD (never superposed) from completed individual Vina, AutoDock4 CPU/GPU, or Linux GNINA jobs against an immutable crystallographic extraction, separating **sampling** from **ranking** verdicts. |
-| **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` format 4). |
+| **Results** | Reopen campaigns across restarts, inspect native Vina modes, AutoDock clusters/runs, or GNINA CNN-ordered poses, compare compatible Vina vs AutoDock4 CPU rankings via Spearman correlation, inspect coupled `PoseBusters` + `MMFF94s` strain (`M3`) and declarative `ProLIF` pharmacophoric rules / Tanimoto IFP (`M4`), run opt-in rank-space `PC-Q` / `PC-ECR` / gated `PC-L2` consensus (`ADR-030`), and manage records with atomic recoverable `Trash`. |
+| **Validation** | Compute symmetry-aware, **in-place** heavy-atom RMSD (never superposed) from completed individual Vina, AutoDock4 CPU/GPU, or Linux GNINA jobs against an immutable crystallographic extraction separating **sampling** from **ranking**, and run two-stage out-of-sample **Protocol Calibration** (parent + Bemis–Murcko scaffold splits, `1-SE` parsimony, locked Confirmation, `ADR-031`). |
+| **Export** | Save publication figures (`SVG`/`PNG`/`TIFF`/`PDF`), exact ligand–receptor `PDB` complexes, record-derived `Methods` sections with DOI-verified citations and explicit `[not recorded: …]` gap markers, and portable ZIP bundles (`Export` formats `4` & `5`, including `M1`–`M5` provenance and consensus bundles verified via `scripts/verify_export_bundle.py`). |
 
 ### Prepare libraries deliberately
 
@@ -66,39 +66,65 @@ Contacts describe geometry—not measured affinity. [Capture provenance](docs/im
 | **GNINA `1.3.3`** | **Linux `x86_64` only** · `CPU` or `CUDA 12.8` single or sequential library screening | CNN-ordered poses carrying separate `CNNscore` (`[0, 1]`), `CNNaffinity` (`pK`), `CNN_VS` (`CNNscore × CNNaffinity`) hit prioritization, `rescore` or CUDA-only `refinement`, and built-in `dense_1_3` (1-model default), `default_1_3_ensemble` (3 KD models), and `default1.0` (5 models). Deferred on native Windows. |
 
 Scores from different scoring functions live on incompatible scales and are
-**never** averaged or combined into a consensus number, nor is a computational
+**never** averaged or combined in native units, nor is a computational
 score proof of experimental affinity. For compatible **AutoDock Vina** and
 **AutoDock4 (CPU)** library campaigns sharing the exact receptor, finalized
 binding site, and selection manifest, Ankora reports **Spearman rank
 correlation (`ρ`) and Top-`N` overlap** without pooling scores; GNINA remains in
-its separate CNN catalog family. Under GNINA `refinement` (`--cnn_mix_emp_force`
-off), coordinates are optimized under 3D CNN gradients and `minimizedAffinity`
-is evaluated post hoc on that CNN-refined geometry—explicitly documented as
-non-independent (`docs/scientific/DOCKING_POLICY.md`).
+its separate CNN catalog family. Opt-in cross-family prioritization on
+`codex/v0.2-dev` operates strictly in **dimensionless rank-quantile space**
+(`PC-Q`, `PC-ECR`, and Confirmation-gated `PC-L2` under `ADR-030`) over the
+exact same coupled 3D pose geometry (`--score_only`). Under GNINA `refinement`
+(`--cnn_mix_emp_force` off), coordinates are optimized under 3D CNN gradients
+and `minimizedAffinity` is evaluated post hoc on that CNN-refined
+geometry—explicitly documented as non-independent
+(`docs/scientific/DOCKING_POLICY.md`).
 
 ### Active `v0.2` development (`codex/v0.2-dev`)
 
 On the dedicated `codex/v0.2-dev` development branch (keeping published
-`v0.1.0-beta.2` installers on `main` untouched until `v0.2` packaging closes),
-Milestones **`M0`** and **`M1`** are implemented and dual-OS verified across
-Windows 11 x64 and Linux x86\_64 (`WSL2` + `CUDA 12.8`):
+`v0.1.0-beta.2` installers on `main` untouched until `v0.2` packaging and
+bare-metal Linux Gate `D6` close), all six core milestones **`M0`–`M6`** are
+implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
+(`WSL2` + `CUDA 12.8`):
 
-- **Explicit semi-flexible ligand control (`Meeko 0.7.1`, `ADR-032`):**
-  visible `macrocycle_policy` (`flexible_pseudoatoms` vs
-  `rigid_input_conformation`, unlocking macrocycles in `AutoDock4` /
-  `AutoDock-GPU`), `flexible_amides`, selective SMARTS bond rigidification with
-  explicit zero-match alerts (`LIG_RIGIDIFY_SMARTS_NO_MATCH`), and recorded
-  `effective_torsdof`.
-- **Bounded receptor side-chain flexibility (`FlexRes`, `ADR-032`):**
-  `mk_prepare_receptor -f` splits into immutable `PDBQT_RIGID` + `PDBQT_FLEX`
-  artifacts (`1–4` pocket residues / `<= 12` added $\chi$ torsions recommended
-  with `DOCKING_FLEXRES_DOF_HIGH`; `GLY`/`ALA`/`PRO`/`CYX` and duplicates
-  rejected), enforced by `AutoGrid4` map-union validation (`E7`), coupled
-  `PoseComplexIdentity` reconstruction (`E8`) across all four engines, `Mol*`
-  coupled view with translucent crystal-rotamer overlay, and create-only
-  `--local_only` pose refinement in Vina and Linux GNINA
+- **`M1` Explicit semi-flexible ligand & bounded receptor `FlexRes` (`Meeko 0.7.1`, `ADR-032`):**
+  `macrocycle_policy` (unlocking macrocycles in `AutoDock4` / `AutoDock-GPU`),
+  `flexible_amides`, SMARTS bond rigidification, `1–4` pocket `FlexRes` side
+  chains with `AutoGrid4` map-union enforcement (`E7`), coupled
+  `PoseComplexIdentity` (`E8`) across all four engines, `Mol*` crystal-rotamer
+  overlay, and create-only `--local_only` refinement
   ([`V02_M1_EXPLICIT_FLEXIBILITY.md`](docs/validation/V02_M1_EXPLICIT_FLEXIBILITY.md)).
-  Discrete multi-structure receptor ensemble docking remains deferred to `v0.3+`.
+- **`M2` Out-of-sample protocol calibration & cross-engine `--score_only` (`ADR-031 §3`):**
+  in-place cross-scoring across `Vina`, `Vinardo`, canonical `AutoDock4 epdb`,
+  and Linux `GNINA`, plus two-stage parent + Bemis–Murcko scaffold Calibration
+  → single-use locked Confirmation (`BEDROC20`, paired parent bootstrap, `1-SE`
+  parsimony, verbatim null verdict; [`V02_M2_PROTOCOL_CALIBRATION.md`](docs/validation/V02_M2_PROTOCOL_CALIBRATION.md)).
+- **`M3` Coupled physical pose plausibility & dual `MMFF94s` strain:**
+  version-locked pure-Python `PoseBusters 0.6.5` (`554.49 KiB`, MIT, `< 1 MiB`
+  budget) and dual `MMFF94s` conformational strain evaluated directly on coupled
+  `FlexRes` complexes with honest 4-state diagnostics and zero silent `UFF`
+  downgrade ([`V02_M3_POSE_QUALITY.md`](docs/validation/V02_M3_POSE_QUALITY.md)).
+- **`M4` Declarative `ProLIF` pharmacophoric rules (`PIC`) & Tanimoto IFP:**
+  receptor-validated `REQUIRED` / `ALTERNATIVE_OR` / `FORBIDDEN` rules and
+  binary/counted IFP Tanimoto similarity sealed prior to Confirmation and linked
+  to both 2D SVG and 3D `Mol*` views ([`V02_M4_INTERACTION_RULES.md`](docs/validation/V02_M4_INTERACTION_RULES.md)).
+- **`M5` Pose-Concordant Quantile Consensus (`PC-Q`, `PC-ECR`, gated `PC-L2`, `ADR-030`):**
+  complete-linkage joint `(ligand, flex)` clustering (`<= 2.0 Å`, explicit
+  `K_max`, deterministic `E3` medoid tie-break), fixed-weight `pcq-core-v1` and
+  Linux `pcq-neural-v1` (always recording core alongside), `D_ic`, separate-scale
+  `PC-ECR` (`τ = 0.05`, `1/σ`), two-tier `E6` unranked denominator retention,
+  and Confirmation-gated convex non-negative `PC-L2`
+  ([`V02_M5_PCQ_CONSENSUS.md`](docs/validation/V02_M5_PCQ_CONSENSUS.md)).
+- **`M6` `Export v5`, `ADR-031` CI installer-size guard & external benchmark harness:**
+  backward-compatible `Export v5` packaging (`M1`–`M5` provenance + consensus
+  bundles) verified under `python -S scripts/verify_export_bundle.py`, CI
+  budget/separation guard (`scripts/check_v02_installer_budget.py`), and
+  strictly external two-axis benchmark harness under `benchmarks/external_comparison/`
+  ([`V02_EXTERNAL_BENCHMARK_PROTOCOL.md`](docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md),
+  [`V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`](docs/validation/V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md)).
+  Conditional `M7` (`OpenMM` offline parameterization) remains gated behind an
+  offline spike; discrete receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect
 
@@ -227,7 +253,7 @@ not imply a matched-input comparison between engines.
 | [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
 | [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
 | [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 132-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1` dual-OS engineering records. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 138-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6` dual-OS engineering records. |
 | [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, explicit flexibility (`ADR-032`), multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
 | [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
 | [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-032`). |
