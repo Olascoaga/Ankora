@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 
 repository_root = Path(SPECPATH).parents[1]
@@ -20,6 +20,7 @@ hiddenimports = [
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",
     "uvicorn.protocols.websockets.auto",
+    *collect_submodules("ankora_backend"),
 ]
 
 # These packages either load compiled extensions/data dynamically or are entered
@@ -33,6 +34,7 @@ for package in (
     "openmm",
     "pdb2pqr",
     "pdbfixer",
+    "posebusters",
     "prolif",
     "propka",
     "rdkit",
@@ -49,6 +51,7 @@ for distribution in (
     "openmm",
     "pdb2pqr",
     "pdbfixer",
+    "posebusters",
     "prolif",
     "propka",
     "rdkit",
@@ -121,7 +124,7 @@ _OMITTED_PROLIF_DATA = {
 
 def _retain_data(entry: tuple) -> bool:
     rel = str(entry[0]).replace("\\", "/")
-    if rel.startswith(("_tcl_data/", "_tk_data/", "rdkit/Contrib/")):
+    if rel.startswith(("_tcl_data/", "_tk_data/", "rdkit/Contrib/", "posebusters/datasets/")):
         return False
     if rel.startswith("prolif/data/"):
         sub = rel.removeprefix("prolif/data/").split("/", 1)[0]
