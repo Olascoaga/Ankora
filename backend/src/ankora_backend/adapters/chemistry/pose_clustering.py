@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
+from importlib import import_module
 from math import sqrt
 from typing import Any
 
@@ -69,6 +70,50 @@ class ParentClusteringResult:
 
 def _strip_nul_lines(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if line.strip("\x00\r\n"))
+
+
+def _load_cluster_ligand_mol(pdbqt_text: str, reference_conformer_mol: Any) -> Any:
+    """Reconstruct exact ligand topology for in-place RMSD without proximity-bond artifacts.
+
+    Prefers Meeko's recorded molecular graph (`meeko.PDBQTMolecule`) when available so
+    sterically self-clashing poses cannot acquire spurious proximity covalent bonds and
+    Meeko macrocycle glue pseudoatoms (`CG0`/`G0`) are resolved cleanly. Falls back to
+    `redocking_rmsd.load_pose` for non-Meeko PDBQT fixtures while enforcing exact heavy
+    atom and bond count equality against `reference_conformer_mol`.
+    """
+    chem: Any = import_module("rdkit.Chem")
+    ref_no_h = chem.RemoveHs(reference_conformer_mol)
+    expected_atoms = int(ref_no_h.GetNumAtoms())
+    expected_bonds = int(ref_no_h.GetNumBonds())
+    try:
+        meeko: Any = import_module("meeko")
+        pmol = meeko.PDBQTMolecule(pdbqt_text, skip_typing=True)
+        reconstructed = meeko.RDKitMolCreate.from_pdbqt_mol(pmol)
+        candidate = next((mol for mol in reconstructed if mol is not None), None)
+        if candidate is not None:
+            heavy = chem.RemoveHs(candidate)
+            if (
+                int(heavy.GetNumAtoms()) == expected_atoms
+                and int(heavy.GetNumBonds()) == expected_bonds
+                and heavy.HasSubstructMatch(ref_no_h)
+            ):
+                return heavy
+    except Exception:
+        pass
+    loaded = load_pose(pdbqt_text, reference_conformer_mol)
+    if (
+        int(loaded.GetNumAtoms()) != expected_atoms
+        or int(loaded.GetNumBonds()) != expected_bonds
+    ):
+        raise _clustering_error(
+            "CONSENSUS_POSE_TOPOLOGY_MISMATCH",
+            "Reconstructed pose bond graph does not match the reference conformer topology.",
+            expected_heavy_atoms=expected_atoms,
+            observed_heavy_atoms=int(loaded.GetNumAtoms()),
+            expected_bonds=expected_bonds,
+            observed_bonds=int(loaded.GetNumBonds()),
+        )
+    return loaded
 
 
 def extract_heavy_atom_coords_from_pdbqt(
@@ -265,7 +310,7 @@ def cluster_parent_pose_complexes(
             )
         seen_pose_ids.add(item.pose_id)
         cleaned_lig = _strip_nul_lines(item.ligand_pdbqt_text)
-        lig_mol = load_pose(cleaned_lig, reference_conformer_mol)
+        lig_mol = _load_cluster_ligand_mol(cleaned_lig, reference_conformer_mol)
         flex_map: dict[_FlexAtomKey, tuple[float, float, float]] | None = None
         if mode is ReceptorFlexMode.SIDECHAIN_FLEX:
             if item.pose_flex_sidechains_pdbqt_text is None:

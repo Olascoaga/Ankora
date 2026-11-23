@@ -634,3 +634,84 @@ def test_consensus_rejects_invalid_family_membership_and_non_positive_kmax() -> 
             k_max=0,
         )
     assert exc_k.value.code == "CONSENSUS_KMAX_INVALID"
+
+
+def test_pose_clustering_handles_meeko_self_clash_without_spurious_proximity_bonds() -> None:
+    """Synthetic self-clashing pose clusters cleanly via Meeko topology; non-Meeko fails closed."""
+    import meeko
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    # Synthetic 1-butane chain where terminal carbons C1 and C4 fold within 1.1 A (steric clash)
+    mol = Chem.AddHs(Chem.MolFromSmiles("CCCC"))
+    assert AllChem.EmbedMolecule(mol, randomSeed=42) == 0
+    ref_no_h = Chem.RemoveHs(Chem.Mol(mol))
+
+    prep = meeko.MoleculePreparation()
+    setups = prep.prepare(mol)
+    pdbqt_ok, is_ok, _ = meeko.PDBQTWriterLegacy.write_string(setups[0])
+    assert is_ok
+
+    # Fold atom 4 (terminal carbon) right next to atom 1 (within 1.1 A) in the Meeko PDBQT copy
+    clashed_lines: list[str] = []
+    heavy_idx = 0
+    c1_xyz: tuple[float, float, float] | None = None
+    for line in pdbqt_ok.splitlines():
+        if line.startswith(("ATOM  ", "HETATM")):
+            atype = line[77:79].strip()
+            if atype not in {"H", "HD", "HS"}:
+                heavy_idx += 1
+                if heavy_idx == 1:
+                    c1_xyz = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
+                elif heavy_idx == 4 and c1_xyz is not None:
+                    line = (
+                        f"{line[:30]}"
+                        f"{c1_xyz[0] + 1.10:8.3f}{c1_xyz[1]:8.3f}{c1_xyz[2]:8.3f}"
+                        f"{line[54:]}"
+                    )
+        clashed_lines.append(line)
+    pdbqt_clashed_meeko = "\n".join(clashed_lines) + "\n"
+
+    # With Meeko REMARK SMILES intact, clustering preserves exact 4-atom / 3-bond topology
+    result = cluster_parent_pose_complexes(
+        candidates=[
+            ClusterCandidatePose(
+                pose_id="p-ok",
+                source_engine="vina",
+                primary_rank_order=1,
+                pose_complex=_pose_complex("p-ok"),
+                ligand_pdbqt_text=pdbqt_ok,
+            ),
+            ClusterCandidatePose(
+                pose_id="p-clashed",
+                source_engine="gnina",
+                primary_rank_order=2,
+                pose_complex=_pose_complex("p-clashed"),
+                ligand_pdbqt_text=pdbqt_clashed_meeko,
+            ),
+        ],
+        reference_conformer_mol=ref_no_h,
+        k_max=3,
+    )
+    assert result.total_input_poses == 2
+    assert result.total_clusters_found >= 1
+
+    # Without Meeko topology remarks, proximity bonding creates a spurious 4th bond -> fail closed
+    stripped_non_meeko = "\n".join(
+        line for line in clashed_lines if not line.startswith("REMARK")
+    ) + "\n"
+    with pytest.raises(AnkoraDomainError) as exc_topo:
+        cluster_parent_pose_complexes(
+            candidates=[
+                ClusterCandidatePose(
+                    pose_id="p-clashed-raw",
+                    source_engine="gnina",
+                    primary_rank_order=1,
+                    pose_complex=_pose_complex("p-clashed-raw"),
+                    ligand_pdbqt_text=stripped_non_meeko,
+                )
+            ],
+            reference_conformer_mol=ref_no_h,
+            k_max=3,
+        )
+    assert exc_topo.value.code == "CONSENSUS_POSE_TOPOLOGY_MISMATCH"

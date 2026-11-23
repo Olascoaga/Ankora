@@ -527,13 +527,30 @@ class PoseConsensusService:
                 )
                 continue
 
-            ref_mol = load_reference(conformer_path)
-            clustered = cluster_parent_pose_complexes(
-                candidates=candidates,
-                reference_conformer_mol=ref_mol,
-                k_max=request.k_max,
-                rmsd_threshold_angstrom=request.rmsd_threshold_angstrom,
-            )
+            try:
+                ref_mol = load_reference(conformer_path)
+                clustered = cluster_parent_pose_complexes(
+                    candidates=candidates,
+                    reference_conformer_mol=ref_mol,
+                    k_max=request.k_max,
+                    rmsd_threshold_angstrom=request.rmsd_threshold_angstrom,
+                )
+            except AnkoraDomainError as error:
+                parent_inputs.append(
+                    ConsensusParentInput(
+                        parent_compound_id=parent_id,
+                        parent_state_id=state_id,
+                        rotatable_bond_count=meta["rotatable_bond_count"],
+                        total_input_poses=len(candidates),
+                        total_clusters_found=0,
+                        truncated_by_k_max=False,
+                        medoids=(),
+                        failure_or_exclusion_codes=tuple(
+                            dict.fromkeys((*meta["failure_codes"], error.code))
+                        ),
+                    )
+                )
+                continue
 
             medoid_inputs: list[ConsensusPoseScoreInput] = []
             for cluster in clustered.retained_clusters:
