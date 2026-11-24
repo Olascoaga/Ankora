@@ -365,6 +365,7 @@ class CreateCampaignConsensusRequest(BaseModel):
         default=DEFAULT_CLUSTER_RMSD_THRESHOLD_ANGSTROM, gt=0.0, le=5.0, allow_inf_nan=False
     )
     reference_panel_id: str | None = None
+    rescore_workers: int | None = Field(default=None, ge=1, le=32)
 
 
 class ConsensusRunRecord(BaseModel):

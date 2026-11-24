@@ -1030,7 +1030,11 @@ class PoseRescoringService:
         epdb_dir.mkdir(parents=True, exist_ok=True)
         for src in autogrid_maps_dir.iterdir():
             if src.is_file() and src.name.startswith(f"{prefix}."):
-                shutil.copy2(src, epdb_dir / src.name)
+                dst = epdb_dir / src.name
+                try:
+                    dst.symlink_to(src)
+                except OSError:
+                    shutil.copy2(src, dst)
         staged_lig_name = "ligand.pdbqt"
         (epdb_dir / staged_lig_name).write_bytes(staged_ligand_bytes)
         staged_flex_name: str | None = None
@@ -1112,7 +1116,7 @@ class PoseRescoringService:
                 tool_name="AutoDock",
                 tool_version=ad4_install.version,
                 status=ObservationStatus.SCORED,
-                raw_score=parsed_epdb.estimated_free_energy_kcal_mol,
+                raw_score=parsed_epdb.bound_unbound_free_energy_kcal_mol,
                 failure_code=None,
             ),
             PoseRescoreFunctionEvidence(

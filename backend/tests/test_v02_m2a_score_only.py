@@ -744,3 +744,22 @@ def test_strip_pose_envelope_removes_autodock_dlg_user_and_ter_tags_on_staging()
     assert b"REMARK SMILES CCO\n" in staged
     assert b"ATOM      1  C1" in staged
     assert b"TORSDOF 0\n" in staged
+
+
+def test_autodock4_epdb_bound_unbound_correction_preserves_raw_terms() -> None:
+    """AutoDock4 4.2.6 epdb hardcodes unbound=0.00; bound_unbound_free_energy uses (1)+(3)."""
+    zwitterion_dlg = (
+        b"epdb: USER    Estimated Free Energy of Binding    =   -5.61 kcal/mol\n"
+        b"epdb: USER    (1) Final Intermolecular Energy     =   -4.33 kcal/mol\n"
+        b"epdb: USER    (2) Final Total Internal Energy     =   -2.47 kcal/mol\n"
+        b"epdb: USER    (3) Torsional Free Energy           =   +1.19 kcal/mol\n"
+        b"epdb: USER    (4) Unbound System's Energy         =   +0.00 kcal/mol\n"
+        b"autodock4: Successful Completion\n"
+    )
+    parsed = parse_autodock4_epdb_dlg(zwitterion_dlg, expect_flex=False)
+    # Raw tool output is preserved verbatim
+    assert parsed.estimated_free_energy_kcal_mol == pytest.approx(-5.61)
+    assert parsed.total_internal_kcal_mol == pytest.approx(-2.47)
+    assert parsed.unbound_system_energy_kcal_mol == pytest.approx(0.0)
+    # Canonical AutoDock4.2 `unbound_model bound` binding free energy = (1) + (3)
+    assert parsed.bound_unbound_free_energy_kcal_mol == pytest.approx(-3.14)

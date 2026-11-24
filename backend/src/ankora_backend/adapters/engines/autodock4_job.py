@@ -101,6 +101,26 @@ class ParsedAutoDock4EpdbResult:
     unbound_system_energy_kcal_mol: float | None = None
     used_flex: bool = False
 
+    @property
+    def bound_unbound_free_energy_kcal_mol(self) -> float:
+        """Return binding free energy under AutoDock4.2 `unbound_model bound`.
+
+        AutoDock4 4.2.6's `epdb` command hardcodes `(4) Unbound System's Energy = 0.00`,
+        leaving raw intramolecular ligand energy `(2)` un-subtracted in its printed
+        `Estimated Free Energy of Binding` (unlike AutoDock4 docking, AutoDock-GPU, and
+        `vina --scoring ad4`, which all evaluate `unbound_model bound` where `(4) = (2)`
+        so `DeltaG = (1) Intermolecular + (3) Torsional`). Raw `estimated_free_energy_kcal_mol`
+        and all individual terms are preserved verbatim alongside this corrected value.
+        """
+        if (
+            self.unbound_system_energy_kcal_mol is not None
+            and abs(self.unbound_system_energy_kcal_mol) <= 1e-9
+            and self.intermolecular_kcal_mol is not None
+            and self.torsional_free_energy_kcal_mol is not None
+        ):
+            return round(self.intermolecular_kcal_mol + self.torsional_free_energy_kcal_mol, 4)
+        return self.estimated_free_energy_kcal_mol
+
 
 def render_autodock4_epdb_dpf(
     *,

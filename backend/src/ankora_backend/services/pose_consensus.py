@@ -13,7 +13,9 @@ Orchestrates:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -23,6 +25,7 @@ from uuid import uuid4
 from ankora_backend import __version__
 from ankora_backend.adapters.chemistry.pose_clustering import (
     ClusterCandidatePose,
+    ParentClusteringResult,
     cluster_parent_pose_complexes,
 )
 from ankora_backend.adapters.chemistry.redocking_rmsd import load_reference
@@ -49,6 +52,7 @@ from ankora_backend.schemas.consensus import (
     CreateCampaignConsensusRequest,
     CreateStructuredConsensusRequest,
     FitPcL2Request,
+    PoseClusterSummary,
     ReferencePanelArtifact,
     SourceEngine,
 )
@@ -500,9 +504,9 @@ class PoseConsensusService:
             autogrid_map_affinity_atom_types=tuple(map_set.preflight.ligand_atom_types),
         )
 
-        parent_inputs: list[ConsensusParentInput] = []
-        observed_tools: dict[tuple[str, str], ToolIdentity] = {}
-        observed_exec_shas: dict[str, str] = {}
+        parent_inputs_by_id: dict[str, ConsensusParentInput] = {}
+        clustered_parents: list[tuple[str, str, dict[str, Any], ParentClusteringResult]] = []
+        medoid_jobs: list[tuple[str, str, PoseClusterSummary]] = []
 
         for parent_id in sorted(parent_meta):
             meta = parent_meta[parent_id]
@@ -511,19 +515,17 @@ class PoseConsensusService:
             state_id = str(meta["parent_state_id"] or f"{parent_id}-unprepared")
 
             if not candidates or conformer_path is None:
-                parent_inputs.append(
-                    ConsensusParentInput(
-                        parent_compound_id=parent_id,
-                        parent_state_id=state_id,
-                        rotatable_bond_count=meta["rotatable_bond_count"],
-                        total_input_poses=0,
-                        total_clusters_found=0,
-                        truncated_by_k_max=False,
-                        medoids=(),
-                        failure_or_exclusion_codes=tuple(
-                            dict.fromkeys(meta["failure_codes"] or ["CONSENSUS_NO_POSES"])
-                        ),
-                    )
+                parent_inputs_by_id[parent_id] = ConsensusParentInput(
+                    parent_compound_id=parent_id,
+                    parent_state_id=state_id,
+                    rotatable_bond_count=meta["rotatable_bond_count"],
+                    total_input_poses=0,
+                    total_clusters_found=0,
+                    truncated_by_k_max=False,
+                    medoids=(),
+                    failure_or_exclusion_codes=tuple(
+                        dict.fromkeys(meta["failure_codes"] or ["CONSENSUS_NO_POSES"])
+                    ),
                 )
                 continue
 
@@ -536,82 +538,109 @@ class PoseConsensusService:
                     rmsd_threshold_angstrom=request.rmsd_threshold_angstrom,
                 )
             except AnkoraDomainError as error:
-                parent_inputs.append(
-                    ConsensusParentInput(
-                        parent_compound_id=parent_id,
-                        parent_state_id=state_id,
-                        rotatable_bond_count=meta["rotatable_bond_count"],
-                        total_input_poses=len(candidates),
-                        total_clusters_found=0,
-                        truncated_by_k_max=False,
-                        medoids=(),
-                        failure_or_exclusion_codes=tuple(
-                            dict.fromkeys((*meta["failure_codes"], error.code))
-                        ),
-                    )
-                )
-                continue
-
-            medoid_inputs: list[ConsensusPoseScoreInput] = []
-            for cluster in clustered.retained_clusters:
-                lig_bytes = pose_lig_bytes_by_id[cluster.medoid_pose_id]
-                flex_bytes = pose_flex_bytes_by_id[cluster.medoid_pose_id]
-                rescore_result = self._rescoring.rescore_pose(
-                    request=PoseRescoreRequest(
-                        parent_compound_id=parent_id,
-                        parent_state_id=state_id,
-                        pose_complex=cluster.medoid_pose_complex,
-                        scoring_functions=enabled_functions,
-                        autodock4_backend=request.autodock4_backend,
-                    ),
-                    context=rescore_context,
-                    receptor_rigid_pdbqt=receptor_rigid_bytes,
-                    ligand_pose_pdbqt=lig_bytes,
-                    pose_flex_sidechains_pdbqt=flex_bytes,
-                    autogrid_maps_dir=maps_dir,
-                )
-                scores_map: dict[ScoringFunctionId, float] = {}
-                missing_codes: list[str] = []
-                for obs in rescore_result.observations:
-                    observed_tools[(obs.tool_name, obs.tool_version)] = ToolIdentity(
-                        name=obs.tool_name, version=obs.tool_version
-                    )
-                    if obs.status is ObservationStatus.SCORED and obs.raw_score is not None:
-                        scores_map[obs.scoring_function] = float(obs.raw_score)
-                    else:
-                        missing_codes.append(
-                            obs.failure_code or f"RESCORE_FAILED_{obs.scoring_function.value}"
-                        )
-                for ev in rescore_result.evidence:
-                    if ev.tool_sha256:
-                        observed_exec_shas[ev.tool_name] = ev.tool_sha256
-
-                medoid_inputs.append(
-                    ConsensusPoseScoreInput(
-                        cluster_id=cluster.cluster_id,
-                        medoid_pose_id=cluster.medoid_pose_id,
-                        pose_complex=cluster.medoid_pose_complex,
-                        canonical_coordinate_sha256=cluster.medoid_canonical_coordinate_sha256,
-                        member_count=cluster.member_count,
-                        max_intra_cluster_rmsd_angstrom=cluster.max_intra_cluster_rmsd_angstrom,
-                        search_engines_present=cluster.search_engines_present,
-                        scores_by_function=scores_map,
-                        missing_or_failed_codes=tuple(dict.fromkeys(missing_codes)),
-                    )
-                )
-
-            parent_inputs.append(
-                ConsensusParentInput(
+                parent_inputs_by_id[parent_id] = ConsensusParentInput(
                     parent_compound_id=parent_id,
                     parent_state_id=state_id,
                     rotatable_bond_count=meta["rotatable_bond_count"],
-                    total_input_poses=clustered.total_input_poses,
-                    total_clusters_found=clustered.total_clusters_found,
-                    truncated_by_k_max=clustered.truncated_by_k_max,
-                    medoids=tuple(medoid_inputs),
-                    failure_or_exclusion_codes=tuple(dict.fromkeys(meta["failure_codes"])),
+                    total_input_poses=len(candidates),
+                    total_clusters_found=0,
+                    truncated_by_k_max=False,
+                    medoids=(),
+                    failure_or_exclusion_codes=tuple(
+                        dict.fromkeys((*meta["failure_codes"], error.code))
+                    ),
+                )
+                continue
+
+            clustered_parents.append((parent_id, state_id, meta, clustered))
+            for cluster in clustered.retained_clusters:
+                medoid_jobs.append((parent_id, state_id, cluster))
+
+        def _rescore_job(
+            job: tuple[str, str, PoseClusterSummary],
+        ) -> tuple[str, PoseClusterSummary, Any]:
+            j_parent_id, j_state_id, j_cluster = job
+            lig_bytes = pose_lig_bytes_by_id[j_cluster.medoid_pose_id]
+            flex_bytes = pose_flex_bytes_by_id[j_cluster.medoid_pose_id]
+            res = self._rescoring.rescore_pose(
+                request=PoseRescoreRequest(
+                    parent_compound_id=j_parent_id,
+                    parent_state_id=j_state_id,
+                    pose_complex=j_cluster.medoid_pose_complex,
+                    scoring_functions=enabled_functions,
+                    autodock4_backend=request.autodock4_backend,
+                ),
+                context=rescore_context,
+                receptor_rigid_pdbqt=receptor_rigid_bytes,
+                ligand_pose_pdbqt=lig_bytes,
+                pose_flex_sidechains_pdbqt=flex_bytes,
+                autogrid_maps_dir=maps_dir,
+            )
+            return j_parent_id, j_cluster, res
+
+        requested_workers = request.rescore_workers
+        if requested_workers is None:
+            auto_workers = min(8, max(1, (os.cpu_count() or 2) // 2))
+            workers = min(auto_workers, max(1, len(medoid_jobs)))
+        else:
+            workers = min(requested_workers, max(1, len(medoid_jobs)))
+
+        if workers > 1 and len(medoid_jobs) > 1:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                job_results = list(executor.map(_rescore_job, medoid_jobs))
+        else:
+            job_results = [_rescore_job(job) for job in medoid_jobs]
+
+        medoids_by_parent: dict[str, list[ConsensusPoseScoreInput]] = {}
+        observed_tools: dict[tuple[str, str], ToolIdentity] = {}
+        observed_exec_shas: dict[str, str] = {}
+
+        for j_parent_id, cluster, rescore_result in job_results:
+            scores_map: dict[ScoringFunctionId, float] = {}
+            missing_codes: list[str] = []
+            for obs in rescore_result.observations:
+                observed_tools[(obs.tool_name, obs.tool_version)] = ToolIdentity(
+                    name=obs.tool_name, version=obs.tool_version
+                )
+                if obs.status is ObservationStatus.SCORED and obs.raw_score is not None:
+                    scores_map[obs.scoring_function] = float(obs.raw_score)
+                else:
+                    missing_codes.append(
+                        obs.failure_code or f"RESCORE_FAILED_{obs.scoring_function.value}"
+                    )
+            for ev in rescore_result.evidence:
+                if ev.tool_sha256:
+                    observed_exec_shas[ev.tool_name] = ev.tool_sha256
+
+            medoids_by_parent.setdefault(j_parent_id, []).append(
+                ConsensusPoseScoreInput(
+                    cluster_id=cluster.cluster_id,
+                    medoid_pose_id=cluster.medoid_pose_id,
+                    pose_complex=cluster.medoid_pose_complex,
+                    canonical_coordinate_sha256=cluster.medoid_canonical_coordinate_sha256,
+                    member_count=cluster.member_count,
+                    max_intra_cluster_rmsd_angstrom=cluster.max_intra_cluster_rmsd_angstrom,
+                    search_engines_present=cluster.search_engines_present,
+                    scores_by_function=scores_map,
+                    missing_or_failed_codes=tuple(dict.fromkeys(missing_codes)),
                 )
             )
+
+        for parent_id, state_id, meta, clustered in clustered_parents:
+            parent_inputs_by_id[parent_id] = ConsensusParentInput(
+                parent_compound_id=parent_id,
+                parent_state_id=state_id,
+                rotatable_bond_count=meta["rotatable_bond_count"],
+                total_input_poses=clustered.total_input_poses,
+                total_clusters_found=clustered.total_clusters_found,
+                truncated_by_k_max=clustered.truncated_by_k_max,
+                medoids=tuple(medoids_by_parent.get(parent_id, ())),
+                failure_or_exclusion_codes=tuple(dict.fromkeys(meta["failure_codes"])),
+            )
+
+        parent_inputs: list[ConsensusParentInput] = [
+            parent_inputs_by_id[pid] for pid in sorted(parent_meta)
+        ]
 
         structured_req = CreateStructuredConsensusRequest(
             name=request.name,
