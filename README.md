@@ -132,21 +132,29 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   `ADR-016` mini-libraries, receptor-frame in-place `MCS core RMSD`, hardened `E1`
   panel reuse, and additive `Export v6` (`python -S` verified;
   [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)).
-- **`v0.2` Offline installer attestation, `M7` spike closure & first `ADR-031` two-axis benchmark:**
+- **`v0.2` Offline installer attestation, `M7` spike closure & multi-target + induced-fit `ADR-031` external benchmarks:**
   all three packaged `v0.2` offline installers pass `python -S scripts/check_v02_installer_budget.py`
   under `ADR-031`'s `1.00 MiB` cap (`Windows .exe` `+787.19 KiB`, `Linux .deb`
   `+394.95 KiB`, `Linux .tar.zst` `+639.98 KiB`) and Linux clean-room `D4` smoke
   with 1-click `GNINA 1.3.3 CUDA` ([`V02_OFFLINE_INSTALLER_ATTESTATION.md`](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md));
   conditional `M7` (`OpenMM` offline small-molecule parameterization) is formally
   **deferred** out of `v0.2.0` Core ([`V02_M7_OPENMM_OFFLINE_SPIKE.md`](docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md));
-  and the first two-axis external comparison vs. pinned `DockM8 v1.1.1` on
-  `LIT-PCBA` `ESR_antago` (`5UFX`, `N = 300` locked scaffold Confirmation) is
-  archived verbatim ([`V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md`](docs/validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md):
-  primary `PC-Q Neural` vs. `DockM8 ECR` returns verbatim `"Insufficient evidence to prefer over baseline"`
-  on both Axis A `-0.0381` and Axis B `+0.1341`, while Ankora achieves higher
-  `PoseBusters 0.6.5` physical pose validity on both axes — `95.47%` vs. `90.24%`
-  and `97.64%` vs. `88.59%` — and single-engine `GNINA 1.3.3` outperforms `DockM8 ECR`
-  on Axis B). Discrete receptor ensemble docking remains deferred to `v0.3+`.
+  and following the Calibration-diagnosed `AutoDock4 4.2.6 epdb` `unbound_model = bound`
+  fix (`9ec95a1`), the completed three-target `LIT-PCBA` external comparison vs.
+  pinned `DockM8 v1.1.1` (`ESR_antago / 5UFX`, `TP53 / 3ZME`, `PPARG / 3B1M`,
+  `N = 780` locked scaffold Confirmation parents; [`V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md`](docs/validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md))
+  records `Ankora PC-Q Neural` equal-target macro `BEDROC_20 = 0.3082` vs.
+  `DockM8 ECR = 0.2060` (`1.50×`, leading on `3/3` targets, per-target CIs null) on
+  Axis A (`controlled`), and **`0.2827` vs. `0.0707` (`4.00×`, `ankora_preferred` on
+  `TP53` and `PPARG` raw & `PoseBusters`-valid; `3/3` `ankora_preferred` vs. `DockM8 RBR`,
+  `4.88×`)** on Axis B (`end_to_end`, `0` vs. `47` receptor pentavalent carbons across `3/3`
+  targets). On crystallographic induced-fit cross-docking ([`V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md`](docs/validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md)),
+  `Ankora M1 FlexRes` recovers `PPARG` apo `1PRG <- 3B1M/KRC` at **`0.6851 Å`** (`Vina --flex`)
+  and **`1.0833 Å`** (`GNINA --flex`) with coupled `E8 PoseBusters 0.6.5` PASS where all rigid
+  engines fail (`DockM8 5.6991 Å` / `7.8072 Å`), alongside an honest cofactor-free `1US0 <- TOL`
+  boundary control and apo `1PRG` two-axis `FlexRes` screening (`174/174` flex geometry PASS,
+  `GNINA CNN_VS` lifted `4.41×` over rigid `1PRG`, `PC-Q Core` `ankora_preferred` on Axis A).
+  Discrete receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect
 

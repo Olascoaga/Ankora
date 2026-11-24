@@ -2,6 +2,41 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Multi-Target (`ESR_antago`, `TP53`, `PPARG`) & Induced-Fit `M1 FlexRes` (`1PRG`, `1US0`) External Benchmarks vs. Pinned `DockM8 v1.1.1` (`codex/v0.2-dev`) - 2026-11-24
+
+- **Calibration-diagnosed `AutoDock4 4.2.6 epdb` physics fix & parallel medoid rescoring (`9ec95a1`):**
+  - `backend/src/ankora_backend/adapters/engines/autodock4_job.py` & `services/pose_rescoring.py`:
+    compute `ParsedAutoDock4EpdbResult.bound_unbound_free_energy_kcal_mol` (`(1) Intermolecular + (3) Torsional`)
+    when `AutoDock4 4.2.6 epdb` hardcodes `(4) Unbound = +0.00 kcal/mol`, matching `unbound_model bound`
+    in native `AutoDock-GPU 1.6` and `Vina 1.2.7 --scoring ad4` (`0.00–0.01 kcal/mol` agreement) while
+    preserving all raw `.dlg` values verbatim in provenance; stage immutable AutoGrid4 maps via read-only
+    symlinks with `shutil.copy2` fallback.
+  - `schemas/consensus.py` & `services/pose_consensus.py`: add optional `rescore_workers` deterministic
+    parallel medoid rescoring (`17×` speedup on `891` medoids). Verified dual-OS (`18/18` pytest, `ruff`,
+    `mypy --strict`, `0` new dependencies).
+- **Three-target `LIT-PCBA` two-axis benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md`, `143`):**
+  `Ankora v0.2 @ 9ec95a1` (verified `Export v5` bundles) vs. pinned `DockM8 v1.1.1` (`3b765ea`) across
+  `ESR_antago` (`5UFX`), `TP53` (`3ZME`, structural `ZN 313` + coordination overrides), and `PPARG` (`3B1M`)
+  (`N = 780` locked Bemis–Murcko scaffold Confirmation parents):
+  - Axis A (`controlled`): equal-target macro `BEDROC_20 = 0.3082` vs. `DockM8 ECR = 0.2060` (`1.50×`, Ankora higher
+    on `3/3` targets, per-target CIs null; `PoseBusters 0.6.5`-valid `0.2955` vs. `0.1876`).
+  - Axis B (`end_to_end`): equal-target macro `BEDROC_20 = 0.2827` vs. `DockM8 ECR = 0.0707` (`4.00×`, macro `ROC-AUC`
+    `0.6587` vs. `0.4659`), with statistically significant **`ankora_preferred`** (95% CI `> 0`) on `TP53` (`+0.1747`)
+    and `PPARG` (`+0.2461`) both raw and `PoseBusters`-valid, and **`ankora_preferred` on `3/3` targets** vs.
+    `DockM8 RBR` (`4.88×`). `DockM8` Axis B `PDBFixer` produced hypervalent carbons on `3/3` targets (`34`, `8`, `5`)
+    vs. `0/3` on Ankora.
+- **Induced-fit `M1 FlexRes` benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md`, `144`):**
+  - Crystallographic induced-fit cross-docking (`PPARG` apo `1PRG <- 3B1M/KRC`, gatekeepers `A:MET364, A:ARG288, A:HIS266`):
+    all rigid engines failed (`DockM8` `7.8072 Å` / best-of-5 `5.6991 Å`; Ankora rigid `4.91–5.58 Å`), whereas
+    `Ankora M1 FlexRes` recovered **`0.6851 Å`** (`Vina --flex`) and **`1.0833 Å`** (`GNINA --flex`) with coupled
+    `E8 PoseBusters 0.6.5` PASS (`5.3×–8.3×` RMSD reduction). Includes honest cofactor-free `1US0 <- 2FZD/TOL`
+    boundary control (`~2.9–3.1 Å`).
+  - Apo `PPARG` (`1PRG`) two-axis screening (`N = 180` locked Confirmation): `Ankora M1 FlexRes` achieved `174/174`
+    (`100%`) `flex_sidechain_geometry` PASS, `161/174` (`92.53%`) coupled `E8 PoseBusters 0.6.5` PASS, lifted
+    `GNINA CNN_VS` `4.41×` over rigid `1PRG` (`0.0589 -> 0.2599`, `ROC-AUC 0.5861 -> 0.7590`), and achieved
+    `PC-ECR = 0.2842` (`ROC 0.7616`, `4.13×`) vs. rigid-only `DockM8 ECR = 0.0688` (`ROC 0.3287`), while
+    `Ankora PC-Q Core` was `ankora_preferred` on Axis A (`+0.1396 [+0.0130, +0.3118]`).
+
 ## Ankora `v0.2` First Two-Axis External Benchmark vs. Pinned `DockM8 v1.1.1` (`ESR_antago` / `5UFX`) & Multi-Engine Fixes (`codex/v0.2-dev`) - 2026-11-23
 
 - **Live multi-engine & evaluator fixes uncovered during heterogeneous library execution (`4a07c19`, `2474334`, `6672b98`):**

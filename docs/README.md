@@ -35,7 +35,7 @@ Read these contracts before comparing campaigns, interpreting scores, or citing 
 | Resource | Purpose |
 | --- | --- |
 | [Public Validation Status](validation/VALIDATION_STATUS.md) · [`JSON`](validation/VALIDATION_STATUS.json) | CI-enforced summary of frozen reference cases (`PIK3CD 6OCO / M5V` completed; `SERPINE1 7AQF / RV2` frozen with documented gaps) and claims not yet established. |
-| [**Complete Validation & Evidence Index**](validation/INDEX.md) | Categorized index of all **142** scientific, benchmark, cross-platform numeric, Linux/GNINA, offline-packaging, and `v0.2` `M1–M6.5` / `ADR-031` records under `docs/validation/`. |
+| [**Complete Validation & Evidence Index**](validation/INDEX.md) | Categorized index of all **144** scientific, benchmark, cross-platform numeric, Linux/GNINA, offline-packaging, and `v0.2` `M1–M6.5` / `ADR-031` records under `docs/validation/`. |
 | [Validation Strategy](validation/VALIDATION_STRATEGY.md) | Methodology separating engineering smoke checks, retrospective reference cases, and prospective biological claims. |
 | [Virtual Screening Benchmark Protocol](validation/VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) | Preregistered retrospective LIT-PCBA benchmark design, receptor/ligand freezes, primary Vina metrics, and sensitivity plan. |
 
