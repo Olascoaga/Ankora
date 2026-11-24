@@ -2,6 +2,35 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` First Two-Axis External Benchmark vs. Pinned `DockM8 v1.1.1` (`ESR_antago` / `5UFX`) & Multi-Engine Fixes (`codex/v0.2-dev`) - 2026-11-23
+
+- **Live multi-engine & evaluator fixes uncovered during heterogeneous library execution (`4a07c19`, `2474334`, `6672b98`):**
+  - `4a07c19`: reconstruct exact Meeko PDBQT pose topology prior to RMSD clustering in
+    `adapters/chemistry/pose_clustering.py` (with strict bond-count fallback and per-parent
+    containment in `services/pose_consensus.py`), eliminating `CalcRMS` failures on
+    sterically self-clashing GNINA poses and `CG0`/`G0` macrocycles.
+  - `2474334`: strip AutoDock `.dlg` `USER`/`NEWDPF`/`TER` envelope tags on temporary
+    `--score_only` staging copies in `services/pose_rescoring.py`, fixing `Vina 1.2.7`
+    rejection of AutoDock4/AutoDock-GPU medoids while keeping raw pose files immutable.
+  - `6672b98`: align `benchmarks/external_comparison/evaluate_comparison.py` discrete
+    Truchon & Bayly (2007) `BEDROC` normalization with canonical
+    `ankora_backend.services.screening_benchmark._bedroc` (`<= 1e-12` parity regression test).
+- **First completed two-axis external comparison record (`docs/validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md`, `142` records):**
+  evaluated `Ankora v0.2` (verified `Export v5` bundles) vs. isolated pinned
+  `DrugBud-Suite/DockM8 v1.1.1` (`3b765ea`) on `LIT-PCBA` `ESR_antago` (`5UFX`, `500` parents,
+  `200` Calibration / `300` Locked Confirmation grouped by Bemis–Murcko scaffold, `split_identity_sha256`
+  `33cb058c...`). Primary `PC-Q Neural` vs. `DockM8 ECR` returns verbatim
+  `"Insufficient evidence to prefer over baseline"` on both Axis A (`controlled`: `0.2659` vs.
+  `0.3040`, `Δ = -0.0381`, `95% CI [-0.2044, +0.1184]`) and Axis B (`end_to_end`: `0.2707` vs.
+  `0.1366`, `Δ = +0.1341`, `95% CI [-0.0582, +0.3339]`; `ROC-AUC 0.6707` vs. `0.4703`).
+  Ankora achieves higher `PoseBusters 0.6.5` physical pose validity on both Axis A (`95.47%` vs.
+  `90.24%`) and Axis B (`97.64%` vs. `88.59%`), recovers `10/10` macrocycles on Axis B via `M1`
+  `RIGID_INPUT_CONFORMATION`, and outperforms `DockM8 ECR` with single-engine `GNINA 1.3.3` on
+  Axis B (`CNNaffinity` `Δ = +0.2688`, `95% CI [+0.0331, +0.4846]`; `CNN_VS` `Δ = +0.2569`,
+  `95% CI [+0.0225, +0.4715]`) as well as `PC-Q Neural` vs. `DockM8 RBR` on Axis B (`Δ = +0.1776`).
+  Single-target WSL2/WSLg evidence only; bare-metal Linux `Gate D6` and multi-target/induced-fit
+  evaluations remain pending.
+
 ## Ankora `v0.2` Offline Installer Attestation (`ADR-031`), Clean-Room `D4` Smoke & `M7` Spike Closure (`codex/v0.2-dev`) - 2026-11-21
 
 - **PyInstaller specs & Windows locked WebView2 pinning (`142e904`, `d856178`):**

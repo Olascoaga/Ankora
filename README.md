@@ -132,15 +132,21 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   `ADR-016` mini-libraries, receptor-frame in-place `MCS core RMSD`, hardened `E1`
   panel reuse, and additive `Export v6` (`python -S` verified;
   [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)).
-- **`v0.2` Offline installer attestation & `M7` spike closure:**
+- **`v0.2` Offline installer attestation, `M7` spike closure & first `ADR-031` two-axis benchmark:**
   all three packaged `v0.2` offline installers pass `python -S scripts/check_v02_installer_budget.py`
   under `ADR-031`'s `1.00 MiB` cap (`Windows .exe` `+787.19 KiB`, `Linux .deb`
   `+394.95 KiB`, `Linux .tar.zst` `+639.98 KiB`) and Linux clean-room `D4` smoke
   with 1-click `GNINA 1.3.3 CUDA` ([`V02_OFFLINE_INSTALLER_ATTESTATION.md`](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md));
   conditional `M7` (`OpenMM` offline small-molecule parameterization) is formally
-  **deferred** out of `v0.2.0` Core following dual-OS zero-network probing
-  ([`V02_M7_OPENMM_OFFLINE_SPIKE.md`](docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md)),
-  and discrete receptor ensemble docking remains deferred to `v0.3+`.
+  **deferred** out of `v0.2.0` Core ([`V02_M7_OPENMM_OFFLINE_SPIKE.md`](docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md));
+  and the first two-axis external comparison vs. pinned `DockM8 v1.1.1` on
+  `LIT-PCBA` `ESR_antago` (`5UFX`, `N = 300` locked scaffold Confirmation) is
+  archived verbatim ([`V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md`](docs/validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md):
+  primary `PC-Q Neural` vs. `DockM8 ECR` returns verbatim `"Insufficient evidence to prefer over baseline"`
+  on both Axis A `-0.0381` and Axis B `+0.1341`, while Ankora achieves higher
+  `PoseBusters 0.6.5` physical pose validity on both axes — `95.47%` vs. `90.24%`
+  and `97.64%` vs. `88.59%` — and single-engine `GNINA 1.3.3` outperforms `DockM8 ECR`
+  on Axis B). Discrete receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect
 
@@ -269,7 +275,7 @@ not imply a matched-input comparison between engines.
 | [Documentation portal](docs/README.md) | Task-oriented map of every user guide, scientific policy, ADR, and developer manual. |
 | [Illustrated user guide](docs/USER_GUIDE.md) · [PDF](docs/Ankora-User-Guide.pdf) | Full `7AQF/RV2` walkthrough with 19 real captures, plus Linux `GNINA 1.3.3` scoring and virtual screening. |
 | [Platform & engine status](docs/product/PLATFORM_STATUS.md) | Canonical implementation, offline-packaging, CI, and release-gate matrix across Windows, Linux, and macOS. |
-| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 141-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6.5` dual-OS engineering & packaging records. |
+| [Public validation status](docs/validation/VALIDATION_STATUS.md) · [Full 142-record index](docs/validation/INDEX.md) | Frozen reference benchmarks (`6OCO`, `7AQF`), retrospective `LIT-PCBA` screening, Linux/GNINA smokes, and `v0.2` `M1–M6.5` / `ADR-031` records. |
 | [Scientific policies](docs/scientific/DOCKING_POLICY.md) | Receptor/ligand preparation, explicit flexibility (`ADR-032`), multi-engine scoring semantics, in-place redocking, `ProLIF` contacts, and `Methods` reporting. |
 | [Windows](docs/DEVELOPMENT.md) & [Linux development](docs/DEVELOPMENT_LINUX.md) | Hash-locked scientific environments, source execution, test suites, and offline installer packaging. |
 | [Architecture](docs/architecture/ARCHITECTURE.md) & [ADRs](docs/architecture/ADR) | System boundaries and Architecture Decision Records (`ADR-001`–`ADR-033`). |
