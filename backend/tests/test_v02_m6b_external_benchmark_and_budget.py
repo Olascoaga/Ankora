@@ -367,3 +367,65 @@ def test_external_comparison_harness_two_axis_verdicts_and_one_directional_expor
     )
     assert null_res["verdict"] == "insufficient_evidence_to_prefer_over_baseline"
     assert null_res["verdict_text"] == "Insufficient evidence to prefer over baseline"
+
+
+def test_external_evaluator_bedroc_matches_canonical_screening_benchmark_exactly() -> None:
+    """Regression test: evaluate_comparison.py BEDROC_20 must match screening_benchmark._bedroc."""
+    from ankora_backend.services.screening_benchmark import _bedroc as canonical_bedroc
+
+    eval_mod = _load_module("ankora_ext_eval_bedroc_parity", EVAL_SCRIPT)
+    pids = tuple(f"P{i:03d}" for i in range(300))
+    actives = frozenset(pids[:53])
+
+    # 1. Perfect ranking -> exact 1.0
+    perfect_recs = {
+        pid: eval_mod.ParentScoreRecord(
+            parent_id=pid, scored=True, oriented_score=(1000.0 - idx)
+        )
+        for idx, pid in enumerate(pids)
+    }
+    perfect_m = eval_mod.compute_tie_aware_enrichment(
+        parent_ids=pids, active_set=actives, records=perfect_recs, bedroc_alpha=20.0
+    )
+    assert abs(perfect_m["bedroc"] - 1.0) < 1e-12
+
+    # 2. Worst ranking (all actives failed / dead last) -> exact 0.0
+    worst_recs = {
+        pid: (
+            eval_mod.ParentScoreRecord(
+                parent_id=pid, scored=False, oriented_score=None, failure_code="FAIL"
+            )
+            if pid in actives
+            else eval_mod.ParentScoreRecord(parent_id=pid, scored=True, oriented_score=1.0)
+        )
+        for pid in pids
+    }
+    worst_m = eval_mod.compute_tie_aware_enrichment(
+        parent_ids=pids, active_set=actives, records=worst_recs, bedroc_alpha=20.0
+    )
+    assert abs(worst_m["bedroc"] - 0.0) < 1e-12
+
+    # 3. Mixed tied ranking with failed compounds -> matches canonical _bedroc to <= 1e-12
+    mixed_recs: dict[str, Any] = {}
+    for idx, pid in enumerate(pids):
+        if idx % 29 == 0:
+            mixed_recs[pid] = eval_mod.ParentScoreRecord(
+                parent_id=pid, scored=False, oriented_score=None, failure_code="FAIL"
+            )
+        else:
+            bucket = float((idx * 17) % 41)
+            if pid in actives:
+                bucket += 12.0
+            mixed_recs[pid] = eval_mod.ParentScoreRecord(
+                parent_id=pid, scored=True, oriented_score=bucket
+            )
+    mixed_m = eval_mod.compute_tie_aware_enrichment(
+        parent_ids=pids, active_set=actives, records=mixed_recs, bedroc_alpha=20.0
+    )
+    groups_raw, _, _ = eval_mod._tie_aware_rank_groups(pids, mixed_recs)
+    groups_tuple = [
+        (len(g), sum(1 for pid in g if pid in actives)) for g in groups_raw
+    ]
+    ref_bedroc = canonical_bedroc(groups_tuple, len(pids), len(actives), 20.0)
+    assert abs(mixed_m["bedroc"] - ref_bedroc) < 1e-12
+    assert 0.2 < mixed_m["bedroc"] < 0.99

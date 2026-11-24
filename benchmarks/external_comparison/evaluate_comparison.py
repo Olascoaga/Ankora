@@ -361,18 +361,16 @@ def compute_tie_aware_enrichment(
         fp_so_far += g_inact
         pos += g_size
 
+    # BEDROC (Truchon & Bayly 2007, Eq. 18 & 36) using exact discrete RIE normalization
+    # matching ankora_backend.services.screening_benchmark._bedroc to <= 1e-12.
     ra = n_active / n_total
     alpha = bedroc_alpha
-    denom_term = (1.0 - math.exp(-alpha * ra)) / (1.0 - math.exp(-alpha))
-    ries_factor = (ra * math.sinh(alpha / 2.0)) / (
-        math.cosh(alpha / 2.0) - math.cosh(alpha / 2.0 - alpha * ra)
-    )
-    rie_min = (1.0 - math.exp(alpha * ra)) / (ra * (1.0 - math.exp(alpha)))
-    rie_max = (1.0 - math.exp(-alpha * ra)) / (ra * (1.0 - math.exp(-alpha)))
-    rie = weighted_sum / (n_active * denom_term) if denom_term > 0 else 0.0
+    normalization = (-math.expm1(-alpha)) / n_total / math.expm1(alpha / n_total)
+    rie = weighted_sum / (n_active * normalization) if normalization > 0.0 else 0.0
+    rie_max = (-math.expm1(-alpha * ra)) / (ra * -math.expm1(-alpha))
+    rie_min = math.expm1(alpha * ra) / (ra * math.expm1(alpha))
     bedroc = (rie - rie_min) / (rie_max - rie_min) if rie_max > rie_min else 0.0
     bedroc = max(0.0, min(1.0, bedroc))
-    _ = ries_factor  # kept for formula traceability
 
     roc_auc = roc_area / (n_active * n_inactive)
     pr_auc = pr_area / n_active
