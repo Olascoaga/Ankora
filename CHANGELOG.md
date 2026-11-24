@@ -2,6 +2,26 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` Post-Benchmark Offline Installer Rebuild (`86d89ed`), `ADR-031` Attestation & Clean-Room `D4` Smoke (`codex/v0.2-dev`) - 2026-11-24
+
+- **Refreshed three-artifact offline installer rebuild & `ADR-031` byte attestation (`docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md`, `145` records):**
+  rebuilt all three `v0.2` offline installers at `86d89ed` (incorporating live multi-engine and
+  physics fixes `4a07c19`, `2474334`, and `9ec95a1`) and passed unified stdlib-only
+  `python -S scripts/check_v02_installer_budget.py` (`191` modules audited, `0` forbidden hits,
+  cap `<= 1,048,576 B`):
+  - **Windows x64 NSIS (`Ankora_0.1.0_x64-setup.exe`, `--locked-webview2`):** `428,071,743 B` (`408.24 MiB`,
+    delta **`+834,186 B` / `+814.63 KiB`**, SHA-256 `1333b8e4...`), Windows sanitized-PATH packaged
+    backend smoke passed (`10/10` tools + `v0.2` REST routes `200 OK`); preserved `v0.1.0-beta.2`
+    baseline verified byte-identical (`db785047...`).
+  - **Linux x86\_64 `.deb` (`Ankora_0.1.0_amd64.deb`):** `285,974,140 B` (`272.73 MiB`, delta
+    **`+406,524 B` / `+397.00 KiB`**, SHA-256 `682392d5...`).
+  - **Linux x86\_64 portable `.tar.zst` (`Ankora_0.1.0_linux_x86_64.tar.zst`):** `329,905,206 B`
+    (`314.62 MiB`, delta **`+687,019 B` / `+670.92 KiB`**, SHA-256 `7ee32b28...`).
+  - **Linux clean-room `D4` smoke (`/usr/bin/python3`, zero Conda/pip):** `status: "passed"`
+    (`evidence_sha256: 256e7237...`, `10/10` Core tools, 1-click `GNINA 1.3.3 CUDA` import, live
+    RTX 5050 CUDA `rescore` + `refinement` `default_1_3_ensemble`, `.tar.zst` persistence parity `3`
+    campaigns). Bare-metal physical Linux workstation `Gate D6` remains open.
+
 ## Ankora `v0.2` Multi-Target (`ESR_antago`, `TP53`, `PPARG`) & Induced-Fit `M1 FlexRes` (`1PRG`, `1US0`) External Benchmarks vs. Pinned `DockM8 v1.1.1` (`codex/v0.2-dev`) - 2026-11-24
 
 - **Calibration-diagnosed `AutoDock4 4.2.6 epdb` physics fix & parallel medoid rescoring (`9ec95a1`):**

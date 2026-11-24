@@ -133,10 +133,11 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   panel reuse, and additive `Export v6` (`python -S` verified;
   [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)).
 - **`v0.2` Offline installer attestation, `M7` spike closure & multi-target + induced-fit `ADR-031` external benchmarks:**
-  all three packaged `v0.2` offline installers pass `python -S scripts/check_v02_installer_budget.py`
-  under `ADR-031`'s `1.00 MiB` cap (`Windows .exe` `+787.19 KiB`, `Linux .deb`
-  `+394.95 KiB`, `Linux .tar.zst` `+639.98 KiB`) and Linux clean-room `D4` smoke
-  with 1-click `GNINA 1.3.3 CUDA` ([`V02_OFFLINE_INSTALLER_ATTESTATION.md`](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md));
+  all three refreshed `v0.2` offline installers (incorporating live multi-engine fixes
+  `4a07c19`, `2474334`, and `9ec95a1`) pass `python -S scripts/check_v02_installer_budget.py`
+  under `ADR-031`'s `1.00 MiB` cap (`Windows .exe` `+814.63 KiB`, `Linux .deb`
+  `+397.00 KiB`, `Linux .tar.zst` `+670.92 KiB`), Windows sanitized-PATH `10/10` smoke,
+  and Linux clean-room `D4` smoke with 1-click `GNINA 1.3.3 CUDA` ([`V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md`](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md));
   conditional `M7` (`OpenMM` offline small-molecule parameterization) is formally
   **deferred** out of `v0.2.0` Core ([`V02_M7_OPENMM_OFFLINE_SPIKE.md`](docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md));
   and following the Calibration-diagnosed `AutoDock4 4.2.6 epdb` `unbound_model = bound`
