@@ -125,12 +125,15 @@ def _context_mismatch(message: str, **details: object) -> AnkoraDomainError:
     )
 
 
+_STAGING_STRIP_TAGS = frozenset({b"MODEL", b"ENDMDL", b"USER", b"NEWDPF", b"TER"})
+
+
 def _strip_pose_envelope_for_staging(pose_pdbqt: bytes) -> bytes:
-    """Strip MODEL/ENDMDL wrappers and stale score REMARKs on the staging copy only."""
+    """Strip MODEL/ENDMDL/AutoDock DLG envelope tags and stale score REMARKs on staging only."""
     staged: list[bytes] = []
     for line in pose_pdbqt.splitlines(keepends=True):
         words = line.strip().split(maxsplit=2)
-        if words and words[0] in {b"MODEL", b"ENDMDL"}:
+        if words and words[0] in _STAGING_STRIP_TAGS:
             continue
         if len(words) >= 2 and words[0] == b"REMARK" and words[1] in _STALE_SCORE_REMARKS:
             continue

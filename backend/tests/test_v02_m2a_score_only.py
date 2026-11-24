@@ -716,3 +716,31 @@ def test_live_score_only_rigid_and_flex_cross_engine(tmp_path: Path) -> None:
         == rigid_proto.protocol_identity_sha256
     )
     assert rigid_result.evidence[0].unbound_reference_shifted is False
+
+
+def test_strip_pose_envelope_removes_autodock_dlg_user_and_ter_tags_on_staging() -> None:
+    """Synthetic AutoDock4/AutoDock-GPU DLG pose tags (USER/NEWDPF/TER) must not break Vina."""
+    raw = (
+        b"MODEL        1\n"
+        b"USER    Run = 1\n"
+        b"USER    Estimated Free Energy of Binding = -7.50 kcal/mol\n"
+        b"NEWDPF move ligand.pdbqt\n"
+        b"REMARK VINA RESULT:   -7.1   0.000   0.000\n"
+        b"REMARK SMILES CCO\n"
+        b"ROOT\n"
+        b"ATOM      1  C1  UNL     1       1.000   2.000   3.000  1.00  0.00     0.000 C \n"
+        b"ENDROOT\n"
+        b"TORSDOF 0\n"
+        b"TER\n"
+        b"ENDMDL\n"
+    )
+    staged = rescoring_module._strip_pose_envelope_for_staging(raw)
+    assert b"MODEL" not in staged
+    assert b"ENDMDL" not in staged
+    assert b"USER" not in staged
+    assert b"NEWDPF" not in staged
+    assert b"\nTER\n" not in staged
+    assert b"REMARK VINA RESULT" not in staged
+    assert b"REMARK SMILES CCO\n" in staged
+    assert b"ATOM      1  C1" in staged
+    assert b"TORSDOF 0\n" in staged
