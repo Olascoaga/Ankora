@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="784" viewBox="0 0 1200 784" role="img" aria-labelledby="title description">
+  <title id="title">Ankora v0.2 External Benchmarks vs. DockM8 v1.1.1 and AMDockVS v0.14.1 (ADR-031)</title>
+  <desc id="description">Four-panel summary of recorded ADR-031 two-axis external benchmarks (Records 143, 144, and 146) comparing Ankora v0.2, DockM8 v1.1.1, and AMDockVS v0.14.1 across three holo LIT-PCBA targets (N=780), induced-fit FlexRes on apo PPARG 1PRG (N=180), shared PoseBusters 0.6.5 and chemical integrity audits, and offline deployment footprint versus raw rigid throughput trade-offs.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="0.85">
+      <stop offset="0%" stop-color="#0b0c0e"/>
+      <stop offset="100%" stop-color="#181c22"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" fill="none" stroke="#789bb0" stroke-opacity="0.03"/>
+    </pattern>
+    <pattern id="hatch-slate" width="6" height="6" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <rect width="6" height="6" fill="#789bb0" fill-opacity="0.22"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#789bb0" stroke-width="2.2" stroke-opacity="0.65"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="784" rx="12" fill="url(#bg)"/>
+  <rect width="1200" height="784" rx="12" fill="url(#grid)"/>
+  <path d="M32 24H1168M32 756H1168" stroke="#bab6ad" stroke-opacity="0.18"/>
+  <path d="M32 24H108M32 756H108" stroke="#dfa45a" stroke-width="1.5"/>
+  <text x="34" y="47" fill="#8c887f" font-family="Consolas, monospace" font-size="11" letter-spacing="1.0">ADR-031 TWO-AXIS EXTERNAL BENCHMARKS  /  RECORDS 143 · 144 · 146  /  2,000 PAIRED BOOTSTRAP REPLICATES</text>
+  <text x="34" y="78" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="-0.3">Ankora v0.2 vs. DockM8 v1.1.1 &amp; AMDockVS v0.14.1</text>
+  <rect x="722" y="65" width="11" height="11" rx="2" fill="#dfa45a"/>
+  <text x="739" y="75" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">Ankora v0.2</text>
+  <rect x="836" y="65" width="11" height="11" rx="2" fill="#789bb0"/>
+  <text x="853" y="75" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">AMDockVS v0.14.1</text>
+  <rect x="982" y="65" width="11" height="11" rx="2" fill="#76736c"/>
+  <text x="999" y="75" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">DockM8 v1.1.1</text>
+  <text x="1166" y="75" text-anchor="end" fill="#dfa45a" font-family="Consolas, monospace" font-size="10.5">★ 95% CI &gt; 0</text>
+  <rect x="32" y="96" width="558" height="314" rx="10" fill="#12151b" stroke="#2a303b" stroke-width="1"/>
+  <rect x="33" y="97" width="3" height="24" rx="1.5" fill="#dfa45a"/>
+  <text x="48" y="116" fill="#dfa45a" font-family="Consolas, monospace" font-size="11" font-weight="700" letter-spacing="0.6">PANEL A  ·  HOLO 3-TARGET LIT-PCBA (N = 780)</text>
+  <text x="48" y="136" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700">Equal-Weight Macro BEDROC20 (ESR_antago · TP53 · PPARG)</text>
+  <text x="48" y="152" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="11">Higher is better · Axis A (shared inputs) &amp; Axis B (native end-to-end pipelines)</text>
+  <line x1="48" y1="162" x2="574" y2="162" stroke="#bab6ad" stroke-opacity="0.12"/>
+  <line x1="218.0" y1="174" x2="218.0" y2="367" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="218.0" y="380" text-anchor="middle" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5">0.0</text>
+  <line x1="273.0" y1="174" x2="273.0" y2="367" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="273.0" y="380" text-anchor="middle" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5">0.1</text>
+  <line x1="328.0" y1="174" x2="328.0" y2="367" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="328.0" y="380" text-anchor="middle" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5">0.2</text>
+  <line x1="383.0" y1="174" x2="383.0" y2="367" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="383.0" y="380" text-anchor="middle" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5">0.3</text>
+  <line x1="438.0" y1="174" x2="438.0" y2="367" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="438.0" y="380" text-anchor="middle" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5">0.4</text>
+  <text x="48" y="180" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">AXIS A · CONTROLLED (SHARED INPUTS)</text>
+  <text x="210" y="200" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora PC-Q Neural</text>
+  <rect x="218" y="189" width="169.5" height="14" rx="3" fill="#dfa45a"/>
+  <text x="393.5" y="200" fill="#eceae4" font-family="Consolas, monospace" font-size="10.5" font-weight="700">0.308</text>
+  <text x="431.0" y="199.5" fill="#dfa45a" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">3/3 vs def · ★ TP53</text>
+  <text x="210" y="219.5" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS GNINA CNN_VS†</text>
+  <rect x="218" y="208.5" width="151.9" height="14" rx="3" fill="url(#hatch-slate)" stroke="#789bb0" stroke-width="1"/>
+  <text x="375.9" y="219.5" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.276</text>
+  <text x="413.4" y="219.0" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">non-default extract</text>
+  <text x="210" y="239.0" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS defaults (best)</text>
+  <rect x="218" y="228.0" width="118.2" height="14" rx="3" fill="#4f6d80"/>
+  <text x="342.2" y="239.0" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.215</text>
+  <text x="379.8" y="238.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">Vina/UD/GN 0.195–.215</text>
+  <text x="210" y="258.5" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">DockM8 ECR</text>
+  <rect x="218" y="247.5" width="113.3" height="14" rx="3" fill="#76736c"/>
+  <text x="337.3" y="258.5" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.206</text>
+  <text x="374.8" y="258.0" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">1.50× Ankora</text>
+  <text x="48" y="279" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">AXIS B · END-TO-END (NATIVE PIPELINES)</text>
+  <text x="210" y="299" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS GNINA CNN_VS†</text>
+  <rect x="218" y="288" width="179.1" height="14" rx="3" fill="url(#hatch-slate)" stroke="#789bb0" stroke-width="1"/>
+  <text x="403.1" y="299" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.326</text>
+  <text x="440.6" y="298.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">0/3 sig · ROC 0.646</text>
+  <text x="210" y="318.5" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora PC-Q Neural</text>
+  <rect x="218" y="307.5" width="155.5" height="14" rx="3" fill="#dfa45a"/>
+  <text x="379.5" y="318.5" fill="#eceae4" font-family="Consolas, monospace" font-size="10.5" font-weight="700">0.283</text>
+  <text x="417.0" y="318.0" fill="#dfa45a" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">4.0× DockM8 · ROC 0.659</text>
+  <text x="210" y="338.0" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS defaults (best)</text>
+  <rect x="218" y="327.0" width="119.6" height="14" rx="3" fill="#4f6d80"/>
+  <text x="343.6" y="338.0" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.217</text>
+  <text x="381.1" y="337.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">Vina/UD/GN 0.199–.217</text>
+  <text x="210" y="357.5" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">DockM8 ECR</text>
+  <rect x="218" y="346.5" width="38.9" height="14" rx="3" fill="#76736c"/>
+  <text x="262.9" y="357.5" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.5" font-weight="500">0.071</text>
+  <text x="300.4" y="357.0" fill="#d96b6b" font-family="Segoe UI, Arial, sans-serif" font-size="9.8">47 hypervalent C</text>
+  <text x="48" y="400" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">†CNN_VS extracted from GNINA extra JSON (default rank-1 is minimizedAffinity). 0/3 targets external_preferred.</text>
+  <rect x="610" y="96" width="558" height="314" rx="10" fill="#12151b" stroke="#2a303b" stroke-width="1"/>
+  <rect x="611" y="97" width="3" height="24" rx="1.5" fill="#dfa45a"/>
+  <text x="626" y="116" fill="#dfa45a" font-family="Consolas, monospace" font-size="11" font-weight="700" letter-spacing="0.6">PANEL B  ·  INDUCED-FIT FLEXRES (APO PPARG 1PRG)</text>
+  <text x="626" y="136" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700">Cross-Docking Pose Recovery &amp; Full Apo Screening (N = 180)</text>
+  <text x="626" y="152" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="11">Gatekeeper rotamers A:MET364, A:ARG288, A:HIS266 · Coupled E8 PoseBusters 0.6.5</text>
+  <line x1="626" y1="162" x2="1152" y2="162" stroke="#bab6ad" stroke-opacity="0.12"/>
+  <text x="626" y="180" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">1PRG ← 3B1M/KRC CROSS-DOCKING RMSD (Å, LOWER IS BETTER)</text>
+  <line x1="856.2" y1="190" x2="856.2" y2="269" stroke="#6fb58d" stroke-width="1.3" stroke-dasharray="3,2"/>
+  <rect x="835.2" y="270" width="42" height="13" rx="3" fill="#12151b" stroke="#6fb58d" stroke-opacity="0.45" stroke-width="0.8"/>
+  <text x="856.2" y="279.5" text-anchor="middle" fill="#6fb58d" font-family="Consolas, monospace" font-size="8.5" font-weight="700">2.0 Å</text>
+  <text x="782" y="202" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora Vina --flex</text>
+  <rect x="790" y="191" width="22.7" height="14" rx="3" fill="#dfa45a"/>
+  <line x1="815.7" y1="198" x2="853.2" y2="198" stroke="#bab6ad" stroke-opacity="0.22" stroke-dasharray="1.5,2.5"/>
+  <text x="865.2" y="202" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">0.69 Å</text>
+  <text x="908.0" y="201.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.6">8.3× vs rigid · 3/5 PB</text>
+  <text x="782" y="221" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS Vina --flex</text>
+  <rect x="790" y="210" width="25.9" height="14" rx="3" fill="#789bb0"/>
+  <line x1="818.9" y1="217" x2="853.2" y2="217" stroke="#bab6ad" stroke-opacity="0.22" stroke-dasharray="1.5,2.5"/>
+  <text x="865.2" y="221" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">0.78 Å</text>
+  <text x="908.0" y="220.5" fill="#d96b6b" font-family="Segoe UI, Arial, sans-serif" font-size="9.6">CPU only · top-1 FAIL</text>
+  <text x="782" y="240" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora GNINA --flex (GPU)</text>
+  <rect x="790" y="229" width="35.8" height="14" rx="3" fill="#c58d47"/>
+  <line x1="828.8" y1="236" x2="853.2" y2="236" stroke="#bab6ad" stroke-opacity="0.22" stroke-dasharray="1.5,2.5"/>
+  <text x="865.2" y="240" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">1.08 Å</text>
+  <text x="908.0" y="239.5" fill="#6fb58d" font-family="Segoe UI, Arial, sans-serif" font-size="9.6">5/5 PB · top-1 PASS</text>
+  <text x="782" y="259" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">DockM8 / Rigid baselines</text>
+  <rect x="790" y="248" width="188.5" height="14" rx="3" fill="#d96b6b"/>
+  <text x="984.5" y="259" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">5.70 Å</text>
+  <text x="1027.3" y="258.5" fill="#d96b6b" font-family="Segoe UI, Arial, sans-serif" font-size="9.6">all rigid fail (5.6–7.8 Å)</text>
+  <text x="626" y="291" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">APO 1PRG AXIS B SCREENING (N = 180, BEDROC20 — HIGHER IS BETTER)</text>
+  <line x1="790.0" y1="298" x2="790.0" y2="389" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="851.4" y1="298" x2="851.4" y2="389" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="912.9" y1="298" x2="912.9" y2="389" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="974.3" y1="298" x2="974.3" y2="389" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="782" y="310.5" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="700">Ankora FlexRes PC-ECR</text>
+  <rect x="790" y="300" width="174.6" height="13" rx="3" fill="#dfa45a"/>
+  <text x="970.6" y="310.5" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">0.284</text>
+  <text x="1007.1" y="310" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">ROC 0.762 · PB 92.5%</text>
+  <text x="782" y="328.0" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="700">Ankora FlexRes PC-Q Neural</text>
+  <rect x="790" y="317.5" width="105.9" height="13" rx="3" fill="#c58d47"/>
+  <text x="901.9" y="328.0" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">0.172</text>
+  <text x="938.4" y="327.5" fill="#dfa45a" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">★ 3.17× vs UD · ROC 0.730</text>
+  <text x="782" y="345.5" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="500">AMDockVS Vina --flex (CPU)</text>
+  <rect x="790" y="335.0" width="58.7" height="13" rx="3" fill="#789bb0"/>
+  <text x="854.7" y="345.5" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">0.096</text>
+  <text x="891.2" y="345.0" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">ROC 0.641 · PB 87.8%</text>
+  <text x="782" y="363.0" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="500">AMDockVS GNINA (rigid)</text>
+  <rect x="790" y="352.5" width="48.9" height="13" rx="3" fill="#4f6d80"/>
+  <text x="844.9" y="363.0" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">0.080</text>
+  <text x="881.4" y="362.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">no --flex in gnina.py</text>
+  <text x="782" y="380.5" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="500">DockM8 ECR (rigid)</text>
+  <rect x="790" y="370.0" width="42.3" height="13" rx="3" fill="#76736c"/>
+  <text x="838.3" y="380.5" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">0.069</text>
+  <text x="874.8" y="380.0" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">ROC 0.329</text>
+  <text x="626" y="400" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">AMDockVS GPU FlexRes blocked (Uni-Dock &gt;1 torsion; GNINA no --flex; AD-GPU OpenCL). Axis A Ankora Core 0.287 ★ vs both.</text>
+  <rect x="32" y="428" width="558" height="314" rx="10" fill="#12151b" stroke="#2a303b" stroke-width="1"/>
+  <rect x="33" y="429" width="3" height="24" rx="1.5" fill="#dfa45a"/>
+  <text x="48" y="448" fill="#dfa45a" font-family="Consolas, monospace" font-size="11" font-weight="700" letter-spacing="0.6">PANEL C  ·  CHEMICAL INTEGRITY &amp; SHARED POSEBUSTERS 0.6.5</text>
+  <text x="48" y="468" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700">Physical Plausibility &amp; Receptor Governance (Axis B)</text>
+  <text x="48" y="484" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="11">Audited under identical PoseBusters 0.6.5 (dock config) with docked-water parity</text>
+  <line x1="48" y1="494" x2="574" y2="494" stroke="#bab6ad" stroke-opacity="0.12"/>
+  <text x="48" y="512" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">AS-EXPORTED POSEBUSTERS 0.6.5 PASS RATE (%, 3-TARGET MEAN)</text>
+  <line x1="218.0" y1="519" x2="218.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="271.0" y1="519" x2="271.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="324.0" y1="519" x2="324.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="377.0" y1="519" x2="377.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="430.0" y1="519" x2="430.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="210" y="533" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora v0.2 (PC-Q Neural)</text>
+  <rect x="218" y="522" width="199.4" height="14" rx="3" fill="#dfa45a"/>
+  <text x="423.4" y="533" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">94.0%</text>
+  <text x="459.9" y="532.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">range 91.6–98.0%</text>
+  <text x="210" y="552" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS Vina / Uni-Dock</text>
+  <rect x="218" y="541" width="199.8" height="14" rx="3" fill="#789bb0"/>
+  <text x="423.8" y="552" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">94.3%</text>
+  <text x="460.3" y="551.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">range 92.7–96.7% (tie)</text>
+  <text x="210" y="571" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">DockM8 v1.1.1 (ESR_antago)</text>
+  <rect x="218" y="560" width="187.8" height="14" rx="3" fill="#76736c"/>
+  <text x="411.8" y="571" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">88.6%</text>
+  <text x="448.3" y="570.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">264 / 298 valid</text>
+  <text x="210" y="590" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS GNINA (strict SDF)</text>
+  <rect x="218" y="579" width="136.7" height="14" rx="3" fill="#d96b6b"/>
+  <text x="360.7" y="590" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">64.5%</text>
+  <text x="397.2" y="589.5" fill="#d96b6b" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">88.2% if N+1 repaired</text>
+  <text x="48" y="614" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">RECEPTOR &amp; EXPORT INTEGRITY MATRIX (AXIS B)</text>
+  <rect x="48" y="622" width="526" height="96" rx="6" fill="#161a22" stroke="#2a303b" stroke-width="1"/>
+  <text x="60" y="639" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5" font-weight="700">Platform</text>
+  <text x="180" y="639" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5" font-weight="700">Hypervalent C</text>
+  <text x="292" y="639" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5" font-weight="700">TP53 ZN 313 Site</text>
+  <text x="450" y="639" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5" font-weight="700">GNINA SDF Valence</text>
+  <line x1="56" y1="646" x2="566" y2="646" stroke="#bab6ad" stroke-opacity="0.14"/>
+  <text x="60" y="664" fill="#dfa45a" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora v0.2</text>
+  <text x="180" y="664" fill="#6fb58d" font-family="Consolas, monospace" font-size="10">0 / 3 targets</text>
+  <text x="292" y="664" fill="#6fb58d" font-family="Consolas, monospace" font-size="10">HIE / CYM verified</text>
+  <text x="450" y="664" fill="#6fb58d" font-family="Consolas, monospace" font-size="10">0% export errors</text>
+  <text x="60" y="686" fill="#789bb0" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">AMDockVS v0.14.1</text>
+  <text x="180" y="686" fill="#6fb58d" font-family="Consolas, monospace" font-size="10">0 / 3 targets</text>
+  <text x="292" y="686" fill="#d96b6b" font-family="Consolas, monospace" font-size="10">HD1/HG on ZN (silent)</text>
+  <text x="450" y="686" fill="#d96b6b" font-family="Consolas, monospace" font-size="10">23–32% N-valence</text>
+  <text x="60" y="708" fill="#76736c" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">DockM8 v1.1.1</text>
+  <text x="180" y="708" fill="#d96b6b" font-family="Consolas, monospace" font-size="10">47 atoms (3/3)</text>
+  <text x="292" y="708" fill="#8c887f" font-family="Consolas, monospace" font-size="10">No ZN guard</text>
+  <text x="450" y="708" fill="#8c887f" font-family="Consolas, monospace" font-size="10">N/A (no GNINA)</text>
+  <text x="48" y="732" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">AMDockVS GNINA OpenBabel export dropped formal +1 charges on protonated amines; Ankora preserves Meeko topology.</text>
+  <rect x="610" y="428" width="558" height="314" rx="10" fill="#12151b" stroke="#2a303b" stroke-width="1"/>
+  <rect x="611" y="429" width="3" height="24" rx="1.5" fill="#dfa45a"/>
+  <text x="626" y="448" fill="#dfa45a" font-family="Consolas, monospace" font-size="11" font-weight="700" letter-spacing="0.6">PANEL D  ·  OFFLINE DEPLOYMENT &amp; THROUGHPUT TRADE-OFF</text>
+  <text x="626" y="468" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700">Zero-Conda Footprint vs. Raw Rigid Screening Speed</text>
+  <text x="626" y="484" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="11">Measured on-disk footprints and WSL2 RTX 5050 wall-clock timings</text>
+  <line x1="626" y1="494" x2="1152" y2="494" stroke="#bab6ad" stroke-opacity="0.12"/>
+  <text x="626" y="512" fill="#bab6ad" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.4">ON-DISK FOOTPRINT (GB, LOWER IS BETTER)</text>
+  <line x1="794.0" y1="519" x2="794.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="843.5" y1="519" x2="843.5" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="893.0" y1="519" x2="893.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="942.5" y1="519" x2="942.5" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <line x1="992.0" y1="519" x2="992.0" y2="600" stroke="#bab6ad" stroke-opacity="0.10" stroke-dasharray="2,3"/>
+  <text x="786" y="533" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora Core (.deb offline)</text>
+  <rect x="794" y="522" width="5.0" height="14" rx="3" fill="#dfa45a"/>
+  <text x="805.0" y="533" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">0.27 GB</text>
+  <text x="854.1" y="532.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">273 MiB · 0 Conda</text>
+  <text x="786" y="552" text-anchor="end" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700">Ankora + GNINA CUDA pack</text>
+  <rect x="794" y="541" width="46.5" height="14" rx="3" fill="#c58d47"/>
+  <text x="846.5" y="552" fill="#eceae4" font-family="Consolas, monospace" font-size="10.2" font-weight="700">2.82 GB</text>
+  <text x="895.6" y="551.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">1-click GUI · offline</text>
+  <text x="786" y="571" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">DockM8 v1.1.1 (Conda)</text>
+  <rect x="794" y="560" width="132.0" height="14" rx="3" fill="#76736c"/>
+  <text x="932.0" y="571" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">~8.0 GB</text>
+  <text x="981.1" y="570.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">no standalone installer</text>
+  <text x="786" y="590" text-anchor="end" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">AMDockVS v0.14.1 (ms_env)</text>
+  <rect x="794" y="579" width="183.2" height="14" rx="3" fill="#789bb0"/>
+  <text x="983.1" y="590" fill="#bab6ad" font-family="Consolas, monospace" font-size="10.2" font-weight="500">11.1 GB</text>
+  <text x="1032.2" y="589.5" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">no standalone installer</text>
+  <rect x="626" y="614" width="526" height="104" rx="6" fill="#161a22" stroke="#2a303b" stroke-width="1"/>
+  <rect x="627" y="615" width="3.5" height="102" rx="1.5" fill="#789bb0"/>
+  <text x="640" y="634" fill="#789bb0" font-family="Consolas, monospace" font-size="10" font-weight="700" letter-spacing="0.5">HONEST TRADE-OFF: WHERE AMDOCKVS v0.14.1 LEADS (RAW RIGID SPEED)</text>
+  <text x="640" y="656" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11">• <tspan fill="#eceae4" font-weight="600">300-SMILES prep:</tspan> <tspan fill="#789bb0" font-family="Consolas, monospace" font-weight="700">7.1–7.9 s</tspan> (AMDockVS batch) vs. <tspan fill="#dfa45a" font-family="Consolas, monospace">~1–2 min</tspan> (Ankora isolated audit)</text>
+  <text x="640" y="676" fill="#bab6ad" font-family="Segoe UI, Arial, sans-serif" font-size="11">• <tspan fill="#eceae4" font-weight="600">300-lig rigid GPU:</tspan> <tspan fill="#789bb0" font-family="Consolas, monospace" font-weight="700">26.9–41.9 s</tspan> (Uni-Dock CUDA) vs. <tspan fill="#dfa45a" font-family="Consolas, monospace">~2–3 min</tspan> (AD-GPU CUDA)</text>
+  <line x1="640" y1="688" x2="1138" y2="688" stroke="#bab6ad" stroke-opacity="0.12"/>
+  <text x="640" y="706" fill="#eceae4" font-family="Segoe UI, Arial, sans-serif" font-size="10.8" font-weight="600">Choose Ankora for: <tspan fill="#dfa45a" font-weight="500">1-click offline install · GPU FlexRes · metal/valence rigor · verifiable Export v5/v6</tspan></text>
+  <text x="626" y="732" fill="#8c887f" font-family="Segoe UI, Arial, sans-serif" font-size="9.5">Ankora v0.2 post-benchmark installers stay within ADR-031 ≤ 1.00 MiB delta (Win +815 KiB, .deb +397 KiB; Record 145).</text>
+  <text x="34" y="773" fill="#8c887f" font-family="Consolas, monospace" font-size="9.5" letter-spacing="0.4">EVIDENCE: docs/validation/V02_EXTERNAL_BENCHMARK_{MULTITARGET_VS_DOCKM8,INDUCED_FIT_FLEXRES_VS_DOCKM8,VS_AMDOCKVS}.md  ·  RETROSPECTIVE BENCHMARKS DO NOT IMPLY PROSPECTIVE AFFINITY</text>
+</svg>

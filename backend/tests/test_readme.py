@@ -173,6 +173,24 @@ def test_readme_banner_is_accessible_self_contained_svg() -> None:
     assert not re.search(r'(?:href|src)="(?:https?:|file:)', content)
 
 
+def test_readme_benchmark_plate_is_accessible_self_contained_svg_with_provenance() -> None:
+    plate = ROOT / "docs/images/readme-benchmarks-v02.svg"
+    content = plate.read_text(encoding="utf-8")
+    svg = ET.fromstring(content)
+    namespace = "{http://www.w3.org/2000/svg}"
+    assert svg.tag == f"{namespace}svg"
+    assert svg.attrib["viewBox"] == "0 0 1200 784"
+    assert svg.find(f"{namespace}title") is not None
+    assert svg.find(f"{namespace}desc") is not None
+    forbidden = {f"{namespace}script", f"{namespace}foreignObject"}
+    assert all(node.tag not in forbidden for node in svg.iter())
+    assert not re.search(r'(?:href|src)="(?:https?:|file:)', content)
+    assert "readme-benchmarks-v02.svg" in README.read_text(encoding="utf-8")
+    assert "readme-benchmarks-v02.svg" in (ROOT / "docs/images/README.md").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_presentation_has_no_personal_absolute_paths() -> None:
     for document in (
         README,
@@ -181,6 +199,7 @@ def test_presentation_has_no_personal_absolute_paths() -> None:
         DEVELOPMENT_LINUX,
         PLATFORM_MD,
         ROOT / "docs/images/readme-banner.svg",
+        ROOT / "docs/images/readme-benchmarks-v02.svg",
         ROOT / "docs/images/README.md",
     ):
         content = document.read_text(encoding="utf-8")

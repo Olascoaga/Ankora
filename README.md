@@ -144,6 +144,17 @@ Windows 11 x64 and Linux x86\_64 (`WSL2` + `CUDA 12.8`):
 
 ### External Benchmarks (`ADR-031`)
 
+[![Ankora v0.2 two-axis external benchmarks vs. DockM8 v1.1.1 and AMDockVS v0.14.1 across holo LIT-PCBA, induced-fit FlexRes, PoseBusters 0.6.5 integrity, and offline deployment footprint](docs/images/readme-benchmarks-v02.svg)](docs/images/readme-benchmarks-v02.svg)
+
+*Visual summary rendered directly from recorded `ADR-031` benchmark outputs
+([Record 143](docs/validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md),
+[Record 144](docs/validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md),
+[Record 145](docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md),
+[Record 146](docs/validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md);
+[figure provenance](docs/images/README.md)). Open full resolution to inspect
+all four panels; retrospective cohorts do not establish prospective affinity
+or cross-target generality.*
+
 Under [`ADR-031`](docs/architecture/ADR/ADR-031-external-benchmark-boundary.md)
 and [`V02_EXTERNAL_BENCHMARK_PROTOCOL.md`](docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md),
 Ankora `v0.2` was benchmarked head-to-head against isolated, version-pinned
