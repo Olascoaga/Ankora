@@ -63,7 +63,7 @@ that contract:
 | --- | --- | --- |
 | **Immutable provenance & stale DAG** | Imported structures and libraries are never mutated in place. Every derivative is SHA-256-hashed; editing an upstream receptor, microstate, or box automatically flags dependent runs stale. | [`ADR-004`](docs/architecture/ADR/ADR-004-immutable-original-inputs.md), [`ADR-005`](docs/architecture/ADR/ADR-005-traceable-scientific-transformations.md), [`ADR-011`](docs/architecture/ADR/ADR-011-stale-artifact-propagation.md) |
 | **Selective, auditable chemistry** | Per-residue repair or exclusion (`topology_guard_v3`), metal-aware `PROPKA`/`PDB2PQR` review, unranked `Dimorphite-DL` microstates, and required stereocenter choices replace silent coordinate fabrication. | [`ADR-016`](docs/architecture/ADR/ADR-016-explicit-screening-microstates.md), [`ADR-017`](docs/architecture/ADR/ADR-017-explicit-receptor-protonation-decisions.md), [`ADR-025`](docs/architecture/ADR/ADR-025-topology-guarded-receptor-repair.md) |
-| **Separate native score scales** | `Vina`, `AutoDock4`/`AutoDock-GPU`, and `GNINA` keep native units and are never averaged in raw units. Cross-family prioritization (`codex/v0.2-dev`) operates strictly in dimensionless rank-quantile space (`PC-Q`, `PC-ECR`, gated `PC-L2`) on identical coupled 3D geometry. | [`ADR-015`](docs/architecture/ADR/ADR-015-autodock4-engine.md), [`ADR-028`](docs/architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md), [`ADR-030`](docs/architecture/ADR/ADR-030-rank-space-consensus-prioritization.md) |
+| **Separate native score scales** | `Vina`, `AutoDock4`/`AutoDock-GPU`, and `GNINA` keep native units and are never averaged in raw units. Cross-family prioritization (`v0.2` source) operates strictly in dimensionless rank-quantile space (`PC-Q`, `PC-ECR`, gated `PC-L2`) on identical coupled 3D geometry. | [`ADR-015`](docs/architecture/ADR/ADR-015-autodock4-engine.md), [`ADR-028`](docs/architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md), [`ADR-030`](docs/architecture/ADR/ADR-030-rank-space-consensus-prioritization.md) |
 | **In-place crystal RMSD & out-of-sample rigor** | Redocking computes symmetry-aware heavy-atom RMSD **in place** (never superposed), separating sampling from ranking. Protocol selection splits parents by Bemis–Murcko scaffold into Calibration vs. single-use locked Confirmation. | [`ADR-012`](docs/architecture/ADR/ADR-012-validation-by-reference-cases.md), [`ADR-031`](docs/architecture/ADR/ADR-031-external-benchmark-boundary.md) |
 | **Zero-imputation denominator & verifiable exports** | Failed, non-converged, or engine-incompatible molecules stay visibly in the campaign census (`E6`). `Export v4/v5/v6` bundles verify offline with zero third-party dependencies. | [`ADR-020`](docs/architecture/ADR/ADR-020-durable-work-recovery.md), [`ADR-030`](docs/architecture/ADR/ADR-030-rank-space-consensus-prioritization.md), [`ADR-033`](docs/architecture/ADR/ADR-033-hit-to-analog-expansion-and-pose-focused-screening.md) |
 
@@ -112,8 +112,8 @@ proof of experimental affinity. For compatible **AutoDock Vina** and
 **AutoDock4 (CPU)** library campaigns sharing the exact receptor, finalized
 binding site, and selection manifest, Ankora reports **Spearman rank
 correlation (`ρ`) and Top-`N` overlap** without pooling scores; GNINA remains
-in its separate CNN catalog family. Opt-in cross-family prioritization on
-`codex/v0.2-dev` operates strictly in **dimensionless rank-quantile space**
+in its separate CNN catalog family. Opt-in cross-family prioritization in
+`v0.2` source operates strictly in **dimensionless rank-quantile space**
 (`PC-Q`, `PC-ECR`, and Confirmation-gated `PC-L2` under `ADR-030`) over the
 exact same coupled 3D pose geometry (`--score_only`). Under GNINA `refinement`
 (`--cnn_mix_emp_force` off), coordinates are optimized under 3D CNN gradients
@@ -123,13 +123,13 @@ geometry—explicitly documented as non-independent
 
 ---
 
-## Active `v0.2` development (`codex/v0.2-dev`)
+## `v0.2` capabilities on `main` (`M0`–`M6.5`)
 
-On the dedicated `codex/v0.2-dev` development branch (keeping published
-`v0.1.0-beta.2` installers on `main` untouched until bare-metal Linux Gate `D6`
-closes), milestones **`M0`–`M6.5`** are implemented, packaged within
-`ADR-031`'s `<= 1.00 MiB` Core installer-delta cap, and dual-OS verified across
-Windows 11 x64 and Linux x86\_64 (`WSL2` + `CUDA 12.8`):
+Milestones **`M0`–`M6.5`** are implemented, packaged within `ADR-031`'s
+`<= 1.00 MiB` Core installer-delta cap, and dual-OS verified across Windows 11
+x64 and Linux x86\_64 (`WSL2` + `CUDA 12.8`) while keeping the published
+`v0.1.0-beta.2` GitHub Release tag (`36f1c0e`) untouched until bare-metal Linux
+Gate `D6` closes for public `v0.2.0` installers:
 
 | Milestone | Scope verified on Windows 11 x64 & Linux `x86_64` | Core budget delta | Evidence record |
 | --- | --- | --- | --- |
@@ -235,15 +235,16 @@ Releases. See the machine-verified
 [platform status matrix](docs/product/PLATFORM_STATUS.md) for exact artifact
 sizes, hashes, and open release gates. macOS is out of scope.
 
-**Which version am I seeing?** This README describes current source development
-on `codex/v0.2-dev`. Compare your package build identity with the
-[changelog](CHANGELOG.md) when reporting an issue; source commits do not update
-an installed build automatically.
+**Which version am I seeing?** This README describes current `v0.2`
+source development on `main` (not yet cut as a public `v0.2.0` GitHub Release
+pending bare-metal Linux Gate `D6`). Compare your package build identity with
+the [changelog](CHANGELOG.md) when reporting an issue; source commits do not
+update an installed build automatically.
 
 **No separate Python, Conda, Java or scientific-tool installation is required**
 for packaged end-user distributions:
 
-| Platform | Package artifact | Published `v0.1.0-beta.2` | `codex/v0.2-dev` RC (`ADR-031` delta) | Notes & release gate |
+| Platform | Package artifact | Published `v0.1.0-beta.2` | `v0.2` RC (`ADR-031` delta) | Notes & release gate |
 | --- | --- | ---: | ---: | --- |
 | **Windows 11 x64** (`private_beta`) | `Ankora_0.1.0_x64-setup.exe` | `407.16 MiB` | `408.24 MiB` (`+814.63 KiB`) | **Unsigned** per-user offline NSIS installer (`ADR-024`); bundles Python `3.12.13`, `Vina 1.2.7`, `AutoGrid4/AD4 4.2.6`, `AutoDock-GPU 1.6` (`OpenCL`), `P2Rank 2.5.1` + private Java `21`, and offline `WebView2`. |
 | **Linux `x86_64` `.deb`** (`release_candidate`) | `Ankora_0.1.0_amd64.deb` | `272.34 MiB` | `272.73 MiB` (`+397.00 KiB`) | Double-click package for Ubuntu 24.04 LTS / Debian / Mint / Pop!\_OS (`ADR-029`); bundles `WebKitGTK`, `10/10` Core tools, and multi-arch `CUDA 12` `AutoDock-GPU 1.6`. |

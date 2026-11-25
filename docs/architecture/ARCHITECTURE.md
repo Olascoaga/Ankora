@@ -61,7 +61,7 @@ Single-compound and virtual-screening modes share the same scientific contracts 
 
 ## `v0.2` scientific extensions (`M1`–`M6.5`, `ADR-030`–`ADR-033`)
 
-On `codex/v0.2-dev`, Ankora extends the core `M1`–`M9` workbench without breaking `v0.1` artifact immutability, frozen `adapters/engines/vina.py` parity, or `ADR-031`'s `<= 1.00 MiB` offline installer-size delta budget:
+In `v0.2`, Ankora extends the core `M1`–`M9` workbench without breaking `v0.1` artifact immutability, frozen `adapters/engines/vina.py` parity, or `ADR-031`'s `<= 1.00 MiB` offline installer-size delta budget:
 
 - **Coupled flexibility & `PoseComplexIdentity` (`M1`, `ADR-032`):** explicit semi-flexible `Meeko 0.7.1` ligand controls (`macrocycle_policy`, SMARTS bond rigidification, `flexible_amides`) and bounded `1–4` pocket `FlexRes` side chains share an immutable `PoseComplexIdentity` (`E8`) across `AutoDock Vina 1.2.7`, `AutoDock4 4.2.6`, `AutoDock-GPU 1.6`, and Linux `GNINA 1.3.3`, with `AutoGrid4` map-union enforcement (`E7`) and create-only `--local_only` refinement.
 - **Out-of-sample protocol calibration & cross-engine `--score_only` (`M2`, `ADR-031 §3`):** `ProtocolCalibrationService` enforces Bemis–Murcko scaffold splits into Calibration vs. create-only single-use locked Confirmation (`1-SE` parsimony, paired parent bootstrap `95% CI`, verbatim `"Insufficient evidence to prefer over baseline"` null verdict), backed by in-place `--score_only` across `Vina`, `Vinardo`, bound-unbound `AutoDock4 4.2.6 epdb`, and Linux `GNINA 1.3.3`.

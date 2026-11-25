@@ -96,5 +96,5 @@ lists the figure hashes, input identities, PDF inspection and scope limits.
   Axis B holo macro `BEDROC_20` at `0.3256` vs. `0.2827` with `0/3` targets
   statistically `external_preferred`), chemical-governance, and raw rigid
   throughput trade-off results side by side. It is a retrospective benchmark
-  summary of `codex/v0.2-dev` and does not establish prospective affinity
+  summary of Ankora `v0.2` and does not establish prospective affinity
   prediction, biological activity, or cross-target generality.
