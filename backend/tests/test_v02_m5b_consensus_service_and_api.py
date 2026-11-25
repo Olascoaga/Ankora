@@ -15,14 +15,18 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ankora_backend.adapters.engines.autodock4 import (
     collect_autodock_atom_types,
     render_autogrid_gpf,
 )
+from ankora_backend.adapters.engines.autodock4_runner import probe_autodock4
 from ankora_backend.adapters.engines.autogrid import probe_autogrid4
+from ankora_backend.adapters.engines.vina import probe_vina
 from ankora_backend.api.app import create_app
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.calibration_store import CalibrationArtifactStore
@@ -558,6 +562,12 @@ def test_live_cross_engine_campaign_consensus_panel_reuse_e4_stale_and_methods(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     """Runs LIVE AutoDock Vina 1.2.7 (vina + vinardo) & AutoDock4 4.2.6 (epdb) consensus."""
+    try:
+        probe_autogrid4()
+        probe_autodock4()
+        probe_vina()
+    except AnkoraDomainError:
+        pytest.skip("Real AutoGrid4 / AutoDock4 / Vina binaries are not configured on this host.")
     monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
     app = create_app()
     seeded = _seed_live_cross_engine_project(tmp_path)

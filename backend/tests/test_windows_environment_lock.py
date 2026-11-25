@@ -41,7 +41,7 @@ def test_repository_windows_environment_locks_are_complete() -> None:
     result = _run_checker(REPOSITORY_ROOT)
 
     assert result.returncode == 0, result.stderr
-    assert "36 Conda packages, 74 Python packages, and 7 packaging tools" in result.stdout
+    assert "36 Conda packages, 75 Python packages, and 7 packaging tools" in result.stdout
 
 
 def test_conda_lock_rejects_a_package_without_sha256(tmp_path: Path) -> None:
