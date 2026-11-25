@@ -26,7 +26,7 @@ def checker() -> ModuleType:
 
 def _stage_minimal_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
-    for rel in (
+    base_files = [
         "docs/README.md",
         "docs/product/PLATFORM_STATUS.json",
         "docs/product/PLATFORM_STATUS.md",
@@ -49,12 +49,29 @@ def _stage_minimal_repo(tmp_path: Path) -> Path:
         "docs/validation/PRIVATE_BETA_INSTALLER_2026-10-15.md",
         "docs/validation/LINUX_OFFLINE_PACKAGE_SMOKE.md",
         "docs/validation/LINUX_NATIVE_WORKSTATION_PROTOCOL.md",
-    ):
+    ]
+    status_payload = json.loads(
+        (ROOT / "docs/product/PLATFORM_STATUS.json").read_text(encoding="utf-8")
+    )
+    for plat in status_payload.get("platforms", []):
+        for doc_rel in plat.get("primary_evidence_docs", []):
+            if doc_rel not in base_files:
+                base_files.append(doc_rel)
+    for rel in base_files:
         dst = repo / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, dst)
     (repo / "docs/USER_GUIDE.md").write_text("# Synthetic User Guide\n", encoding="utf-8")
     return repo
+
+
+def _write_minimal_validation_index(repo: Path) -> None:
+    validation_dir = repo / "docs/validation"
+    entries = sorted(
+        p.name for p in validation_dir.glob("*.md") if p.name != "INDEX.md"
+    )
+    lines = ["# Index", ""] + [f"- [{name}]({name})" for name in entries] + [""]
+    (validation_dir / "INDEX.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def test_repository_platform_docs_and_validation_index_are_synchronized(
@@ -96,18 +113,7 @@ def test_checker_detects_stale_rendered_platform_markdown(
     (repo / "docs/README.md").write_text(
         "# Docs\n\n- [Status](product/PLATFORM_STATUS.md)\n", encoding="utf-8"
     )
-    (repo / "docs/validation/INDEX.md").write_text(
-        "# Index\n\n"
-        "- [a](VALIDATION_STATUS.md)\n"
-        "- [b](PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)\n"
-        "- [c](PRIVATE_BETA_INSTALLER_2026-10-15.md)\n"
-        "- [d](LINUX_OFFLINE_PACKAGE_SMOKE.md)\n"
-        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n"
-        "- [f](GNINA_REDOCKING.md)\n"
-        "- [g](LINUX_GNINA_REDOCKING.md)\n"
-        "- [h](LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)\n",
-        encoding="utf-8",
-    )
+    _write_minimal_validation_index(repo)
     checker.verify_all(repo, write=False)
 
     (repo / "docs/product/PLATFORM_STATUS.md").write_text("# Stale\n", encoding="utf-8")
@@ -122,18 +128,7 @@ def test_checker_rejects_unindexed_validation_record_and_broken_links(
     (repo / "docs/README.md").write_text(
         "# Docs\n\n- [Status](product/PLATFORM_STATUS.md)\n", encoding="utf-8"
     )
-    (repo / "docs/validation/INDEX.md").write_text(
-        "# Index\n\n"
-        "- [a](VALIDATION_STATUS.md)\n"
-        "- [b](PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md)\n"
-        "- [c](PRIVATE_BETA_INSTALLER_2026-10-15.md)\n"
-        "- [d](LINUX_OFFLINE_PACKAGE_SMOKE.md)\n"
-        "- [e](LINUX_NATIVE_WORKSTATION_PROTOCOL.md)\n"
-        "- [f](GNINA_REDOCKING.md)\n"
-        "- [g](LINUX_GNINA_REDOCKING.md)\n"
-        "- [h](LINUX_PRIMARY_METRICS_NUMERIC_DIAGNOSTIC.md)\n",
-        encoding="utf-8",
-    )
+    _write_minimal_validation_index(repo)
     (repo / "docs/validation/SYNTHETIC_NEW_RECORD.md").write_text("# Synthetic\n", encoding="utf-8")
     with pytest.raises(checker.PlatformDocsError, match="omits 1 validation record"):
         checker.verify_all(repo, write=False)

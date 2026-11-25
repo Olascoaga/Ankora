@@ -31,6 +31,11 @@ All notable project changes are recorded here.
     and rigid `Uni-Dock` GPU speed (`27–42 s`), while exhibiting metal-unaware `TP53` `ZN 313` protonation (`HD1`/`HG`
     clashes with `warnings: None`), `22.6%–31.7%` neutral 4-bonded `N` export failures on `GNINA` SDFs, and
     `retained_structural_waters` mismatch on `TP53`/`PPARG`.
+- **Repository presentation & core documentation refresh (`README.md`, `docs/README.md`, `docs/product/PLATFORM_STATUS.{json,md}`, `docs/architecture/ARCHITECTURE.md`):**
+  restructured `README.md` with scannable 4-pillar summary, explicit scientific-contract table, `M1`–`M6.5` milestone
+  matrix, side-by-side two-axis `ADR-031` external benchmark table (`Ankora v0.2` vs. `DockM8 v1.1.1` and
+  `AMDockVS v0.14.1`), offline installer delta table, and synchronized `146`-record index; updated
+  `PLATFORM_STATUS.json`/`.md`, `docs/README.md`, and `ARCHITECTURE.md` to reflect `M0`–`M6.5` and Records `142`–`146`.
 
 ## Ankora `v0.2` Post-Benchmark Offline Installer Rebuild (`86d89ed`), `ADR-031` Attestation & Clean-Room `D4` Smoke (`codex/v0.2-dev`) - 2026-11-24
 

@@ -30,14 +30,18 @@ Read these contracts before comparing campaigns, interpreting scores, or citing 
 
 ---
 
-## 3. Validation Status, Frozen Reference Cases & Evidence Index
+## 3. Validation Status, External Benchmarks & Evidence Index
 
 | Resource | Purpose |
 | --- | --- |
 | [Public Validation Status](validation/VALIDATION_STATUS.md) · [`JSON`](validation/VALIDATION_STATUS.json) | CI-enforced summary of frozen reference cases (`PIK3CD 6OCO / M5V` completed; `SERPINE1 7AQF / RV2` frozen with documented gaps) and claims not yet established. |
 | [**Complete Validation & Evidence Index**](validation/INDEX.md) | Categorized index of all **146** scientific, benchmark, cross-platform numeric, Linux/GNINA, offline-packaging, and `v0.2` `M1–M6.5` / `ADR-031` records under `docs/validation/`. |
+| [Multi-Target Holo Benchmark vs. `DockM8 v1.1.1`](validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md) | Two-axis `ADR-031` comparison across 3 `LIT-PCBA` targets (`ESR_antago`, `TP53`, `PPARG`, `N = 780` locked Confirmation parents) with paired bootstrap CIs and shared `PoseBusters 0.6.5` audits (Record `143`; single-target baseline in [Record `142`](validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md)). |
+| [Induced-Fit `FlexRes` Benchmark vs. `DockM8 v1.1.1`](validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md) | Crystallographic cross-docking (`1PRG <- KRC`, cofactor-free boundary control `1US0 <- TOL`) and full apo `1PRG` two-axis `FlexRes` screening (`N = 180`, coupled `E8 PoseBusters 0.6.5`, Record `144`). |
+| [Holo & `FlexRes` Benchmark vs. `AMDockVS v0.14.1`](validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md) | Two-axis `ADR-031` suite across all 3 holo targets (`N = 780`) and induced-fit `1PRG`/`1US0` (`Uni-Dock 1.2.0 CUDA`, `Vina 1.2.7`, `GNINA 1.3.3 CUDA`), publishing positive, null, split (`GNINA CNN_VS`), chemical-integrity, and throughput trade-offs verbatim (Record `146`). |
+| [Post-Benchmark `v0.2` Offline Installer Attestation](validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md) | Unified `ADR-031` byte-budget proof (`<= 814.63 KiB` delta across `.exe`/`.deb`/`.tar.zst`), Windows sanitized-PATH `10/10` smoke, and Linux `D4` clean-room smoke with 1-click `GNINA 1.3.3 CUDA` (Record `145`; conditional `M7` OpenMM deferral in [Record `141`](validation/V02_M7_OPENMM_OFFLINE_SPIKE.md)). |
 | [Validation Strategy](validation/VALIDATION_STRATEGY.md) | Methodology separating engineering smoke checks, retrospective reference cases, and prospective biological claims. |
-| [Virtual Screening Benchmark Protocol](validation/VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) | Preregistered retrospective LIT-PCBA benchmark design, receptor/ligand freezes, primary Vina metrics, and sensitivity plan. |
+| [Virtual Screening Benchmark Protocol](validation/VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) | Preregistered retrospective `LIT-PCBA` benchmark design, receptor/ligand freezes, primary Vina metrics, and sensitivity plan. |
 
 ---
 
