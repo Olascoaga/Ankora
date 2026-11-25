@@ -27,14 +27,36 @@ from ankora_backend.schemas.ligands import (
     LigandRecord,
 )
 from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
     ReceptorOutputArtifact,
     ReceptorOutputStage,
+    ReceptorPreparationRecord,
     ReceptorPreparationStatus,
 )
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.autogrid_maps import verify_autogrid_map_set_for_receptor
 
 
-def resolve_receptor_and_site(
+@dataclass(frozen=True, slots=True)
+class DockingReceptor:
+    """Resolved receptor artifacts for AutoDock4 CPU or AutoDock-GPU docking."""
+
+    record: ReceptorPreparationRecord
+    rigid_output: ReceptorOutputArtifact
+    rigid_path: Path | None = None
+    flex_output: ReceptorOutputArtifact | None = None
+    flex_path: Path | None = None
+    flex_atom_types: tuple[str, ...] = ()
+    flex_atom_count: int = 0
+    flex_torsion_count: int = 0
+
+    @property
+    def flex_mode(self) -> ReceptorFlexMode:
+        spec = self.record.flex_spec
+        return spec.mode if spec is not None else ReceptorFlexMode.RIGID
+
+
+def resolve_docking_receptor_and_site(
     *,
     receptor_id: str,
     binding_site_id: str,
@@ -42,7 +64,7 @@ def resolve_receptor_and_site(
     binding_site_store: BindingSiteArtifactStore,
     stage: str,
     code_prefix: str,
-) -> tuple[ReceptorOutputArtifact, BindingSiteRecord]:
+) -> tuple[DockingReceptor, BindingSiteRecord]:
     receptor = receptor_store.load_record(receptor_id)
     if receptor.status is not ReceptorPreparationStatus.DOCKING_READY:
         raise _rejected(
@@ -51,17 +73,90 @@ def resolve_receptor_and_site(
             {"receptor_id": receptor_id, "status": receptor.status.value},
             stage,
         )
-    receptor_output = next(
-        (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
-        None,
-    )
-    if receptor_output is None:
-        raise _rejected(
-            f"{code_prefix}_RECEPTOR_PDBQT_MISSING",
-            "The selected receptor has no preserved PDBQT output.",
-            {"receptor_id": receptor_id},
-            stage,
+    spec = receptor.flex_spec
+    rigid_path: Path | None = None
+    flex_output: ReceptorOutputArtifact | None = None
+    flex_path: Path | None = None
+    flex_atom_types: tuple[str, ...] = ()
+    flex_atom_count = 0
+    flex_torsion_count = 0
+    if spec is not None and spec.mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        receptor_output = next(
+            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT_RIGID),
+            None,
         )
+        if receptor_output is None:
+            raise _rejected(
+                f"{code_prefix}_RECEPTOR_PDBQT_MISSING",
+                "The selected flexible receptor has no preserved rigid PDBQT split output.",
+                {"receptor_id": receptor_id},
+                stage,
+            )
+        if receptor_output.sha256 != spec.receptor_rigid_sha256:
+            raise _rejected(
+                f"{code_prefix}_INPUT_HASH_MISMATCH",
+                "The rigid receptor split does not match its recorded flex spec hash.",
+                {
+                    "expected_sha256": spec.receptor_rigid_sha256,
+                    "actual_sha256": receptor_output.sha256,
+                },
+                stage,
+            )
+        rigid_path = receptor_store.content_path(receptor_id, receptor_output.artifact_id)
+        verify_hash(
+            rigid_path,
+            receptor_output.sha256,
+            stage=stage,
+            code_prefix=code_prefix,
+            label="rigid receptor split",
+        )
+        flex_output = next(
+            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT_FLEX),
+            None,
+        )
+        if flex_output is None:
+            raise _rejected(
+                f"{code_prefix}_RECEPTOR_PDBQT_MISSING",
+                "The selected flexible receptor has no preserved flexible side-chain PDBQT output.",
+                {"receptor_id": receptor_id},
+                stage,
+            )
+        if flex_output.sha256 != spec.receptor_flex_sha256:
+            raise _rejected(
+                f"{code_prefix}_INPUT_HASH_MISMATCH",
+                "The flexible side-chain split does not match its recorded flex spec hash.",
+                {
+                    "expected_sha256": spec.receptor_flex_sha256,
+                    "actual_sha256": flex_output.sha256,
+                },
+                stage,
+            )
+        flex_path = receptor_store.content_path(receptor_id, flex_output.artifact_id)
+        verify_hash(
+            flex_path,
+            flex_output.sha256,
+            stage=stage,
+            code_prefix=code_prefix,
+            label="flexible receptor side-chain split",
+        )
+        flex_document = flex_path.read_text(encoding="utf-8", errors="replace")
+        flex_atom_types = ordered_atom_types(flex_document)
+        flex_atom_count = sum(
+            1 for line in flex_document.splitlines() if line.startswith(("ATOM  ", "HETATM"))
+        )
+        flex_torsion_count = spec.added_chi_torsion_count
+    else:
+        receptor_output = next(
+            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
+            None,
+        )
+        if receptor_output is None:
+            raise _rejected(
+                f"{code_prefix}_RECEPTOR_PDBQT_MISSING",
+                "The selected receptor has no preserved PDBQT output.",
+                {"receptor_id": receptor_id},
+                stage,
+            )
     binding_site = binding_site_store.load_record(binding_site_id)
     if binding_site.receptor_id != receptor_id or binding_site.stale:
         raise _rejected(
@@ -75,7 +170,39 @@ def resolve_receptor_and_site(
             },
             stage,
         )
-    return receptor_output, binding_site
+    return (
+        DockingReceptor(
+            record=receptor,
+            rigid_output=receptor_output,
+            rigid_path=rigid_path,
+            flex_output=flex_output,
+            flex_path=flex_path,
+            flex_atom_types=flex_atom_types,
+            flex_atom_count=flex_atom_count,
+            flex_torsion_count=flex_torsion_count,
+        ),
+        binding_site,
+    )
+
+
+def resolve_receptor_and_site(
+    *,
+    receptor_id: str,
+    binding_site_id: str,
+    receptor_store: ReceptorArtifactStore,
+    binding_site_store: BindingSiteArtifactStore,
+    stage: str,
+    code_prefix: str,
+) -> tuple[ReceptorOutputArtifact, BindingSiteRecord]:
+    docking_receptor, binding_site = resolve_docking_receptor_and_site(
+        receptor_id=receptor_id,
+        binding_site_id=binding_site_id,
+        receptor_store=receptor_store,
+        binding_site_store=binding_site_store,
+        stage=stage,
+        code_prefix=code_prefix,
+    )
+    return docking_receptor.rigid_output, binding_site
 
 
 def validate_map_set_applies(
@@ -85,6 +212,7 @@ def validate_map_set_applies(
     binding_site: BindingSiteRecord,
     stage: str,
     code_prefix: str,
+    receptor: ReceptorPreparationRecord | None = None,
 ) -> list[StructuredWarning]:
     """Check what actually makes the maps valid, not which record made them.
 
@@ -93,7 +221,43 @@ def validate_map_set_applies(
     geometry legitimately share one map set. Comparing record IDs here would
     reject a scientifically correct reuse - and did, because a receptor can
     accumulate many binding-site records with an identical box.
+
+    When either the receptor or the map set uses `sidechain_flex`, E7
+    (`verify_autogrid_map_set_for_receptor`) is enforced before docking so a
+    full rigid map set or a map set missing flexible side-chain atom types is
+    refused with `AUTOGRID_FLEXRES_MAP_MISMATCH`.
     """
+    if receptor is not None:
+        receptor_is_flex = (
+            receptor.flex_spec is not None
+            and receptor.flex_spec.mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        )
+        map_is_flex = map_set.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        if receptor_is_flex or map_is_flex:
+            verify_autogrid_map_set_for_receptor(map_set, receptor)
+            if receptor_is_flex:
+                available_affinity = {
+                    artifact.atom_type
+                    for artifact in map_set.artifacts
+                    if artifact.kind is AutoGridMapKind.AFFINITY and artifact.atom_type is not None
+                }
+                missing_flex_maps = sorted(set(receptor.flex_atom_types) - available_affinity)
+                if missing_flex_maps:
+                    raise AnkoraDomainError(
+                        code="AUTOGRID_FLEXRES_MAP_MISMATCH",
+                        stage="autogrid_map_verification",
+                        status_code=422,
+                        message=(
+                            "The AutoGrid map set is missing affinity map files for one or "
+                            "more flexible receptor side-chain atom types."
+                        ),
+                        details={
+                            "map_set_id": map_set.map_set_id,
+                            "receptor_id": receptor.receptor_id,
+                            "missing_flex_atom_types": missing_flex_maps,
+                            "map_affinity_atom_types": sorted(available_affinity),
+                        },
+                    )
     if map_set.receptor_sha256 != receptor_output.sha256:
         raise _rejected(
             f"{code_prefix}_MAP_SET_RECEPTOR_MISMATCH",
@@ -132,6 +296,28 @@ def validate_map_set_applies(
             },
             recoverable=True,
         )
+    ]
+
+
+def merge_ordered_atom_types(
+    primary: tuple[str, ...], extra: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Return first-appearance ordered union of primary (ligand) and extra (flex) types."""
+    if not extra:
+        return primary
+    merged = list(primary)
+    for atom_type in extra:
+        if atom_type not in merged:
+            merged.append(atom_type)
+    return tuple(merged)
+
+
+def flex_dof_warnings(receptor: ReceptorPreparationRecord) -> list[StructuredWarning]:
+    """Propagate high flexible-DOF advisories from receptor preparation onto docking jobs."""
+    return [
+        warning
+        for warning in receptor.warnings
+        if warning.code is WarningCode.DOCKING_FLEXRES_DOF_HIGH
     ]
 
 
@@ -410,8 +596,10 @@ def resolve_selected_chemical_state(
     )
 
 
-def verify_hash(path: Path, expected: str, *, stage: str, code_prefix: str) -> None:
-    """A prepared ligand that drifted from its recorded hash is not that ligand."""
+def verify_hash(
+    path: Path, expected: str, *, stage: str, code_prefix: str, label: str = "ligand"
+) -> None:
+    """A prepared docking input that drifted from its recorded hash is rejected."""
     digest = sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -419,7 +607,7 @@ def verify_hash(path: Path, expected: str, *, stage: str, code_prefix: str) -> N
     if digest.hexdigest() != expected:
         raise _rejected(
             f"{code_prefix}_INPUT_HASH_MISMATCH",
-            "The prepared ligand no longer matches its stored hash.",
+            f"The prepared {label} no longer matches its stored hash.",
             {"path": path.name, "expected_sha256": expected},
             stage,
         )

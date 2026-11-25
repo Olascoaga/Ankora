@@ -1,5 +1,16 @@
 import type {
+  AnalogCatalogRecord,
+  AnalogCatalogSummary,
+  AnalogSearchRecord,
+  AnalogSelectionRecord,
   ApplyLigandLibraryFilterRequest,
+  CreateAnalogSelectionRequest,
+  ExternalConsentPreview,
+  ExternalConsentPreviewRequest,
+  McsCoreRmsdRequest,
+  McsCoreRmsdResult,
+  RunOfflineAnalogSearchRequest,
+  RunOnlineAnalogSearchRequest,
   BindingSitePreview,
   CatalogEntry,
   CatalogPage,
@@ -59,6 +70,25 @@ import type {
   ToolsResponse,
   AutoDock4BatchProgress,
   AutoDock4BatchRecord,
+  CalibrationConfirmRequest,
+  CalibrationRunList,
+  CalibrationRunRecord,
+  CalibrationSelectRequest,
+  CalibrationSplitRequest,
+  CreateCampaignConsensusRequest,
+  CreateInteractionRuleSetRequest,
+  CreateStructuredConsensusRequest,
+  ConsensusExport,
+  ConsensusRunListResponse,
+  ConsensusRunRecord,
+  EvaluateInteractionRulesRequest,
+  FitPcL2Request,
+  InteractionRuleEvaluationRecord,
+  InteractionRuleSetRecord,
+  PoseQualityRecord,
+  PoseQualityRequest,
+  PoseRescoreResult,
+  SavedPoseRescoreRequest,
   AutoDockGpuBatchProgress,
   AutoDockGpuBatchRecord,
   AutoDockGpuBatchRequest,
@@ -82,6 +112,10 @@ import type {
   VinaBatchProgress,
   VinaDockingJobRecord,
   VinaDockingRequest,
+  VinaLocalRefinementRecord,
+  VinaLocalRefinementRequest,
+  GninaLocalRefinementRecord,
+  GninaLocalRefinementRequest,
   InteractionAnalysisRecord,
   PoseInventory,
   ProjectCatalog,
@@ -166,6 +200,20 @@ function gninaScreeningEntryList(
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.entries)) return payload.entries;
   throw new Error("The GNINA screening entries response did not contain entries.");
+}
+
+/**
+ * The calibration runs out of their documented `{ runs: [...] }` envelope.
+ *
+ * A missing envelope is an error rather than an empty history: a calibration
+ * list that silently reads as empty would invite starting a second split over a
+ * campaign whose Confirmation set is already locked or consumed.
+ */
+function calibrationRuns(payload: CalibrationRunList): CalibrationRunRecord[] {
+  if (!Array.isArray(payload?.runs)) {
+    throw new Error("The calibration runs response did not contain runs.");
+  }
+  return payload.runs;
 }
 
 function campaignHistoryQuery(receptorId: string, bindingSiteId: string): string {
@@ -508,6 +556,29 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     }),
   dockingPoseUrl: (contentUrl: string): string => `${API_BASE_URL}${contentUrl}`,
 
+  /**
+   * Create one immutable `--local_only` derivative of an already recorded pose.
+   *
+   * The parent job and parent pose are left exactly as they were: this writes a
+   * new record (ADR-005) rather than refining anything in place (ADR-004).
+   */
+  refineVinaPoseLocalOnly: (
+    request: VinaLocalRefinementRequest,
+  ): Promise<VinaLocalRefinementRecord> =>
+    requestJson<VinaLocalRefinementRecord>("/docking/vina/refinements", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  /** The same create-only derivative on Linux GNINA (ADR-027). */
+  refineGninaPoseLocalOnly: (
+    request: GninaLocalRefinementRequest,
+  ): Promise<GninaLocalRefinementRecord> =>
+    requestJson<GninaLocalRefinementRecord>("/docking/gnina/refinements", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
   latestAutoDock4Batch: (
     receptorId: string,
     bindingSiteId: string,
@@ -657,6 +728,66 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
 
   getRedockingValidation: (validationId: string): Promise<RedockingRunRecord> =>
     getJson<RedockingRunRecord>(`/validation/redocking/${validationId}`),
+
+  /**
+   * Every recorded two-stage protocol calibration run, so a sealed decision and
+   * a consumed Confirmation split stay readable across restarts (`ADR-031` §3).
+   */
+  listCalibrations: (signal?: AbortSignal): Promise<CalibrationRunRecord[]> =>
+    getJson<CalibrationRunList>("/calibrations", signal).then(calibrationRuns),
+
+  getCalibration: (calibrationId: string): Promise<CalibrationRunRecord> =>
+    getJson<CalibrationRunRecord>(`/calibrations/${encodeURIComponent(calibrationId)}`),
+
+  /**
+   * Construct and freeze the scaffold-grouped split before any comparison
+   * number exists. The Confirmation side is locked by the same call.
+   */
+  createCalibrationSplit: (
+    request: CalibrationSplitRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>("/calibrations/splits", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  /** Stage 1 — choose a protocol on Calibration alone and seal the decision. */
+  selectCalibrationProtocol: (
+    calibrationId: string,
+    request: CalibrationSelectRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>(
+      `/calibrations/${encodeURIComponent(calibrationId)}/select`,
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  /**
+   * Stage 2 — unlock, evaluate, and permanently consume the Confirmation split.
+   *
+   * Single-use by contract: a second call is rejected with
+   * `CALIBRATION_CONFIRMATION_ALREADY_CONSUMED` rather than re-evaluated.
+   */
+  confirmCalibration: (
+    calibrationId: string,
+    request: CalibrationConfirmRequest,
+  ): Promise<CalibrationRunRecord> =>
+    requestJson<CalibrationRunRecord>(
+      `/calibrations/${encodeURIComponent(calibrationId)}/confirm`,
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  /**
+   * Evaluate one already saved pose in place across scoring functions
+   * (`--score_only`).
+   *
+   * Read-only on the pose: the result carries `mutated_original_pose: false`,
+   * and each returned `ScoreObservation` stays in its own native unit.
+   */
+  rescorePoseOnly: (request: SavedPoseRescoreRequest): Promise<PoseRescoreResult> =>
+    requestJson<PoseRescoreResult>("/rescoring/score-only", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
 
   /**
    * Everything already exported, newest first.
@@ -810,6 +941,213 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
     + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/interactions`,
     { method: "POST", body: JSON.stringify({}) },
   ),
+
+  listPoseQualityAssessments: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): Promise<PoseQualityRecord[]> =>
+    getJson<PoseQualityRecord[]>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/quality`,
+    ),
+
+  assessPoseQuality: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+    request: PoseQualityRequest = {},
+  ): Promise<PoseQualityRecord> => requestJson<PoseQualityRecord>(
+    `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+    + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/quality`,
+    { method: "POST", body: JSON.stringify(request) },
+  ),
+
+  listInteractionRuleSets: (receptorId?: string): Promise<InteractionRuleSetRecord[]> =>
+    getJson<InteractionRuleSetRecord[]>(
+      receptorId
+        ? `/interactions/rule-sets?receptor_id=${encodeURIComponent(receptorId)}`
+        : "/interactions/rule-sets",
+    ),
+
+  createInteractionRuleSet: (
+    request: CreateInteractionRuleSetRequest,
+  ): Promise<InteractionRuleSetRecord> =>
+    requestJson<InteractionRuleSetRecord>("/interactions/rule-sets", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  getInteractionRuleSet: (ruleSetId: string): Promise<InteractionRuleSetRecord> =>
+    getJson<InteractionRuleSetRecord>(
+      `/interactions/rule-sets/${encodeURIComponent(ruleSetId)}`,
+    ),
+
+  listPoseInteractionRuleEvaluations: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): Promise<InteractionRuleEvaluationRecord[]> =>
+    getJson<InteractionRuleEvaluationRecord[]>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}`
+      + "/interaction-rules",
+    ),
+
+  evaluatePoseInteractionRules: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+    request: EvaluateInteractionRulesRequest,
+  ): Promise<InteractionRuleEvaluationRecord> =>
+    requestJson<InteractionRuleEvaluationRecord>(
+      `/results/campaigns/${catalogPath(catalogId)}/compounds/`
+      + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}`
+      + "/interaction-rules",
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  listConsensusRuns: (): Promise<ConsensusRunListResponse> =>
+    getJson<ConsensusRunListResponse>("/consensus/runs"),
+
+  getConsensusRun: (consensusId: string): Promise<ConsensusRunRecord> =>
+    getJson<ConsensusRunRecord>(`/consensus/runs/${encodeURIComponent(consensusId)}`),
+
+  createCampaignConsensus: (
+    request: CreateCampaignConsensusRequest,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>("/consensus/runs/campaigns", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  createStructuredConsensus: (
+    request: CreateStructuredConsensusRequest,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>("/consensus/runs/structured", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  fitConsensusPcL2: (
+    consensusId: string,
+    request: FitPcL2Request,
+  ): Promise<ConsensusRunRecord> =>
+    requestJson<ConsensusRunRecord>(
+      `/consensus/runs/${encodeURIComponent(consensusId)}/pc-l2`,
+      { method: "POST", body: JSON.stringify(request) },
+    ),
+
+  exportConsensusRun: (
+    consensusId: string,
+    options: { destination?: string; displayName?: string } = {},
+  ): Promise<ConsensusExport> => {
+    const query = new URLSearchParams();
+    if (options.destination) query.set("destination", options.destination);
+    if (options.displayName) query.set("display_name", options.displayName);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return requestJson<ConsensusExport>(
+      `/consensus/runs/${encodeURIComponent(consensusId)}/export${suffix}`,
+      { method: "POST" },
+    );
+  },
+
+  listAnalogCatalogs: (): Promise<AnalogCatalogSummary[]> =>
+    getJson<AnalogCatalogSummary[]>("/analog-expansion/catalogs"),
+
+  importAnalogCatalog: (
+    file: File,
+    options: {
+      name?: string;
+      smilesColumn?: string;
+      idColumn?: string;
+      delimiter?: string;
+      encoding?: string;
+    } = {},
+  ): Promise<AnalogCatalogRecord> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (options.name) form.append("name", options.name);
+    if (options.smilesColumn) form.append("smiles_column", options.smilesColumn);
+    if (options.idColumn) form.append("id_column", options.idColumn);
+    if (options.delimiter) form.append("delimiter", options.delimiter);
+    if (options.encoding) form.append("encoding", options.encoding);
+    return requestJson<AnalogCatalogRecord>("/analog-expansion/catalogs", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  snapshotLibraryAsAnalogCatalog: (
+    libraryId: string,
+    name?: string,
+  ): Promise<AnalogCatalogRecord> => {
+    const suffix = name ? `?name=${encodeURIComponent(name)}` : "";
+    return requestJson<AnalogCatalogRecord>(
+      `/analog-expansion/catalogs/from-library/${encodeURIComponent(libraryId)}${suffix}`,
+      { method: "POST" },
+    );
+  },
+
+  previewExternalAnalogConsent: (
+    request: ExternalConsentPreviewRequest,
+  ): Promise<ExternalConsentPreview> =>
+    requestJson<ExternalConsentPreview>("/analog-expansion/external-consent-preview", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  runOfflineAnalogSearch: (
+    request: RunOfflineAnalogSearchRequest,
+  ): Promise<AnalogSearchRecord> =>
+    requestJson<AnalogSearchRecord>("/analog-expansion/searches/offline", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  runOnlineAnalogSearch: (
+    request: RunOnlineAnalogSearchRequest,
+  ): Promise<AnalogSearchRecord> =>
+    requestJson<AnalogSearchRecord>("/analog-expansion/searches/online", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  listAnalogSearches: (): Promise<AnalogSearchRecord[]> =>
+    getJson<AnalogSearchRecord[]>("/analog-expansion/searches"),
+
+  createAnalogSelection: (
+    analogSearchId: string,
+    request: CreateAnalogSelectionRequest,
+  ): Promise<AnalogSelectionRecord> =>
+    requestJson<AnalogSelectionRecord>(
+      `/analog-expansion/searches/${encodeURIComponent(analogSearchId)}/selections`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
+
+  computeAnalogMcsCoreRmsd: (request: McsCoreRmsdRequest): Promise<McsCoreRmsdResult> =>
+    requestJson<McsCoreRmsdResult>("/analog-expansion/mcs-core-rmsd", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  /**
+   * The deterministically materialized coupled complex for one pose (`E8`).
+   *
+   * Under `sidechain_flex` this is what every consumer must read: the rigid
+   * receptor, the moved side chains, and the ligand pose as one document, so
+   * nothing downstream reconstructs its own version of the complex.
+   */
+  poseComplexUrl: (
+    catalogId: string,
+    ligandId: string,
+    poseArtifactId: string,
+  ): string =>
+    `${API_BASE_URL}/results/campaigns/${catalogPath(catalogId)}/compounds/`
+    + `${encodeURIComponent(ligandId)}/poses/${encodeURIComponent(poseArtifactId)}/complex`,
 
   exportPoseComplex: (
     catalogId: string,

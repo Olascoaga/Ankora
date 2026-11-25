@@ -130,13 +130,35 @@ export type ReceptorIssueSeverity = "unassessed" | "near_reference" | "remote";
 export type ReceptorDecisionAction = "leave" | "repair" | "remove" | "manual_review";
 export type ComponentAction = "keep" | "remove";
 export type ReceptorPreparationStatus = "selected" | "protonated" | "docking_ready";
-export type ReceptorOutputStage = "selected" | "repaired" | "relaxed" | "protonated_pdb" | "protonated_pqr" | "meeko_input_pqr" | "pdbqt";
+export type ReceptorOutputStage = "selected" | "repaired" | "relaxed" | "protonated_pdb" | "protonated_pqr" | "meeko_input_pqr" | "pdbqt" | "pdbqt_rigid" | "pdbqt_flex";
 
 export interface ResidueLocator {
   chain_id: string;
   residue_name: string;
   sequence_number: number;
   insertion_code: string;
+}
+
+/**
+ * ADR-032 §2 — bounded receptor side-chain flexibility.
+ *
+ * `rigid` reproduces the frozen v0.1 behavior exactly and is the default, so a
+ * rigid request omits the spec entirely rather than sending an empty one.
+ */
+export type ReceptorFlexMode = "rigid" | "sidechain_flex";
+
+export interface ReceptorFlexRequest {
+  mode: ReceptorFlexMode;
+  flex_residues: ResidueLocator[];
+}
+
+/** The recorded, hash-bound identity of one immutable `mk_prepare_receptor -f` split. */
+export interface ReceptorFlexSpec {
+  mode: ReceptorFlexMode;
+  flex_residues: ResidueLocator[];
+  receptor_rigid_sha256: string;
+  receptor_flex_sha256: string | null;
+  added_chi_torsion_count: number;
 }
 
 export interface ReceptorIssue {
@@ -332,6 +354,8 @@ export interface ReceptorPreparationRequest {
   repair_method?: "legacy" | "topology_guard_v3";
   repair_seed?: number;
   inspection_method?: "reported_only" | "templates_v1";
+  /** Omitted entirely for a rigid receptor, preserving the exact v0.1 request. */
+  flexibility?: ReceptorFlexRequest | null;
 }
 
 export interface ReceptorOutputArtifact {
@@ -356,9 +380,18 @@ export interface ReceptorPreparationRecord {
   provenance: ProvenanceEvent[];
   display_output_artifact_id: string;
   protonation_analysis?: ReceptorProtonationAnalysis | null;
+  flex_spec?: ReceptorFlexSpec | null;
+  /** Atom types contributed by the moving side chains; AutoGrid4 needs their union. */
+  flex_atom_types?: string[];
 }
 
-export type BindingSiteSource = "co_crystallized_ligand" | "selected_residues" | "manual" | "full_protein_blind" | "pocket_detected";
+export type BindingSiteSource =
+  | "co_crystallized_ligand"
+  | "selected_residues"
+  | "manual"
+  | "full_protein_blind"
+  | "pocket_detected"
+  | "pose_focused";
 
 export interface BindingBox {
   center_x: number;
@@ -411,6 +444,37 @@ export interface PocketSelection {
   pocket_id: string;
 }
 
+export interface PoseFocusedOrigin {
+  source_catalog_id: string;
+  ligand_id: string;
+  pose_artifact_id: string;
+  padding_angstrom?: number;
+  flex_containment_margin_angstrom?: number;
+  box_override?: BindingBox | null;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+}
+
+export interface PoseFocusedEvidence {
+  source_catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  pose_artifact_id: string;
+  pose_sha256: string;
+  pose_flex_sidechains_sha256?: string | null;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  heavy_atom_count: number;
+  excluded_hydrogen_count: number;
+  excluded_pseudoatom_count: number;
+  computed_base_box: BindingBox;
+  box_overridden: boolean;
+  flex_containment_checked: boolean;
+  flex_containment_margin_angstrom: number;
+}
+
 export interface BindingSiteRequest {
   source: BindingSiteSource;
   ligand_origin: LigandDerivedOrigin | null;
@@ -419,6 +483,7 @@ export interface BindingSiteRequest {
   blind_margin_angstrom: number;
   acknowledge_exploratory_full_protein?: boolean;
   pocket_selection: PocketSelection | null;
+  pose_focused?: PoseFocusedOrigin | null;
   parent_binding_site_id: string | null;
 }
 
@@ -427,6 +492,7 @@ export interface BindingSitePreview {
   source: BindingSiteSource;
   box: BindingBox;
   warnings: StructuredWarning[];
+  pose_focused_evidence?: PoseFocusedEvidence | null;
 }
 
 export interface BindingSiteRecord {
@@ -439,9 +505,10 @@ export interface BindingSiteRecord {
   stale: boolean;
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent[];
+  pose_focused_evidence?: PoseFocusedEvidence | null;
 }
 
-export type LigandSource = "crystallographic" | "local";
+export type LigandSource = "crystallographic" | "local" | "analog_expansion";
 export type LigandFormat = "sdf" | "mol" | "smiles";
 
 export interface LigandLocator {
@@ -930,12 +997,45 @@ export interface LigandConformerRecord {
 
 export type LigandChargeModel = "gasteiger";
 
+/**
+ * ADR-032 §1.1 — an explicit, recorded two-valued choice with no silent
+ * substitution. `flexible_pseudoatoms` samples ring conformations through
+ * Meeko's `CG0`/`G0` glue pseudoatoms and stays engine-incompatible with the
+ * whole AutoDock4 family; `rigid_input_conformation` surrenders that sampling
+ * to keep the prepared input ring and emits no pseudoatoms at all.
+ */
+export type MacrocyclePolicy = "flexible_pseudoatoms" | "rigid_input_conformation";
+
+export interface LigandFlexibilitySpec {
+  macrocycle_policy: MacrocyclePolicy;
+  rigidified_smarts: string[];
+  rigidified_bond_indices: [number, number][];
+  flexible_amides: boolean;
+  local_only_refinement: boolean;
+}
+
+/**
+ * What one `--rigidify_bonds_smarts` pattern actually matched (ADR-032 A2).
+ *
+ * Meeko exits 0 on a pattern that matches nothing, so Ankora owns the
+ * pre-match and reports a zero match count rather than leaving it invisible.
+ */
+export interface LigandSmartsRigidificationOutcome {
+  smarts: string;
+  bond_indices: [number, number];
+  match_count: number;
+  matched_bonds_zero_based?: [number, number][];
+  applied: boolean;
+}
+
 export interface PrepareLigandPdbqtRequest {
   charge_model: LigandChargeModel;
   /** Informational only: how many of these requests we're issuing concurrently
    * this batch run, recorded into provenance. The server never uses this to
    * size its own execution. */
   client_concurrency_hint?: number | null;
+  /** Omitted entirely at default rigid/standard behavior, preserving v0.1. */
+  flexibility?: LigandFlexibilitySpec | null;
 }
 
 export interface LigandPdbqtArtifact {
@@ -958,6 +1058,12 @@ export interface LigandPdbqtRecord {
   stderr: string;
   provenance: ProvenanceEvent;
   content_url: string;
+  flexibility?: LigandFlexibilitySpec | null;
+  /** The TORSDOF actually present in the produced PDBQT (ADR-032 §1.4). */
+  effective_torsdof?: number | null;
+  atom_types?: string[];
+  warnings?: StructuredWarning[];
+  smarts_rigidification_outcomes?: LigandSmartsRigidificationOutcome[];
 }
 
 export interface LigandDockingInput {
@@ -975,8 +1081,13 @@ export interface LigandLibraryDockingInput {
   prepared_count: number;
 }
 
+/** Explicit Vina 1.2.7 scoring-function selection (ADR-032 / M1). */
+export type VinaScoringFunction = "vina" | "vinardo";
+
 export interface VinaDockingParameters {
   sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
+  /** Omitted when "vina", preserving the exact v0.1 parameter shape. */
+  scoring?: VinaScoringFunction;
   cpu_threads: number;
   seed: number;
   exhaustiveness: number;
@@ -997,6 +1108,8 @@ export interface VinaDockingRequest {
 
 export interface VinaBatchDockingParameters {
   sampling_protocol?: "screening" | "pose_refinement" | "custom" | null;
+  /** Omitted when "vina", preserving the exact v0.1 parameter shape. */
+  scoring?: VinaScoringFunction;
   total_cpu_threads: number;
   parallel_ligands: number;
   seed: number;
@@ -1056,6 +1169,15 @@ export interface GninaDockingRequest {
 export type GninaCnnVsSource = "engine_emitted" | "derived_from_recorded_axes";
 export type GninaHitRankingMetric = "cnn_score" | "cnn_vs";
 
+export interface GninaPoseArtifact extends PoseFlexIdentity {
+  artifact_id: string;
+  mode: number;
+  filename: string;
+  sha256: string;
+  size_bytes: number;
+  content_url?: string | null;
+}
+
 export interface GninaPoseResult {
   mode: number;
   minimized_affinity_kcal_mol: number;
@@ -1064,7 +1186,7 @@ export interface GninaPoseResult {
   cnn_vs?: number | null;
   cnn_vs_source?: GninaCnnVsSource | null;
   cnn_affinity_variance?: number | null;
-  artifact: { artifact_id: string; mode: number; filename: string; sha256: string; size_bytes: number };
+  artifact: GninaPoseArtifact;
 }
 
 export interface GninaDockingJobRecord {
@@ -1082,6 +1204,10 @@ export interface GninaDockingJobRecord {
   box: BindingBox;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   ligand_sha256: string;
   conformer_sha256: string;
   command: string[];
@@ -1196,7 +1322,19 @@ export interface GninaScreeningCampaignRecord {
   revision: number;
 }
 
-export interface DockingPoseArtifact {
+/**
+ * ADR-032 §4 `E8` — under `sidechain_flex` a pose is a coupled complex, so its
+ * identity carries the moved side chains alongside the ligand coordinates.
+ * Rigid poses leave every field absent and take the frozen-baseline path.
+ */
+export interface PoseFlexIdentity {
+  flex_filename?: string | null;
+  pose_flex_sidechains_sha256?: string | null;
+  flex_content_url?: string | null;
+  pose_complex_identity_sha256?: string | null;
+}
+
+export interface DockingPoseArtifact extends PoseFlexIdentity {
   artifact_id: string;
   mode: number;
   filename: string;
@@ -1235,6 +1373,10 @@ export interface VinaDockingJobRecord {
   tool: { name: string; version: string };
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   ligand_sha256: string;
   command: string[];
   execution: DockingExecutionEvidence | null;
@@ -1324,6 +1466,88 @@ export interface DockingCancelResponse {
 export interface DockingBatchCancelResponse {
   batch_id: string;
   status: DockingJobStatus;
+}
+
+/**
+ * ADR-032 §1.5 — `--local_only` refinement exists only as an explicit,
+ * traceable derivative of an already recorded pose. The parent job and parent
+ * pose are never mutated (ADR-004); creating one writes a new record.
+ */
+export interface VinaLocalRefinementRequest {
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  scoring?: VinaScoringFunction;
+  cpu_threads?: number;
+  seed?: number;
+  timeout_minutes?: number;
+}
+
+export interface VinaLocalRefinementRecord {
+  refinement_id: string;
+  created_at: string;
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  parent_pose_sha256: string;
+  parent_pose_flex_sha256?: string | null;
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  flex_residues?: ResidueLocator[];
+  scoring: VinaScoringFunction;
+  tool: { name: string; version: string };
+  command: string[];
+  estimated_free_energy_kcal_mol: number;
+  intermolecular_kcal_mol?: number | null;
+  total_internal_kcal_mol?: number | null;
+  torsional_free_energy_kcal_mol?: number | null;
+  unbound_system_energy_kcal_mol?: number | null;
+  refined_pose: DockingPoseArtifact;
+  execution: DockingExecutionEvidence;
+  provenance: ProvenanceEvent;
+}
+
+export interface GninaLocalRefinementRequest {
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  compute?: "cpu" | "cuda";
+  device_index?: number;
+  cpu_threads?: number;
+  seed?: number;
+  cnn_scoring?: GninaCnnScoringMode;
+  cnn_model?: GninaCnnModelSelector;
+  timeout_minutes?: number;
+}
+
+export interface GninaLocalRefinementRecord {
+  refinement_id: string;
+  created_at: string;
+  parent_job_id: string;
+  parent_pose_artifact_id: string;
+  parent_pose_sha256: string;
+  parent_pose_flex_sha256?: string | null;
+  receptor_id: string;
+  binding_site_id: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  receptor_output_artifact_id: string;
+  receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  flex_residues?: ResidueLocator[];
+  tool: { version: string; sha256: string; architecture: "x86_64" };
+  cnn_model_identity?: GninaCnnModelIdentity | null;
+  command: string[];
+  minimized_affinity_kcal_mol: number;
+  cnn_score?: number | null;
+  cnn_affinity?: number | null;
+  cnn_vs?: number | null;
+  cnn_vs_source?: GninaCnnVsSource | null;
+  cnn_affinity_variance?: number | null;
+  refined_pose: GninaPoseArtifact;
+  execution: DockingExecutionEvidence;
 }
 
 export interface ErrorResponse {
@@ -1502,7 +1726,7 @@ export interface AutoDock4ToolIdentity {
   max_maps: number;
 }
 
-export interface AutoDock4PoseArtifact {
+export interface AutoDock4PoseArtifact extends PoseFlexIdentity {
   artifact_id: string;
   run: number;
   filename: string;
@@ -2136,7 +2360,7 @@ export interface CompoundPage {
 
 export type PoseKind = "vina_mode" | "autodock_run" | "gnina_mode";
 
-export interface PoseReference {
+export interface PoseReference extends PoseFlexIdentity {
   artifact_id: string;
   kind: PoseKind;
   ordinal: number;
@@ -2239,6 +2463,10 @@ export interface InteractionAnalysisRecord {
   };
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
+  pose_flex_sidechains_sha256?: string | null;
+  pose_complex_identity_sha256?: string | null;
+  /** The deterministic coupled complex ProLIF actually read (`E8`). */
+  materialized_coupled_receptor_sha256?: string | null;
 }
 
 /** One exact preserved pose combined with its prepared receptor on disk. */
@@ -2317,7 +2545,7 @@ export interface FigureExport {
 }
 
 /** Everything this project has sent out of Ankora (workflow step 8). */
-export type ExportKind = "campaign" | "figure" | "pose_complex";
+export type ExportKind = "campaign" | "consensus" | "figure" | "pose_complex";
 
 export interface ExportFile {
   filename: string;
@@ -2345,8 +2573,32 @@ export interface ExportEntry {
   /** Legacy campaign manifests only; never interpreted as measured evidence. */
   bitwise_reproducible: boolean | null;
   directory: string;
+  ankora_export_format?: number | null;
   outside_project: boolean;
   files: ExportFile[];
+}
+
+export interface ConsensusExport {
+  exported_at: string;
+  ankora_export_format: 5;
+  source_kind: "consensus_run";
+  source_id: string;
+  export_id: string;
+  catalog_id: string;
+  display_name: string | null;
+  input_identity_sha256: string;
+  bundle_identity_sha256: string;
+  archive_filename: string;
+  variant_id: ConsensusVariantId;
+  row_count: number;
+  full_profile_count: number;
+  partial_or_unscored_count: number;
+  pose_quality_count: number;
+  interaction_rule_evaluation_count: number;
+  directory: string;
+  outside_project: boolean;
+  record_directory: string;
+  files: string[];
 }
 
 export interface ExportPage {
@@ -2454,4 +2706,1117 @@ export interface WorkRetryResponse {
   new_work_id: string;
   status: string;
   created_at: string;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M2a / M2c — cross-engine `--score_only` scoring contracts.
+ *
+ * Mirrors `backend/src/ankora_backend/schemas/v02_contracts.py` and
+ * `schemas/rescoring.py` field for field. A score is only ever read beside the
+ * exact scoring function, unit and direction that produced it: the families
+ * below are deliberately separate scales and are never pooled or converted.
+ * ------------------------------------------------------------------------ */
+
+export type RescoreSourceEngine = "vina" | "autodock4" | "autodock_gpu" | "gnina";
+
+export type ScoringFunctionId =
+  | "vina"
+  | "vinardo"
+  | "autodock4"
+  | "gnina_cnn_score"
+  | "gnina_cnn_affinity"
+  | "gnina_cnn_vs"
+  | "gnina_minimized_affinity";
+
+/**
+ * The scoring *family* of one observation.
+ *
+ * Distinct from the catalog-level `ScoringFamily` above, which labels the
+ * engine that produced a campaign. This one names the scale an individual
+ * `ScoreObservation` lives on, and crossing those scales is what the
+ * contract forbids.
+ */
+export type ScoreObservationFamily = "vina_vinardo" | "autodock4" | "gnina_neural";
+
+export type ObservationStatus = "scored" | "failed" | "not_evaluable";
+
+/** Which numerical direction an engine ranks more favorably. */
+export type ScoreDirection = "lower_is_better" | "higher_is_better";
+
+/** `E8` identity of the receptor and ligand coordinates for one pose. */
+export interface PoseComplexIdentity {
+  mode: ReceptorFlexMode;
+  receptor_rigid_sha256: string;
+  pose_flex_sidechains_sha256?: string | null;
+  ligand_pose_sha256: string;
+}
+
+export interface ProtocolSpec {
+  schema_version: 1;
+  engine: RescoreSourceEngine;
+  scoring_function: ScoringFunctionId;
+  ligand_flexibility: LigandFlexibilitySpec;
+  receptor_flexibility: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256?: string | null;
+  interaction_rule_set_sha256?: string | null;
+  random_seed?: number | null;
+}
+
+export interface ScoreObservation {
+  schema_version: 1;
+  protocol_identity_sha256: string;
+  parent_compound_id: string;
+  parent_state_id: string;
+  pose_complex?: PoseComplexIdentity | null;
+  scoring_family: ScoreObservationFamily;
+  scoring_function: ScoringFunctionId;
+  direction: ScoreDirection;
+  unit: string;
+  tool_name: string;
+  tool_version: string;
+  status: ObservationStatus;
+  raw_score?: number | null;
+  failure_code?: string | null;
+}
+
+export type AutoDock4RescoreBackend = "autodock4_epdb" | "vina_ad4_maps";
+
+/** Recorded raw execution provenance for one `--score_only` invocation. */
+export interface PoseRescoreFunctionEvidence {
+  scoring_functions: ScoringFunctionId[];
+  tool_name: string;
+  tool_version: string;
+  tool_sha256?: string | null;
+  command: string[];
+  exit_code: number;
+  stdout_sha256: string;
+  stderr_sha256: string;
+  used_flex: boolean;
+  /**
+   * `Gate 0 F4` — Vina `--score_only --flex` recomputes the unbound reference
+   * from the moved side chains, so the returned total is not on the same
+   * reference as the docking-time total and must not be differenced with it.
+   */
+  unbound_reference_shifted: boolean;
+  intermolecular_kcal_mol?: number | null;
+  total_internal_kcal_mol?: number | null;
+  torsional_free_energy_kcal_mol?: number | null;
+  unbound_system_energy_kcal_mol?: number | null;
+  intramolecular_energy_kcal_mol?: number | null;
+  cnn_affinity_variance?: number | null;
+}
+
+export interface PoseRescoreResult {
+  schema_version: 1;
+  pose_complex: PoseComplexIdentity;
+  observations: ScoreObservation[];
+  evidence: PoseRescoreFunctionEvidence[];
+  /** Always `false`: cross-scoring reads the saved pose and writes nothing. */
+  mutated_original_pose: false;
+}
+
+/** `POST /rescoring/score-only` — one saved pose, evaluated exactly in place. */
+export interface SavedPoseRescoreRequest {
+  source_engine: RescoreSourceEngine;
+  job_id: string;
+  pose_artifact_id: string;
+  scoring_functions: ScoringFunctionId[];
+  autogrid_job_id?: string | null;
+  autodock4_backend?: AutoDock4RescoreBackend;
+  gnina_compute?: "cpu" | "cuda";
+  gnina_device_index?: number;
+  gnina_cnn_model?: GninaCnnModelSelector;
+  cpu_threads?: number;
+  timeout_minutes?: number;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M2b / M2c — two-stage out-of-sample protocol calibration.
+ *
+ * Mirrors `backend/src/ankora_backend/schemas/calibration.py`. Every record is
+ * an append-only, hash-identified decision: the protocol is chosen on the
+ * Calibration split alone and sealed before the locked Confirmation split is
+ * ever opened, and the Confirmation split is single-use (`ADR-031` §3).
+ * ------------------------------------------------------------------------ */
+
+export type SplitName = "calibration" | "confirmation";
+
+export type SplitGroupingStrategy = "parent_and_murcko_scaffold";
+
+export type BiasPropertyName =
+  | "molecular_weight"
+  | "clogp"
+  | "hbd"
+  | "hba"
+  | "rotatable_bonds"
+  | "formal_charge";
+
+export type ConfirmationVerdict =
+  | "preferred_over_baseline"
+  | "insufficient_evidence_to_prefer_over_baseline"
+  | "baseline_retained_by_one_se";
+
+export type CalibrationRunStatus =
+  | "split_locked"
+  | "calibration_selected"
+  | "confirmation_completed";
+
+/** `ADR-031` §3 fixes this exact phrase as the null verdict. */
+export const INSUFFICIENT_EVIDENCE_TEXT = "Insufficient evidence to prefer over baseline";
+
+/** Everything about the split and its statistics that is fixed in advance. */
+export interface CalibrationSplitPolicy {
+  grouping_strategy: SplitGroupingStrategy;
+  calibration_fraction: number;
+  split_seed: number;
+  min_confirmation_actives: number;
+  bedroc_alpha: number;
+  top_fraction: number;
+  bootstrap_replicates: number;
+  bootstrap_seed: number;
+  confidence_level: number;
+}
+
+/** One parent compound offered to the split, with its frozen class label. */
+export interface CalibrationCompoundInput {
+  parent_id: string;
+  canonical_smiles: string;
+  is_active: boolean;
+  state_ids?: string[];
+}
+
+export interface CompoundPropertyProfile {
+  parent_id: string;
+  canonical_smiles: string;
+  is_active: boolean;
+  murcko_scaffold: string;
+  is_acyclic: boolean;
+  molecular_weight: number;
+  clogp: number;
+  hbd: number;
+  hba: number;
+  rotatable_bonds: number;
+  formal_charge: number;
+}
+
+/** Active-versus-inactive separation on one physicochemical property. */
+export interface PropertyBiasMetric {
+  property_name: BiasPropertyName;
+  active_median: number;
+  active_iqr: number;
+  inactive_median: number;
+  inactive_iqr: number;
+  standardized_mean_difference: number;
+  ks_statistic: number;
+  ks_p_value: number;
+  flagged_bias: boolean;
+}
+
+/** The decoy-property audit that qualifies every enrichment read on this set. */
+export interface PhysicochemicalBiasAudit {
+  active_count: number;
+  inactive_count: number;
+  metrics: PropertyBiasMetric[];
+  any_bias_flagged: boolean;
+  flagged_properties: string[];
+}
+
+export interface CalibrationSplitArtifact {
+  schema_version: 1;
+  split_id: string;
+  created_at: string;
+  policy: CalibrationSplitPolicy;
+  calibration_parent_ids: string[];
+  confirmation_parent_ids: string[];
+  calibration_scaffolds: string[];
+  confirmation_scaffolds: string[];
+  calibration_active_count: number;
+  calibration_inactive_count: number;
+  confirmation_active_count: number;
+  confirmation_inactive_count: number;
+  confirmation_underpowered: boolean;
+  compounds: CompoundPropertyProfile[];
+  bias_audit: PhysicochemicalBiasAudit;
+  split_identity_sha256: string;
+}
+
+/** One pre-declared protocol competing on the Calibration split. */
+export interface CalibrationCandidateProtocol {
+  protocol_id: string;
+  label: string;
+  protocol_spec: ProtocolSpec;
+  added_chi_torsion_count?: number;
+  fitted_parameter_count?: number;
+  engine_count?: number;
+  is_neural_scoring?: boolean;
+}
+
+/**
+ * Scored and unscored parents, kept separate for actives and inactives.
+ *
+ * A decoy that fails to prepare and an active that fails to prepare have
+ * opposite consequences for an enrichment metric, so one pooled failure count
+ * would hide the bias that matters most.
+ */
+export interface FailureCensusBreakdown {
+  total_parents: number;
+  scored_count: number;
+  failed_count: number;
+  scored_active_count: number;
+  failed_active_count: number;
+  scored_inactive_count: number;
+  failed_inactive_count: number;
+  failure_codes_active: Record<string, number>;
+  failure_codes_inactive: Record<string, number>;
+}
+
+/** Tie-aware enrichment metrics for one target and one exact protocol. */
+export interface ScreeningTargetMetrics {
+  target_id: string;
+  total_count: number;
+  active_count: number;
+  inactive_count: number;
+  scored_count: number;
+  failed_count: number;
+  top_fraction: number;
+  top_count: number;
+  expected_active_hits_at_top_fraction: number;
+  enrichment_factor: number;
+  bedroc_alpha: number;
+  bedroc: number;
+  roc_auc: number;
+  pr_auc: number;
+  score_direction: ScoreDirection;
+  tie_policy: string;
+  failure_policy: string;
+  pr_auc_definition: string;
+}
+
+/** One protocol evaluated on exactly one side of the split. */
+export interface ProtocolEvaluationSummary {
+  protocol_id: string;
+  protocol_identity_sha256: string;
+  label: string;
+  split_name: SplitName;
+  metrics: ScreeningTargetMetrics;
+  bedroc_ci_lower: number;
+  bedroc_ci_upper: number;
+  bedroc_bootstrap_se: number;
+  ef_small_sample_caution: boolean;
+  failure_census: FailureCensusBreakdown;
+}
+
+/**
+ * Paired parent-bootstrap difference in `BEDROC_alpha`, `candidate - reference`.
+ *
+ * Resampling is over parent compounds, and the same resampled parent indices
+ * are applied to both protocols in every replicate.
+ */
+export interface PairedBootstrapDelta {
+  candidate_protocol_id: string;
+  reference_protocol_id: string;
+  split_name: SplitName;
+  metric_name: "bedroc";
+  bedroc_alpha: number;
+  point_delta: number;
+  bootstrap_se: number;
+  ci_lower: number;
+  ci_upper: number;
+  confidence_level: number;
+  replicates: number;
+  bootstrap_seed: number;
+  excludes_zero_positively: boolean;
+  within_one_se_of_reference: boolean;
+}
+
+/** Stage 1 — the sealed protocol choice, made on Calibration data only. */
+export interface CalibrationSelectionRecord {
+  schema_version: 1;
+  selected_at: string;
+  split_identity_sha256: string;
+  baseline_protocol_id: string;
+  best_point_protocol_id: string;
+  selected_protocol_id: string;
+  selected_by_one_se_parsimony: boolean;
+  evaluations: ProtocolEvaluationSummary[];
+  deltas_vs_best: PairedBootstrapDelta[];
+  deltas_vs_baseline: PairedBootstrapDelta[];
+  selection_identity_sha256: string;
+}
+
+/** Stage 2 — the single-use unlock of the locked Confirmation split. */
+export interface ConfirmationEvaluationRecord {
+  schema_version: 1;
+  evaluated_at: string;
+  split_identity_sha256: string;
+  selection_identity_sha256: string;
+  baseline_protocol_id: string;
+  selected_protocol_id: string;
+  verdict: ConfirmationVerdict;
+  verdict_text: string;
+  selected_evaluation: ProtocolEvaluationSummary;
+  baseline_evaluation: ProtocolEvaluationSummary;
+  paired_delta_vs_baseline: PairedBootstrapDelta;
+  all_candidate_audit_evaluations?: ProtocolEvaluationSummary[];
+  confirmation_identity_sha256: string;
+}
+
+/** The whole calibration campaign: split, sealed selection, and verdict. */
+export interface CalibrationRunRecord {
+  schema_version: 1;
+  calibration_id: string;
+  project_id: string;
+  receptor_id: string;
+  binding_site_id: string;
+  created_at: string;
+  status: CalibrationRunStatus;
+  confirmation_locked: boolean;
+  confirmation_consumed: boolean;
+  split: CalibrationSplitArtifact;
+  baseline_protocol_id?: string | null;
+  candidates?: CalibrationCandidateProtocol[];
+  calibration_selection?: CalibrationSelectionRecord | null;
+  confirmation_evaluation?: ConfirmationEvaluationRecord | null;
+  warnings?: StructuredWarning[];
+  provenance?: ProvenanceEvent[];
+}
+
+export interface CalibrationRunList {
+  runs: CalibrationRunRecord[];
+}
+
+export interface CalibrationSplitRequest {
+  receptor_id: string;
+  binding_site_id: string;
+  compounds: CalibrationCompoundInput[];
+  policy?: CalibrationSplitPolicy;
+}
+
+export interface CalibrationSelectRequest {
+  baseline_protocol_id: string;
+  candidates: CalibrationCandidateProtocol[];
+  observations_by_protocol: Record<string, ScoreObservation[]>;
+}
+
+export interface CalibrationConfirmRequest {
+  observations_by_protocol: Record<string, ScoreObservation[]>;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M3 — coupled physical pose plausibility (PoseBusters + MMFF94s).
+ *
+ * Mirrors `schemas/v02_contracts.py` (`PoseAssessment`, `PoseDiagnosticCheck`,
+ * `ConformationalStrainDiagnostic`) and `schemas/pose_quality.py`.
+ * Every check retains an explicit 4-state status (`pass`, `fail`,
+ * `not_applicable`, `not_evaluable`); conformational strain is strictly a
+ * diagnostic flag and is never added to or subtracted from any docking score.
+ * ------------------------------------------------------------------------ */
+
+export type DiagnosticStatus = "pass" | "fail" | "not_applicable" | "not_evaluable";
+
+export interface PoseDiagnosticCheck {
+  check_id: string;
+  tool_name: string;
+  tool_version: string;
+  status: DiagnosticStatus;
+  value?: number | null;
+  threshold?: number | null;
+  message?: string | null;
+}
+
+export interface ConformationalStrainDiagnostic {
+  force_field: "MMFF94s";
+  parent_state_id: string;
+  hydrogen_policy: string;
+  conformer_seed: number;
+  conformer_budget: number;
+  pose_restrained_energy_kcal_mol: number;
+  lowest_free_conformer_energy_kcal_mol: number;
+  delta_e_ref_kcal_mol: number;
+}
+
+export interface PoseAssessment {
+  schema_version: 1;
+  pose_complex: PoseComplexIdentity;
+  overall_status: DiagnosticStatus;
+  checks: PoseDiagnosticCheck[];
+  strain?: ConformationalStrainDiagnostic | null;
+  mutated_original_pose: false;
+}
+
+export interface PoseQualityRequest {
+  include_strain?: boolean;
+  conformer_seed?: number;
+  conformer_budget?: number;
+  strain_flag_threshold_kcal_mol?: number;
+}
+
+export interface PoseQualityRecord {
+  schema_version: 1;
+  assessment_id: string;
+  created_at: string;
+  catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  engine_label: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  conformer_id: string;
+  conformer_sha256: string;
+  parent_state_id: string;
+  receptor_id: string;
+  docking_receptor_artifact_id: string;
+  docking_receptor_sha256: string;
+  analysis_receptor_artifact_id: string;
+  analysis_receptor_sha256: string;
+  materialized_coupled_receptor_sha256?: string | null;
+  pose: PoseReference;
+  posebusters_version: string;
+  assessment: PoseAssessment;
+  passed_count: number;
+  failed_count: number;
+  not_applicable_count: number;
+  not_evaluable_count: number;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M4 — declarative ProLIF pharmacophoric rules & Tanimoto IFP (PIC).
+ *
+ * Mirrors `schemas/interaction_rules.py`. Rule sets are validated against the
+ * prepared receptor's protonated PDB and sealed by `rule_set_identity_sha256`
+ * prior to Confirmation. Pose evaluations run directly on the coupled
+ * `PoseComplex` (`ADR-032 E8`) and never mutate parent pose bytes.
+ * ------------------------------------------------------------------------ */
+
+export type InteractionRuleKind = "required" | "alternative_or" | "forbidden";
+
+export type IfpSourceKind = "pose_analysis" | "explicit_bits";
+
+export interface IfpBit {
+  residue: ResidueLocator;
+  interaction_type: string;
+}
+
+export interface IfpCountEntry {
+  bit: IfpBit;
+  count: number;
+}
+
+export interface InteractionFingerprint {
+  profile: InteractionProfile;
+  bits: IfpBit[];
+  counts: IfpCountEntry[];
+  source_kind: IfpSourceKind;
+  source_analysis_id?: string | null;
+  source_catalog_id?: string | null;
+  source_ligand_id?: string | null;
+  source_pose_artifact_id?: string | null;
+  source_pose_complex_sha256?: string | null;
+  fingerprint_sha256: string;
+}
+
+export interface InteractionTarget {
+  residue: ResidueLocator;
+  interaction_types: string[];
+  max_distance_angstrom?: number | null;
+}
+
+export interface InteractionRuleClause {
+  clause_id: string;
+  label: string;
+  kind: InteractionRuleKind;
+  targets: InteractionTarget[];
+  min_satisfied?: number | null;
+}
+
+export interface ReferencePoseSelector {
+  catalog_id: string;
+  ligand_id: string;
+  pose_artifact_id: string;
+}
+
+export interface CreateInteractionRuleSetRequest {
+  name: string;
+  description?: string;
+  receptor_id: string;
+  profile?: InteractionProfile;
+  clauses?: InteractionRuleClause[];
+  reference_pose?: ReferencePoseSelector | null;
+  reference_bits?: IfpBit[] | null;
+  min_tanimoto_similarity?: number | null;
+}
+
+export interface InteractionRuleSetRecord {
+  schema_version: 1;
+  rule_set_id: string;
+  created_at: string;
+  name: string;
+  description: string;
+  receptor_id: string;
+  receptor_protonated_artifact_id: string;
+  receptor_protonated_sha256: string;
+  profile: InteractionProfile;
+  clauses: InteractionRuleClause[];
+  reference_ifp?: InteractionFingerprint | null;
+  min_tanimoto_similarity?: number | null;
+  rule_set_identity_sha256: string;
+  provenance: ProvenanceEvent;
+}
+
+export interface TargetEvaluationResult {
+  target: InteractionTarget;
+  matched: boolean;
+  matched_contact_ids: string[];
+  shortest_distance_angstrom?: number | null;
+}
+
+export interface ClauseEvaluationResult {
+  clause_id: string;
+  label: string;
+  kind: InteractionRuleKind;
+  status: DiagnosticStatus;
+  satisfied_target_count: number;
+  required_target_count: number;
+  matched_contact_ids: string[];
+  target_results: TargetEvaluationResult[];
+  explanation: string;
+}
+
+export interface IfpTanimotoResult {
+  reference_fingerprint_sha256: string;
+  pose_fingerprint_sha256: string;
+  status: DiagnosticStatus;
+  similarity?: number | null;
+  min_threshold?: number | null;
+  intersection_count: number;
+  union_count: number;
+  shared_bits: IfpBit[];
+  pose_only_bits: IfpBit[];
+  reference_only_bits: IfpBit[];
+}
+
+export interface EvaluateInteractionRulesRequest {
+  rule_set_id: string;
+  analysis_id?: string | null;
+}
+
+export interface InteractionRuleEvaluationRecord {
+  schema_version: 1;
+  evaluation_id: string;
+  created_at: string;
+  rule_set_id: string;
+  rule_set_name: string;
+  rule_set_identity_sha256: string;
+  catalog_id: string;
+  engine_key: string;
+  record_id: string;
+  engine_label: string;
+  ligand_id: string;
+  ligand_preparation_id: string;
+  conformer_id: string;
+  conformer_sha256: string;
+  receptor_id: string;
+  docking_receptor_artifact_id: string;
+  docking_receptor_sha256: string;
+  analysis_receptor_artifact_id: string;
+  analysis_receptor_sha256: string;
+  materialized_coupled_receptor_sha256?: string | null;
+  pose: PoseReference;
+  pose_complex: PoseComplexIdentity;
+  interaction_analysis_id?: string | null;
+  detector: { name: string; version: string };
+  profile: InteractionProfile;
+  pose_ifp: InteractionFingerprint;
+  contacts: InteractionContact[];
+  overall_status: DiagnosticStatus;
+  clause_results: ClauseEvaluationResult[];
+  passed_clause_count: number;
+  failed_clause_count: number;
+  tanimoto?: IfpTanimotoResult | null;
+  mutated_original_pose: false;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+/* ------------------------------------------------------------------------ *
+ * v0.2 M5 — ADR-030 rank-space consensus prioritization (PC-Q, PC-ECR,
+ * gated convex non-negative PC-L2) & two-tier RankingArtifact (`E6`).
+ *
+ * Mirrors `schemas/v02_contracts.py` (`RankingArtifact`, `RankingEntry`,
+ * `RankingMethod`) and `schemas/consensus.py`. Fixed published family block
+ * weights are server-enforced; `PC-Q` (0–100) is dimensionless concordance,
+ * `PC-ECR` (`tau = 0.05`) stays on its separate `1/sigma` scale (`E5`), and
+ * `partial_or_unscored` parents remain unranked in the denominator (`E6`).
+ * ------------------------------------------------------------------------ */
+
+export const FROZEN_ECR_TAU = 0.05;
+export const DEFAULT_CLUSTER_RMSD_THRESHOLD_ANGSTROM = 2.0;
+
+export type RankingMethod =
+  | "single_engine"
+  | "pc_q_core_v1"
+  | "pc_q_neural_v1"
+  | "pc_ecr_v1"
+  | "pc_l2_v1";
+
+export type ConsensusTier = "full_profile" | "partial_or_unscored";
+
+export interface RankingEntry {
+  parent_compound_id: string;
+  parent_state_id: string;
+  tier: ConsensusTier;
+  rank?: number | null;
+  score_value?: number | null;
+  percentile?: number | null;
+  inter_family_disagreement?: number | null;
+  search_convergence_count?: number | null;
+  search_engine_count?: number | null;
+  selected_pose_complex?: PoseComplexIdentity | null;
+  failure_or_exclusion_codes: string[];
+}
+
+export interface RankingArtifact {
+  schema_version: 1;
+  method: RankingMethod;
+  reference_panel_sha256?: string | null;
+  tie_policy: string;
+  failure_policy: string;
+  total_parents: number;
+  full_profile_count: number;
+  partial_or_unscored_count: number;
+  entries: RankingEntry[];
+}
+
+export type ConsensusVariantId = "pcq-core-v1" | "pcq-neural-v1";
+
+export interface PoseClusterMemberSummary {
+  pose_id: string;
+  source_engine: RescoreSourceEngine;
+  primary_rank_order: number;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+}
+
+export interface PoseClusterSummary {
+  cluster_id: string;
+  medoid_pose_id: string;
+  medoid_pose_complex: PoseComplexIdentity;
+  medoid_canonical_coordinate_sha256: string;
+  member_count: number;
+  max_intra_cluster_rmsd_angstrom: number;
+  best_primary_rank_order: number;
+  search_engines_present: RescoreSourceEngine[];
+  members: PoseClusterMemberSummary[];
+}
+
+export interface ReferencePanelEntry {
+  parent_compound_id: string;
+  parent_state_id: string;
+  cluster_id: string;
+  pose_complex: PoseComplexIdentity;
+  scores_by_function: Partial<Record<ScoringFunctionId, number>>;
+}
+
+export interface ReferencePanelArtifact {
+  schema_version: 1;
+  panel_id: string;
+  created_at: string;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256?: string | null;
+  enabled_functions: ScoringFunctionId[];
+  tool_identities: Array<{ name: string; version: string }>;
+  executable_sha256s: Record<string, string>;
+  k_max: number;
+  total_panel_parents: number;
+  entries: ReferencePanelEntry[];
+  reference_panel_sha256: string;
+}
+
+export interface MedoidConsensusBreakdown {
+  cluster_id: string;
+  medoid_pose_id: string;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+  member_count: number;
+  max_intra_cluster_rmsd_angstrom: number;
+  search_engines_present: RescoreSourceEngine[];
+  search_convergence_count: number;
+  search_engine_count: number;
+  native_scores: Partial<Record<ScoringFunctionId, number>>;
+  function_quantiles: Partial<Record<ScoringFunctionId, number>>;
+  block_quantiles: Partial<Record<ScoreObservationFamily, number>>;
+  pcq_score: number;
+  pcq_core_score: number;
+  inter_family_disagreement: number;
+  pc_ecr_score: number;
+}
+
+export interface PcL2ModelArtifact {
+  schema_version: 1;
+  reference_panel_sha256: string;
+  calibration_id: string;
+  split_identity_sha256: string;
+  selection_identity_sha256?: string | null;
+  confirmation_identity_sha256?: string | null;
+  feature_functions: ScoringFunctionId[];
+  l2_regularization: number;
+  solver_name: "scipy.optimize.L-BFGS-B";
+  intercept: number;
+  weights: Partial<Record<ScoringFunctionId, number>>;
+  converged: true;
+  iterations: number;
+  final_objective: number;
+  promoted: boolean;
+  promotion_verdict_text: string;
+  confirmation_deltas_vs_single_engines: Record<string, PairedBootstrapDelta>;
+}
+
+export interface ConsensusParentDetail {
+  parent_compound_id: string;
+  parent_state_id: string;
+  tier: ConsensusTier;
+  rotatable_bond_count?: number | null;
+  total_input_poses: number;
+  total_clusters_found: number;
+  retained_cluster_count: number;
+  truncated_by_k_max: boolean;
+  selected_medoid_cluster_id?: string | null;
+  selected_pose_complex?: PoseComplexIdentity | null;
+  pcq_score?: number | null;
+  pcq_core_score?: number | null;
+  pc_ecr_score?: number | null;
+  pc_ecr_selected_cluster_id?: string | null;
+  pc_l2_score?: number | null;
+  inter_family_disagreement?: number | null;
+  search_convergence_count?: number | null;
+  search_engine_count?: number | null;
+  medoids: MedoidConsensusBreakdown[];
+  failure_or_exclusion_codes: string[];
+}
+
+export interface ConsensusPoseScoreInput {
+  cluster_id: string;
+  medoid_pose_id: string;
+  pose_complex: PoseComplexIdentity;
+  canonical_coordinate_sha256: string;
+  member_count?: number;
+  max_intra_cluster_rmsd_angstrom?: number;
+  search_engines_present: RescoreSourceEngine[];
+  scores_by_function?: Partial<Record<ScoringFunctionId, number>>;
+  missing_or_failed_codes?: string[];
+}
+
+export interface ConsensusParentInput {
+  parent_compound_id: string;
+  parent_state_id: string;
+  rotatable_bond_count?: number | null;
+  total_input_poses?: number;
+  total_clusters_found?: number;
+  truncated_by_k_max?: boolean;
+  medoids?: ConsensusPoseScoreInput[];
+  failure_or_exclusion_codes?: string[];
+}
+
+export interface CreateStructuredConsensusRequest {
+  name: string;
+  variant_id: ConsensusVariantId;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256: string;
+  enabled_functions: ScoringFunctionId[];
+  k_max: number;
+  rmsd_threshold_angstrom?: number;
+  search_engine_count: number;
+  parents: ConsensusParentInput[];
+  reference_panel_id?: string | null;
+  tool_identities?: Array<{ name: string; version: string }>;
+  executable_sha256s?: Record<string, string>;
+}
+
+export interface CampaignSourceRef {
+  catalog_id: string;
+}
+
+export interface CreateCampaignConsensusRequest {
+  name: string;
+  variant_id: ConsensusVariantId;
+  sources: CampaignSourceRef[];
+  autogrid_map_set_id: string;
+  autodock4_backend?: AutoDock4RescoreBackend;
+  include_vinardo?: boolean;
+  gnina_function?: ScoringFunctionId;
+  k_max: number;
+  rmsd_threshold_angstrom?: number;
+  reference_panel_id?: string | null;
+}
+
+export interface FitPcL2Request {
+  calibration_id: string;
+  l2_regularization?: number;
+}
+
+export interface ConsensusRunRecord {
+  schema_version: 1;
+  consensus_id: string;
+  created_at: string;
+  name: string;
+  variant_id: ConsensusVariantId;
+  k_max: number;
+  rmsd_threshold_angstrom: number;
+  ecr_tau: number;
+  receptor_id: string;
+  binding_site_id: string;
+  receptor_flex_spec: ReceptorFlexSpec;
+  binding_box_sha256: string;
+  autogrid_map_set_sha256: string;
+  source_catalog_ids: string[];
+  enabled_functions: ScoringFunctionId[];
+  block_weights: Partial<Record<ScoreObservationFamily, number>>;
+  within_block_weights: Partial<Record<ScoringFunctionId, number>>;
+  reference_panel: ReferencePanelArtifact;
+  ranking: RankingArtifact;
+  core_ranking?: RankingArtifact | null;
+  ecr_ranking: RankingArtifact;
+  pc_l2_model?: PcL2ModelArtifact | null;
+  pc_l2_ranking?: RankingArtifact | null;
+  parent_details: ConsensusParentDetail[];
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface ConsensusRunListResponse {
+  runs: ConsensusRunRecord[];
+}
+
+// --- ADR-033 Hit-to-Analog Structural Similarity Expansion & MCS Core RMSD (M6.5) ---
+
+export type AnalogCatalogFormat =
+  | "sdf"
+  | "smi"
+  | "smiles"
+  | "csv"
+  | "project_library_snapshot";
+
+export type AnalogSearchMode =
+  | "offline_catalog"
+  | "online_pubchem"
+  | "online_chembl";
+
+export type AnalogCandidateRole = "seed_control" | "analog";
+
+export type ExternalAnalogProvider = "pubchem_pug_rest" | "chembl_rest";
+
+export interface CsvCatalogSchema {
+  smiles_column: string;
+  id_column?: string | null;
+  delimiter?: string;
+  encoding?: string;
+}
+
+export interface AnalogFingerprintProfile {
+  algorithm: "morgan";
+  radius: number;
+  fp_size: number;
+  include_chirality: boolean;
+  strip_salts_for_search_only: boolean;
+  canonicalize_tautomers_for_search_only: boolean;
+}
+
+export interface AnalogCatalogSummary {
+  analog_catalog_id: string;
+  name: string;
+  source_format: AnalogCatalogFormat;
+  filename: string;
+  sha256: string;
+  size_bytes: number;
+  created_at: string;
+  source_library_id: string | null;
+  total_records: number;
+  valid_records: number;
+  invalid_records: number;
+}
+
+export interface AnalogCatalogRecord extends AnalogCatalogSummary {
+  csv_schema: CsvCatalogSchema | null;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface AnalogSearchHit {
+  hit_id: string;
+  role: AnalogCandidateRole;
+  identifier: string;
+  source_record_index: number | null;
+  canonical_isomeric_smiles: string;
+  search_smiles: string;
+  local_rdkit_tanimoto: number;
+  provider_similarity: number | null;
+  provider_compound_id: string | null;
+  smarts_matched: boolean | null;
+  molecular_weight_g_mol: number | null;
+  heavy_atom_count: number;
+  rotatable_bond_count: number;
+  undefined_stereocenter_count: number;
+  had_multiple_fragments: boolean;
+  duplicate_of_hit_id: string | null;
+}
+
+export interface ExternalTransmissionConsent {
+  provider: ExternalAnalogProvider;
+  query_canonical_smiles: string;
+  consent_payload_sha256: string;
+  acknowledge_external_transmission: boolean;
+}
+
+export interface ExternalConsentPreviewRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  provider: ExternalAnalogProvider;
+}
+
+export interface ExternalConsentPreview {
+  provider: ExternalAnalogProvider;
+  endpoint_url: string;
+  seed_name: string;
+  seed_chemical_state_id: string | null;
+  query_canonical_isomeric_smiles: string;
+  consent_payload_sha256: string;
+  disclosure_message: string;
+}
+
+export interface ExternalProviderEvidence {
+  provider: ExternalAnalogProvider;
+  endpoint_url: string;
+  request_parameters: Record<string, unknown>;
+  http_status_codes: number[];
+  retrieved_at: string;
+  provider_version: string | null;
+  raw_response_filename: string;
+  raw_response_sha256: string;
+  raw_response_bytes: number;
+  truncated_or_capped: boolean;
+  consent: ExternalTransmissionConsent;
+}
+
+export interface AnalogSearchRecord {
+  analog_search_id: string;
+  created_at: string;
+  mode: AnalogSearchMode;
+  source_catalog_id: string;
+  source_record_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_pose_sha256: string;
+  source_consensus_id: string | null;
+  source_cluster_id: string | null;
+  seed_name: string;
+  seed_chemical_state_id: string | null;
+  query_canonical_isomeric_smiles: string;
+  query_search_smiles: string;
+  analog_catalog_id: string | null;
+  fingerprint_profile: AnalogFingerprintProfile;
+  rdkit_version: string;
+  min_tanimoto: number;
+  top_k: number;
+  smarts_filter: string | null;
+  total_evaluated: number;
+  invalid_skipped: number;
+  truncated_by_top_k: boolean;
+  cache_hit: boolean;
+  hits: AnalogSearchHit[];
+  external_evidence: ExternalProviderEvidence | null;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface RunOfflineAnalogSearchRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  analog_catalog_id: string;
+  min_tanimoto?: number;
+  top_k?: number;
+  smarts_filter?: string | null;
+}
+
+export interface RunOnlineAnalogSearchRequest {
+  source_catalog_id: string;
+  source_ligand_id: string;
+  source_pose_artifact_id: string;
+  source_consensus_id?: string | null;
+  source_cluster_id?: string | null;
+  provider: ExternalAnalogProvider;
+  provider_min_similarity?: number;
+  min_local_rdkit_tanimoto?: number;
+  max_candidates?: number;
+  smarts_filter?: string | null;
+  consent: ExternalTransmissionConsent;
+}
+
+export interface CreateAnalogSelectionRequest {
+  library_name: string;
+  selected_hit_ids: string[];
+  include_seed_control: boolean;
+  seed_exclusion_reason?: string | null;
+  exclusion_reasons_by_hit_id?: Record<string, string>;
+}
+
+export interface AnalogSelectionRecord {
+  analog_selection_id: string;
+  analog_search_id: string;
+  created_at: string;
+  library_name: string;
+  derived_library_id: string;
+  derived_library_sha256: string;
+  include_seed_control: boolean;
+  selected_count: number;
+  excluded_count: number;
+  warnings: StructuredWarning[];
+  provenance: ProvenanceEvent;
+}
+
+export interface McsCoreRmsdRequest {
+  seed_catalog_id: string;
+  seed_ligand_id: string;
+  seed_pose_artifact_id: string;
+  target_catalog_id: string;
+  target_ligand_id: string;
+  target_pose_artifact_id: string;
+  timeout_seconds?: number;
+  ring_matches_ring_only?: boolean;
+  complete_rings_only?: boolean;
+}
+
+export interface McsCoreRmsdResult {
+  seed_pose_artifact_id: string;
+  seed_pose_sha256: string;
+  target_pose_artifact_id: string;
+  target_pose_sha256: string;
+  status: "evaluated" | "no_common_substructure" | "not_evaluable";
+  mcs_smarts: string | null;
+  mcs_heavy_atom_count: number;
+  seed_heavy_atom_count: number;
+  target_heavy_atom_count: number;
+  mcs_coverage_seed: number | null;
+  mcs_coverage_target: number | null;
+  mcs_timed_out: boolean;
+  receptor_frame_rmsd_angstrom: number | null;
+  superposition_applied: false;
+  timeout_seconds: number;
+  atom_compare: string;
+  bond_compare: string;
+  ring_matches_ring_only: boolean;
+  complete_rings_only: boolean;
+  warnings: StructuredWarning[];
 }

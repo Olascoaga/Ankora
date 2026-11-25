@@ -2,16 +2,19 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.v02_contracts import LigandFlexibilitySpec
 from ankora_backend.schemas.warnings import StructuredWarning
 
 
 class LigandSource(StrEnum):
     CRYSTALLOGRAPHIC = "crystallographic"
     LOCAL = "local"
+    ANALOG_EXPANSION = "analog_expansion"
 
 
 class LigandFormat(StrEnum):
@@ -330,6 +333,8 @@ class LigandLibraryArtifact(BaseModel):
     size_bytes: int = Field(ge=1)
     record_count: int = Field(ge=1)
     created_at: datetime
+    origin_analog_selection_id: str | None = None
+    origin_analog_search_id: str | None = None
 
 
 class LigandLibrarySummary(BaseModel):
@@ -705,10 +710,33 @@ class LigandChargeModel(StrEnum):
     GASTEIGER = "gasteiger"
 
 
+class LigandSmartsRigidificationOutcome(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    smarts: str = Field(min_length=1)
+    bond_indices: tuple[Annotated[int, Field(ge=1)], Annotated[int, Field(ge=1)]]
+    match_count: int = Field(ge=0)
+    matched_bonds_zero_based: list[tuple[int, int]] = Field(default_factory=list)
+    applied: bool
+
+    @model_validator(mode="after")
+    def validate_applied(self) -> Self:
+        if self.applied != (self.match_count > 0):
+            raise ValueError("applied must reflect whether the SMARTS matched the input ligand")
+        return self
+
+
 class PrepareLigandPdbqtRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     charge_model: LigandChargeModel = LigandChargeModel.GASTEIGER
+    flexibility: LigandFlexibilitySpec | None = Field(
+        default=None,
+        description=(
+            "Explicit Meeko ligand flexibility settings. local_only_refinement belongs to "
+            "the M1c docking derivative (--local_only)."
+        ),
+    )
     client_concurrency_hint: int | None = Field(
         default=None,
         ge=1,
@@ -720,6 +748,13 @@ class PrepareLigandPdbqtRequest(BaseModel):
             "internal thread pool."
         ),
     )
+
+    @model_validator(mode="after")
+    def validate_smarts_bond_pairing(self) -> Self:
+        spec = self.flexibility
+        if spec is not None and len(spec.rigidified_smarts) != len(spec.rigidified_bond_indices):
+            raise ValueError("Each rigidification SMARTS requires exactly one bond-index pair")
+        return self
 
 
 class LigandPdbqtArtifact(BaseModel):
@@ -746,3 +781,10 @@ class LigandPdbqtRecord(BaseModel):
     stderr: str
     provenance: ProvenanceEvent
     content_url: str = Field(min_length=1)
+    flexibility: LigandFlexibilitySpec | None = None
+    effective_torsdof: int | None = Field(default=None, ge=0)
+    atom_types: list[str] = Field(default_factory=list)
+    warnings: list[StructuredWarning] = Field(default_factory=list)
+    smarts_rigidification_outcomes: list[LigandSmartsRigidificationOutcome] = Field(
+        default_factory=list
+    )

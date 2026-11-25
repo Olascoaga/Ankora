@@ -74,7 +74,7 @@ def _line_with(text: str, marker: str) -> str:
 def test_committed_linux_locks_pass_static_verification(verifier: ModuleType) -> None:
     summary = verifier.validate_repository_locks(REPOSITORY_ROOT)
 
-    assert (summary.conda_packages, summary.pip_packages) == (45, 75)
+    assert (summary.conda_packages, summary.pip_packages) == (45, 76)
     assert verifier.main(["--root", str(REPOSITORY_ROOT)]) == 0
 
 

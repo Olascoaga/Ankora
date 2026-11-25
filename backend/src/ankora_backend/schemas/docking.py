@@ -3,14 +3,29 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.receptors import ReceptorFlexMode, ResidueLocator
 from ankora_backend.schemas.warnings import StructuredWarning
 
 
 class DockingEngine(StrEnum):
     AUTODOCK_VINA = "autodock_vina"
+
+
+class VinaScoringFunction(StrEnum):
+    """Explicit Vina 1.2.7 scoring function selection (ADR-032 / M1)."""
+
+    VINA = "vina"
+    VINARDO = "vinardo"
 
 
 class DockingJobStatus(StrEnum):
@@ -68,6 +83,7 @@ class VinaDockingParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sampling_protocol: VinaSamplingProtocol | None = None
+    scoring: VinaScoringFunction = VinaScoringFunction.VINA
     cpu_threads: int = Field(default=1, ge=1, le=256)
     seed: int = Field(default=20260823, ge=1, le=2_147_483_647)
     exhaustiveness: int = Field(default=8, ge=1, le=128)
@@ -75,6 +91,15 @@ class VinaDockingParameters(BaseModel):
     min_rmsd_angstrom: float = Field(default=1.0, ge=0, le=20)
     energy_range_kcal_mol: float = Field(default=3.0, ge=0, le=100)
     timeout_minutes: int = Field(default=360, ge=1, le=2_880)
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_parameter_shape(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        result: dict[str, object] = handler(self)
+        if self.scoring is VinaScoringFunction.VINA:
+            result.pop("scoring", None)
+        return result
 
     @model_validator(mode="after")
     def match_named_sampling_protocol(self) -> "VinaDockingParameters":
@@ -109,6 +134,7 @@ class VinaBatchDockingParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sampling_protocol: VinaSamplingProtocol | None = None
+    scoring: VinaScoringFunction = VinaScoringFunction.VINA
     total_cpu_threads: int = Field(default=1, ge=1, le=256)
     parallel_ligands: int = Field(default=1, ge=1, le=64)
     seed: int = Field(default=20260823, ge=1, le=2_147_483_647)
@@ -117,6 +143,15 @@ class VinaBatchDockingParameters(BaseModel):
     min_rmsd_angstrom: float = Field(default=1.0, ge=0, le=20)
     energy_range_kcal_mol: float = Field(default=3.0, ge=0, le=100)
     timeout_minutes_per_ligand: int = Field(default=360, ge=1, le=2_880)
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_batch_parameter_shape(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        result: dict[str, object] = handler(self)
+        if self.scoring is VinaScoringFunction.VINA:
+            result.pop("scoring", None)
+        return result
 
     @model_validator(mode="after")
     def keep_parallelism_inside_cpu_budget(self) -> "VinaBatchDockingParameters":
@@ -159,6 +194,10 @@ class DockingPoseArtifact(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     size_bytes: int = Field(ge=1)
     content_url: str = Field(min_length=1)
+    flex_filename: str | None = Field(default=None, pattern=r"^pose_\d+_flex\.pdbqt$")
+    pose_flex_sidechains_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_content_url: str | None = None
+    pose_complex_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class DockingPoseResult(BaseModel):
@@ -204,6 +243,10 @@ class VinaDockingJobRecord(BaseModel):
     tool: ToolIdentity
     receptor_output_artifact_id: str = Field(min_length=1)
     receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
     ligand_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     command: list[str] = Field(default_factory=list)
     execution: DockingExecutionEvidence | None = None
@@ -254,6 +297,10 @@ class VinaBatchDockingRecord(BaseModel):
     tool: ToolIdentity
     receptor_output_artifact_id: str = Field(min_length=1)
     receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
     selection_manifest_artifact_id: str = Field(min_length=1)
     selection_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     selected_count: int = Field(ge=1)
@@ -305,3 +352,48 @@ class DockingBatchCancelResponse(BaseModel):
 
     batch_id: str = Field(min_length=1)
     status: DockingJobStatus
+
+
+class VinaLocalRefinementRequest(BaseModel):
+    """Explicit derivative `--local_only` refinement request (ADR-005 / ADR-032 §1.5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parent_job_id: str = Field(min_length=1)
+    parent_pose_artifact_id: str = Field(min_length=1)
+    scoring: VinaScoringFunction = VinaScoringFunction.VINA
+    cpu_threads: int = Field(default=1, ge=1, le=256)
+    seed: int = Field(default=20260823, ge=1, le=2_147_483_647)
+    timeout_minutes: int = Field(default=60, ge=1, le=1_440)
+
+
+class VinaLocalRefinementRecord(BaseModel):
+    """Immutable derivative record produced by `vina --local_only` without mutating parent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    refinement_id: str = Field(min_length=1)
+    created_at: datetime
+    parent_job_id: str = Field(min_length=1)
+    parent_pose_artifact_id: str = Field(min_length=1)
+    parent_pose_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parent_pose_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    receptor_id: str = Field(min_length=1)
+    binding_site_id: str = Field(min_length=1)
+    ligand_id: str = Field(min_length=1)
+    ligand_preparation_id: str = Field(min_length=1)
+    receptor_output_artifact_id: str = Field(min_length=1)
+    receptor_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
+    scoring: VinaScoringFunction
+    tool: ToolIdentity
+    command: list[str] = Field(min_length=1)
+    estimated_free_energy_kcal_mol: float
+    intermolecular_kcal_mol: float | None = None
+    total_internal_kcal_mol: float | None = None
+    torsional_free_energy_kcal_mol: float | None = None
+    unbound_system_energy_kcal_mol: float | None = None
+    refined_pose: DockingPoseArtifact
+    execution: DockingExecutionEvidence
+    provenance: ProvenanceEvent

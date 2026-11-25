@@ -1,9 +1,10 @@
 """Bootstrap API routes."""
 
 import os
+from pathlib import Path
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from ankora_backend.adapters.tools.discovery import (
@@ -15,12 +16,27 @@ from ankora_backend.adapters.tools.discovery import (
     discover_tool,
     discover_vina,
 )
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.artifact_store import StructureArtifactStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
 from ankora_backend.persistence.pocket_detection_store import PocketDetectionArtifactStore
 from ankora_backend.persistence.project_store import ProjectStore
 from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+from ankora_backend.schemas.analog_expansion import (
+    AnalogCatalogRecord,
+    AnalogCatalogSummary,
+    AnalogSearchRecord,
+    AnalogSelectionRecord,
+    CreateAnalogSelectionRequest,
+    CsvCatalogSchema,
+    ExternalConsentPreview,
+    ExternalConsentPreviewRequest,
+    McsCoreRmsdRequest,
+    McsCoreRmsdResult,
+    RunOfflineAnalogSearchRequest,
+    RunOnlineAnalogSearchRequest,
+)
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchProgress,
     AutoDock4BatchRecord,
@@ -50,7 +66,21 @@ from ankora_backend.schemas.binding_sites import (
     BindingSiteRequest,
     PocketDetectionReport,
 )
+from ankora_backend.schemas.calibration import (
+    CalibrationConfirmRequest,
+    CalibrationRunListResponse,
+    CalibrationRunRecord,
+    CalibrationSelectRequest,
+    CalibrationSplitRequest,
+)
 from ankora_backend.schemas.campaign_history import CampaignHistory
+from ankora_backend.schemas.consensus import (
+    ConsensusRunListResponse,
+    ConsensusRunRecord,
+    CreateCampaignConsensusRequest,
+    CreateStructuredConsensusRequest,
+    FitPcL2Request,
+)
 from ankora_backend.schemas.docking import (
     DockingBatchCancelResponse,
     DockingCancelResponse,
@@ -59,17 +89,30 @@ from ankora_backend.schemas.docking import (
     VinaBatchProgress,
     VinaDockingJobRecord,
     VinaDockingRequest,
+    VinaLocalRefinementRecord,
+    VinaLocalRefinementRequest,
 )
 from ankora_backend.schemas.engine_comparison import EngineComparison
 from ankora_backend.schemas.exports import ExportKind, ExportPage
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
-from ankora_backend.schemas.gnina import GninaDockingRequest, GninaJobRecord
+from ankora_backend.schemas.gnina import (
+    GninaDockingRequest,
+    GninaJobRecord,
+    GninaLocalRefinementRecord,
+    GninaLocalRefinementRequest,
+)
 from ankora_backend.schemas.gnina_pack import GninaPackStatus, ImportGninaPackRequest
 from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
     GninaScreeningEntry,
     GninaScreeningProgress,
     GninaScreeningRequest,
+)
+from ankora_backend.schemas.interaction_rules import (
+    CreateInteractionRuleSetRequest,
+    EvaluateInteractionRulesRequest,
+    InteractionRuleEvaluationRecord,
+    InteractionRuleSetRecord,
 )
 from ankora_backend.schemas.ligand_library_preparation import LigandLibraryPreparationRecord
 from ankora_backend.schemas.ligands import (
@@ -107,6 +150,7 @@ from ankora_backend.schemas.pose_interactions import (
     InteractionAnalysisRequest,
     PoseInventory,
 )
+from ankora_backend.schemas.pose_quality import PoseQualityRecord, PoseQualityRequest
 from ankora_backend.schemas.projects import (
     CreateProjectRequest,
     MarkArtifactStaleRequest,
@@ -126,6 +170,7 @@ from ankora_backend.schemas.redocking import (
     RedockingRunRecord,
     RedockingValidationRequest,
 )
+from ankora_backend.schemas.rescoring import PoseRescoreResult, SavedPoseRescoreRequest
 from ankora_backend.schemas.results_catalog import (
     CatalogEntry,
     CatalogPage,
@@ -154,6 +199,7 @@ from ankora_backend.schemas.work_recovery import (
     WorkRetryRequest,
     WorkRetryResponse,
 )
+from ankora_backend.services.analog_expansion import AnalogExpansionService
 from ankora_backend.services.autodock4_docking import AutoDock4DockingService
 from ankora_backend.services.autodock_gpu_docking import AutoDockGpuDockingService
 from ankora_backend.services.autogrid_maps import AutoGridMapService
@@ -163,12 +209,14 @@ from ankora_backend.services.binding_site_definition import (
 )
 from ankora_backend.services.campaign_export import CampaignExportService
 from ankora_backend.services.campaign_history import CampaignHistoryService
+from ankora_backend.services.consensus_export import ConsensusExportService
 from ankora_backend.services.engine_comparison import EngineComparisonService
 from ankora_backend.services.export_catalog import ExportCatalogService
 from ankora_backend.services.figure_export import FigureExportService
 from ankora_backend.services.gnina_docking import GninaDockingService
 from ankora_backend.services.gnina_pack import GninaPackService
 from ankora_backend.services.gnina_screening_service import GninaScreeningService
+from ankora_backend.services.interaction_rules import InteractionRulesService
 from ankora_backend.services.ligand_extraction import extract_crystallographic_ligand
 from ankora_backend.services.ligand_filtering import (
     apply_library_filters,
@@ -199,9 +247,13 @@ from ankora_backend.services.ligand_state_resolution import (
 from ankora_backend.services.methods_report import MethodsReportService
 from ankora_backend.services.pocket_detection import detect_pockets
 from ankora_backend.services.pose_complex_export import PoseComplexExportService
+from ankora_backend.services.pose_consensus import PoseConsensusService
 from ankora_backend.services.pose_interactions import PoseInteractionService
+from ankora_backend.services.pose_quality import PoseQualityService
+from ankora_backend.services.pose_rescoring import PoseRescoringService
 from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.project_runtime import ProjectRuntime
+from ankora_backend.services.protocol_calibration import ProtocolCalibrationService
 from ankora_backend.services.receptor_inspection import inspect_receptor
 from ankora_backend.services.receptor_preparation import (
     prepare_receptor,
@@ -1001,6 +1053,8 @@ def create_binding_site_preview(
         structure_store=StructureArtifactStore.from_environment(),
         receptor_store=ReceptorArtifactStore.from_environment(),
         pocket_detection_store=PocketDetectionArtifactStore.from_environment(),
+        pose_interaction_service=PoseInteractionService.from_environment(),
+        dependency_service=ProjectDependencyService.from_environment(),
     )
 
 
@@ -1017,6 +1071,8 @@ def create_binding_site(receptor_id: str, request: BindingSiteRequest) -> Bindin
         receptor_store=ReceptorArtifactStore.from_environment(),
         binding_site_store=BindingSiteArtifactStore.from_environment(),
         pocket_detection_store=PocketDetectionArtifactStore.from_environment(),
+        pose_interaction_service=PoseInteractionService.from_environment(),
+        dependency_service=ProjectDependencyService.from_environment(),
     )
 
 
@@ -1124,6 +1180,176 @@ def create_vina_docking_job(
     http_request: Request,
 ) -> VinaDockingJobRecord:
     return _vina_docking_service(http_request).start(request)
+
+
+def _pose_file_response(path: Path | None) -> FileResponse:
+    if path is None:
+        raise AnkoraDomainError(
+            code="DOCKING_POSE_FLEX_NOT_FOUND",
+            stage="docking",
+            message="This pose has no preserved flexible side-chain artifact.",
+            status_code=404,
+        )
+    return FileResponse(
+        path,
+        media_type="text/plain; charset=utf-8",
+        filename=path.name,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/docking/jobs/{job_id}/poses/{artifact_id}/flex", response_class=FileResponse)
+def get_vina_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_vina_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get(
+    "/docking/autodock4/jobs/{job_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock4_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _autodock4_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/autodock4/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock4_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _autodock4_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get(
+    "/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock_gpu_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _autodock_gpu_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/autodock-gpu/batches/{batch_id}/ligands/{ligand_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_autodock_gpu_batch_pose_flex(
+    batch_id: str, ligand_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _autodock_gpu_service(request).batch_pose_flex_content_path(
+            batch_id, ligand_id, artifact_id
+        )
+    )
+
+
+@router.get("/docking/gnina/jobs/{job_id}/poses/{artifact_id}/flex", response_class=FileResponse)
+def get_gnina_pose_flex(job_id: str, artifact_id: str, request: Request) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).pose_flex_content_path(job_id, artifact_id)
+    )
+
+
+@router.post("/docking/vina/refinements", response_model=VinaLocalRefinementRecord, status_code=201)
+def create_vina_refinement(
+    request: VinaLocalRefinementRequest, http_request: Request
+) -> VinaLocalRefinementRecord:
+    return _vina_docking_service(http_request).refine_pose_local_only(request)
+
+
+@router.get("/docking/refinements/{refinement_id}", response_model=VinaLocalRefinementRecord)
+def get_vina_refinement(refinement_id: str, request: Request) -> VinaLocalRefinementRecord:
+    return _vina_docking_service(request).get_refinement(refinement_id)
+
+
+@router.get(
+    "/docking/refinements/{refinement_id}/poses/{artifact_id}/content",
+    response_class=FileResponse,
+)
+def get_vina_refinement_pose_content(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).refinement_pose_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/refinements/{refinement_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_vina_refinement_pose_flex(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _vina_docking_service(request).refinement_pose_flex_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.post(
+    "/docking/gnina/refinements",
+    response_model=GninaLocalRefinementRecord,
+    status_code=201,
+)
+def create_gnina_refinement(
+    request: GninaLocalRefinementRequest, http_request: Request
+) -> GninaLocalRefinementRecord:
+    return _gnina_docking_service(http_request).refine_pose_local_only(request)
+
+
+@router.get("/docking/gnina/refinements/{refinement_id}", response_model=GninaLocalRefinementRecord)
+def get_gnina_refinement(refinement_id: str, request: Request) -> GninaLocalRefinementRecord:
+    return _gnina_docking_service(request).get_refinement(refinement_id)
+
+
+@router.get(
+    "/docking/gnina/refinements/{refinement_id}/poses/{artifact_id}/content",
+    response_class=FileResponse,
+)
+def get_gnina_refinement_pose_content(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).refinement_pose_content_path(refinement_id, artifact_id)
+    )
+
+
+@router.get(
+    "/docking/gnina/refinements/{refinement_id}/poses/{artifact_id}/flex",
+    response_class=FileResponse,
+)
+def get_gnina_refinement_pose_flex(
+    refinement_id: str, artifact_id: str, request: Request
+) -> FileResponse:
+    return _pose_file_response(
+        _gnina_docking_service(request).refinement_pose_flex_content_path(
+            refinement_id, artifact_id
+        )
+    )
 
 
 @router.get("/docking/jobs/{job_id}", response_model=VinaDockingJobRecord)
@@ -1799,6 +2025,94 @@ def analyze_pose_interactions(
 
 @router.get(
     "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/quality",
+    response_model=list[PoseQualityRecord],
+)
+def list_pose_quality_assessments(
+    engine: str, record_id: str, ligand_id: str, pose_artifact_id: str
+) -> list[PoseQualityRecord]:
+    return PoseQualityService.from_environment().list_assessments(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id
+    )
+
+
+@router.post(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/quality",
+    response_model=PoseQualityRecord,
+    status_code=201,
+)
+def assess_pose_quality(
+    engine: str,
+    record_id: str,
+    ligand_id: str,
+    pose_artifact_id: str,
+    payload: PoseQualityRequest,
+) -> PoseQualityRecord:
+    return PoseQualityService.from_environment().assess(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
+    )
+
+
+@router.get("/interactions/rule-sets", response_model=list[InteractionRuleSetRecord])
+def list_interaction_rule_sets(
+    receptor_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[InteractionRuleSetRecord]:
+    return InteractionRulesService.from_environment().list_rule_sets(receptor_id=receptor_id)
+
+
+@router.post(
+    "/interactions/rule-sets",
+    response_model=InteractionRuleSetRecord,
+    status_code=201,
+)
+def create_interaction_rule_set(
+    payload: CreateInteractionRuleSetRequest,
+) -> InteractionRuleSetRecord:
+    return InteractionRulesService.from_environment().create_rule_set(payload)
+
+
+@router.get(
+    "/interactions/rule-sets/{rule_set_id}",
+    response_model=InteractionRuleSetRecord,
+)
+def get_interaction_rule_set(rule_set_id: str) -> InteractionRuleSetRecord:
+    return InteractionRulesService.from_environment().get_rule_set(rule_set_id)
+
+
+@router.get(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/interaction-rules",
+    response_model=list[InteractionRuleEvaluationRecord],
+)
+def list_pose_interaction_rule_evaluations(
+    engine: str, record_id: str, ligand_id: str, pose_artifact_id: str
+) -> list[InteractionRuleEvaluationRecord]:
+    return InteractionRulesService.from_environment().list_pose_evaluations(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id
+    )
+
+
+@router.post(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
+    "{pose_artifact_id}/interaction-rules",
+    response_model=InteractionRuleEvaluationRecord,
+    status_code=201,
+)
+def evaluate_pose_interaction_rules(
+    engine: str,
+    record_id: str,
+    ligand_id: str,
+    pose_artifact_id: str,
+    payload: EvaluateInteractionRulesRequest,
+) -> InteractionRuleEvaluationRecord:
+    return InteractionRulesService.from_environment().evaluate_pose(
+        f"{engine}:{record_id}", ligand_id, pose_artifact_id, payload
+    )
+
+
+@router.get(
+    "/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/"
     "{pose_artifact_id}/complex",
     response_class=PlainTextResponse,
 )
@@ -1866,3 +2180,272 @@ def get_figure_file(figure_id: str, filename: str) -> FileResponse:
         filename=path.name,
         content_disposition_type="attachment",
     )
+
+
+@router.get("/calibrations", response_model=CalibrationRunListResponse)
+def list_calibrations() -> CalibrationRunListResponse:
+    runs = tuple(ProtocolCalibrationService.from_environment().list_runs())
+    return CalibrationRunListResponse(runs=runs)
+
+
+@router.get("/calibrations/{calibration_id}", response_model=CalibrationRunRecord)
+def get_calibration(calibration_id: str) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().get_run(calibration_id)
+
+
+@router.post(
+    "/calibrations/splits",
+    response_model=CalibrationRunRecord,
+    status_code=201,
+)
+def create_calibration_split(
+    payload: CalibrationSplitRequest,
+    http_request: Request,
+) -> CalibrationRunRecord:
+    project_id = http_request.app.state.project_runtime.active_project_id
+    return ProtocolCalibrationService.from_environment().create_split(
+        project_id=project_id,
+        receptor_id=payload.receptor_id,
+        binding_site_id=payload.binding_site_id,
+        compounds=payload.compounds,
+        policy=payload.policy,
+    )
+
+
+@router.post(
+    "/calibrations/{calibration_id}/select",
+    response_model=CalibrationRunRecord,
+)
+def select_calibration_protocol(
+    calibration_id: str,
+    payload: CalibrationSelectRequest,
+) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().select_protocol_on_calibration(
+        calibration_id=calibration_id,
+        baseline_protocol_id=payload.baseline_protocol_id,
+        candidates=payload.candidates,
+        observations_by_protocol=payload.observations_by_protocol,
+    )
+
+
+@router.post(
+    "/calibrations/{calibration_id}/confirm",
+    response_model=CalibrationRunRecord,
+)
+def confirm_calibration_protocol(
+    calibration_id: str,
+    payload: CalibrationConfirmRequest,
+) -> CalibrationRunRecord:
+    return ProtocolCalibrationService.from_environment().evaluate_locked_confirmation(
+        calibration_id=calibration_id,
+        observations_by_protocol=payload.observations_by_protocol,
+    )
+
+
+@router.post("/rescoring/score-only", response_model=PoseRescoreResult)
+def rescore_saved_pose_only(payload: SavedPoseRescoreRequest) -> PoseRescoreResult:
+    """Evaluate one saved docking pose in place across requested scoring functions."""
+    return PoseRescoringService.from_environment().rescore_saved_pose(payload)
+
+
+@router.get("/consensus/runs", response_model=ConsensusRunListResponse)
+def list_consensus_runs() -> ConsensusRunListResponse:
+    return ConsensusRunListResponse(runs=tuple(PoseConsensusService.from_environment().list_runs()))
+
+
+@router.get("/consensus/runs/{consensus_id}", response_model=ConsensusRunRecord)
+def get_consensus_run(consensus_id: str) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().get_run(consensus_id)
+
+
+@router.post(
+    "/consensus/runs/structured",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def create_structured_consensus(
+    payload: CreateStructuredConsensusRequest,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().create_structured_consensus(payload)
+
+
+@router.post(
+    "/consensus/runs/campaigns",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def create_campaign_consensus(
+    payload: CreateCampaignConsensusRequest,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().create_campaign_consensus(payload)
+
+
+@router.post(
+    "/consensus/runs/{consensus_id}/pc-l2",
+    response_model=ConsensusRunRecord,
+    status_code=201,
+)
+def fit_consensus_pc_l2(
+    consensus_id: str,
+    payload: FitPcL2Request,
+) -> ConsensusRunRecord:
+    return PoseConsensusService.from_environment().fit_pc_l2(consensus_id, payload)
+
+
+@router.post("/consensus/runs/{consensus_id}/export", status_code=201)
+def export_consensus_run(
+    consensus_id: str,
+    destination: Annotated[str | None, Query(min_length=1)] = None,
+    display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+) -> dict[str, object]:
+    """Write a self-contained Export v5/v6 bundle for an immutable ADR-030 consensus run."""
+    return ConsensusExportService.from_environment().export_consensus_run(
+        consensus_id,
+        destination=destination,
+        display_name=display_name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ADR-033 Hit-to-Analog Structural Similarity Expansion & MCS Core RMSD (M6.5)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/analog-expansion/catalogs", response_model=list[AnalogCatalogSummary])
+def list_analog_catalogs() -> list[AnalogCatalogSummary]:
+    return AnalogExpansionService.from_environment().list_catalogs()
+
+
+@router.get(
+    "/analog-expansion/catalogs/{analog_catalog_id}",
+    response_model=AnalogCatalogRecord,
+)
+def get_analog_catalog(analog_catalog_id: str) -> AnalogCatalogRecord:
+    return AnalogExpansionService.from_environment().get_catalog(analog_catalog_id)
+
+
+@router.post(
+    "/analog-expansion/catalogs",
+    response_model=AnalogCatalogRecord,
+    status_code=201,
+)
+async def import_analog_catalog(
+    file: Annotated[UploadFile, File(...)],
+    name: Annotated[str | None, Form()] = None,
+    smiles_column: Annotated[str | None, Form()] = None,
+    id_column: Annotated[str | None, Form()] = None,
+    delimiter: Annotated[str, Form()] = ",",
+    encoding: Annotated[str, Form()] = "utf-8",
+) -> AnalogCatalogRecord:
+    content = await file.read()
+    filename = file.filename or "analog_catalog.smi"
+    csv_schema: CsvCatalogSchema | None = None
+    if smiles_column is not None and smiles_column.strip():
+        csv_schema = CsvCatalogSchema(
+            smiles_column=smiles_column.strip(),
+            id_column=id_column.strip() if id_column and id_column.strip() else None,
+            delimiter=delimiter or ",",
+            encoding=encoding or "utf-8",
+        )
+    return AnalogExpansionService.from_environment().import_local_catalog(
+        content=content,
+        filename=filename,
+        name=name,
+        csv_schema=csv_schema,
+    )
+
+
+@router.post(
+    "/analog-expansion/catalogs/from-library/{library_id}",
+    response_model=AnalogCatalogRecord,
+    status_code=201,
+)
+def snapshot_library_as_analog_catalog(
+    library_id: str,
+    name: Annotated[str | None, Query(min_length=1, max_length=120)] = None,
+) -> AnalogCatalogRecord:
+    return AnalogExpansionService.from_environment().snapshot_project_library_as_catalog(
+        library_id=library_id,
+        name=name,
+    )
+
+
+@router.post(
+    "/analog-expansion/external-consent-preview",
+    response_model=ExternalConsentPreview,
+)
+def preview_external_analog_consent(
+    payload: ExternalConsentPreviewRequest,
+) -> ExternalConsentPreview:
+    return AnalogExpansionService.from_environment().prepare_external_consent_preview(payload)
+
+
+@router.get("/analog-expansion/searches", response_model=list[AnalogSearchRecord])
+def list_analog_searches() -> list[AnalogSearchRecord]:
+    return AnalogExpansionService.from_environment().list_searches()
+
+
+@router.get(
+    "/analog-expansion/searches/{analog_search_id}",
+    response_model=AnalogSearchRecord,
+)
+def get_analog_search(analog_search_id: str) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().get_search(analog_search_id)
+
+
+@router.post(
+    "/analog-expansion/searches/offline",
+    response_model=AnalogSearchRecord,
+    status_code=201,
+)
+def run_offline_analog_search(
+    payload: RunOfflineAnalogSearchRequest,
+) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().run_offline_search(payload)
+
+
+@router.post(
+    "/analog-expansion/searches/online",
+    response_model=AnalogSearchRecord,
+    status_code=201,
+)
+def run_online_analog_search(
+    payload: RunOnlineAnalogSearchRequest,
+) -> AnalogSearchRecord:
+    return AnalogExpansionService.from_environment().run_online_search(payload)
+
+
+@router.get("/analog-expansion/selections", response_model=list[AnalogSelectionRecord])
+def list_analog_selections() -> list[AnalogSelectionRecord]:
+    return AnalogExpansionService.from_environment().list_selections()
+
+
+@router.get(
+    "/analog-expansion/selections/{analog_selection_id}",
+    response_model=AnalogSelectionRecord,
+)
+def get_analog_selection(analog_selection_id: str) -> AnalogSelectionRecord:
+    return AnalogExpansionService.from_environment().get_selection(analog_selection_id)
+
+
+@router.post(
+    "/analog-expansion/searches/{analog_search_id}/selections",
+    response_model=AnalogSelectionRecord,
+    status_code=201,
+)
+def create_analog_selection(
+    analog_search_id: str,
+    payload: CreateAnalogSelectionRequest,
+) -> AnalogSelectionRecord:
+    return AnalogExpansionService.from_environment().create_selection_and_derived_library(
+        analog_search_id=analog_search_id,
+        request=payload,
+    )
+
+
+@router.post(
+    "/analog-expansion/mcs-core-rmsd",
+    response_model=McsCoreRmsdResult,
+)
+def compute_analog_mcs_core_rmsd(payload: McsCoreRmsdRequest) -> McsCoreRmsdResult:
+    return AnalogExpansionService.from_environment().evaluate_mcs_core_rmsd(payload)

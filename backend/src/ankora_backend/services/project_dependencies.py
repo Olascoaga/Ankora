@@ -31,12 +31,17 @@ from ankora_backend.schemas.projects import (
 _STAGE = "project_dependencies"
 _LOCK = threading.RLock()
 _REFERENCE_KEYS = {
+    "analog_catalog_id",
+    "analog_search_id",
+    "analog_selection_id",
     "analysis_id",
     "analysis_receptor_artifact_id",
     "binding_site_id",
+    "calibration_id",
     "catalog_id",
     "chemical_state_id",
     "conformer_id",
+    "consensus_id",
     "docking_receptor_artifact_id",
     "filter_run_id",
     "interaction_analysis_id",
@@ -44,6 +49,9 @@ _REFERENCE_KEYS = {
     "ligand_id",
     "ligand_preparation_id",
     "map_set_id",
+    "origin_analog_search_id",
+    "origin_analog_selection_id",
+    "panel_id",
     "parent_binding_site_id",
     "parent_compound_id",
     "parent_state_id",
@@ -54,10 +62,15 @@ _REFERENCE_KEYS = {
     "record_id",
     "reference_ligand_id",
     "report_id",
+    "rule_set_id",
     "selection_manifest_artifact_id",
     "source_artifact_id",
+    "source_consensus_id",
     "source_id",
+    "source_library_id",
     "source_output_artifact_id",
+    "source_pose_artifact_id",
+    "source_record_id",
     "source_structure_id",
     "state_id",
 }
@@ -387,6 +400,12 @@ def _kind_for(parts: tuple[str, ...]) -> DependencyNodeKind:
         return DependencyNodeKind.POCKET_DETECTION
     if parts[:2] == ("derived", "autogrid_maps"):
         return DependencyNodeKind.AUTOGRID_MAP_SET
+    if parts[:3] == ("derived", "analog_expansion", "catalogs"):
+        return DependencyNodeKind.ANALOG_CATALOG
+    if parts[:3] == ("derived", "analog_expansion", "searches"):
+        return DependencyNodeKind.ANALOG_SEARCH
+    if parts[:3] == ("derived", "analog_expansion", "selections"):
+        return DependencyNodeKind.ANALOG_SELECTION
     if "filter_runs" in parts:
         return DependencyNodeKind.LIGAND_FILTER
     if "states" in parts:
@@ -399,7 +418,14 @@ def _kind_for(parts: tuple[str, ...]) -> DependencyNodeKind:
         return DependencyNodeKind.DOCKING_CAMPAIGN
     if parts[:2] == ("validation", "redocking"):
         return DependencyNodeKind.VALIDATION
-    if parts[:2] == ("analysis", "pose_interactions"):
+    if parts[:2] in {
+        ("analysis", "pose_interactions"),
+        ("analysis", "pose_quality"),
+        ("analysis", "interaction_rule_sets"),
+        ("analysis", "interaction_rule_evaluations"),
+        ("analysis", "consensus"),
+        ("analysis", "consensus_panels"),
+    }:
         return DependencyNodeKind.POSE_ANALYSIS
     return DependencyNodeKind.UNKNOWN
 

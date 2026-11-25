@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "adr": "ADR-031",
+  "baseline_tag": "v0.1.0-beta.2",
+  "baseline_commit": "36f1c0e9b11adb579920437d23298472ac948bcf",
+  "published_release_baselines": {
+    "windows_x64_setup_exe": {
+      "filename": "Ankora_0.1.0_x64-setup.exe",
+      "size_bytes": 427237557,
+      "sha256": "db7850472fa836e01e86ab044a19bd62989f99aeab8382a660903cfc943e85bc",
+      "source": "GitHub Release v0.1.0-beta.2 SHA256SUMS.txt (commit 36f1c0e9b11adb579920437d23298472ac948bcf)"
+    },
+    "linux_x86_64_deb": {
+      "filename": "Ankora_0.1.0_amd64.deb",
+      "size_bytes": 285567616,
+      "sha256": "794117310564953a879a2a27ff09a449da293cfbe200a64aab24372ace39eafb",
+      "source": "GitHub Release v0.1.0-beta.2 SHA256SUMS.txt (commit 36f1c0e9b11adb579920437d23298472ac948bcf)"
+    },
+    "linux_x86_64_tar_zst": {
+      "filename": "Ankora_0.1.0_linux_x86_64.tar.zst",
+      "size_bytes": 329218187,
+      "sha256": "d4c9f843c619176a50723e88426a45ec3db79f7781ff601a27f85a0e7f2b34ca",
+      "source": "GitHub Release v0.1.0-beta.2 SHA256SUMS.txt (commit 36f1c0e9b11adb579920437d23298472ac948bcf)"
+    }
+  },
+  "historical_tracked_doc_baselines": {
+    "windows_x64_setup_exe": {
+      "size_bytes": 426941199,
+      "source": "docs/validation/PRIVATE_BETA_SLIM_INSTALLER_2026-10-20.md"
+    },
+    "linux_x86_64_deb": {
+      "size_bytes": 285567716,
+      "source": "docs/validation/LINUX_OFFLINE_PACKAGE_SMOKE.md"
+    },
+    "linux_x86_64_tar_zst": {
+      "size_bytes": 329218220,
+      "source": "docs/validation/LINUX_OFFLINE_PACKAGE_SMOKE.md"
+    }
+  },
+  "milestone_budgets_bytes": {
+    "M0": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M1": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M2": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M3": {
+      "max_delta_bytes": 1048576,
+      "new_dependencies": [
+        "posebusters (MIT, pure-Python wheel only)"
+      ],
+      "measured_wheel_filename": "posebusters-0.6.5-py3-none-any.whl",
+      "measured_wheel_bytes": 567794,
+      "measured_wheel_sha256": "3e0cbca6481079d5ab7d1989a8a8f184dbba27366613c4b515658ea52fb95ea3"
+    },
+    "M4": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M5": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M6": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M6.5": {
+      "max_delta_bytes": 0,
+      "new_dependencies": []
+    },
+    "M7": {
+      "max_delta_bytes": null,
+      "status": "gated_behind_offline_spike_and_optional_pack_if_exceeding_budget"
+    }
+  }
+}

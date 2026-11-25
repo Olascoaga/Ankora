@@ -7,10 +7,13 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
-from ankora_backend.adapters.engines.vina import (
+from ankora_backend.adapters.engines.vina_v02 import (
     VinaInstallation,
     build_vina_arguments,
+    build_vina_local_only_arguments,
     execute_vina,
+    execute_vina_local_only,
+    parse_vina_local_only_output,
     parse_vina_poses,
     probe_vina,
 )
@@ -36,14 +39,19 @@ from ankora_backend.schemas.docking import (
     VinaDockingJobRecord,
     VinaDockingParameters,
     VinaDockingRequest,
+    VinaLocalRefinementRecord,
+    VinaLocalRefinementRequest,
 )
 from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
     ReceptorOutputArtifact,
     ReceptorOutputStage,
+    ReceptorPreparationRecord,
     ReceptorPreparationStatus,
 )
+from ankora_backend.schemas.v02_contracts import PoseComplexIdentity
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
@@ -85,6 +93,20 @@ def _search_space_warnings(
             },
         )
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class _DockingReceptor:
+    record: ReceptorPreparationRecord
+    rigid_output: ReceptorOutputArtifact
+    rigid_path: Path
+    flex_output: ReceptorOutputArtifact | None
+    flex_path: Path | None
+
+    @property
+    def flex_mode(self) -> ReceptorFlexMode:
+        spec = self.record.flex_spec
+        return spec.mode if spec is not None else ReceptorFlexMode.RIGID
 
 
 @dataclass(frozen=True)
@@ -141,7 +163,11 @@ class VinaDockingService:
 
     def start(self, request: VinaDockingRequest) -> VinaDockingJobRecord:
         installation = probe_vina()
-        receptor_output, receptor_path, ligand_path, binding_site = self._validate_inputs(request)
+        docking_receptor, ligand_path, binding_site = self._validate_inputs(request)
+        receptor_output = docking_receptor.rigid_output
+        receptor_path = docking_receptor.rigid_path
+        flex_output = docking_receptor.flex_output
+        flex_path = docking_receptor.flex_path
         job_id = self._docking_store.new_job_id()
         output_path = self._docking_store.output_path(job_id, "vina_poses.pdbqt")
         command = [
@@ -152,8 +178,21 @@ class VinaDockingService:
                 output_path=output_path,
                 box=binding_site.box,
                 parameters=request.parameters,
+                flex_receptor_path=flex_path,
             ),
         ]
+        warnings = [
+            *_search_space_warnings(
+                binding_site=binding_site,
+                exhaustiveness=request.parameters.exhaustiveness,
+            ),
+            *(
+                warning
+                for warning in docking_receptor.record.warnings
+                if warning.code is WarningCode.DOCKING_FLEXRES_DOF_HIGH
+            ),
+        ]
+        flex_spec = docking_receptor.record.flex_spec
         record = VinaDockingJobRecord(
             job_id=job_id,
             status=DockingJobStatus.QUEUED,
@@ -163,12 +202,15 @@ class VinaDockingService:
             tool=ToolIdentity(name="AutoDock Vina", version=installation.version),
             receptor_output_artifact_id=receptor_output.artifact_id,
             receptor_sha256=receptor_output.sha256,
+            receptor_flex_mode=docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
             ligand_sha256=self._sha256_file(ligand_path),
             command=command,
-            warnings=_search_space_warnings(
-                binding_site=binding_site,
-                exhaustiveness=request.parameters.exhaustiveness,
-            ),
+            warnings=warnings,
         )
         self._docking_store.create_job(record)
         cancel_event = threading.Event()
@@ -179,6 +221,7 @@ class VinaDockingService:
             job_id,
             installation,
             receptor_path,
+            flex_path,
             ligand_path,
             output_path,
             binding_site.box,
@@ -215,6 +258,233 @@ class VinaDockingService:
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         return self._docking_store.pose_content_path(job_id, artifact_id)
 
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        return self._docking_store.pose_flex_content_path(job_id, artifact_id)
+
+    def get_refinement(self, refinement_id: str) -> VinaLocalRefinementRecord:
+        return self._docking_store.load_refinement_record(refinement_id)
+
+    def refinement_pose_content_path(self, refinement_id: str, artifact_id: str) -> Path:
+        return self._docking_store.refinement_pose_content_path(refinement_id, artifact_id)
+
+    def refinement_pose_flex_content_path(
+        self, refinement_id: str, artifact_id: str
+    ) -> Path | None:
+        return self._docking_store.refinement_pose_flex_content_path(refinement_id, artifact_id)
+
+    def refine_pose_local_only(
+        self, request: VinaLocalRefinementRequest
+    ) -> VinaLocalRefinementRecord:
+        """Create-only derivative `--local_only` pose refinement (ADR-005 / ADR-032 §1.5).
+
+        Never mutates or overwrites the parent docking job or parent pose artifact.
+        Authoritative energies are parsed from Vina stdout (ADR-032 Addendum A4).
+        """
+        installation = probe_vina()
+        parent_job = self._docking_store.load_record(request.parent_job_id)
+        if parent_job.status is not DockingJobStatus.COMPLETED:
+            raise self._input_error(
+                "VINA_REFINEMENT_PARENT_INCOMPLETE",
+                "Local refinement requires a completed parent Vina docking job.",
+                {"parent_job_id": request.parent_job_id, "status": parent_job.status.value},
+            )
+        parent_pose = next(
+            (
+                item
+                for item in parent_job.poses
+                if item.artifact.artifact_id == request.parent_pose_artifact_id
+            ),
+            None,
+        )
+        if parent_pose is None:
+            raise self._input_error(
+                "VINA_REFINEMENT_POSE_NOT_FOUND",
+                "The requested pose does not belong to the parent Vina docking job.",
+                {
+                    "parent_job_id": request.parent_job_id,
+                    "parent_pose_artifact_id": request.parent_pose_artifact_id,
+                },
+            )
+
+        docking_receptor, binding_site = self._validate_receptor_and_site(
+            parent_job.request.receptor_id, parent_job.request.binding_site_id
+        )
+        if docking_receptor.rigid_output.sha256 != parent_job.receptor_sha256:
+            raise self._input_error(
+                "DOCKING_INPUT_HASH_MISMATCH",
+                "The receptor no longer matches the parent docking job's recorded hash.",
+                {
+                    "expected_sha256": parent_job.receptor_sha256,
+                    "actual_sha256": docking_receptor.rigid_output.sha256,
+                },
+            )
+
+        parent_pose_path = self._docking_store.pose_content_path(
+            parent_job.job_id, parent_pose.artifact.artifact_id
+        )
+        self._verify_hash(parent_pose_path, parent_pose.artifact.sha256, "parent_pose")
+
+        parent_flex_path: Path | None = None
+        parent_flex_sha256 = parent_pose.artifact.pose_flex_sidechains_sha256
+        is_flex = parent_job.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        if is_flex:
+            parent_flex_path = self._docking_store.pose_flex_content_path(
+                parent_job.job_id, parent_pose.artifact.artifact_id
+            )
+            if parent_flex_path is None or parent_flex_sha256 is None:
+                raise self._input_error(
+                    "VINA_REFINEMENT_FLEX_POSE_MISSING",
+                    "A sidechain_flex parent pose requires preserved moved side-chain coordinates.",
+                    {"parent_pose_artifact_id": parent_pose.artifact.artifact_id},
+                )
+            self._verify_hash(parent_flex_path, parent_flex_sha256, "parent_pose_flex")
+
+        refinement_id = self._docking_store.new_refinement_id()
+        self._docking_store.create_refinement_dir(refinement_id)
+        output_path = self._docking_store.refinement_output_path(
+            refinement_id, "vina_local_only_out.pdbqt"
+        )
+        command = [
+            installation.executable,
+            *build_vina_local_only_arguments(
+                receptor_path=docking_receptor.rigid_path,
+                ligand_path=parent_pose_path,
+                output_path=output_path,
+                box=binding_site.box,
+                cpu_threads=request.cpu_threads,
+                seed=request.seed,
+                scoring=request.scoring,
+                flex_receptor_path=parent_flex_path,
+            ),
+        ]
+        execution = execute_vina_local_only(
+            installation=installation,
+            receptor_path=docking_receptor.rigid_path,
+            ligand_path=parent_pose_path,
+            output_path=output_path,
+            box=binding_site.box,
+            cpu_threads=request.cpu_threads,
+            seed=request.seed,
+            scoring=request.scoring,
+            timeout_minutes=request.timeout_minutes,
+            cancel_event=threading.Event(),
+            flex_receptor_path=parent_flex_path,
+        )
+        self._docking_store.write_refinement_text(refinement_id, "stdout.log", execution.stdout)
+        self._docking_store.write_refinement_text(refinement_id, "stderr.log", execution.stderr)
+        evidence = DockingExecutionEvidence(
+            command=execution.command,
+            exit_code=execution.exit_code,
+            stdout=execution.stdout,
+            stderr=execution.stderr,
+            timed_out=execution.timed_out,
+            canceled=execution.canceled,
+        )
+        if execution.exit_code != 0 or not output_path.is_file():
+            raise AnkoraDomainError(
+                code="VINA_LOCAL_REFINEMENT_FAILED",
+                stage="vina_local_refinement",
+                message="AutoDock Vina --local_only refinement did not complete successfully.",
+                status_code=422,
+                details={
+                    "refinement_id": refinement_id,
+                    "exit_code": execution.exit_code,
+                    "command": command,
+                    "stderr": execution.stderr,
+                },
+            )
+        parsed = parse_vina_local_only_output(
+            stdout=execution.stdout,
+            output_pdbqt=output_path.read_bytes(),
+            expect_flex_sidechains=is_flex,
+        )
+        pose_artifact_id = f"{refinement_id}-pose-1"
+        self._docking_store.write_refinement_bytes(
+            refinement_id, "pose_1.pdbqt", parsed.ligand_content
+        )
+        lig_sha256 = sha256(parsed.ligand_content).hexdigest()
+        flex_filename: str | None = None
+        flex_sha256: str | None = None
+        flex_content_url: str | None = None
+        if parsed.flex_sidechains_content is not None:
+            flex_filename = "pose_1_flex.pdbqt"
+            self._docking_store.write_refinement_bytes(
+                refinement_id, flex_filename, parsed.flex_sidechains_content
+            )
+            flex_sha256 = sha256(parsed.flex_sidechains_content).hexdigest()
+            flex_content_url = (
+                f"/docking/refinements/{refinement_id}/poses/{pose_artifact_id}/flex"
+            )
+        complex_identity = PoseComplexIdentity(
+            mode=parent_job.receptor_flex_mode,
+            receptor_rigid_sha256=parent_job.receptor_sha256,
+            pose_flex_sidechains_sha256=flex_sha256,
+            ligand_pose_sha256=lig_sha256,
+        )
+        refined_pose = DockingPoseArtifact(
+            artifact_id=pose_artifact_id,
+            mode=1,
+            filename="pose_1.pdbqt",
+            format="pdbqt",
+            sha256=lig_sha256,
+            size_bytes=len(parsed.ligand_content),
+            content_url=f"/docking/refinements/{refinement_id}/poses/{pose_artifact_id}/content",
+            flex_filename=flex_filename,
+            pose_flex_sidechains_sha256=flex_sha256,
+            flex_content_url=flex_content_url,
+            pose_complex_identity_sha256=complex_identity.complex_identity_sha256,
+        )
+        created_at = datetime.now(UTC)
+        tool = ToolIdentity(name="AutoDock Vina", version=installation.version)
+        provenance = ProvenanceEvent(
+            event_id=f"vina-local-refinement-{refinement_id}",
+            event_type="vina_local_refinement_completed",
+            timestamp=created_at,
+            input_artifacts=[
+                parent_job.receptor_output_artifact_id,
+                parent_job.request.binding_site_id,
+                parent_pose.artifact.artifact_id,
+            ],
+            output_artifacts=[pose_artifact_id],
+            tool=tool,
+            parameters={
+                **request.model_dump(mode="json"),
+                "authoritative_energy_source": "vina_stdout",
+                "stripped_nul_line_count": parsed.stripped_nul_line_count,
+                "unbound_system_energy_kcal_mol": parsed.energy.unbound_system_energy_kcal_mol,
+            },
+            command=evidence.command,
+        )
+        record = VinaLocalRefinementRecord(
+            refinement_id=refinement_id,
+            created_at=created_at,
+            parent_job_id=parent_job.job_id,
+            parent_pose_artifact_id=parent_pose.artifact.artifact_id,
+            parent_pose_sha256=parent_pose.artifact.sha256,
+            parent_pose_flex_sha256=parent_flex_sha256,
+            receptor_id=parent_job.request.receptor_id,
+            binding_site_id=parent_job.request.binding_site_id,
+            ligand_id=parent_job.request.ligand_id,
+            ligand_preparation_id=parent_job.request.ligand_preparation_id,
+            receptor_output_artifact_id=parent_job.receptor_output_artifact_id,
+            receptor_sha256=parent_job.receptor_sha256,
+            receptor_flex_mode=parent_job.receptor_flex_mode,
+            flex_residues=list(parent_job.flex_residues),
+            scoring=request.scoring,
+            tool=tool,
+            command=evidence.command,
+            estimated_free_energy_kcal_mol=parsed.energy.estimated_free_energy_kcal_mol,
+            intermolecular_kcal_mol=parsed.energy.intermolecular_kcal_mol,
+            total_internal_kcal_mol=parsed.energy.total_internal_kcal_mol,
+            torsional_free_energy_kcal_mol=parsed.energy.torsional_free_energy_kcal_mol,
+            unbound_system_energy_kcal_mol=parsed.energy.unbound_system_energy_kcal_mol,
+            refined_pose=refined_pose,
+            execution=evidence,
+            provenance=provenance,
+        )
+        self._docking_store.write_refinement_record(record)
+        return record
+
     def start_batch(self, request: VinaBatchDockingRequest) -> VinaBatchDockingRecord:
         with self._batch_start_lock:
             existing = self._active_batch()
@@ -235,9 +505,13 @@ class VinaDockingService:
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
         installation = probe_vina()
-        receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
+        docking_receptor, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
         )
+        receptor_output = docking_receptor.rigid_output
+        receptor_path = docking_receptor.rigid_path
+        flex_output = docking_receptor.flex_output
+        flex_path = docking_receptor.flex_path
         filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
         if filter_run.artifact.library_id != request.library_id:
             raise self._input_error(
@@ -449,12 +723,25 @@ class VinaDockingService:
                     output_path=output_path,
                     box=binding_site.box,
                     parameters=execution_parameters,
+                    flex_receptor_path=flex_path,
                 ),
             ]
             entries[index] = entry.model_copy(update={"command": command})
             work_items.append(_BatchWorkItem(ligand_id=entry.ligand_id, ligand_path=prepared_path))
 
         failed_count = sum(entry.status is DockingJobStatus.FAILED for entry in entries)
+        flex_spec = docking_receptor.record.flex_spec
+        batch_warnings = [
+            *_search_space_warnings(
+                binding_site=binding_site,
+                exhaustiveness=request.parameters.exhaustiveness,
+            ),
+            *(
+                warning
+                for warning in docking_receptor.record.warnings
+                if warning.code is WarningCode.DOCKING_FLEXRES_DOF_HIGH
+            ),
+        ]
         record = VinaBatchDockingRecord(
             batch_id=batch_id,
             status=DockingJobStatus.QUEUED,
@@ -464,6 +751,12 @@ class VinaDockingService:
             tool=ToolIdentity(name="AutoDock Vina", version=installation.version),
             receptor_output_artifact_id=receptor_output.artifact_id,
             receptor_sha256=receptor_output.sha256,
+            receptor_flex_mode=docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
             selection_manifest_artifact_id=filter_run.artifact.filter_run_id,
             selection_manifest_sha256=filter_run.artifact.sha256,
             selected_count=len(entries),
@@ -474,10 +767,7 @@ class VinaDockingService:
             failed_count=failed_count,
             canceled_count=0,
             entries=entries,
-            warnings=_search_space_warnings(
-                binding_site=binding_site,
-                exhaustiveness=request.parameters.exhaustiveness,
-            ),
+            warnings=batch_warnings,
         )
         self._docking_store.create_batch(record)
         cancel_event = threading.Event()
@@ -489,6 +779,7 @@ class VinaDockingService:
             batch_id,
             installation,
             receptor_path,
+            flex_path,
             binding_site.box,
             work_items,
             execution_parameters,
@@ -588,11 +879,17 @@ class VinaDockingService:
     def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._docking_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
+    def batch_pose_flex_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path | None:
+        return self._docking_store.batch_pose_flex_content_path(batch_id, ligand_id, artifact_id)
+
     def _run_batch(
         self,
         batch_id: str,
         installation: VinaInstallation,
         receptor_path: Path,
+        flex_receptor_path: Path | None,
         box: BindingBox,
         work_items: list[_BatchWorkItem],
         parameters: VinaDockingParameters,
@@ -644,6 +941,7 @@ class VinaDockingService:
                         batch_id,
                         installation,
                         receptor_path,
+                        flex_receptor_path,
                         box,
                         item,
                         parameters,
@@ -706,6 +1004,7 @@ class VinaDockingService:
         batch_id: str,
         installation: VinaInstallation,
         receptor_path: Path,
+        flex_receptor_path: Path | None,
         box: BindingBox,
         item: _BatchWorkItem,
         parameters: VinaDockingParameters,
@@ -735,6 +1034,7 @@ class VinaDockingService:
                 box=box,
                 parameters=parameters,
                 cancel_event=cancel_event,
+                flex_receptor_path=flex_receptor_path,
             )
             evidence = DockingExecutionEvidence(
                 command=execution.command,
@@ -811,23 +1111,50 @@ class VinaDockingService:
         content: bytes,
         evidence: DockingExecutionEvidence,
     ) -> None:
-        parsed = parse_vina_poses(content)
+        batch = self._docking_store.load_batch_overview(batch_id)
+        is_flex = batch.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        parsed = parse_vina_poses(content, expect_flex_sidechains=is_flex)
         poses: list[DockingPoseResult] = []
         for pose in parsed:
             artifact_id = f"{batch_id}-{entry.ligand_id}-pose-{pose.mode}"
             filename = f"pose_{pose.mode}.pdbqt"
             self._docking_store.write_batch_bytes(batch_id, entry.ligand_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"pose_{pose.mode}_flex.pdbqt"
+                self._docking_store.write_batch_bytes(
+                    batch_id, entry.ligand_id, flex_filename, pose.flex_sidechains_content
+                )
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = (
+                    f"/docking/batches/{batch_id}/ligands/{entry.ligand_id}"
+                    f"/poses/{artifact_id}/flex"
+                )
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=batch.receptor_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             artifact = DockingPoseArtifact(
                 artifact_id=artifact_id,
                 mode=pose.mode,
                 filename=filename,
                 format="pdbqt",
-                sha256=sha256(pose.content).hexdigest(),
+                sha256=lig_sha,
                 size_bytes=len(pose.content),
                 content_url=(
                     f"/docking/batches/{batch_id}/ligands/{entry.ligand_id}"
                     f"/poses/{artifact_id}/content"
                 ),
+                flex_filename=flex_filename,
+                pose_flex_sidechains_sha256=flex_sha,
+                flex_content_url=flex_url,
+                pose_complex_identity_sha256=complex_sha,
             )
             poses.append(
                 DockingPoseResult(
@@ -839,7 +1166,6 @@ class VinaDockingService:
                 )
             )
         completed_at = datetime.now(UTC)
-        batch = self._docking_store.load_batch_overview(batch_id)
         provenance = ProvenanceEvent(
             event_id=f"vina-batch-{batch_id}-{entry.ligand_id}",
             event_type="vina_library_ligand_completed",
@@ -1052,6 +1378,7 @@ class VinaDockingService:
         parameters = request.parameters
         return VinaDockingParameters(
             sampling_protocol=parameters.sampling_protocol,
+            scoring=parameters.scoring,
             cpu_threads=threads_per_ligand,
             seed=parameters.seed,
             exhaustiveness=parameters.exhaustiveness,
@@ -1073,11 +1400,11 @@ class VinaDockingService:
 
     def _validate_inputs(
         self, request: VinaDockingRequest
-    ) -> tuple[ReceptorOutputArtifact, Path, Path, BindingSiteRecord]:
+    ) -> tuple[_DockingReceptor, Path, BindingSiteRecord]:
         require_current_inputs(
             request, binding_site_store=self._binding_site_store, ligand_store=self._ligand_store,
         )
-        receptor_output, receptor_path, binding_site = self._validate_receptor_and_site(
+        docking_receptor, binding_site = self._validate_receptor_and_site(
             request.receptor_id, request.binding_site_id
         )
 
@@ -1094,11 +1421,11 @@ class VinaDockingService:
             request.ligand_id, request.ligand_preparation_id
         )
         self._verify_hash(ligand_path, ligand_preparation.artifact.sha256, "ligand")
-        return receptor_output, receptor_path, ligand_path, binding_site
+        return docking_receptor, ligand_path, binding_site
 
     def _validate_receptor_and_site(
         self, receptor_id: str, binding_site_id: str
-    ) -> tuple[ReceptorOutputArtifact, Path, BindingSiteRecord]:
+    ) -> tuple[_DockingReceptor, BindingSiteRecord]:
         receptor = self._receptor_store.load_record(receptor_id)
         if receptor.status is not ReceptorPreparationStatus.DOCKING_READY:
             raise self._input_error(
@@ -1106,16 +1433,65 @@ class VinaDockingService:
                 "Docking requires a receptor in docking-ready status.",
                 {"receptor_id": receptor_id, "status": receptor.status.value},
             )
-        receptor_output = next(
-            (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
-            None,
-        )
-        if receptor_output is None:
-            raise self._input_error(
-                "DOCKING_RECEPTOR_PDBQT_MISSING",
-                "The selected receptor has no preserved PDBQT output.",
-                {"receptor_id": receptor_id},
+        spec = receptor.flex_spec
+        flex_output: ReceptorOutputArtifact | None = None
+        flex_path: Path | None = None
+        if spec is not None and spec.mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+            receptor_output = next(
+                (
+                    item
+                    for item in receptor.outputs
+                    if item.stage is ReceptorOutputStage.PDBQT_RIGID
+                ),
+                None,
             )
+            if receptor_output is None:
+                raise self._input_error(
+                    "DOCKING_RECEPTOR_PDBQT_MISSING",
+                    "The flexible receptor has no preserved rigid PDBQT split output.",
+                    {"receptor_id": receptor_id},
+                )
+            if receptor_output.sha256 != spec.receptor_rigid_sha256:
+                raise self._input_error(
+                    "DOCKING_INPUT_HASH_MISMATCH",
+                    "The rigid receptor split does not match its recorded flex spec hash.",
+                    {
+                        "expected_sha256": spec.receptor_rigid_sha256,
+                        "actual_sha256": receptor_output.sha256,
+                    },
+                )
+            flex_output = next(
+                (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT_FLEX),
+                None,
+            )
+            if flex_output is None:
+                raise self._input_error(
+                    "DOCKING_RECEPTOR_PDBQT_MISSING",
+                    "The flexible receptor has no preserved flexible PDBQT split output.",
+                    {"receptor_id": receptor_id},
+                )
+            if flex_output.sha256 != spec.receptor_flex_sha256:
+                raise self._input_error(
+                    "DOCKING_INPUT_HASH_MISMATCH",
+                    "The flexible side-chain split does not match its recorded flex spec hash.",
+                    {
+                        "expected_sha256": spec.receptor_flex_sha256,
+                        "actual_sha256": flex_output.sha256,
+                    },
+                )
+            flex_path = self._receptor_store.content_path(receptor_id, flex_output.artifact_id)
+            self._verify_hash(flex_path, flex_output.sha256, "receptor_flex")
+        else:
+            receptor_output = next(
+                (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT),
+                None,
+            )
+            if receptor_output is None:
+                raise self._input_error(
+                    "DOCKING_RECEPTOR_PDBQT_MISSING",
+                    "The selected receptor has no preserved PDBQT output.",
+                    {"receptor_id": receptor_id},
+                )
         receptor_path = self._receptor_store.content_path(receptor_id, receptor_output.artifact_id)
         self._verify_hash(receptor_path, receptor_output.sha256, "receptor")
 
@@ -1131,13 +1507,23 @@ class VinaDockingService:
                     "stale": binding_site.stale,
                 },
             )
-        return receptor_output, receptor_path, binding_site
+        return (
+            _DockingReceptor(
+                record=receptor,
+                rigid_output=receptor_output,
+                rigid_path=receptor_path,
+                flex_output=flex_output,
+                flex_path=flex_path,
+            ),
+            binding_site,
+        )
 
     def _run(
         self,
         job_id: str,
         installation: VinaInstallation,
         receptor_path: Path,
+        flex_receptor_path: Path | None,
         ligand_path: Path,
         output_path: Path,
         box: BindingBox,
@@ -1201,6 +1587,7 @@ class VinaDockingService:
                 box=box,
                 parameters=record.request.parameters,
                 cancel_event=cancel_event,
+                flex_receptor_path=flex_receptor_path,
             )
             evidence = DockingExecutionEvidence(
                 command=execution.command,
@@ -1275,20 +1662,43 @@ class VinaDockingService:
         content: bytes,
         evidence: DockingExecutionEvidence,
     ) -> None:
-        parsed = parse_vina_poses(content)
+        is_flex = record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX
+        parsed = parse_vina_poses(content, expect_flex_sidechains=is_flex)
         poses: list[DockingPoseResult] = []
         for pose in parsed:
             artifact_id = f"{record.job_id}-pose-{pose.mode}"
             filename = f"pose_{pose.mode}.pdbqt"
             self._docking_store.write_bytes(record.job_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"pose_{pose.mode}_flex.pdbqt"
+                self._docking_store.write_bytes(
+                    record.job_id, flex_filename, pose.flex_sidechains_content
+                )
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = f"/docking/jobs/{record.job_id}/poses/{artifact_id}/flex"
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=record.receptor_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             artifact = DockingPoseArtifact(
                 artifact_id=artifact_id,
                 mode=pose.mode,
                 filename=filename,
                 format="pdbqt",
-                sha256=sha256(pose.content).hexdigest(),
+                sha256=lig_sha,
                 size_bytes=len(pose.content),
                 content_url=f"/docking/jobs/{record.job_id}/poses/{artifact_id}/content",
+                flex_filename=flex_filename,
+                pose_flex_sidechains_sha256=flex_sha,
+                flex_content_url=flex_url,
+                pose_complex_identity_sha256=complex_sha,
             )
             poses.append(
                 DockingPoseResult(
@@ -1300,15 +1710,21 @@ class VinaDockingService:
                 )
             )
         completed_at = datetime.now(UTC)
+        input_artifacts = [
+            record.receptor_output_artifact_id,
+            *(
+                [record.receptor_flex_output_artifact_id]
+                if record.receptor_flex_output_artifact_id is not None
+                else []
+            ),
+            record.request.binding_site_id,
+            record.request.ligand_preparation_id,
+        ]
         provenance = ProvenanceEvent(
             event_id=f"vina-docking-{record.job_id}",
             event_type="vina_docking_completed",
             timestamp=completed_at,
-            input_artifacts=[
-                record.receptor_output_artifact_id,
-                record.request.binding_site_id,
-                record.request.ligand_preparation_id,
-            ],
+            input_artifacts=input_artifacts,
             output_artifacts=[pose.artifact.artifact_id for pose in poses],
             tool=record.tool,
             parameters=record.request.parameters.model_dump(mode="json"),

@@ -18,8 +18,20 @@ export interface ViewerSource {
   url: string;
   format: StructureFormat | "sdf";
   label: string;
-  /** Optional visual role; it changes presentation only, never molecular data. */
-  appearance?: "default" | "interaction-context" | "interaction-ligand";
+  /**
+   * Optional visual role; it changes presentation only, never molecular data.
+   *
+   * `flex-crystal-reference` and `flex-moved-sidechains` exist for the ADR-032
+   * §4 `E8` overlay: the original crystal rotamers are shown translucent behind
+   * the moved side chains so the scientist sees exactly what moved and how far.
+   * Both are styling alone — no coordinate is altered to produce the contrast.
+   */
+  appearance?:
+    | "default"
+    | "interaction-context"
+    | "interaction-ligand"
+    | "flex-crystal-reference"
+    | "flex-moved-sidechains";
 }
 
 /** The five families the 2D legend uses, so both pictures agree. */

@@ -4,6 +4,7 @@ import json
 import os
 import threading
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -14,6 +15,7 @@ from ankora_backend.schemas.docking import (
     VinaBatchDockingRecord,
     VinaBatchLigandResult,
     VinaDockingJobRecord,
+    VinaLocalRefinementRecord,
 )
 
 
@@ -96,6 +98,21 @@ class DockingArtifactStore:
         if pose is None:
             raise self._not_found(job_id, artifact_id)
         path = self.output_path(job_id, pose.artifact.filename)
+        if not path.is_file():
+            raise self._not_found(job_id, artifact_id)
+        return path
+
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        record = self.load_record(job_id)
+        pose = next(
+            (item for item in record.poses if item.artifact.artifact_id == artifact_id),
+            None,
+        )
+        if pose is None:
+            raise self._not_found(job_id, artifact_id)
+        if pose.artifact.flex_filename is None:
+            return None
+        path = self.output_path(job_id, pose.artifact.flex_filename)
         if not path.is_file():
             raise self._not_found(job_id, artifact_id)
         return path
@@ -266,6 +283,110 @@ class DockingArtifactStore:
         if not path.is_file():
             raise self._not_found(batch_id, artifact_id)
         return path
+
+    def batch_pose_flex_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path | None:
+        entry = self.load_batch_entry(batch_id, ligand_id)
+        pose = next(
+            (
+                item
+                for item in (entry.poses if entry is not None else [])
+                if item.artifact.artifact_id == artifact_id
+            ),
+            None,
+        )
+        if pose is None:
+            raise self._not_found(batch_id, artifact_id)
+        if pose.artifact.flex_filename is None:
+            return None
+        path = self.batch_output_path(batch_id, ligand_id, pose.artifact.flex_filename)
+        if not path.is_file():
+            raise self._not_found(batch_id, artifact_id)
+        return path
+
+    def new_refinement_id(self) -> str:
+        return str(uuid4())
+
+    def create_refinement_dir(self, refinement_id: str) -> Path:
+        directory = self._refinement_dir(refinement_id)
+        directory.mkdir(parents=True, exist_ok=False)
+        return directory
+
+    def refinement_output_path(self, refinement_id: str, filename: str) -> Path:
+        if Path(filename).name != filename or not filename:
+            raise ValueError("Refinement output filename must be a plain filename")
+        return self._refinement_dir(refinement_id) / filename
+
+    def write_refinement_bytes(self, refinement_id: str, filename: str, content: bytes) -> Path:
+        path = self.refinement_output_path(refinement_id, filename)
+        with path.open("xb") as stream:
+            stream.write(content)
+        return path
+
+    def write_refinement_text(self, refinement_id: str, filename: str, content: str) -> Path:
+        path = self.refinement_output_path(refinement_id, filename)
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+        return path
+
+    def write_refinement_record(self, record: VinaLocalRefinementRecord) -> None:
+        path = self.refinement_output_path(record.refinement_id, "record.json")
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
+            stream.write("\n")
+
+    def load_refinement_record(self, refinement_id: str) -> VinaLocalRefinementRecord:
+        try:
+            raw = (self._refinement_dir(refinement_id) / "record.json").read_text(encoding="utf-8")
+        except FileNotFoundError as error:
+            raise self._not_found(refinement_id) from error
+        return VinaLocalRefinementRecord.model_validate_json(raw)
+
+    def refinement_pose_content_path(self, refinement_id: str, artifact_id: str) -> Path:
+        pose = self.load_refinement_record(refinement_id).refined_pose
+        if pose.artifact_id != artifact_id:
+            raise self._not_found(refinement_id, artifact_id)
+        return self._verified_refinement_path(refinement_id, pose.filename, pose.sha256)
+
+    def refinement_pose_flex_content_path(
+        self, refinement_id: str, artifact_id: str
+    ) -> Path | None:
+        pose = self.load_refinement_record(refinement_id).refined_pose
+        if pose.artifact_id != artifact_id:
+            raise self._not_found(refinement_id, artifact_id)
+        if pose.flex_filename is None:
+            return None
+        return self._verified_refinement_path(
+            refinement_id, pose.flex_filename, pose.pose_flex_sidechains_sha256
+        )
+
+    def _verified_refinement_path(
+        self, refinement_id: str, filename: str, digest: str | None
+    ) -> Path:
+        path = self.refinement_output_path(refinement_id, filename)
+        if path.resolve().parent != path.parent or not path.is_file():
+            raise self._not_found(refinement_id)
+        if sha256(path.read_bytes()).hexdigest() != digest:
+            raise AnkoraDomainError(
+                code="DOCKING_INPUT_HASH_MISMATCH",
+                stage="vina_local_refinement",
+                message="The refinement pose no longer matches its recorded hash.",
+                status_code=409,
+                details={"refinement_id": refinement_id, "filename": filename},
+            )
+        return path
+
+    def _refinement_dir(self, refinement_id: str) -> Path:
+        try:
+            normalized = str(UUID(refinement_id))
+        except ValueError as error:
+            raise self._not_found(refinement_id) from error
+        path = self._project_root / "results" / "docking_refinements" / normalized
+        resolved = path.resolve()
+        if self._root not in resolved.parents:
+            raise self._not_found(refinement_id)
+        return resolved
 
     def _write_record(self, record: VinaDockingJobRecord) -> None:
         path = self.output_path(record.job_id, "record.json")

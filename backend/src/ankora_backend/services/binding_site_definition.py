@@ -7,7 +7,10 @@ coordinates, so a box computed from the original aligns with the prepared
 receptor at every stage.
 """
 
+import math
+import re
 from datetime import UTC, datetime
+from hashlib import sha256
 
 import gemmi
 
@@ -24,14 +27,23 @@ from ankora_backend.schemas.binding_sites import (
     BindingSiteRecord,
     BindingSiteRequest,
     BindingSiteSource,
+    PoseFocusedEvidence,
 )
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import (
+    ReceptorFlexMode,
     ReceptorOutputArtifact,
     ReceptorPreparationRecord,
     ReceptorPreparationStatus,
     ResidueLocator,
 )
+from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.pose_interactions import PoseInteractionService
+from ankora_backend.services.project_dependencies import ProjectDependencyService
+
+_VINA_LARGE_SEARCH_SPACE_VOLUME = 27_000.0
+_PSEUDOATOM_TYPE_RE = re.compile(r"^(?:C?G\d+|G|DU|LP)$", re.IGNORECASE)
+_HYDROGEN_AD_TYPES = frozenset({"H", "HD", "HS"})
 
 
 def define_binding_site(
@@ -42,6 +54,8 @@ def define_binding_site(
     receptor_store: ReceptorArtifactStore,
     binding_site_store: BindingSiteArtifactStore,
     pocket_detection_store: PocketDetectionArtifactStore,
+    pose_interaction_service: PoseInteractionService | None = None,
+    dependency_service: ProjectDependencyService | None = None,
 ) -> BindingSiteRecord:
     receptor_record = _load_docking_ready_receptor(receptor_id, receptor_store)
     if (
@@ -84,17 +98,25 @@ def define_binding_site(
                 },
             )
         input_artifacts.append(parent.binding_site_id)
-    box = _resolve_box(
+    box, pose_focused_evidence, extra_inputs, warnings = _resolve_box_and_evidence(
         request=request,
         structure_store=structure_store,
         receptor_store=receptor_store,
         receptor_record=receptor_record,
         pocket_detection_store=pocket_detection_store,
         source_artifact_id=source_artifact_id,
+        pose_interaction_service=pose_interaction_service,
+        dependency_service=dependency_service,
     )
+    for item in extra_inputs:
+        if item not in input_artifacts:
+            input_artifacts.append(item)
 
     binding_site_id = binding_site_store.new_binding_site_id()
     created_at = datetime.now(UTC)
+    provenance_params: dict[str, object] = {"decisions": request.model_dump(mode="json")}
+    if pose_focused_evidence is not None:
+        provenance_params["pose_focused_evidence"] = pose_focused_evidence.model_dump(mode="json")
     provenance = ProvenanceEvent(
         event_id=f"binding-site-{binding_site_id}",
         event_type="binding_site_defined",
@@ -102,7 +124,8 @@ def define_binding_site(
         input_artifacts=input_artifacts,
         output_artifacts=[binding_site_id],
         tool=ToolIdentity(name="ankora-binding-site", version=__version__),
-        parameters={"decisions": request.model_dump(mode="json")},
+        parameters=provenance_params,
+        warnings=list(warnings),
     )
     record = BindingSiteRecord(
         binding_site_id=binding_site_id,
@@ -112,8 +135,9 @@ def define_binding_site(
         decisions=request,
         box=box,
         stale=False,
-        warnings=[],
+        warnings=warnings,
         provenance=[provenance],
+        pose_focused_evidence=pose_focused_evidence,
     )
     binding_site_store.save_record(record)
     return record
@@ -126,22 +150,27 @@ def preview_binding_site(
     structure_store: StructureArtifactStore,
     receptor_store: ReceptorArtifactStore,
     pocket_detection_store: PocketDetectionArtifactStore,
+    pose_interaction_service: PoseInteractionService | None = None,
+    dependency_service: ProjectDependencyService | None = None,
 ) -> BindingSitePreview:
     """Resolve an editable box without creating a scientific artifact."""
     receptor_record = _load_docking_ready_receptor(receptor_id, receptor_store)
-    box = _resolve_box(
+    box, pose_focused_evidence, _, warnings = _resolve_box_and_evidence(
         request=request,
         structure_store=structure_store,
         receptor_store=receptor_store,
         receptor_record=receptor_record,
         pocket_detection_store=pocket_detection_store,
         source_artifact_id=receptor_record.source_artifact_id,
+        pose_interaction_service=pose_interaction_service,
+        dependency_service=dependency_service,
     )
     return BindingSitePreview(
         receptor_id=receptor_id,
         source=request.source,
         box=box,
-        warnings=[],
+        warnings=warnings,
+        pose_focused_evidence=pose_focused_evidence,
     )
 
 
@@ -161,6 +190,351 @@ def _load_docking_ready_receptor(
             details={"receptor_id": receptor_id, "status": receptor_record.status.value},
         )
     return receptor_record
+
+
+def _resolve_box_and_evidence(
+    *,
+    request: BindingSiteRequest,
+    structure_store: StructureArtifactStore,
+    receptor_store: ReceptorArtifactStore,
+    receptor_record: ReceptorPreparationRecord,
+    pocket_detection_store: PocketDetectionArtifactStore,
+    source_artifact_id: str,
+    pose_interaction_service: PoseInteractionService | None,
+    dependency_service: ProjectDependencyService | None,
+) -> tuple[BindingBox, PoseFocusedEvidence | None, list[str], list[StructuredWarning]]:
+    if request.source is BindingSiteSource.POSE_FOCUSED:
+        return _resolve_pose_focused_box(
+            request=request,
+            receptor_store=receptor_store,
+            receptor_record=receptor_record,
+            pose_interaction_service=pose_interaction_service,
+            dependency_service=dependency_service,
+        )
+    box = _resolve_box(
+        request=request,
+        structure_store=structure_store,
+        receptor_store=receptor_store,
+        receptor_record=receptor_record,
+        pocket_detection_store=pocket_detection_store,
+        source_artifact_id=source_artifact_id,
+    )
+    return box, None, [], []
+
+
+def _resolve_pose_focused_box(
+    *,
+    request: BindingSiteRequest,
+    receptor_store: ReceptorArtifactStore,
+    receptor_record: ReceptorPreparationRecord,
+    pose_interaction_service: PoseInteractionService | None,
+    dependency_service: ProjectDependencyService | None,
+) -> tuple[BindingBox, PoseFocusedEvidence, list[str], list[StructuredWarning]]:
+    if request.pose_focused is None:
+        raise _inconsistent_request_error(request.source.value, "pose_focused")
+    origin = request.pose_focused
+    interactions = pose_interaction_service or PoseInteractionService.from_environment()
+    verified = interactions.resolve_verified_pose_inputs(
+        origin.source_catalog_id,
+        origin.ligand_id,
+        origin.pose_artifact_id,
+    )
+    if verified.resolved.receptor_id != receptor_record.receptor_id:
+        raise AnkoraDomainError(
+            code="BINDING_SITE_POSE_RECEPTOR_MISMATCH",
+            stage="binding_site_definition",
+            message="The selected lead pose belongs to a different receptor.",
+            status_code=422,
+            details={
+                "receptor_id": receptor_record.receptor_id,
+                "pose_receptor_id": verified.resolved.receptor_id,
+                "source_catalog_id": origin.source_catalog_id,
+                "pose_artifact_id": origin.pose_artifact_id,
+            },
+        )
+    if dependency_service is not None:
+        fresh_ids = [
+            receptor_record.receptor_id,
+            verified.resolved.record_id,
+            verified.resolved.pose.artifact_id,
+        ]
+        if origin.source_consensus_id is not None:
+            fresh_ids.append(origin.source_consensus_id)
+        if request.parent_binding_site_id is not None:
+            fresh_ids.append(request.parent_binding_site_id)
+        dependency_service.require_current(fresh_ids)
+
+    pose_bytes = verified.resolved.pose_path.read_bytes()
+    pose_sha = sha256(pose_bytes).hexdigest()
+    flex_sha: str | None = None
+    if (
+        verified.resolved.pose_flex_path is not None
+        and verified.resolved.pose_flex_path.is_file()
+    ):
+        flex_sha = sha256(verified.resolved.pose_flex_path.read_bytes()).hexdigest()
+
+    positions, excluded_h, excluded_pseudo = _extract_pose_heavy_atom_positions(
+        pose_bytes.decode("utf-8", errors="replace"),
+        pose_artifact_id=origin.pose_artifact_id,
+    )
+    computed_base_box = _bounding_box(
+        positions,
+        padding_angstrom=origin.padding_angstrom,
+        degenerate_details={
+            "source_catalog_id": origin.source_catalog_id,
+            "ligand_id": origin.ligand_id,
+            "pose_artifact_id": origin.pose_artifact_id,
+        },
+    )
+    final_box = origin.box_override if origin.box_override is not None else computed_base_box
+
+    flex_checked = _validate_flex_residues_containment(
+        box=final_box,
+        receptor_record=receptor_record,
+        receptor_store=receptor_store,
+        margin_angstrom=origin.flex_containment_margin_angstrom,
+    )
+
+    warnings: list[StructuredWarning] = []
+    volume = final_box.size_x * final_box.size_y * final_box.size_z
+    if volume > _VINA_LARGE_SEARCH_SPACE_VOLUME:
+        warnings.append(
+            StructuredWarning(
+                code=WarningCode.DOCKING_SEARCH_SPACE_LARGE,
+                stage="binding_site_definition",
+                message=(
+                    f"Pose-focused search space volume ({volume:,.1f} A^3) exceeds the "
+                    f"{_VINA_LARGE_SEARCH_SPACE_VOLUME:,.0f} A^3 Vina guidance threshold "
+                    "(ADR-018). Ankora changed no sampling parameters."
+                ),
+                details={
+                    "volume_angstrom3": round(volume, 3),
+                    "threshold_angstrom3": _VINA_LARGE_SEARCH_SPACE_VOLUME,
+                    "ratio": round(volume / _VINA_LARGE_SEARCH_SPACE_VOLUME, 4),
+                    "source": BindingSiteSource.POSE_FOCUSED.value,
+                },
+            )
+        )
+
+    evidence = PoseFocusedEvidence(
+        source_catalog_id=origin.source_catalog_id,
+        engine_key=verified.resolved.engine_key,
+        record_id=verified.resolved.record_id,
+        ligand_id=verified.resolved.ligand_id,
+        ligand_preparation_id=verified.resolved.ligand_preparation_id,
+        pose_artifact_id=verified.resolved.pose.artifact_id,
+        pose_sha256=pose_sha,
+        pose_flex_sidechains_sha256=flex_sha,
+        source_consensus_id=origin.source_consensus_id,
+        source_cluster_id=origin.source_cluster_id,
+        heavy_atom_count=len(positions),
+        excluded_hydrogen_count=excluded_h,
+        excluded_pseudoatom_count=excluded_pseudo,
+        computed_base_box=computed_base_box,
+        box_overridden=origin.box_override is not None,
+        flex_containment_checked=flex_checked,
+        flex_containment_margin_angstrom=origin.flex_containment_margin_angstrom,
+    )
+    extra_inputs = [
+        verified.resolved.record_id,
+        verified.resolved.pose.artifact_id,
+    ]
+    if origin.source_consensus_id is not None:
+        extra_inputs.append(origin.source_consensus_id)
+    return final_box, evidence, extra_inputs, warnings
+
+
+def _extract_pose_heavy_atom_positions(
+    pdbqt_text: str,
+    *,
+    pose_artifact_id: str,
+) -> tuple[list[gemmi.Position], int, int]:
+    """Extract finite real heavy-atom coordinates from a ligand PDBQT pose."""
+    positions: list[gemmi.Position] = []
+    excluded_h = 0
+    excluded_pseudo = 0
+    for line_no, line in enumerate(pdbqt_text.splitlines(), start=1):
+        if line.startswith("ENDMDL"):
+            break
+        if not line.startswith(("ATOM  ", "HETATM")):
+            continue
+        if len(line) < 54:
+            raise AnkoraDomainError(
+                code="BINDING_SITE_POSE_INVALID_COORDINATES",
+                stage="binding_site_definition",
+                message="The selected lead pose contains a truncated PDBQT atom record.",
+                status_code=422,
+                details={"pose_artifact_id": pose_artifact_id, "line": line_no},
+            )
+        try:
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+        except ValueError as error:
+            raise AnkoraDomainError(
+                code="BINDING_SITE_POSE_INVALID_COORDINATES",
+                stage="binding_site_definition",
+                message="The selected lead pose contains non-numeric coordinates.",
+                status_code=422,
+                details={"pose_artifact_id": pose_artifact_id, "line": line_no},
+            ) from error
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+            raise AnkoraDomainError(
+                code="BINDING_SITE_POSE_INVALID_COORDINATES",
+                stage="binding_site_definition",
+                message="The selected lead pose contains non-finite coordinates.",
+                status_code=422,
+                details={"pose_artifact_id": pose_artifact_id, "line": line_no},
+            )
+        atom_name = line[12:16].strip()
+        ad_type = line[77:].strip() if len(line) > 77 else ""
+        if not ad_type:
+            parts = line.split()
+            ad_type = parts[-1] if parts else ""
+        upper_type = ad_type.upper()
+        upper_name = atom_name.upper()
+        if upper_type in _HYDROGEN_AD_TYPES or (not upper_type and upper_name.startswith("H")):
+            excluded_h += 1
+            continue
+        if _PSEUDOATOM_TYPE_RE.match(upper_type) or _PSEUDOATOM_TYPE_RE.match(upper_name):
+            excluded_pseudo += 1
+            continue
+        positions.append(gemmi.Position(x, y, z))
+
+    if not positions:
+        raise AnkoraDomainError(
+            code="BINDING_SITE_POSE_NO_HEAVY_ATOMS",
+            stage="binding_site_definition",
+            message="The selected lead pose contains no real heavy atoms for box derivation.",
+            status_code=422,
+            details={
+                "pose_artifact_id": pose_artifact_id,
+                "excluded_hydrogen_count": excluded_h,
+                "excluded_pseudoatom_count": excluded_pseudo,
+            },
+        )
+    return positions, excluded_h, excluded_pseudo
+
+
+def _validate_flex_residues_containment(
+    *,
+    box: BindingBox,
+    receptor_record: ReceptorPreparationRecord,
+    receptor_store: ReceptorArtifactStore,
+    margin_angstrom: float,
+) -> bool:
+    """Verify anchors and all mobile atoms of every FlexRes lie inside box minus margin."""
+    flex_spec = receptor_record.flex_spec
+    if flex_spec is None or flex_spec.mode is not ReceptorFlexMode.SIDECHAIN_FLEX:
+        return False
+
+    output = _display_output(receptor_record)
+    receptor_path = receptor_store.content_path(receptor_record.receptor_id, output.artifact_id)
+    model = gemmi.read_structure(str(receptor_path))[0]
+
+    min_x = box.center_x - box.size_x / 2.0 + margin_angstrom
+    max_x = box.center_x + box.size_x / 2.0 - margin_angstrom
+    min_y = box.center_y - box.size_y / 2.0 + margin_angstrom
+    max_y = box.center_y + box.size_y / 2.0 - margin_angstrom
+    min_z = box.center_z - box.size_z / 2.0 + margin_angstrom
+    max_z = box.center_z + box.size_z / 2.0 - margin_angstrom
+
+    offending: list[dict[str, object]] = []
+    missing_residues: list[dict[str, object]] = []
+    all_flex_positions: list[gemmi.Position] = []
+
+    for locator in flex_spec.flex_residues:
+        matched_residue = None
+        for chain in model:
+            if chain.name != locator.chain_id:
+                continue
+            for residue in chain:
+                if (
+                    residue.name.strip() == locator.residue_name
+                    and residue.seqid.num == locator.sequence_number
+                    and clean_insertion_code(residue.seqid.icode) == locator.insertion_code
+                ):
+                    matched_residue = residue
+                    break
+            if matched_residue is not None:
+                break
+        if matched_residue is None:
+            missing_residues.append(locator.model_dump(mode="json"))
+            continue
+        for atom in matched_residue:
+            pos = atom.pos
+            all_flex_positions.append(pos)
+            if (
+                min_x > max_x
+                or min_y > max_y
+                or min_z > max_z
+                or pos.x < min_x
+                or pos.x > max_x
+                or pos.y < min_y
+                or pos.y > max_y
+                or pos.z < min_z
+                or pos.z > max_z
+            ):
+                offending.append(
+                    {
+                        "residue": locator.model_dump(mode="json"),
+                        "atom_name": atom.name.strip(),
+                        "x": round(pos.x, 3),
+                        "y": round(pos.y, 3),
+                        "z": round(pos.z, 3),
+                    }
+                )
+
+    if missing_residues or offending:
+        req_size_x = (
+            max(
+                box.size_x,
+                max(abs(p.x - box.center_x) for p in all_flex_positions) * 2.0
+                + 2.0 * margin_angstrom,
+            )
+            if all_flex_positions
+            else box.size_x
+        )
+        req_size_y = (
+            max(
+                box.size_y,
+                max(abs(p.y - box.center_y) for p in all_flex_positions) * 2.0
+                + 2.0 * margin_angstrom,
+            )
+            if all_flex_positions
+            else box.size_y
+        )
+        req_size_z = (
+            max(
+                box.size_z,
+                max(abs(p.z - box.center_z) for p in all_flex_positions) * 2.0
+                + 2.0 * margin_angstrom,
+            )
+            if all_flex_positions
+            else box.size_z
+        )
+        raise AnkoraDomainError(
+            code="BINDING_SITE_FLEXRES_OUTSIDE_BOX",
+            stage="binding_site_definition",
+            message=(
+                "One or more flexible side-chain atoms lie outside the pose-focused box "
+                f"(margin {margin_angstrom:g} A). Expand the box or change FlexRes explicitly; "
+                "Ankora will not silently trim flexible residues."
+            ),
+            status_code=422,
+            details={
+                "margin_angstrom": margin_angstrom,
+                "missing_residues": missing_residues,
+                "offending_atom_count": len(offending),
+                "offending_atoms": offending[:25],
+                "recommended_min_size": {
+                    "size_x": round(req_size_x, 3),
+                    "size_y": round(req_size_y, 3),
+                    "size_z": round(req_size_z, 3),
+                },
+            },
+        )
+    return True
 
 
 def _resolve_box(

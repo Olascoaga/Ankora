@@ -6,9 +6,11 @@ import re
 import sys
 from collections.abc import Callable
 from importlib import import_module, metadata
+from math import dist, isfinite
 from pathlib import Path
 from typing import TypedDict, cast
 
+from ankora_backend.adapters.engines.autodock4 import collect_autodock_atom_types
 from ankora_backend.adapters.tools.discovery import (
     discover_python_package,
     discover_tool,
@@ -17,10 +19,23 @@ from ankora_backend.adapters.tools.discovery import (
 )
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
-from ankora_backend.schemas.receptors import ProtonationOverride, ResidueLocator
+from ankora_backend.schemas.receptors import (
+    DISALLOWED_FLEX_RESIDUE_NAMES,
+    ProtonationOverride,
+    ResidueLocator,
+)
 
 PqrResidueParser = Callable[[str], object]
 PqrBondFinder = Callable[[dict[str, tuple[object, str]]], object]
+
+type _ResiduePosition = tuple[str, int, str]
+
+_FLEX_PROTONATION_ALIASES = {
+    "HID": "HIS", "HIE": "HIS", "HIP": "HIS",
+    "HSD": "HIS", "HSE": "HIS", "HSP": "HIS",
+    "ASH": "ASP", "GLH": "GLU", "LYN": "LYS", "CYM": "CYS",
+}
+_CYSTEINE_NAMES = {"CYS", "CYM", "CYX"}
 
 
 class RepairOptions(TypedDict, total=False):
@@ -301,23 +316,62 @@ def _pdb2pqr_report(execution: ToolExecution) -> dict[str, object]:
 def run_meeko_receptor(
     *, input_pqr_path: Path, output_pdbqt_path: Path
 ) -> tuple[ToolExecution, str]:
+    return _run_meeko_receptor(
+        input_pqr_path=input_pqr_path,
+        output_stem_path=output_pdbqt_path.with_suffix(""),
+        output_pdbqt_path=output_pdbqt_path,
+    )
+
+
+def run_meeko_receptor_flex(
+    *, input_pqr_path: Path, output_stem_path: Path, flex_residues: list[ResidueLocator]
+) -> tuple[ToolExecution, str, Path, Path]:
+    execution, version = _run_meeko_receptor(
+        input_pqr_path=input_pqr_path,
+        output_stem_path=output_stem_path,
+        output_pdbqt_path=Path(f"{output_stem_path}.pdbqt"),
+        flex_residue_spec=format_meeko_flex_residue_spec(flex_residues),
+    )
+    rigid_path = output_stem_path.parent / f"{output_stem_path.name}_rigid.pdbqt"
+    flex_path = output_stem_path.parent / f"{output_stem_path.name}_flex.pdbqt"
+    incomplete = [
+        path.name for path in (rigid_path, flex_path)
+        if not path.is_file() or path.stat().st_size == 0
+    ]
+    if incomplete:
+        raise _flex_error(
+            "MEEKO_FLEXRES_SPLIT_INCOMPLETE",
+            "Meeko did not produce both non-empty receptor split files.",
+            incomplete_outputs=incomplete,
+            command=execution.command,
+            exit_code=execution.exit_code,
+            stdout=execution.stdout,
+            stderr=execution.stderr,
+            tool_version=version,
+        )
+    return execution, version, rigid_path, flex_path
+
+
+def _run_meeko_receptor(
+    *,
+    input_pqr_path: Path,
+    output_stem_path: Path,
+    output_pdbqt_path: Path,
+    flex_residue_spec: str | None = None,
+) -> tuple[ToolExecution, str]:
     discovered = discover_tool("mk_prepare_receptor", os.getenv("ANKORA_MEEKO_PATH"))
     if not discovered.available or discovered.path is None:
         raise _unavailable("Meeko", "mk_prepare_receptor", "receptor_pdbqt")
-    output_basename = output_pdbqt_path.with_suffix("")
+    tool_arguments = [
+        "--read_pqr", str(input_pqr_path), "--charge_model", "read",
+        "-o", str(output_stem_path), "-p", str(output_pdbqt_path),
+    ]
+    if flex_residue_spec is not None:
+        tool_arguments.extend(["-f", flex_residue_spec])
     arguments = packaged_console_arguments(
         executable=discovered.path,
         worker="meeko-receptor",
-        arguments=[
-            "--read_pqr",
-            str(input_pqr_path),
-            "--charge_model",
-            "read",
-            "-o",
-            str(output_basename),
-            "-p",
-            str(output_pdbqt_path),
-        ],
+        arguments=tool_arguments,
     )
     execution = run_tool(
         executable=discovered.path,
@@ -325,6 +379,7 @@ def run_meeko_receptor(
         cwd=output_pdbqt_path.parent,
         stage="receptor_pdbqt",
     )
+    version = package_version("meeko")
     affected_residues: list[dict[str, object]] = []
     diagnostic_error: str | None = None
     if execution.exit_code != 0:
@@ -340,6 +395,8 @@ def run_meeko_receptor(
         }
         if diagnostic_error is not None:
             extra_details["connectivity_diagnostic_error"] = diagnostic_error
+        if flex_residue_spec is not None:
+            extra_details["tool_version"] = version
     _require_success(
         execution,
         "MEEKO_CONNECTIVITY_FAILURE",
@@ -347,7 +404,163 @@ def run_meeko_receptor(
         "receptor_pdbqt",
         extra_details=extra_details,
     )
-    return execution, package_version("meeko")
+    return execution, version
+
+
+def _flex_error(code: str, message: str, **details: object) -> AnkoraDomainError:
+    return AnkoraDomainError(
+        code=code, stage="receptor_pdbqt", message=message, status_code=422, details=details
+    )
+
+
+def _residue_position(residue: ResidueLocator) -> _ResiduePosition:
+    return residue.chain_id, residue.sequence_number, residue.insertion_code
+
+
+def validate_flex_residues_against_pqr(
+    pqr_path: Path, flex_residues: list[ResidueLocator]
+) -> list[ResidueLocator]:
+    """Resolve the explicit selection and reject unsupported side chains before Meeko."""
+    if not flex_residues:
+        raise _flex_error("RECEPTOR_FLEXRES_EMPTY", "Select at least one flexible residue.")
+    requested: set[_ResiduePosition] = set()
+    for residue in flex_residues:
+        position = _residue_position(residue)
+        if position in requested:
+            raise _flex_error(
+                "RECEPTOR_FLEXRES_DUPLICATE",
+                "Flexible residue positions must be unique.",
+                residue=residue.model_dump(mode="json"),
+            )
+        requested.add(position)
+        if residue.residue_name.upper() in DISALLOWED_FLEX_RESIDUE_NAMES:
+            raise _flex_error(
+                "RECEPTOR_FLEXRES_DISALLOWED_RESIDUE",
+                "The selected residue is disallowed for side-chain flexibility.",
+                residue=residue.model_dump(mode="json"),
+            )
+
+    by_position: dict[_ResiduePosition, ResidueLocator] = {}
+    ambiguous: set[_ResiduePosition] = set()
+    atom_names: set[str] = set()
+    previous_position: _ResiduePosition | None = None
+    sulfur_atoms: list[tuple[_ResiduePosition, tuple[float, float, float]]] = []
+    malformed_sulfurs: set[_ResiduePosition] = set()
+    for line in pqr_path.read_text(encoding="utf-8").splitlines():
+        locator = _pqr_residue_locator(line)
+        if locator is None:
+            previous_position = None
+            continue
+        position = _residue_position(locator)
+        if position != previous_position:
+            if position in by_position:
+                ambiguous.add(position)
+            previous_position = position
+            atom_names = set()
+        tokens = line.split()
+        atom_name = tokens[2] if tokens[0] in {"ATOM", "HETATM"} else tokens[1]
+        if atom_name in atom_names or by_position.setdefault(position, locator) != locator:
+            ambiguous.add(position)
+        atom_names.add(atom_name)
+        if locator.residue_name.upper() in _CYSTEINE_NAMES and atom_name == "SG":
+            try:
+                x, y, z = map(float, tokens[-5:-2])
+                if not all(map(isfinite, (x, y, z))):
+                    raise ValueError("Non-finite sulfur coordinates")
+            except ValueError:
+                malformed_sulfurs.add(position)
+            else:
+                sulfur_atoms.append((position, (x, y, z)))
+
+    resolved = []
+    for residue in flex_residues:
+        position = _residue_position(residue)
+        prepared = by_position.get(position)
+        if prepared is None or position in ambiguous:
+            raise _flex_error(
+                "RECEPTOR_FLEXRES_UNRESOLVED",
+                "The selected residue does not resolve uniquely in the prepared PQR.",
+                residue=residue.model_dump(mode="json"),
+            )
+        name = residue.residue_name.upper()
+        prepared_name = prepared.residue_name.upper()
+        if prepared_name in DISALLOWED_FLEX_RESIDUE_NAMES:
+            raise _flex_error(
+                "RECEPTOR_FLEXRES_DISALLOWED_RESIDUE",
+                "The prepared residue is disallowed for side-chain flexibility.",
+                residue=residue.model_dump(mode="json"),
+                prepared_residue=prepared.model_dump(mode="json"),
+            )
+        if _FLEX_PROTONATION_ALIASES.get(name, name) != _FLEX_PROTONATION_ALIASES.get(
+            prepared_name, prepared_name
+        ):
+            raise _flex_error(
+                "RECEPTOR_FLEXRES_UNRESOLVED",
+                "The selected residue name differs from the prepared PQR residue.",
+                residue=residue.model_dump(mode="json"),
+                prepared_residue=prepared.model_dump(mode="json"),
+            )
+        if prepared_name in _CYSTEINE_NAMES:
+            sulfur = next((xyz for key, xyz in sulfur_atoms if key == position), None)
+            if sulfur is None or malformed_sulfurs:
+                raise _flex_error(
+                    "RECEPTOR_FLEXRES_UNRESOLVED",
+                    "The prepared PQR lacks readable cysteine sulfur coordinates.",
+                    residue=residue.model_dump(mode="json"),
+                )
+            partner = next(
+                (key for key, xyz in sulfur_atoms if key != position and dist(sulfur, xyz) <= 2.2),
+                None,
+            )
+            if partner is not None:
+                raise _flex_error(
+                    "RECEPTOR_FLEXRES_DISULFIDE_CYS",
+                    "Disulfide-bonded cysteine cannot be selected for side-chain flexibility.",
+                    residue=residue.model_dump(mode="json"),
+                    partner=by_position[partner].model_dump(mode="json"),
+                )
+        resolved.append(prepared)
+    return resolved
+
+
+def format_meeko_flex_residue_spec(residues: list[ResidueLocator]) -> str:
+    return ",".join(f"{r.chain_id}:{r.sequence_number}{r.insertion_code}" for r in residues)
+
+
+def inspect_receptor_flex_pdbqt(flex_pdbqt_text: str) -> tuple[int, tuple[str, ...]]:
+    """Read Meeko's residue blocks, torsion branches, and AutoDock atom types."""
+    open_residue: list[str] | None = None
+    block_count = 0
+    added_chi_torsion_count = 0
+    try:
+        for line in flex_pdbqt_text.splitlines():
+            tokens = line.split()
+            if not tokens:
+                continue
+            record, *fields = tokens
+            if record == "BEGIN_RES":
+                if open_residue is not None:
+                    raise ValueError("Nested BEGIN_RES markers")
+                open_residue = fields
+            elif record == "END_RES":
+                if open_residue != fields:
+                    raise ValueError("END_RES does not match an open BEGIN_RES")
+                open_residue = None
+                block_count += 1
+            elif record == "BRANCH":
+                if open_residue is None:
+                    raise ValueError("BRANCH outside a flexible residue block")
+                added_chi_torsion_count += 1
+        if open_residue is not None or not block_count or not added_chi_torsion_count:
+            raise ValueError("Expected complete flexible residue blocks with torsion branches")
+        atom_types = collect_autodock_atom_types((flex_pdbqt_text,))
+    except ValueError as error:
+        raise _flex_error(
+            "MEEKO_FLEXRES_OUTPUT_INVALID",
+            "Meeko produced invalid flexible receptor PDBQT.",
+            reason=str(error),
+        ) from error
+    return added_chi_torsion_count, atom_types
 
 
 def diagnose_meeko_pqr_connectivity(input_pqr_path: Path) -> list[dict[str, object]]:
@@ -598,7 +811,11 @@ def _pqr_residue_locator(line: str) -> ResidueLocator | None:
         chain_id = line[21:22].strip()
         sequence_text = line[22:26].strip()
         insertion_code = line[26:27].strip()
-        if residue_name and sequence_text:
+        # Ankora inserts spaces at compact locator boundaries for Meeko.
+        # Those forms shift the fixed columns, so read them as tokens.
+        normalized_sequence = line[22:23] == " " and line[23:27].isdigit()
+        normalized_insertion = line[26:27] == " " and line[27:28].isalpha()
+        if residue_name and sequence_text and not (normalized_sequence or normalized_insertion):
             try:
                 return ResidueLocator(
                     chain_id=chain_id,

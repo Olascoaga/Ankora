@@ -275,6 +275,17 @@ _GNINA = Reference(
     year=2021, volume="13", issue="1", pages="43",
     doi="10.1186/s13321-021-00522-2",
 )
+_ECR_PALACIO_RODRIGUEZ = Reference(
+    key="ecr-palacio-rodriguez-2019",
+    authors="Palacio-Rodríguez K, Lans I, Cavasotto CN, Cossio P",
+    title=(
+        "Exponential consensus ranking improves the outcome in docking and "
+        "receptor ensemble docking"
+    ),
+    container="Scientific Reports",
+    year=2019, volume="9", pages="5142",
+    doi="10.1038/s41598-019-41594-3",
+)
 
 # Keyed by the tool name exactly as the Methods renderer records it. A name
 # absent from this map is reported as having no recorded reference.

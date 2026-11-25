@@ -76,7 +76,10 @@ def test_api_cancels_queued_campaign_and_blocks_project_switch(tmp_path, one_pre
                 progress = client.get(
                     f"/api/v1/docking/gnina/screenings/{campaign_id}/progress"
                 ).json()
-                if progress["status"] in {"completed", "failed", "canceled"}:
+                if (
+                    progress["status"] in {"completed", "failed", "canceled"}
+                    and not service.has_active_work()
+                ):
                     break
                 assert monotonic() < deadline
                 sleep(0.02)

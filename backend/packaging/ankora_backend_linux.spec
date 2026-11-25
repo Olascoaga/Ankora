@@ -60,6 +60,7 @@ for package in (
     "openmm",
     "pdb2pqr",
     "pdbfixer",
+    "posebusters",
     "prolif",
     "propka",
     "rdkit",
@@ -76,6 +77,7 @@ for distribution in (
     "openmm",
     "pdb2pqr",
     "pdbfixer",
+    "posebusters",
     "prolif",
     "propka",
     "rdkit",
@@ -120,7 +122,7 @@ _FORBIDDEN_DRIVER_PREFIXES = (
 
 def _retain_data(entry: tuple) -> bool:
     rel = str(entry[0]).replace("\\", "/")
-    if rel.startswith(("_tcl_data/", "_tk_data/", "rdkit/Contrib/")):
+    if rel.startswith(("_tcl_data/", "_tk_data/", "rdkit/Contrib/", "posebusters/datasets/")):
         return False
     if rel.startswith("prolif/data/"):
         sub = rel.removeprefix("prolif/data/").split("/", 1)[0]

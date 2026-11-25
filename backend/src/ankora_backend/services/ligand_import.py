@@ -75,7 +75,14 @@ def import_local_ligand(
 
 
 def import_local_ligand_library(
-    *, content: bytes, filename: str, store: LigandArtifactStore
+    *,
+    content: bytes,
+    filename: str,
+    store: LigandArtifactStore,
+    ligand_source: LigandSource = LigandSource.LOCAL,
+    origin_analog_selection_id: str | None = None,
+    origin_analog_search_id: str | None = None,
+    extra_input_artifacts: list[str] | None = None,
 ) -> LigandLibraryRecord:
     if not content:
         raise _import_error("LIGAND_FILE_EMPTY", "The selected ligand file is empty.")
@@ -145,6 +152,7 @@ def import_local_ligand_library(
                 store=store,
                 library_id=library_id,
                 record_index=record_index,
+                ligand_source=ligand_source,
             )
         except AnkoraDomainError as error:
             entries.append(
@@ -175,23 +183,35 @@ def import_local_ligand_library(
         size_bytes=len(content),
         record_count=len(entries),
         created_at=created_at,
+        origin_analog_selection_id=origin_analog_selection_id,
+        origin_analog_search_id=origin_analog_search_id,
     )
     failed_count = sum(item.status is LigandLibraryEntryStatus.FAILED for item in entries)
+    provenance_inputs = list(dict.fromkeys(extra_input_artifacts or []))
+    provenance_params: dict[str, object] = {
+        "original_filename": safe_filename,
+        "format": ligand_format.value,
+        "record_count": len(entries),
+        "imported_count": len(imported_ids),
+        "failed_count": failed_count,
+        "original_bytes_preserved": True,
+    }
+    if origin_analog_selection_id is not None:
+        provenance_params["origin_analog_selection_id"] = origin_analog_selection_id
+    if origin_analog_search_id is not None:
+        provenance_params["origin_analog_search_id"] = origin_analog_search_id
     provenance = ProvenanceEvent(
         event_id=f"ligand_library_imported-{library_id}",
-        event_type="local_ligand_library_imported",
+        event_type=(
+            "analog_expansion_library_derived"
+            if ligand_source is LigandSource.ANALOG_EXPANSION
+            else "local_ligand_library_imported"
+        ),
         timestamp=created_at,
-        input_artifacts=[],
+        input_artifacts=provenance_inputs,
         output_artifacts=[library_id, *imported_ids],
         tool=ToolIdentity(name="RDKit ligand library importer", version=rdBase.rdkitVersion),
-        parameters={
-            "original_filename": safe_filename,
-            "format": ligand_format.value,
-            "record_count": len(entries),
-            "imported_count": len(imported_ids),
-            "failed_count": failed_count,
-            "original_bytes_preserved": True,
-        },
+        parameters=provenance_params,
         warnings=[],
         command=None,
     )
@@ -217,6 +237,7 @@ def _store_local_molecule(
     store: LigandArtifactStore,
     library_id: str | None,
     record_index: int | None,
+    ligand_source: LigandSource = LigandSource.LOCAL,
 ) -> LigandRecord:
     name = supplied_name or Path(original_filename).stem or "ligand"
     molecule.SetProp("_Name", name)
@@ -228,7 +249,7 @@ def _store_local_molecule(
     created_at = datetime.now(UTC)
     artifact = LigandArtifact(
         ligand_id=ligand_id,
-        source=LigandSource.LOCAL,
+        source=ligand_source,
         filename=store.sanitize_filename(original_filename),
         format=ligand_format,
         sha256=sha256(original_content).hexdigest(),

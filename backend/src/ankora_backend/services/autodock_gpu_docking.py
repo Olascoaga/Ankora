@@ -34,6 +34,7 @@ from ankora_backend.adapters.engines.autodock4_job import (
 )
 from ankora_backend.adapters.engines.autodock_gpu import (
     DOCKING_LOG_FILENAME,
+    FLEXRES_FILENAME,
     LIGAND_FILENAME,
     AutoDockGpuInstallation,
     build_arguments,
@@ -69,12 +70,16 @@ from ankora_backend.schemas.autodock_gpu import (
 from ankora_backend.schemas.autogrid import AutoGridMapKind, AutoGridMapSetRecord
 from ankora_backend.schemas.binding_sites import BindingSiteRecord
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.receptors import ReceptorFlexMode
+from ankora_backend.schemas.v02_contracts import PoseComplexIdentity
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import (
+    DockingReceptor,
     SelectedMolecule,
+    flex_dof_warnings,
     ordered_atom_types,
-    resolve_receptor_and_site,
+    resolve_docking_receptor_and_site,
     resolve_selection,
     torsional_degrees_of_freedom,
     validate_map_set_applies,
@@ -126,6 +131,7 @@ def _execution_device_warning(report: dict[str, object]) -> list[StructuredWarni
 class _PreparedDocking:
     request: AutoDockGpuDockingRequest
     installation: AutoDockGpuInstallation
+    docking_receptor: DockingReceptor
     device_name: str
     map_set: AutoGridMapSetRecord
     field_filename: str
@@ -199,6 +205,8 @@ class AutoDockGpuDockingService:
             )
         prepared = self._prepare(request)
         job_id = self._job_store.new_job_id()
+        flex_spec = prepared.docking_receptor.record.flex_spec
+        flex_output = prepared.docking_receptor.flex_output
         record = AutoDockGpuDockingJobRecord(
             job_id=job_id,
             status=AutoDockJobStatus.QUEUED,
@@ -207,6 +215,13 @@ class AutoDockGpuDockingService:
             request=request,
             autodock_gpu=self._identity(prepared),
             receptor_id=request.receptor_id,
+            receptor_flex_mode=prepared.docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
+            flex_atom_types=list(prepared.docking_receptor.flex_atom_types),
             binding_site_id=request.binding_site_id,
             map_set_id=prepared.map_set.map_set_id,
             map_set_identity_key=prepared.map_set.identity_key,
@@ -228,6 +243,9 @@ class AutoDockGpuDockingService:
 
     def pose_content_path(self, job_id: str, artifact_id: str) -> Path:
         return self._job_store.pose_content_path(job_id, artifact_id)
+
+    def pose_flex_content_path(self, job_id: str, artifact_id: str) -> Path | None:
+        return self._job_store.pose_flex_content_path(job_id, artifact_id)
 
     def cancel(self, job_id: str) -> AutoDockGpuCancelResponse:
         with self._lock:
@@ -342,6 +360,7 @@ class AutoDockGpuDockingService:
         self._require_ascii_job_directory(job_directory)
         self._stage_inputs(job_directory, prepared)
 
+        is_flex = prepared.docking_receptor.flex_path is not None
         parameters = prepared.request.parameters
         arguments = build_arguments(
             field_filename=prepared.field_filename,
@@ -354,6 +373,7 @@ class AutoDockGpuDockingService:
             population_size=parameters.population_size,
             local_search_method=parameters.local_search_method.value,
             cluster_rmsd_tolerance_angstrom=parameters.cluster_rmsd_tolerance_angstrom,
+            flexres_filename=FLEXRES_FILENAME if is_flex else None,
         )
 
         started = time.monotonic()
@@ -408,12 +428,42 @@ class AutoDockGpuDockingService:
                 }
             )
         )
-        parsed = parse_autodock4_log(log_path.read_text(encoding="utf-8", errors="replace"))
-        runs, clusters = self._persist_results(job_id, parsed)
+        parsed = parse_autodock4_log(
+            log_path.read_text(encoding="utf-8", errors="replace"),
+            expect_flex_sidechains=is_flex,
+        )
+        runs, clusters = self._persist_results(
+            job_id,
+            parsed,
+            receptor_rigid_sha256=prepared.docking_receptor.rigid_output.sha256,
+        )
         completed_at = datetime.now(UTC)
         device_report = execution_device_report(
             execution.stdout, execution.stderr, probed_device=prepared.device_name
         )
+        flex_output = prepared.docking_receptor.flex_output
+        provenance_inputs = [
+            prepared.map_set.map_set_id,
+            *(
+                [flex_output.artifact_id]
+                if flex_output is not None
+                else []
+            ),
+            prepared.binding_site.binding_site_id,
+            prepared.request.ligand_preparation_id,
+        ]
+        provenance_params: dict[str, object] = {
+            **parameters.model_dump(mode="json"),
+            "map_set_identity_key": prepared.map_set.identity_key,
+            "ligand_atom_types": list(prepared.ligand_atom_types),
+            "autodock_gpu_sha256": prepared.installation.sha256,
+            "device_name": prepared.device_name,
+            "execution_device_report": device_report,
+            "bitwise_reproducible": False,
+        }
+        if is_flex:
+            provenance_params["receptor_flex_mode"] = prepared.docking_receptor.flex_mode.value
+            provenance_params["flex_atom_types"] = list(prepared.docking_receptor.flex_atom_types)
         self._job_store.update_job(
             record.model_copy(
                 update={
@@ -429,24 +479,12 @@ class AutoDockGpuDockingService:
                         event_id=f"autodock-gpu-docking-{job_id}",
                         event_type="autodock_gpu_docking_completed",
                         timestamp=completed_at,
-                        input_artifacts=[
-                            prepared.map_set.map_set_id,
-                            prepared.binding_site.binding_site_id,
-                            prepared.request.ligand_preparation_id,
-                        ],
+                        input_artifacts=provenance_inputs,
                         output_artifacts=[item.artifact.artifact_id for item in runs],
                         tool=ToolIdentity(
                             name="AutoDock-GPU", version=prepared.installation.version
                         ),
-                        parameters={
-                            **parameters.model_dump(mode="json"),
-                            "map_set_identity_key": prepared.map_set.identity_key,
-                            "ligand_atom_types": list(prepared.ligand_atom_types),
-                            "autodock_gpu_sha256": prepared.installation.sha256,
-                            "device_name": prepared.device_name,
-                            "execution_device_report": device_report,
-                            "bitwise_reproducible": False,
-                        },
+                        parameters=provenance_params,
                         command=execution.command,
                     ),
                 }
@@ -454,7 +492,11 @@ class AutoDockGpuDockingService:
         )
 
     def _persist_results(
-        self, job_id: str, parsed: ParsedAutoDock4Log
+        self,
+        job_id: str,
+        parsed: ParsedAutoDock4Log,
+        *,
+        receptor_rigid_sha256: str,
     ) -> tuple[list[AutoDockRunResult], list[AutoDockClusterResult]]:
         ranking = {row.run: row for row in parsed.ranking}
         runs: list[AutoDockRunResult] = []
@@ -463,6 +505,22 @@ class AutoDockGpuDockingService:
             artifact_id = str(uuid4())
             filename = f"run_{pose.run}.pdbqt"
             self._job_store.write_pose(job_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"run_{pose.run}_flex.pdbqt"
+                self._job_store.write_pose(job_id, flex_filename, pose.flex_sidechains_content)
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = f"/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/flex"
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=receptor_rigid_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             runs.append(
                 AutoDockRunResult(
                     run=pose.run,
@@ -476,11 +534,15 @@ class AutoDockGpuDockingService:
                         run=pose.run,
                         filename=filename,
                         format="pdbqt",
-                        sha256=sha256(pose.content).hexdigest(),
+                        sha256=lig_sha,
                         size_bytes=len(pose.content),
                         content_url=(
                             f"/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/content"
                         ),
+                        flex_filename=flex_filename,
+                        pose_flex_sidechains_sha256=flex_sha,
+                        flex_content_url=flex_url,
+                        pose_complex_identity_sha256=complex_sha,
                     ),
                 )
             )
@@ -538,7 +600,7 @@ class AutoDockGpuDockingService:
         installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
-        receptor_output, binding_site = resolve_receptor_and_site(
+        docking_receptor, binding_site = resolve_docking_receptor_and_site(
             receptor_id=request.receptor_id,
             binding_site_id=request.binding_site_id,
             receptor_store=self._receptor_store,
@@ -548,13 +610,18 @@ class AutoDockGpuDockingService:
         )
         warnings = validate_map_set_applies(
             map_set,
-            receptor_output=receptor_output,
+            receptor_output=docking_receptor.rigid_output,
             binding_site=binding_site,
             stage=_STAGE,
             code_prefix=_CODE_PREFIX,
+            receptor=docking_receptor.record,
         )
         # Every GPU job carries the reproducibility statement, always.
-        warnings = [*warnings, _GPU_REPRODUCIBILITY_UNVERIFIED]
+        warnings = [
+            *warnings,
+            *flex_dof_warnings(docking_receptor.record),
+            _GPU_REPRODUCIBILITY_UNVERIFIED,
+        ]
 
         pdbqt = self._ligand_store.load_pdbqt_record(
             request.ligand_id, request.ligand_preparation_id
@@ -588,6 +655,7 @@ class AutoDockGpuDockingService:
         return _PreparedDocking(
             request=request,
             installation=installation,
+            docking_receptor=docking_receptor,
             device_name=device_name,
             map_set=map_set,
             field_filename=_field_filename(map_set),
@@ -614,6 +682,8 @@ class AutoDockGpuDockingService:
     def _stage_inputs(self, job_directory: Path, prepared: _PreparedDocking) -> None:
         """Hard-link the maps rather than copy them; the tool only reads them."""
         shutil.copyfile(prepared.ligand_path, job_directory / LIGAND_FILENAME)
+        if prepared.docking_receptor.flex_path is not None:
+            shutil.copyfile(prepared.docking_receptor.flex_path, job_directory / FLEXRES_FILENAME)
         source_directory = self._map_store.map_set_directory(prepared.map_set.map_set_id)
         for artifact in prepared.map_set.artifacts:
             if artifact.kind in {
@@ -795,6 +865,11 @@ class AutoDockGpuDockingService:
     def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
 
+    def batch_pose_flex_content_path(
+        self, batch_id: str, ligand_id: str, artifact_id: str
+    ) -> Path | None:
+        return self._job_store.batch_pose_flex_content_path(batch_id, ligand_id, artifact_id)
+
     def _create_batch(
         self, request: AutoDockGpuBatchRequest
     ) -> tuple[AutoDockGpuBatchRecord, "_PreparedCampaign"]:
@@ -804,7 +879,7 @@ class AutoDockGpuDockingService:
         installation = self._probe_installation(request.parameters.device_number)
         device_name = require_device(installation)
         map_set = self._map_store.load_record(request.map_set_id)
-        receptor_output, binding_site = resolve_receptor_and_site(
+        docking_receptor, binding_site = resolve_docking_receptor_and_site(
             receptor_id=request.receptor_id,
             binding_site_id=request.binding_site_id,
             receptor_store=self._receptor_store,
@@ -814,12 +889,17 @@ class AutoDockGpuDockingService:
         )
         warnings = validate_map_set_applies(
             map_set,
-            receptor_output=receptor_output,
+            receptor_output=docking_receptor.rigid_output,
             binding_site=binding_site,
             stage=_STAGE,
             code_prefix=_CODE_PREFIX,
+            receptor=docking_receptor.record,
         )
-        warnings = [*warnings, _GPU_REPRODUCIBILITY_UNVERIFIED]
+        warnings = [
+            *warnings,
+            *flex_dof_warnings(docking_receptor.record),
+            _GPU_REPRODUCIBILITY_UNVERIFIED,
+        ]
         selection = resolve_selection(
             library_id=request.library_id,
             filter_run_id=request.filter_run_id,
@@ -865,6 +945,8 @@ class AutoDockGpuDockingService:
                 "No molecule in this selection can be docked against this map set.",
                 {"selected_count": len(selection)},
             )
+        flex_spec = docking_receptor.record.flex_spec
+        flex_output = docking_receptor.flex_output
         record = AutoDockGpuBatchRecord(
             batch_id=self._job_store.new_batch_id(),
             status=AutoDockJobStatus.QUEUED,
@@ -881,6 +963,13 @@ class AutoDockGpuDockingService:
                 device_name=device_name,
             ),
             receptor_id=request.receptor_id,
+            receptor_flex_mode=docking_receptor.flex_mode,
+            receptor_flex_output_artifact_id=(
+                flex_output.artifact_id if flex_output is not None else None
+            ),
+            receptor_flex_sha256=flex_output.sha256 if flex_output is not None else None,
+            flex_residues=list(flex_spec.flex_residues) if flex_spec is not None else [],
+            flex_atom_types=list(docking_receptor.flex_atom_types),
             binding_site_id=request.binding_site_id,
             map_set_id=map_set.map_set_id,
             map_set_identity_key=map_set.identity_key,
@@ -894,6 +983,7 @@ class AutoDockGpuDockingService:
         self._job_store.create_batch(record)
         return record, _PreparedCampaign(
             installation=installation,
+            docking_receptor=docking_receptor,
             map_set=map_set,
             field_filename=_field_filename(map_set),
             binding_site=binding_site,
@@ -993,7 +1083,10 @@ class AutoDockGpuDockingService:
         parameters = record.request.parameters
 
         # One staged directory, one file list, one invocation.
+        is_flex = prepared.docking_receptor.flex_path is not None
         self._stage_maps(work, prepared.map_set)
+        if prepared.docking_receptor.flex_path is not None:
+            shutil.copyfile(prepared.docking_receptor.flex_path, work / FLEXRES_FILENAME)
         tags: dict[str, SelectedMolecule] = {}
         listed = [prepared.field_filename]
         for index, molecule in enumerate(prepared.molecules, start=1):
@@ -1015,6 +1108,7 @@ class AutoDockGpuDockingService:
             population_size=parameters.population_size,
             local_search_method=parameters.local_search_method.value,
             cluster_rmsd_tolerance_angstrom=parameters.cluster_rmsd_tolerance_angstrom,
+            flexres_filename=FLEXRES_FILENAME if is_flex else None,
         )
         # A file list replaces the single ligand and its output name.
         arguments = _as_filelist_arguments(arguments)
@@ -1036,7 +1130,7 @@ class AutoDockGpuDockingService:
         progress_stop = threading.Event()
         watcher = threading.Thread(
             target=self._watch_progress,
-            args=(batch_id, work, len(prepared.molecules), progress_stop),
+            args=(batch_id, work, len(prepared.molecules), progress_stop, is_flex),
             daemon=True,
         )
         watcher.start()
@@ -1066,7 +1160,14 @@ class AutoDockGpuDockingService:
         )
         # Whatever finished before a cancellation or a failure is still real
         # work, so results are collected either way.
-        self._collect_batch(batch_id, work, tags, evidence)
+        self._collect_batch(
+            batch_id,
+            work,
+            tags,
+            evidence,
+            expect_flex_sidechains=is_flex,
+            receptor_rigid_sha256=prepared.docking_receptor.rigid_output.sha256,
+        )
 
     def _watch_progress(
         self,
@@ -1074,6 +1175,7 @@ class AutoDockGpuDockingService:
         work: Path,
         total: int,
         stop_event: threading.Event,
+        expect_flex_sidechains: bool = False,
     ) -> None:
         seen = 0
         parsed_files: dict[Path, tuple[int, int, bool]] = {}
@@ -1084,7 +1186,10 @@ class AutoDockGpuDockingService:
                     previous = parsed_files.get(path)
                     if previous is not None and previous[:2] == (stat.st_mtime_ns, stat.st_size):
                         continue
-                    parse_autodock4_log(path.read_text(encoding="utf-8", errors="replace"))
+                    parse_autodock4_log(
+                        path.read_text(encoding="utf-8", errors="replace"),
+                        expect_flex_sidechains=expect_flex_sidechains,
+                    )
                 except (AnkoraDomainError, OSError, ValueError):
                     continue  # Still being written, or invalid: not completed work.
                 parsed_files[path] = (stat.st_mtime_ns, stat.st_size, True)
@@ -1114,6 +1219,9 @@ class AutoDockGpuDockingService:
         work: Path,
         tags: dict[str, SelectedMolecule],
         evidence: AutoDockGpuExecutionEvidence,
+        *,
+        expect_flex_sidechains: bool = False,
+        receptor_rigid_sha256: str = "",
     ) -> None:
         record = self._job_store.load_batch(batch_id)
         results: dict[str, AutoDockGpuBatchLigandResult] = {
@@ -1173,7 +1281,10 @@ class AutoDockGpuDockingService:
                 persist(results[molecule.ligand_id])
                 continue
             try:
-                parsed = parse_autodock4_log(log.read_text(encoding="utf-8", errors="replace"))
+                parsed = parse_autodock4_log(
+                    log.read_text(encoding="utf-8", errors="replace"),
+                    expect_flex_sidechains=expect_flex_sidechains,
+                )
             except (AnkoraDomainError, OSError, ValueError) as error:
                 persist(
                     entry.model_copy(
@@ -1192,7 +1303,12 @@ class AutoDockGpuDockingService:
                     )
                 )
                 continue
-            runs, clusters = self._persist_batch_results(batch_id, molecule.ligand_id, parsed)
+            runs, clusters = self._persist_batch_results(
+                batch_id,
+                molecule.ligand_id,
+                parsed,
+                receptor_rigid_sha256=receptor_rigid_sha256,
+            )
             succeeded += 1
             results[molecule.ligand_id] = entry.model_copy(
                 update={
@@ -1260,7 +1376,15 @@ class AutoDockGpuDockingService:
                         event_id=f"autodock-gpu-campaign-{batch_id}",
                         event_type=f"autodock_gpu_campaign_{status.value}",
                         timestamp=completed_at,
-                        input_artifacts=[record.map_set_id, record.binding_site_id],
+                        input_artifacts=[
+                            record.map_set_id,
+                            *(
+                                [record.receptor_flex_output_artifact_id]
+                                if record.receptor_flex_output_artifact_id is not None
+                                else []
+                            ),
+                            record.binding_site_id,
+                        ],
                         output_artifacts=[batch_id],
                         tool=ToolIdentity(
                             name="AutoDock-GPU",
@@ -1273,6 +1397,14 @@ class AutoDockGpuDockingService:
                             "execution_device_report": device_report,
                             "bitwise_reproducible": False,
                             "invocations": 1,
+                            **(
+                                {
+                                    "receptor_flex_mode": record.receptor_flex_mode.value,
+                                    "flex_atom_types": list(record.flex_atom_types),
+                                }
+                                if expect_flex_sidechains
+                                else {}
+                            ),
                         },
                         command=evidence.command,
                     ),
@@ -1282,7 +1414,12 @@ class AutoDockGpuDockingService:
         )
 
     def _persist_batch_results(
-        self, batch_id: str, ligand_id: str, parsed: ParsedAutoDock4Log
+        self,
+        batch_id: str,
+        ligand_id: str,
+        parsed: ParsedAutoDock4Log,
+        *,
+        receptor_rigid_sha256: str,
     ) -> tuple[list[AutoDockRunResult], list[AutoDockClusterResult]]:
         ranking = {row.run: row for row in parsed.ranking}
         runs: list[AutoDockRunResult] = []
@@ -1291,6 +1428,27 @@ class AutoDockGpuDockingService:
             artifact_id = str(uuid4())
             filename = f"run_{pose.run}.pdbqt"
             self._job_store.write_batch_pose(batch_id, ligand_id, filename, pose.content)
+            lig_sha = sha256(pose.content).hexdigest()
+            flex_filename: str | None = None
+            flex_sha: str | None = None
+            flex_url: str | None = None
+            complex_sha: str | None = None
+            if pose.flex_sidechains_content is not None:
+                flex_filename = f"run_{pose.run}_flex.pdbqt"
+                self._job_store.write_batch_pose(
+                    batch_id, ligand_id, flex_filename, pose.flex_sidechains_content
+                )
+                flex_sha = sha256(pose.flex_sidechains_content).hexdigest()
+                flex_url = (
+                    f"/docking/autodock-gpu/batches/{batch_id}"
+                    f"/ligands/{ligand_id}/poses/{artifact_id}/flex"
+                )
+                complex_sha = PoseComplexIdentity(
+                    mode=ReceptorFlexMode.SIDECHAIN_FLEX,
+                    receptor_rigid_sha256=receptor_rigid_sha256,
+                    pose_flex_sidechains_sha256=flex_sha,
+                    ligand_pose_sha256=lig_sha,
+                ).complex_identity_sha256
             runs.append(
                 AutoDockRunResult(
                     run=pose.run,
@@ -1304,12 +1462,16 @@ class AutoDockGpuDockingService:
                         run=pose.run,
                         filename=filename,
                         format="pdbqt",
-                        sha256=sha256(pose.content).hexdigest(),
+                        sha256=lig_sha,
                         size_bytes=len(pose.content),
                         content_url=(
                             f"/docking/autodock-gpu/batches/{batch_id}"
                             f"/ligands/{ligand_id}/poses/{artifact_id}/content"
                         ),
+                        flex_filename=flex_filename,
+                        pose_flex_sidechains_sha256=flex_sha,
+                        flex_content_url=flex_url,
+                        pose_complex_identity_sha256=complex_sha,
                     ),
                 )
             )
@@ -1357,6 +1519,7 @@ def _field_filename(map_set: AutoGridMapSetRecord) -> str:
 @dataclass(frozen=True, slots=True)
 class _PreparedCampaign:
     installation: AutoDockGpuInstallation
+    docking_receptor: DockingReceptor
     map_set: AutoGridMapSetRecord
     field_filename: str
     binding_site: BindingSiteRecord

@@ -11,6 +11,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
+from ankora_backend.schemas.receptors import ReceptorFlexMode, ResidueLocator
 from ankora_backend.schemas.warnings import StructuredWarning
 
 
@@ -90,6 +91,10 @@ class AutoDock4PoseArtifact(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     size_bytes: int = Field(ge=1)
     content_url: str = Field(min_length=1)
+    flex_filename: str | None = Field(default=None, pattern=r"^run_\d+_flex\.pdbqt$")
+    pose_flex_sidechains_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_content_url: str | None = Field(default=None, min_length=1)
+    pose_complex_identity_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class AutoDock4RunResult(BaseModel):
@@ -156,6 +161,11 @@ class AutoDock4DockingJobRecord(BaseModel):
     request: AutoDock4DockingRequest
     autodock4: AutoDock4ToolIdentity
     receptor_id: str = Field(min_length=1)
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
+    flex_atom_types: list[str] = Field(default_factory=list)
     binding_site_id: str = Field(min_length=1)
     map_set_id: str = Field(min_length=1)
     map_set_identity_key: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -254,6 +264,11 @@ class AutoDock4BatchRecord(BaseModel):
     request: AutoDock4BatchRequest
     autodock4: AutoDock4ToolIdentity
     receptor_id: str = Field(min_length=1)
+    receptor_flex_mode: ReceptorFlexMode = ReceptorFlexMode.RIGID
+    receptor_flex_output_artifact_id: str | None = None
+    receptor_flex_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    flex_residues: list[ResidueLocator] = Field(default_factory=list)
+    flex_atom_types: list[str] = Field(default_factory=list)
     binding_site_id: str = Field(min_length=1)
     map_set_id: str = Field(min_length=1)
     map_set_identity_key: str = Field(pattern=r"^[0-9a-f]{64}$")

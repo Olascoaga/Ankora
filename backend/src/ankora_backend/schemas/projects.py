@@ -51,6 +51,9 @@ class DependencyNodeKind(StrEnum):
     DOCKING_CAMPAIGN = "docking_campaign"
     VALIDATION = "validation"
     POSE_ANALYSIS = "pose_analysis"
+    ANALOG_CATALOG = "analog_catalog"
+    ANALOG_SEARCH = "analog_search"
+    ANALOG_SELECTION = "analog_selection"
     EXPORT = "export"
     UNKNOWN = "unknown"
 

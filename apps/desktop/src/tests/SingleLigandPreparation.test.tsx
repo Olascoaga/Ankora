@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { SingleLigandPreparation } from "../features/ligand/SingleLigandPreparation";
 import type { PreparationStep } from "../features/ligand/SingleLigandPreparation";
+import { emptyLigandFlexibilityDraft } from "../features/ligand/ligandFlexibility";
 import type {
   LigandConformerRecord,
   LigandForceField,
@@ -99,8 +100,11 @@ function Harness({
   const [maxIterations, setMaxIterations] = useState(500);
   const [randomSeed, setRandomSeed] = useState(20260819);
   const [useSourceGeometry, setUseSourceGeometry] = useState(false);
+  const [flexibility, setFlexibility] = useState(emptyLigandFlexibilityDraft);
   return (
     <SingleLigandPreparation
+      flexibility={flexibility}
+      setFlexibility={setFlexibility}
       inspection={inspection}
       activeState={null}
       activeProtonation={null}

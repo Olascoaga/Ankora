@@ -13,12 +13,17 @@ import os
 import re
 import sys
 import threading
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from ankora_backend.adapters.chemistry.flex_pose_complex import (
+    parse_gnina_flex_pdb_models,
+    reinject_gnina_flex_pdb_into_meeko_template,
+)
 from ankora_backend.adapters.tools.discovery import _read_elf_architecture, discover_tool
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.execution.cancellable_subprocess import (
@@ -31,6 +36,7 @@ from ankora_backend.schemas.gnina import (
     GninaCnnModelIdentity,
     GninaCnnModelSelector,
     GninaDockingParameters,
+    GninaLocalRefinementRequest,
 )
 from ankora_backend.services.gnina_pack import gnina_subprocess_environment
 
@@ -57,6 +63,29 @@ _ENSEMBLE_MEMBERS: dict[GninaCnnModelSelector, tuple[str, ...]] = {
     ),
 }
 _SDF_PROPERTY = re.compile(rb"^>\s*<([^>]+)>")
+_GNINA_FLOAT = r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+_SCORE_ONLY_AFFINITY = re.compile(
+    rf"^Affinity:\s+{_GNINA_FLOAT}(?:\s+\(?kcal/mol\)?)?", re.MULTILINE
+)
+_SCORE_ONLY_INTRAMOL = re.compile(
+    rf"^Intramolecular energy:\s+{_GNINA_FLOAT}", re.MULTILINE
+)
+_SCORE_ONLY_CNN_SCORE = re.compile(rf"^CNNscore:\s+{_GNINA_FLOAT}", re.MULTILINE)
+_SCORE_ONLY_CNN_AFFINITY = re.compile(rf"^CNNaffinity:\s+{_GNINA_FLOAT}", re.MULTILINE)
+_SCORE_ONLY_CNN_VARIANCE = re.compile(rf"^CNNvariance:\s+{_GNINA_FLOAT}", re.MULTILINE)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedGninaScoreOnlyResult:
+    """In-place GNINA 1.3.3 `--score_only` scores parsed from stdout (no pose mutation)."""
+
+    minimized_affinity_kcal_mol: float
+    intramolecular_energy_kcal_mol: float | None = None
+    cnn_score: float | None = None
+    cnn_affinity: float | None = None
+    cnn_vs: float | None = None
+    cnn_affinity_variance: float | None = None
+    used_flex: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,8 +230,58 @@ def build_gnina_arguments(
     output_path: Path,
     box: BindingBox,
     parameters: GninaDockingParameters,
+    flex_receptor_path: Path | None = None,
+    out_flex_path: Path | None = None,
 ) -> list[str]:
-    """Build an argument array for explicitly recorded model and hydrogen handling."""
+    return _build_arguments(
+        receptor_path=receptor_path,
+        ligand_path=ligand_path,
+        output_path=output_path,
+        box=box,
+        parameters=parameters,
+        flex_receptor_path=flex_receptor_path,
+        out_flex_path=out_flex_path,
+        search_arguments=[
+            "--exhaustiveness", str(parameters.exhaustiveness),
+            "--num_modes", str(parameters.num_modes),
+            "--min_rmsd_filter", str(parameters.min_rmsd_filter_angstrom),
+        ],
+    )
+
+
+def build_gnina_local_only_arguments(
+    *,
+    receptor_path: Path,
+    ligand_path: Path,
+    output_path: Path,
+    box: BindingBox,
+    parameters: GninaLocalRefinementRequest,
+    flex_receptor_path: Path | None = None,
+    out_flex_path: Path | None = None,
+) -> list[str]:
+    return _build_arguments(
+        receptor_path=receptor_path,
+        ligand_path=ligand_path,
+        output_path=output_path,
+        box=box,
+        parameters=parameters,
+        flex_receptor_path=flex_receptor_path,
+        out_flex_path=out_flex_path,
+        search_arguments=["--local_only"],
+    )
+
+
+def _build_arguments(
+    *,
+    receptor_path: Path,
+    ligand_path: Path,
+    output_path: Path,
+    box: BindingBox,
+    parameters: GninaDockingParameters | GninaLocalRefinementRequest,
+    flex_receptor_path: Path | None,
+    out_flex_path: Path | None,
+    search_arguments: list[str],
+) -> list[str]:
     values = (box.center_x, box.center_y, box.center_z, box.size_x, box.size_y, box.size_z)
     if not all(math.isfinite(value) for value in values):
         raise _error("GNINA_INPUT_INVALID", "The GNINA search box must contain finite coordinates.")
@@ -241,12 +320,7 @@ def build_gnina_arguments(
         str(parameters.cpu_threads),
         "--seed",
         str(parameters.seed),
-        "--exhaustiveness",
-        str(parameters.exhaustiveness),
-        "--num_modes",
-        str(parameters.num_modes),
-        "--min_rmsd_filter",
-        str(parameters.min_rmsd_filter_angstrom),
+        *search_arguments,
         "--cnn_scoring",
         parameters.cnn_scoring,
     ]
@@ -266,7 +340,178 @@ def build_gnina_arguments(
         arguments.append("--no_gpu")
     else:
         arguments.extend(("--device", str(parameters.device_index)))
+    if flex_receptor_path is not None or out_flex_path is not None:
+        if (
+            flex_receptor_path is None
+            or out_flex_path is None
+            or flex_receptor_path.suffix.lower() != ".pdbqt"
+            or out_flex_path.suffix.lower() != ".pdb"
+            or output_path.resolve() == flex_receptor_path.resolve()
+            or out_flex_path.resolve() in {
+                path.resolve() for path in (
+                    receptor_path, ligand_path, flex_receptor_path, output_path
+                )
+            }
+        ):
+            raise _error(
+                "GNINA_INPUT_INVALID",
+                "GNINA FlexRes requires a PDBQT side-chain input and a distinct PDB flex output.",
+            )
+        arguments.extend(("--flex", str(flex_receptor_path), "--out_flex", str(out_flex_path)))
     return arguments
+
+
+def build_gnina_score_only_arguments(
+    *,
+    receptor_path: Path,
+    ligand_path: Path,
+    compute: Literal["cpu", "cuda"] = "cpu",
+    device_index: int = 0,
+    cpu_threads: int = 1,
+    cnn_scoring: Literal["none", "rescore", "all"] = "rescore",
+    cnn_model: GninaCnnModelSelector = "dense_1_3",
+    flex_receptor_path: Path | None = None,
+) -> list[str]:
+    """Build explicit `--score_only` arguments (evaluates fixed coordinates in place)."""
+    if cpu_threads < 1:
+        raise _error("GNINA_INPUT_INVALID", "GNINA --score_only requires cpu_threads >= 1.")
+    if receptor_path.suffix.lower() != ".pdbqt" or ligand_path.suffix.lower() != ".pdbqt":
+        raise _error(
+            "GNINA_INPUT_INVALID",
+            "GNINA --score_only requires prepared PDBQT receptor and ligand inputs.",
+        )
+    if flex_receptor_path is not None and flex_receptor_path.suffix.lower() != ".pdbqt":
+        raise _error(
+            "GNINA_INPUT_INVALID",
+            "GNINA --score_only --flex requires a prepared Meeko-template PDBQT file.",
+        )
+    arguments = [
+        "--receptor",
+        str(receptor_path),
+        "--ligand",
+        str(ligand_path),
+        "--cpu",
+        str(cpu_threads),
+        "--score_only",
+        "--cnn_scoring",
+        cnn_scoring,
+    ]
+    if cnn_scoring != "none" and cnn_model != "default_1_3_ensemble":
+        arguments.extend(("--cnn", cnn_model))
+    arguments.extend(("--addH", "0", "--stripH", "0"))
+    if compute == "cpu":
+        arguments.append("--no_gpu")
+    else:
+        arguments.extend(("--device", str(device_index)))
+    if flex_receptor_path is not None:
+        arguments.extend(("--flex", str(flex_receptor_path)))
+    return arguments
+
+
+def execute_gnina_score_only(
+    *,
+    installation: GninaInstallation,
+    receptor_path: Path,
+    ligand_path: Path,
+    working_dir: Path,
+    compute: Literal["cpu", "cuda"] = "cpu",
+    device_index: int = 0,
+    cpu_threads: int = 1,
+    cnn_scoring: Literal["none", "rescore", "all"] = "rescore",
+    cnn_model: GninaCnnModelSelector = "dense_1_3",
+    flex_receptor_path: Path | None = None,
+    timeout_minutes: int = 10,
+    cancel_event: threading.Event,
+) -> CancellableToolExecution:
+    """Execute GNINA 1.3.3 `--score_only` in place without mutating pose bytes."""
+    if not _linux_host():
+        raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition of Ankora.")
+    exe_path = Path(installation.executable)
+    if _sha256_executable(exe_path) != installation.sha256:
+        raise _error(
+            "GNINA_IDENTITY_CHANGED", "The GNINA executable changed after it was inspected."
+        )
+    arguments = build_gnina_score_only_arguments(
+        receptor_path=receptor_path,
+        ligand_path=ligand_path,
+        compute=compute,
+        device_index=device_index,
+        cpu_threads=cpu_threads,
+        cnn_scoring=cnn_scoring,
+        cnn_model=cnn_model,
+        flex_receptor_path=flex_receptor_path,
+    )
+    env = gnina_subprocess_environment(exe_path)
+    exec_kwargs: dict[str, Any] = {}
+    if env is not None:
+        exec_kwargs["environment"] = env
+    return run_cancellable_tool(
+        executable=installation.executable,
+        arguments=arguments,
+        cwd=working_dir,
+        stage="gnina_score_only",
+        cancel_event=cancel_event,
+        timeout_seconds=timeout_minutes * 60,
+        **exec_kwargs,
+    )
+
+
+def parse_gnina_score_only_stdout(
+    stdout: str,
+    *,
+    used_flex: bool = False,
+    require_cnn: bool = True,
+) -> ParsedGninaScoreOnlyResult:
+    """Strictly parse GNINA 1.3.3 `--score_only` stdout records."""
+    aff_match = _SCORE_ONLY_AFFINITY.search(stdout)
+    if aff_match is None:
+        raise _error(
+            "GNINA_OUTPUT_INVALID",
+            "GNINA --score_only stdout is missing Affinity record.",
+        )
+    affinity = float(aff_match.group(1))
+    if not math.isfinite(affinity):
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA --score_only Affinity is not finite.")
+
+    intramol_match = _SCORE_ONLY_INTRAMOL.search(stdout)
+    intramol = float(intramol_match.group(1)) if intramol_match else None
+    score_match = _SCORE_ONLY_CNN_SCORE.search(stdout)
+    cnn_aff_match = _SCORE_ONLY_CNN_AFFINITY.search(stdout)
+    var_match = _SCORE_ONLY_CNN_VARIANCE.search(stdout)
+
+    cnn_score = float(score_match.group(1)) if score_match else None
+    cnn_affinity = float(cnn_aff_match.group(1)) if cnn_aff_match else None
+    cnn_variance = float(var_match.group(1)) if var_match else None
+
+    if require_cnn and (cnn_score is None or cnn_affinity is None):
+        raise _error(
+            "GNINA_OUTPUT_INVALID",
+            "GNINA --score_only stdout is missing CNNscore or CNNaffinity.",
+        )
+    for label, value in (
+        ("Intramolecular energy", intramol),
+        ("CNNscore", cnn_score),
+        ("CNNaffinity", cnn_affinity),
+        ("CNNvariance", cnn_variance),
+    ):
+        if value is not None and not math.isfinite(value):
+            raise _error("GNINA_OUTPUT_INVALID", f"GNINA --score_only {label} is not finite.")
+    if cnn_variance is not None and cnn_variance < 0.0:
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA --score_only CNNvariance cannot be negative.")
+    cnn_vs = (
+        cnn_score * cnn_affinity
+        if cnn_score is not None and cnn_affinity is not None
+        else None
+    )
+    return ParsedGninaScoreOnlyResult(
+        minimized_affinity_kcal_mol=affinity,
+        intramolecular_energy_kcal_mol=intramol,
+        cnn_score=cnn_score,
+        cnn_affinity=cnn_affinity,
+        cnn_vs=cnn_vs,
+        cnn_affinity_variance=cnn_variance,
+        used_flex=used_flex,
+    )
 
 
 def execute_gnina(
@@ -278,12 +523,67 @@ def execute_gnina(
     box: BindingBox,
     parameters: GninaDockingParameters,
     cancel_event: threading.Event,
+    flex_receptor_path: Path | None = None,
+    out_flex_path: Path | None = None,
 ) -> CancellableToolExecution:
-    """Run GNINA in a caller-owned isolated directory, preserving raw tool output.
+    return _execute(
+        installation=installation,
+        arguments=build_gnina_arguments(
+            receptor_path=receptor_path,
+            ligand_path=ligand_path,
+            output_path=output_path,
+            box=box,
+            parameters=parameters,
+            flex_receptor_path=flex_receptor_path,
+            out_flex_path=out_flex_path,
+        ),
+        output_path=output_path,
+        out_flex_path=out_flex_path,
+        cancel_event=cancel_event,
+        timeout_minutes=parameters.timeout_minutes,
+    )
 
-    This boundary does not itself verify GPU execution or publish results; the
-    future service must do both and use an exclusive, create-only directory.
-    """
+
+def execute_gnina_local_only(
+    *,
+    installation: GninaInstallation,
+    receptor_path: Path,
+    ligand_path: Path,
+    output_path: Path,
+    box: BindingBox,
+    parameters: GninaLocalRefinementRequest,
+    cancel_event: threading.Event,
+    flex_receptor_path: Path | None = None,
+    out_flex_path: Path | None = None,
+) -> CancellableToolExecution:
+    return _execute(
+        installation=installation,
+        arguments=build_gnina_local_only_arguments(
+            receptor_path=receptor_path,
+            ligand_path=ligand_path,
+            output_path=output_path,
+            box=box,
+            parameters=parameters,
+            flex_receptor_path=flex_receptor_path,
+            out_flex_path=out_flex_path,
+        ),
+        output_path=output_path,
+        out_flex_path=out_flex_path,
+        cancel_event=cancel_event,
+        timeout_minutes=parameters.timeout_minutes,
+    )
+
+
+def _execute(
+    *,
+    installation: GninaInstallation,
+    arguments: list[str],
+    output_path: Path,
+    out_flex_path: Path | None,
+    cancel_event: threading.Event,
+    timeout_minutes: int,
+) -> CancellableToolExecution:
+    """Run in an isolated directory and leave raw scientific outputs in place."""
     if not _linux_host():
         raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition of Ankora.")
     exe_path = Path(installation.executable)
@@ -291,7 +591,8 @@ def execute_gnina(
         raise _error(
             "GNINA_IDENTITY_CHANGED", "The GNINA executable changed after it was inspected."
         )
-    if output_path.exists():
+    if any(path.exists() or path.is_symlink() for path in (output_path, out_flex_path)
+           if path is not None):
         raise _error(
             "GNINA_OUTPUT_EXISTS", "The GNINA output already exists; it cannot be overwritten."
         )
@@ -301,17 +602,11 @@ def execute_gnina(
         exec_kwargs["environment"] = env
     return run_cancellable_tool(
         executable=installation.executable,
-        arguments=build_gnina_arguments(
-            receptor_path=receptor_path,
-            ligand_path=ligand_path,
-            output_path=output_path,
-            box=box,
-            parameters=parameters,
-        ),
+        arguments=arguments,
         cwd=output_path.parent,
         stage=_STAGE,
         cancel_event=cancel_event,
-        timeout_seconds=parameters.timeout_minutes * 60,
+        timeout_seconds=timeout_minutes * 60,
         **exec_kwargs,
     )
 
@@ -488,6 +783,41 @@ def parse_gnina_pdbqt(content: bytes) -> list[GninaPdbqtPose]:
     if block is not None or not poses:
         raise _error("GNINA_OUTPUT_INVALID", "GNINA output is empty or has an incomplete pose.")
     return poses
+
+
+def parse_gnina_local_only_pdbqt(content: bytes) -> GninaPdbqtPose:
+    """Accept one wrapped or flat local pose and retain its exact pose bytes."""
+    wrapped = any(
+        line.strip().split(maxsplit=1)[0:1] == [b"MODEL"] for line in content.splitlines()
+    )
+    parsed = parse_gnina_pdbqt(content if wrapped else b"MODEL 1\n" + content + b"\nENDMDL\n")
+    if len(parsed) != 1:
+        raise _error("GNINA_OUTPUT_INVALID", "GNINA local refinement must output exactly one pose.")
+    return parsed[0] if wrapped else replace(parsed[0], pdbqt=content)
+
+
+def pair_gnina_flex_models(
+    poses: Sequence[GninaPdbqtPose],
+    *,
+    gnina_flex_pdb_text: str,
+    meeko_flex_template_pdbqt: str,
+) -> tuple[bytes, ...]:
+    """Pair GNINA outputs by ordinal and preserve Meeko's side-chain topology."""
+    models = parse_gnina_flex_pdb_models(gnina_flex_pdb_text)
+    if len(models) != len(poses):
+        raise _error(
+            "GNINA_OUTPUT_INVALID",
+            "GNINA wrote different numbers of ligand and flexible side-chain models.",
+            ligand_models=len(poses),
+            flex_models=len(models),
+        )
+    return tuple(
+        reinject_gnina_flex_pdb_into_meeko_template(
+            meeko_flex_pdbqt_text=meeko_flex_template_pdbqt,
+            gnina_flex_pdb_model_text=model.pdb_text,
+        )
+        for model in models
+    )
 
 
 def require_matching_topology(pose: GninaPdbqtPose, conformer_sdf: bytes) -> None:

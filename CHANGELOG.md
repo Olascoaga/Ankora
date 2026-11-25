@@ -2,6 +2,414 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` External Benchmark vs. Pinned `AMDockVS v0.14.1` (`ESR_antago`, `TP53`, `PPARG`, `1PRG`, `1US0`, `codex/v0.2-dev`) - 2026-11-25
+
+- **Two-axis holo & induced-fit external benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md`, `146` records):**
+  evaluated verified Ankora `v0.2 @ 9ec95a1` `Export v5` bundles against isolated pinned **`AMDockVS v0.14.1`**
+  (`827e8057`, `ms_adtools 0.2.0`, `pdb2pqr 3.7.1`, `Vina 1.2.7`, `Uni-Dock 1.2.0 CUDA`, `GNINA 1.3.3 CUDA`;
+  `11.1 GB` Conda + `ms_env` on-disk footprint, `0` standalone installers) on the identical sealed `LIT-PCBA`
+  Bemis–Murcko splits (`N = 780` holo Confirmation + `N = 180` apo `1PRG` + cross-docking `1PRG <- KRC`,
+  `1US0 <- TOL`) with shared `PoseBusters 0.6.5` (including fair docked-water HOH matching and dual strict vs.
+  `N+1`-repaired `GNINA` reporting):
+  - **Holo 3-target suite (`N = 780`):** `Ankora PC-Q Neural` outperformed every `AMDockVS` default engine on
+    `3/3` targets on both axes (`1.43×–1.58×` Axis A, `1.30×–1.42×` Axis B vs. `GNINA rank-1 minimizedAffinity`,
+    `Uni-Dock 1.2.0 CUDA`, and `Vina 1.2.7`; `ankora_preferred` on `PPARG` across all three on Axis A and vs.
+    `Uni-Dock` raw & `PB` / `Vina` `PB` on Axis B). Against `AMDockVS`'s strongest extracted neural metric
+    (`GNINA CNN_VS`), Ankora led Axis A macro (`0.3082` vs. `0.2762`, `1.12×`, **`ankora_preferred`** on unbiased
+    `TP53`: `0.2754` vs. `0.1270`, `+0.1484 [+0.0072, +0.3066]`), while `AMDockVS GNINA CNN_VS` posted higher
+    Axis B holo macro (`0.3256` vs. `0.2827`, `0.87×`; `0/3` targets significant, Ankora higher on macro `ROC-AUC`
+    `0.6587` vs. `0.6460` and unbiased `TP53`). Non-neural `PC-Q Core` tied `AMDockVS Vina`/`Uni-Dock` on
+    `BEDROC_20` (`1.00×–1.02×`) with higher Axis B `ROC-AUC` (`0.6647` vs. `0.6193`/`0.6232`).
+  - **Induced-fit `FlexRes` (`1PRG`, `1US0`):** `Uni-Dock 1.2.0` failed on `> 1` flex torsion (`Uni-Dock#159`),
+    `AMDockVS`'s `gnina.py` lacks `--flex`/`--out_flex`, and its OpenCL `adgpu` failed on WSL2 (`clGetPlatformIDs -1001`).
+    `AMDockVS Vina --flex` recovered `1PRG <- KRC` at `0.7818 Å` (vs. Ankora `Vina` `0.6851 Å`, `GNINA` `1.0833 Å` `5/5`
+    valid, `AD-GPU` `2.6325 Å` `5/5` valid). On apo `1PRG` screening (`N = 180`), Ankora led every `AMDockVS`
+    configuration on both axes (`PC-Q Core` and `PC-ECR` **`ankora_preferred`** over `Vina` Axis A; `M1 FlexRes PC-Q Neural`
+    **`ankora_preferred`** over `Uni-Dock` Axis B; `PC-ECR` `2.97×` `AMDockVS Vina --flex` and `3.57×` `AMDockVS GNINA CNN_VS`
+    rigid; coupled `PB` `92.53%` vs. `87.78%`).
+  - **Chemical governance & throughput trade-off:** `AMDockVS` excelled in batch prep (`~7–8 s` / `300` SMILES)
+    and rigid `Uni-Dock` GPU speed (`27–42 s`), while exhibiting metal-unaware `TP53` `ZN 313` protonation (`HD1`/`HG`
+    clashes with `warnings: None`), `22.6%–31.7%` neutral 4-bonded `N` export failures on `GNINA` SDFs, and
+    `retained_structural_waters` mismatch on `TP53`/`PPARG`.
+- **Repository presentation & core documentation refresh (`README.md`, `docs/README.md`, `docs/product/PLATFORM_STATUS.{json,md}`, `docs/architecture/ARCHITECTURE.md`):**
+  restructured `README.md` with scannable 4-pillar summary, explicit scientific-contract table, `M1`–`M6.5` milestone
+  matrix, side-by-side two-axis `ADR-031` external benchmark table (`Ankora v0.2` vs. `DockM8 v1.1.1` and
+  `AMDockVS v0.14.1`), offline installer delta table, and synchronized `146`-record index; updated
+  `PLATFORM_STATUS.json`/`.md`, `docs/README.md`, and `ARCHITECTURE.md` to reflect `M0`–`M6.5` and Records `142`–`146`.
+
+## Ankora `v0.2` Post-Benchmark Offline Installer Rebuild (`86d89ed`), `ADR-031` Attestation & Clean-Room `D4` Smoke (`codex/v0.2-dev`) - 2026-11-24
+
+- **Refreshed three-artifact offline installer rebuild & `ADR-031` byte attestation (`docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md`, `145` records):**
+  rebuilt all three `v0.2` offline installers at `86d89ed` (incorporating live multi-engine and
+  physics fixes `4a07c19`, `2474334`, and `9ec95a1`) and passed unified stdlib-only
+  `python -S scripts/check_v02_installer_budget.py` (`191` modules audited, `0` forbidden hits,
+  cap `<= 1,048,576 B`):
+  - **Windows x64 NSIS (`Ankora_0.1.0_x64-setup.exe`, `--locked-webview2`):** `428,071,743 B` (`408.24 MiB`,
+    delta **`+834,186 B` / `+814.63 KiB`**, SHA-256 `1333b8e4...`), Windows sanitized-PATH packaged
+    backend smoke passed (`10/10` tools + `v0.2` REST routes `200 OK`); preserved `v0.1.0-beta.2`
+    baseline verified byte-identical (`db785047...`).
+  - **Linux x86\_64 `.deb` (`Ankora_0.1.0_amd64.deb`):** `285,974,140 B` (`272.73 MiB`, delta
+    **`+406,524 B` / `+397.00 KiB`**, SHA-256 `682392d5...`).
+  - **Linux x86\_64 portable `.tar.zst` (`Ankora_0.1.0_linux_x86_64.tar.zst`):** `329,905,206 B`
+    (`314.62 MiB`, delta **`+687,019 B` / `+670.92 KiB`**, SHA-256 `7ee32b28...`).
+  - **Linux clean-room `D4` smoke (`/usr/bin/python3`, zero Conda/pip):** `status: "passed"`
+    (`evidence_sha256: 256e7237...`, `10/10` Core tools, 1-click `GNINA 1.3.3 CUDA` import, live
+    RTX 5050 CUDA `rescore` + `refinement` `default_1_3_ensemble`, `.tar.zst` persistence parity `3`
+    campaigns). Bare-metal physical Linux workstation `Gate D6` remains open.
+
+## Ankora `v0.2` Multi-Target (`ESR_antago`, `TP53`, `PPARG`) & Induced-Fit `M1 FlexRes` (`1PRG`, `1US0`) External Benchmarks vs. Pinned `DockM8 v1.1.1` (`codex/v0.2-dev`) - 2026-11-24
+
+- **Calibration-diagnosed `AutoDock4 4.2.6 epdb` physics fix & parallel medoid rescoring (`9ec95a1`):**
+  - `backend/src/ankora_backend/adapters/engines/autodock4_job.py` & `services/pose_rescoring.py`:
+    compute `ParsedAutoDock4EpdbResult.bound_unbound_free_energy_kcal_mol` (`(1) Intermolecular + (3) Torsional`)
+    when `AutoDock4 4.2.6 epdb` hardcodes `(4) Unbound = +0.00 kcal/mol`, matching `unbound_model bound`
+    in native `AutoDock-GPU 1.6` and `Vina 1.2.7 --scoring ad4` (`0.00–0.01 kcal/mol` agreement) while
+    preserving all raw `.dlg` values verbatim in provenance; stage immutable AutoGrid4 maps via read-only
+    symlinks with `shutil.copy2` fallback.
+  - `schemas/consensus.py` & `services/pose_consensus.py`: add optional `rescore_workers` deterministic
+    parallel medoid rescoring (`17×` speedup on `891` medoids). Verified dual-OS (`18/18` pytest, `ruff`,
+    `mypy --strict`, `0` new dependencies).
+- **Three-target `LIT-PCBA` two-axis benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md`, `143`):**
+  `Ankora v0.2 @ 9ec95a1` (verified `Export v5` bundles) vs. pinned `DockM8 v1.1.1` (`3b765ea`) across
+  `ESR_antago` (`5UFX`), `TP53` (`3ZME`, structural `ZN 313` + coordination overrides), and `PPARG` (`3B1M`)
+  (`N = 780` locked Bemis–Murcko scaffold Confirmation parents):
+  - Axis A (`controlled`): equal-target macro `BEDROC_20 = 0.3082` vs. `DockM8 ECR = 0.2060` (`1.50×`, Ankora higher
+    on `3/3` targets, per-target CIs null; `PoseBusters 0.6.5`-valid `0.2955` vs. `0.1876`).
+  - Axis B (`end_to_end`): equal-target macro `BEDROC_20 = 0.2827` vs. `DockM8 ECR = 0.0707` (`4.00×`, macro `ROC-AUC`
+    `0.6587` vs. `0.4659`), with statistically significant **`ankora_preferred`** (95% CI `> 0`) on `TP53` (`+0.1747`)
+    and `PPARG` (`+0.2461`) both raw and `PoseBusters`-valid, and **`ankora_preferred` on `3/3` targets** vs.
+    `DockM8 RBR` (`4.88×`). `DockM8` Axis B `PDBFixer` produced hypervalent carbons on `3/3` targets (`34`, `8`, `5`)
+    vs. `0/3` on Ankora.
+- **Induced-fit `M1 FlexRes` benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md`, `144`):**
+  - Crystallographic induced-fit cross-docking (`PPARG` apo `1PRG <- 3B1M/KRC`, gatekeepers `A:MET364, A:ARG288, A:HIS266`):
+    all rigid engines failed (`DockM8` `7.8072 Å` / best-of-5 `5.6991 Å`; Ankora rigid `4.91–5.58 Å`), whereas
+    `Ankora M1 FlexRes` recovered **`0.6851 Å`** (`Vina --flex`) and **`1.0833 Å`** (`GNINA --flex`) with coupled
+    `E8 PoseBusters 0.6.5` PASS (`5.3×–8.3×` RMSD reduction). Includes honest cofactor-free `1US0 <- 2FZD/TOL`
+    boundary control (`~2.9–3.1 Å`).
+  - Apo `PPARG` (`1PRG`) two-axis screening (`N = 180` locked Confirmation): `Ankora M1 FlexRes` achieved `174/174`
+    (`100%`) `flex_sidechain_geometry` PASS, `161/174` (`92.53%`) coupled `E8 PoseBusters 0.6.5` PASS, lifted
+    `GNINA CNN_VS` `4.41×` over rigid `1PRG` (`0.0589 -> 0.2599`, `ROC-AUC 0.5861 -> 0.7590`), and achieved
+    `PC-ECR = 0.2842` (`ROC 0.7616`, `4.13×`) vs. rigid-only `DockM8 ECR = 0.0688` (`ROC 0.3287`), while
+    `Ankora PC-Q Core` was `ankora_preferred` on Axis A (`+0.1396 [+0.0130, +0.3118]`).
+
+## Ankora `v0.2` First Two-Axis External Benchmark vs. Pinned `DockM8 v1.1.1` (`ESR_antago` / `5UFX`) & Multi-Engine Fixes (`codex/v0.2-dev`) - 2026-11-23
+
+- **Live multi-engine & evaluator fixes uncovered during heterogeneous library execution (`4a07c19`, `2474334`, `6672b98`):**
+  - `4a07c19`: reconstruct exact Meeko PDBQT pose topology prior to RMSD clustering in
+    `adapters/chemistry/pose_clustering.py` (with strict bond-count fallback and per-parent
+    containment in `services/pose_consensus.py`), eliminating `CalcRMS` failures on
+    sterically self-clashing GNINA poses and `CG0`/`G0` macrocycles.
+  - `2474334`: strip AutoDock `.dlg` `USER`/`NEWDPF`/`TER` envelope tags on temporary
+    `--score_only` staging copies in `services/pose_rescoring.py`, fixing `Vina 1.2.7`
+    rejection of AutoDock4/AutoDock-GPU medoids while keeping raw pose files immutable.
+  - `6672b98`: align `benchmarks/external_comparison/evaluate_comparison.py` discrete
+    Truchon & Bayly (2007) `BEDROC` normalization with canonical
+    `ankora_backend.services.screening_benchmark._bedroc` (`<= 1e-12` parity regression test).
+- **First completed two-axis external comparison record (`docs/validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md`, `142` records):**
+  evaluated `Ankora v0.2` (verified `Export v5` bundles) vs. isolated pinned
+  `DrugBud-Suite/DockM8 v1.1.1` (`3b765ea`) on `LIT-PCBA` `ESR_antago` (`5UFX`, `500` parents,
+  `200` Calibration / `300` Locked Confirmation grouped by Bemis–Murcko scaffold, `split_identity_sha256`
+  `33cb058c...`). Primary `PC-Q Neural` vs. `DockM8 ECR` returns verbatim
+  `"Insufficient evidence to prefer over baseline"` on both Axis A (`controlled`: `0.2659` vs.
+  `0.3040`, `Δ = -0.0381`, `95% CI [-0.2044, +0.1184]`) and Axis B (`end_to_end`: `0.2707` vs.
+  `0.1366`, `Δ = +0.1341`, `95% CI [-0.0582, +0.3339]`; `ROC-AUC 0.6707` vs. `0.4703`).
+  Ankora achieves higher `PoseBusters 0.6.5` physical pose validity on both Axis A (`95.47%` vs.
+  `90.24%`) and Axis B (`97.64%` vs. `88.59%`), recovers `10/10` macrocycles on Axis B via `M1`
+  `RIGID_INPUT_CONFORMATION`, and outperforms `DockM8 ECR` with single-engine `GNINA 1.3.3` on
+  Axis B (`CNNaffinity` `Δ = +0.2688`, `95% CI [+0.0331, +0.4846]`; `CNN_VS` `Δ = +0.2569`,
+  `95% CI [+0.0225, +0.4715]`) as well as `PC-Q Neural` vs. `DockM8 RBR` on Axis B (`Δ = +0.1776`).
+  Single-target WSL2/WSLg evidence only; bare-metal Linux `Gate D6` and multi-target/induced-fit
+  evaluations remain pending.
+
+## Ankora `v0.2` Offline Installer Attestation (`ADR-031`), Clean-Room `D4` Smoke & `M7` Spike Closure (`codex/v0.2-dev`) - 2026-11-21
+
+- **PyInstaller specs & Windows locked WebView2 pinning (`142e904`, `d856178`):**
+  update `backend/packaging/{ankora_backend,ankora_backend_linux}.spec` to bundle
+  `posebusters==0.6.5` YAML configs while omitting `2.37 MB` of demo `posebusters/datasets/`
+  files and freezing all `ankora_backend` submodules; add `--locked-webview2` pinning and fix
+  `--preserve` default append in `scripts/build_slim_windows_installer.py` after detecting
+  Microsoft Evergreen WebView2 upstream drift (`+81.74 MB` on 2026-11-21) while preserving full
+  SHA-256 + Authenticode verification.
+- **Unified three-artifact `ADR-031` byte-delta attestation (`docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION.md`, `140`):**
+  all three freshly built `v0.2` (`M0`–`M6.5`) offline installers pass
+  `python -S scripts/check_v02_installer_budget.py` well under `1.00 MiB` (`1,048,576 B`) delta vs
+  `v0.1.0-beta.2` (`Windows .exe` `428,043,636 B` / `+806,079 B` / `+787.19 KiB`;
+  `Linux .deb` `285,972,040 B` / `+404,424 B` / `+394.95 KiB`;
+  `Linux .tar.zst` `329,873,529 B` / `+655,342 B` / `+639.98 KiB`); Windows packaged backend
+  clean-PATH smoke passes `10/10` tools + `v0.2` endpoints; Linux clean-room `D4` smoke passes
+  (`package-smoke-evidence.json` SHA-256 `9bf9402c...`, `10/10` Core + 1-click `GNINA 1.3.3 CUDA`
+  import `11/11` + live CUDA `rescore`/`refinement` + `.tar.zst` persistence). Bare-metal Linux
+  `Gate D6` remains open for physical non-WSL workstation sign-off.
+- **Conditional `M7` OpenMM offline spike closed as `DEFER` (`docs/validation/V02_M7_OPENMM_OFFLINE_SPIKE.md`, `141`):**
+  dual-OS zero-network (`socket.socket` blocked) probing of locked `OpenMM 8.5.2` confirms
+  protein-only `amber14-all` + `gbn2` minimization passes offline on both OSes while native
+  `OpenMM` fails `0/10` on diverse drug-like small molecules (`0/8` external parameterizers
+  installed vs `9/10` under locked `RDKit MMFF94s`) and real offline parameterizers
+  (`AmberTools`/`OpenFF` or `torch` neural charge models) exceed `ADR-031` Core size/policy caps
+  by `200×–350×`. Conditional `M7` is formally deferred out of `v0.2.0` Core.
+- **External benchmark target pinned (`docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md`):**
+  pinned `DrugBud-Suite/DockM8` release tag `v1.1.1` (commit `3b765ea1122d01b6d3484ea25ec789f4456d8f8a`)
+  awaiting isolated external Conda/container provisioning and dedicated two-axis compute execution.
+
+## Ankora `v0.2` Milestone `M6.5`: Hit-to-Analog Structural Similarity Expansion, Pose-Focused Mini-Library Screening & `Export v6` (`codex/v0.2-dev`) - 2026-11-21
+
+- **Governance (`ADR-033`), `0`-byte budget guard & prerequisite `E1` panel-reuse hardening (`M6.5a`, `0` new dependencies):**
+  publish [`ADR-033`](docs/architecture/ADR/ADR-033-hit-to-analog-expansion-and-pose-focused-screening.md),
+  register `M6.5` (`max_delta_bytes: 0`) in `environment/v02-installer-size-budget.json` and
+  `scripts/check_v02_installer_budget.py`, add 5 `WarningCode`s and 3 `DependencyNodeKind`s
+  (`ANALOG_CATALOG`, `ANALOG_SEARCH`, `ANALOG_SELECTION`), enforce `k_max` and `executable_sha256s`
+  in `PoseConsensusService._verify_reused_panel_context`, record `frozen_panel_parent_count` vs
+  `scored_target_parent_count`, and emit `CONSENSUS_SMALL_OR_CONGENERIC_PANEL` for small (`< 50`)
+  or monoscaffold consensus panels.
+- **Immutable `BindingSiteSource.POSE_FOCUSED` with full-atom `FlexRes` containment (`M6.5b`):**
+  add `BindingSiteSource.POSE_FOCUSED`, `PoseFocusedOrigin`, and `PoseFocusedEvidence` in
+  `schemas/binding_sites.py` and `services/binding_site_definition.py`; extract heavy atoms from
+  docked pose PDBQT (excluding H and Meeko glue pseudoatoms `G0..G9`/`CG0..CG9`), support explicit
+  `box_override`, fail closed (`422 BINDING_SITE_FLEXRES_OUTSIDE_BOX`) when any flexible side-chain
+  atom leaves interior box bounds, preserve `ADR-018` `27,000 Å³` warnings, and block stale source
+  artifacts (`409`).
+- **100% offline RDKit analog search, SQLite fingerprint cache & in-place `MCS core RMSD` (`M6.5c`):**
+  add `schemas/analog_expansion.py`, `adapters/chemistry/analog_similarity.py` (bounded SDF/SMI/CSV
+  catalog ingestion, Morgan `r=2, 2048, includeChirality=True` Tanimoto + graph-verified SMARTS,
+  stereo-preserving dedup, ephemeral search-only salt strip, `SqliteFingerprintCache`),
+  `adapters/chemistry/mcs_core_rmsd.py` (receptor-frame in-place heavy-atom MCS RMSD,
+  `superposition_applied=False`, Meeko glue-atom stripping, timeout disclosure), and create-only
+  `persistence/analog_expansion_store.py`.
+- **Gate 0 live probe & opt-in PubChem PUG-REST / ChEMBL REST behind IP consent gate (`M6.5d`):**
+  add `adapters/external/analog_providers.py` enforcing cryptographic `consent_payload_sha256`
+  verification before HTTP client creation, `1` concurrent request, `<= 1 req/s`, `<= 500`
+  candidates, `<= 10 MiB`, `<= 2` retries honoring `Retry-After`, verbatim raw response archiving,
+  and mandatory local RDKit Tanimoto recalculation separate from provider similarity.
+- **Service, derived mini-library, acyclic DAG, REST API, `MethodsReport` & `Export v6` (`M6.5e`):**
+  add `LigandSource.ANALOG_EXPANSION`, `services/analog_expansion.py` (materializing curated analogs
+  plus mandatory `seed_control` into standard immutable `LigandLibraryRecord` entering `ADR-016` /
+  existing docking / `M3`–`M5`), acyclic upstream-only stale-DAG tracking, `/api/v1/analog-expansion/*`
+  endpoints, `render_analog_expansion_methods`, additive `Export v6` in `campaign_export.py` &
+  `consensus_export.py` (keeping `Export v2`–`v5` byte-compatible), and upgraded stdlib-only
+  `scripts/verify_export_bundle.py` (`v2`–`v6`) verified under `python -S`.
+- **Opt-in Desktop UI (`M6.5f`):**
+  add `AnalogExpansionPanel.tsx`, opt-in triggers in `PoseInteractionPanel.tsx` and
+  `ConsensusWorkspace.tsx` (`MedoidDrawer`), `pose_focused` support in `BindingSiteWorkspace.tsx`,
+  `Export v6` badge in `ExportWorkspace.tsx`, and `AnalogExpansionM65.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md`, `139` records):**
+  verified across Windows 11 x64 (`583` passed / `1` Linux-only skip combined across `M0`–`M6.5`,
+  binding sites, `Export v2`–`v6`, GPU, methods, interactions, & frozen `LIT_PCBA`; `50/50` Vitest /
+  `398/398` tests; Vite build `9.60s`) and Linux x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime`
+  passed `45` Conda / `76` pip unchanged; `484/484` pytest with 0 skips including live `GNINA 1.3.3 CUDA`;
+  `50/50` Vitest / `398/398` tests; Vite build `8.17s`).
+
+## Ankora `v0.2` Milestone `M6`: `Export v5`, `ADR-031` CI Budget Guard & External Two-Axis Benchmark Harness (`codex/v0.2-dev`) - 2026-11-20
+
+- **`Export v5` full `M1`–`M5` provenance & zero-dependency verifier (`M6a`, `0` new dependencies):**
+  extend `services/campaign_export.py` so legacy rigid `v0.1` campaigns remain byte-compatible at
+  `ankora_export_format: 4` while campaigns with `sidechain_flex` or recorded `M3`/`M4` pose
+  diagnostics automatically emit `ankora_export_format: 5` with `v02_provenance` and verbatim
+  SHA-256-verified copies of `pose_quality`, `interaction_rule_evaluations`, and
+  `interaction_rule_sets`. Add `services/consensus_export.py` and
+  `POST /api/v1/consensus/runs/{consensus_id}/export` emitting two-tier `E6` consensus bundles
+  (`row: "consensus_parent"`, `methods.md` citing `10.1038/s41598-019-41594-3`, `consensus`,
+  `consensus_panels`, optional `calibrations`, and portable `.zip`), register
+  `ExportKind.CONSENSUS` + `ankora_export_format` in `ExportCatalogService`, and upgrade
+  stdlib-only `scripts/verify_export_bundle.py` (`v2`–`v5`) with `E6` anti-imputation and `v0.2`
+  blob integrity checks verified under `python -S`.
+- **`ADR-031` installer-size CI guard & strictly external two-axis benchmark harness (`M6b`):**
+  add stdlib-only `scripts/check_v02_installer_budget.py` (enforcing `M0`–`M6` byte caps,
+  reconciling release/tracked baselines, and AST + lockfile auditing `184` backend Python modules
+  for zero external harness/container coupling), wired into both `verify` and `verify-linux` jobs
+  in `.github/workflows/ci.yml`. Create strictly external `benchmarks/external_comparison/`
+  (`protocol_manifest.py`, `evaluate_comparison.py`) consuming Ankora exclusively via verified
+  `Export v4`/`v5` bundles, enforcing mandatory two-axis admissibility (`controlled` +
+  `end_to_end`), tie-aware `BEDROC_20` / `EF_1%` / `ROC-AUC` / `PR-AUC`, `PoseBusters` stratified
+  enrichment, paired parent-compound bootstrap `95% CI`, verbatim
+  `"Insufficient evidence to prefer over baseline"` null verdict, and honest negative-result
+  publication; preregister protocol in `docs/validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md`.
+- **Desktop UI (`M6c`):**
+  add opt-in `Export v5 bundle` button & hash/download banner in `ConsensusWorkspace.tsx`,
+  `Consensus bundles` filter & `Export v5` badge in `ExportWorkspace.tsx`, and `ExportV5M6.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`, `138` records):**
+  verified across Windows 11 x64 (`554` passed / `1` Linux-only skip combined with `M0`–`M5`,
+  legacy `Export v4`, & frozen `LIT_PCBA`, `49/49` Vitest / `395/395` tests, Vite build `9.43s`)
+  and Linux x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed `45` Conda / `76` pip
+  unchanged, `433/433` pytest with 0 skips, `49/49` Vitest / `395/395` tests, Vite build `6.96s`).
+
+## Ankora `v0.2` Milestone `M5`: Pose-Concordant Quantile Consensus (`PC-Q`, `PC-ECR`, Gated `PC-L2`) (`codex/v0.2-dev`) - 2026-11-19
+
+- **Joint `(ligand, flex)` clustering & ADR-030 rank-space consensus math (`M5a`, `0` new dependencies):**
+  add `schemas/consensus.py`, `adapters/chemistry/pose_clustering.py`,
+  `adapters/consensus/pcq_math.py`, and 3 warning codes
+  (`CONSENSUS_PARTIAL_PROFILE_RETAINED`, `CONSENSUS_HIGH_INTER_FAMILY_DISAGREEMENT`,
+  `CONSENSUS_PCL2_UNPROMOTED`). Implements complete-linkage joint `(ligand, flex)`
+  pose clustering (`<= 2.0 Å` diameter with symmetry-aware ligand + `PHE`/`TYR`/`ASP`/`GLU`/`ARG`/`VAL`/`LEU`
+  side-chain RMSD, explicit required `k_max` cap `E2`, and bitwise input-order-invariant `E3`
+  medoid tie-break), parent-weighted empirical midrank quantiles over a hash-locked
+  `ReferencePanelArtifact` (`E1`), published fixed-weight `pcq-core-v1` (`0.50/0.50`) and
+  `pcq-neural-v1` (`1/3,1/3,1/3`, always emitting `pcq-core-v1` alongside) with non-double-voting
+  within-block `vina`+`vinardo` averaging, inter-family disagreement `D_ic`, separate-scale `PC-ECR`
+  (`tau = 0.05`, `1/sigma` scale `E5`), two-tier `E6` `RankingArtifact` retaining partial/unscored
+  parents unranked without imputation, and bounded strictly convex `scipy.optimize.L-BFGS-B`
+  non-negative `PC-L2` gated on locked Confirmation (`ADR-030 §3`).
+- **Live cross-engine consensus service, create-only stores, API, stale DAG & `MethodsReport` (`M5b`):**
+  add `persistence/consensus_store.py`, `services/pose_consensus.py` (`PoseConsensusService`
+  enforcing fail-closed `E4`/`E7` shared receptor/box/map-set identity and orchestrating live
+  `PoseRescoringService` `--score_only` evaluation across retained medoids without mutating pose
+  bytes), stale DAG tracking (`consensus_id`, `panel_id`, `calibration_id` -> `POSE_ANALYSIS`),
+  5 localhost REST endpoints (`/api/v1/consensus/runs*` and `/pc-l2`), DOI-verified citation
+  `Palacio-Rodríguez et al., Scientific Reports 2019;9:5142 (doi:10.1038/s41598-019-41594-3)`,
+  and standalone `render_consensus_methods(...)`.
+- **Desktop UI (`M5c`):**
+  add strictly opt-in `ConsensusWorkspace.tsx` toggled via `Campaigns` | `PC-Q Consensus` inside
+  `ResultsWorkspace.tsx` (zero unsolicited `/consensus/*` calls on mount), enforcing explicit `K_max`
+  input (`E2`), fixed published weights, two-tier `E6` ranking table with `PC-Q`, `PC-Q Core`
+  alongside neural, separate `PC-ECR (1/σ)` column, `D_ic`, family block quantile bars, independent
+  Search Convergence badge, expandable native-unit medoid inspector, optional Confirmation-gated
+  `PC-L2` calibration/audit panel, and `ConsensusM5c.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M5_PCQ_CONSENSUS.md`, `136` records):**
+  verified across Windows 11 x64 (`511` passed / `1` Linux-only skip combined with `M0–M4` & frozen
+  `LIT_PCBA`, `48/48` Vitest / `393/393` tests, Vite build `12.36s`) and Linux x86\_64 WSL2
+  (`verify_linux_environment_lock.py --runtime` passed `45` Conda / `76` pip unchanged, `412/412`
+  `test_v02_*.py` with 0 skips, `48/48` Vitest / `393/393` tests, Vite build `7.22s`).
+
+## Ankora `v0.2` Milestone `M4`: Declarative ProLIF Pharmacophoric Rules (`PIC`) & Tanimoto IFP (`codex/v0.2-dev`) - 2026-11-19
+
+- **Declarative `REQUIRED` / `ALTERNATIVE_OR` / `FORBIDDEN` rules & Tanimoto IFP (`M4a`, `0` new dependencies):**
+  add `schemas/interaction_rules.py`, `adapters/interactions/pharmacophore_rules.py`,
+  and 4 warning codes (`INTERACTION_RULE_CLAUSES_FAILED`,
+  `INTERACTION_RULE_FORBIDDEN_CONTACT`, `INTERACTION_IFP_TANIMOTO_BELOW_THRESHOLD`,
+  `INTERACTION_IFP_EMPTY_UNION`) over already-locked `ProLIF 2.2.1`. Computes
+  order-invariant `rule_set_identity_sha256` (binding into
+  `ProtocolSpec.interaction_rule_set_sha256` prior to `M2` Confirmation),
+  validates target residues fail-closed against the prepared receptor's
+  `protonated.pdb`, reports empty `0 / 0` Tanimoto unions honestly as
+  `not_evaluable`, and provides denominator-invariant `M2` calibration gating
+  (`apply_interaction_rule_gate_to_observations`).
+- **Coupled `E8` service, create-only stores, stale DAG, API & `MethodsReport` (`M4b`):**
+  add `persistence/interaction_rules_store.py`, `services/interaction_rules.py`
+  (`InteractionRulesService` evaluating live `ProLIF 2.2.1` directly on coupled
+  `FlexRes` complexes with byte-level immutability checks), stale propagation
+  via `ProjectDependencyService` (`rule_set_id`), 5 localhost REST endpoints
+  (`/api/v1/interactions/rule-sets*` and
+  `/api/v1/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/{pose_artifact_id}/interaction-rules`),
+  and `render_interaction_rules_methods(...)` citing Crossref-verified
+  `Bouysset & Fiorucci, J. Cheminform. 2021, 13, 72 (DOI: 10.1186/s13321-021-00548-6)`.
+- **Desktop UI (`M4c`):**
+  add opt-in `InteractionRulesSection.tsx` inside `PoseInteractionPanel.tsx`
+  with declarative clause builder, 1-click quick-add from detected contacts,
+  optional current-pose Tanimoto IFP reference, coupled `FlexRes` (`E8`) banner,
+  clickable contact focus linked to both the 2D SVG diagram and 3D `Mol*` viewer,
+  and `InteractionRulesM4.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M4_INTERACTION_RULES.md`, `135` records):**
+  verified across Windows 11 x64 (`503` passed / `1` Linux-only skip combined
+  with `M0–M3` & frozen `LIT_PCBA`, `47/47` Vitest / `390/390` tests) and Linux
+  x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed, `404/404`
+  `test_v02_*.py` with 0 skips, `47/47` Vitest / `390/390` tests).
+
+## Ankora `v0.2` Milestone `M3`: Coupled Physical Pose Plausibility (`PoseBusters 0.6.5`) & Dual `MMFF94s` Strain (`codex/v0.2-dev`) - 2026-11-19
+
+- **Pure-Python `posebusters==0.6.5` lock & budget compliance (`M3a`, `ADR-031`):**
+  pin `posebusters==0.6.5` (`567,794` B / `554.49 KiB`, MIT license, `0` new
+  transitive dependencies, within the `< 1 MiB` `M3` budget) across
+  `backend/pyproject.toml`, `requirements/windows-py312.{in,lock}`,
+  `requirements/linux-py312.{in,lock}`, `environment/v02-installer-size-budget.json`,
+  and `scripts/generate_third_party_notices.py`.
+- **Coupled `PoseBusters` + dual `MMFF94s` strain + `FlexRes` geometry (`M3a`–`M3b`):**
+  add `adapters/quality/{posebusters_adapter,conformational_strain,flex_sidechain_geometry}.py`,
+  create-only `PoseQualityStore` (`analysis/pose_quality/`), `PoseQualityService`,
+  `GET`/`POST /api/v1/results/campaigns/{engine}/{record_id}/compounds/{ligand_id}/poses/{pose_artifact_id}/quality`,
+  and `render_pose_quality_methods(...)` (citing `DOI: 10.1039/D3SC04185A`).
+  Evaluates every `PoseBusters` `dock` check and flexible side-chain covalent
+  geometry check directly on the coupled `PoseComplex` (`E8`), separates `pass`,
+  `fail`, `not_applicable`, and `not_evaluable` honestly, refuses silent `UFF`
+  downgrade when `MMFF94s` lacks parameters, and never mutates poses or alters
+  docking scores.
+- **Desktop UI (`M3c`):**
+  add opt-in `PoseQualitySection.tsx` inside `PoseInteractionPanel.tsx` with
+  4-state summary pills, status filter, coupled `FlexRes` complex badge, warning
+  alerts, dual `MMFF94s` strain card with diagnostic disclaimer, and
+  `PoseQualityM3.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M3_POSE_QUALITY.md`, `134` records):**
+  verified across Windows 11 x64 (`496` passed / `1` Linux-only skip combined
+  with `M0–M2` & frozen `LIT_PCBA`, `46/46` Vitest / `388/388` tests) and Linux
+  x86\_64 WSL2 (`verify_linux_environment_lock.py --runtime` passed, `397/397`
+  `test_v02_*.py` with 0 skips, `46/46` Vitest / `388/388` tests).
+
+## Ankora `v0.2` Milestone `M2`: Out-of-Sample Protocol Calibration & Cross-Engine `--score_only` (`codex/v0.2-dev`) - 2026-11-19
+
+- **Cross-engine `--score_only` rescoring (`M2a`):**
+  add read-only, in-place pose evaluation adapters for **AutoDock Vina `1.2.7`**
+  (`vina`, `vinardo`, `ad4 --maps`), canonical **AutoDock4 `4.2.6` `epdb`**
+  (rigid and `flexres`, parsing cross-OS 2/3-digit exponents), and Linux
+  **GNINA `1.3.3`** (`CNNscore`, `CNNaffinity`, `CNN_VS`, `minimizedAffinity`,
+  optional `CNNvariance`), orchestrated by `PoseRescoringService` with fail-closed
+  `E4`/`E7` context checks, immutable staging-copy header cleanup, and Gate 0 `F4`
+  `unbound_reference_shifted` provenance. Frozen `v0.1` `adapters/engines/vina.py`
+  remains byte-identical to `v0.1.0-beta.2` (`36f1c0e`).
+- **Out-of-sample protocol calibration engine (`M2b`, `ADR-031` §3):**
+  implement `ProtocolCalibrationService` and create-only `CalibrationArtifactStore`
+  (`split.json`, `selection.json`, `confirmation.json`) with parent + Bemis–Murcko
+  scaffold grouped splits, 6-property physicochemical decoy bias audit (SMD + KS),
+  tie-aware `BEDROC20` (primary), `EF1%` (with small-sample caution), `ROC-AUC`,
+  `PR-AUC`, denominator-invariant active-vs-inactive failure census, paired parent
+  bootstrap (`2,000` replicates), deterministic `1-SE` parsimony rule favoring
+  simpler/rigid protocols, single-use Confirmation unlock, and verbatim null
+  verdict `"Insufficient evidence to prefer over baseline"`.
+- **HTTP API, `MethodsReport`, & Desktop UI (`M2c`):**
+  expose 6 localhost endpoints (`/api/v1/calibrations*` and
+  `/api/v1/rescoring/score-only`), add `render_calibration_methods(...)` in
+  `MethodsReportService` (preserving all `v0.1` `render(catalog_id)` prose),
+  add `ProtocolCalibrationWorkspace.tsx` + `RedockingWorkspace.tsx` view switch
+  (`Redocking` | `Protocol calibration`), and add opt-in native-unit
+  `Cross-score (--score_only)` controls with Gate 0 `F4` disclosure in
+  `PoseInteractionPanel.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M2_PROTOCOL_CALIBRATION.md`, `133` records):**
+  verified across Windows 11 x64 (`41/41` `test_v02_m2*.py`, `475` passed / `1`
+  Linux-only skip combined with `M0–M1` & frozen `LIT_PCBA`, `386/386` Vitest,
+  `3/3` Tauri Rust) and Linux x86\_64 WSL2 (`390/390` `test_v02_*.py` with live
+  `GNINA 1.3.3`, `386/386` Vitest).
+
+## Ankora `v0.2` Milestones `M0`–`M1`: Explicit Ligand Semi-Flexibility & Bounded Receptor Side-Chain `FlexRes` (`codex/v0.2-dev`) - 2026-11-19
+
+- **Governance & frozen `v0.2` contracts (`M0`, `ADR-030`–`ADR-032`):**
+  add `ADR-030` (opt-in rank-space `PC-Q`/`PC-ECR`/`PC-L2`), `ADR-031`
+  (external benchmark boundary & installer-size budget manifest
+  `environment/v02-installer-size-budget.json`), `ADR-032` + Addendum `A1`–`A6`
+  (explicit ligand/receptor flexibility & `E7`/`E8` coupled complex invariants),
+  and frozen Pydantic v2 contracts in `schemas/v02_contracts.py` (`0` new
+  runtime dependencies).
+- **Live cross-OS Gate 0 probe & explicit ligand flexibility (`M1a`):**
+  verify live CLI/format contracts across `Meeko 0.7.1`, `Vina 1.2.7`,
+  `AutoGrid4/AutoDock4 4.2.6`, `AutoDock-GPU 1.6`, and Linux `GNINA 1.3.3`
+  (`docs/validation/V02_M1_FLEXIBILITY_GATE0_PROBE.md`); expose explicit
+  `macrocycle_policy` (`flexible_pseudoatoms` vs `rigid_input_conformation`,
+  unlocking macrocycles in `AutoDock4`/`AutoDock-GPU`), `flexible_amides`,
+  SMARTS bond rigidification with `LIG_RIGIDIFY_SMARTS_NO_MATCH` zero-match
+  diagnostics, and recorded `effective_torsdof`.
+- **Bounded receptor side-chain split & `AutoGrid4` `E7` guard (`M1b`):**
+  integrate `mk_prepare_receptor -f` to emit immutable `PDBQT_RIGID` +
+  `PDBQT_FLEX` artifacts, enforce hard rejection of `GLY`/`ALA`/`PRO`/`CYX` and
+  duplicates, surface `DOCKING_FLEXRES_DOF_HIGH` (>4 residues or >12 added chi
+  torsions), and verify union atom-type coverage in `AutoGrid4` (`E7`).
+- **All four engines, coupled `E8` `PoseComplex`, refinement API, `Methods`, & `Export v4` (`M1c-1..4`):**
+  implement deterministic coupled complex reconstruction (`flex_pose_complex.py`),
+  `Vina 1.2.7` (`--flex`, `--scoring vinardo`, create-only `--local_only`
+  isolated in `adapters/engines/vina_v02.py` so frozen `v0.1` `vina.py` bytes
+  stay hash-identical to `LIT_PCBA_ANKORA_VS_V1`), `AutoDock4 4.2.6` CPU
+  (`flexres`), `AutoDock-GPU 1.6` (`--flexres`), Linux `GNINA 1.3.3` (`--flex`,
+  `--out_flex .pdb` guard, 0-based ordinal pairing + Meeko re-injection, and
+  `--local_only` with staging-copy stale score-`REMARK` cleanup), coupled
+  `PoseInteractionService`, 7 `/flex` + refinement HTTP endpoints,
+  `MethodsReportService`, and backward-compatible `CampaignExportService`.
+- **Desktop flexibility & coupled review UI (`M1d`):**
+  add `LigandFlexibilityControls.tsx`, receptor `FlexRes` picker & DOF badge
+  (`flexResidues.ts`), `ActiveFlexResBanner.tsx`, Vina `Vinardo` selector,
+  coupled `PoseComplex` default + translucent crystal-rotamer overlay in
+  `Mol*`, create-only `--local_only` refinement controls in
+  `PoseInteractionPanel.tsx`, and `FlexUiM1d.test.tsx`.
+- **Dual-OS engineering verification (`docs/validation/V02_M1_EXPLICIT_FLEXIBILITY.md`, `132` records):**
+  verified across Windows 11 x64 (`348` passed / `1` Linux-only skip in
+  `test_v02_*.py`, `380/380` Vitest, `3/3` Tauri Rust) and Linux x86\_64 WSL2
+  (`349/349` in `test_v02_*.py` with live `GNINA 1.3.3`, `380/380` Vitest,
+  `5/5` Tauri Rust). Frozen `v0.1.0-beta.2` (`main`) remains untouched.
+
 ## GNINA `refinement` wording alignment and reproducible `7AQF/RV2` beginner walkthrough (`v0.1.0-beta.2`) - 2026-11-16
 
 - Align `MethodsReportService`, `CampaignExportService` (`manifest.json` and

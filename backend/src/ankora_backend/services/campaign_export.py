@@ -52,9 +52,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from ankora_backend.adapters.engines.gnina import parse_gnina_pdbqt
+from ankora_backend.adapters.engines.gnina import pair_gnina_flex_models, parse_gnina_pdbqt
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.analog_expansion_store import AnalogExpansionStore
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
@@ -62,8 +63,13 @@ from ankora_backend.persistence.docking_store import DockingArtifactStore
 from ankora_backend.persistence.gnina_screening_store import GninaScreeningStore
 from ankora_backend.persistence.gnina_store import GninaJobStore
 from ankora_backend.persistence.ligand_store import LigandArtifactStore
+from ankora_backend.schemas.analog_expansion import (
+    AnalogSearchRecord,
+    AnalogSelectionRecord,
+)
 from ankora_backend.schemas.autodock4 import AutoDock4BatchRecord
 from ankora_backend.schemas.autodock_gpu import AutoDockGpuBatchRecord
+from ankora_backend.schemas.binding_sites import BindingSiteRecord, BindingSiteSource
 from ankora_backend.schemas.docking import DockingJobStatus, VinaBatchDockingRecord
 from ankora_backend.schemas.figures import FigureManifest
 from ankora_backend.schemas.gnina import GninaJobRecord
@@ -71,8 +77,14 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningCampaignRecord,
     GninaScreeningEntry,
 )
+from ankora_backend.schemas.interaction_rules import (
+    InteractionRuleEvaluationRecord,
+    InteractionRuleSetRecord,
+)
 from ankora_backend.schemas.ligands import LigandSource
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
+from ankora_backend.schemas.pose_quality import PoseQualityRecord
+from ankora_backend.schemas.receptors import ReceptorFlexMode
 from ankora_backend.schemas.redocking import RedockingRunRecord
 from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
 from ankora_backend.services.export_destinations import (
@@ -174,19 +186,40 @@ class ExportedCampaign:
     ranking_metric: str | None = None
     cnn_model_identity: dict[str, Any] | None = None
     warnings: list[dict[str, Any]] = field(default_factory=list)
+    receptor_flex_mode: str | None = None
+    receptor_flex_sha256: str | None = None
+    flex_residues: list[dict[str, Any]] = field(default_factory=list)
+    flex_atom_types: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
 class RecordedEvidence:
-    """M9 records copied into one campaign bundle without recomputation."""
+    """M9 and v0.2 records copied into one campaign bundle without recomputation."""
 
     analyses: list[dict[str, Any]]
     figures: list[dict[str, Any]]
     collection_warnings: list[dict[str, str]]
     validations: list[dict[str, Any]] = field(default_factory=list)
+    pose_quality_assessments: list[dict[str, Any]] = field(default_factory=list)
+    interaction_rule_evaluations: list[dict[str, Any]] = field(default_factory=list)
+    interaction_rule_sets: list[dict[str, Any]] = field(default_factory=list)
+    analog_expansion_artifacts: list[dict[str, Any]] = field(default_factory=list)
+    analog_expansion_provenance: dict[str, Any] | None = None
+
+    @property
+    def has_v02_evidence(self) -> bool:
+        return bool(
+            self.pose_quality_assessments
+            or self.interaction_rule_evaluations
+            or self.interaction_rule_sets
+        )
+
+    @property
+    def has_analog_expansion_evidence(self) -> bool:
+        return bool(self.analog_expansion_artifacts and self.analog_expansion_provenance)
 
     def manifest_payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "pose_interaction_analyses": self.analyses,
             "figures": self.figures,
             "redocking_validations": self.validations,
@@ -202,6 +235,23 @@ class RecordedEvidence:
                 "system and is not validation of the engine in general.",
             ],
         }
+        if self.has_v02_evidence:
+            payload["pose_quality_assessments"] = self.pose_quality_assessments
+            payload["interaction_rule_evaluations"] = self.interaction_rule_evaluations
+            payload["interaction_rule_sets"] = self.interaction_rule_sets
+            payload["notes"].append(
+                "PoseBusters physical quality assessments, MMFF94s conformational strain "
+                "diagnostics, and declarative ProLIF pharmacophoric rule evaluations were "
+                "copied verbatim from immutable v0.2 records without recomputation."
+            )
+        if self.has_analog_expansion_evidence:
+            payload["analog_expansion_artifacts"] = self.analog_expansion_artifacts
+            payload["notes"].append(
+                "ADR-033 Hit-to-Analog similarity search, human curation selection, optional "
+                "raw external provider responses, and POSE_FOCUSED binding-site records were "
+                "copied verbatim without recomputation."
+            )
+        return payload
 
 
 def _empty_evidence() -> RecordedEvidence:
@@ -289,9 +339,21 @@ def manifest(
     }
     if campaign.cnn_model_identity is not None:
         engine_payload["cnn_model_identity"] = campaign.cnn_model_identity
+    resolved_evidence = evidence or _empty_evidence()
+    has_analog_expansion = resolved_evidence.has_analog_expansion_evidence
+    has_v02_features = (
+        campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value
+        or resolved_evidence.has_v02_evidence
+        or has_analog_expansion
+    )
+    export_format = (
+        (6 if has_analog_expansion else (5 if has_v02_features else 4))
+        if bundle_identity is not None
+        else 2
+    )
     payload: dict[str, Any] = {
         "exported_at": moment.isoformat(),
-        "ankora_export_format": 4 if bundle_identity is not None else 2,
+        "ankora_export_format": export_format,
         "source_kind": source_kind,
         "source_id": source_id,
         "engine": engine_payload,
@@ -303,49 +365,70 @@ def manifest(
         "protocol": campaign.parameters,
         "counts": _campaign_counts(campaign),
         "table": table_payload,
-        "recorded_evidence": (evidence or _empty_evidence()).manifest_payload(),
+        "recorded_evidence": resolved_evidence.manifest_payload(),
         "scientific_notes": _scientific_notes(campaign),
     }
+    if export_format >= 5:
+        payload["v02_provenance"] = {
+            "receptor_flex_mode": campaign.receptor_flex_mode or ReceptorFlexMode.RIGID.value,
+            "flex_residue_count": len(campaign.flex_residues),
+            "pose_quality_assessment_count": len(resolved_evidence.pose_quality_assessments),
+            "interaction_rule_evaluation_count": len(
+                resolved_evidence.interaction_rule_evaluations
+            ),
+            "interaction_rule_set_count": len(resolved_evidence.interaction_rule_sets),
+        }
+    if export_format >= 6 and resolved_evidence.analog_expansion_provenance is not None:
+        payload["analog_expansion_provenance"] = resolved_evidence.analog_expansion_provenance
     if campaign.warnings:
         payload["warnings"] = campaign.warnings
     if bundle_identity is not None:
         payload["bundle"] = bundle_identity.manifest_payload()
     if source_files:
+        if source_kind == "gnina_screening":
+            source_notes = [
+                "These are copies of the exact bytes preserved by the "
+                "screening campaign, its pinned applied selection manifest, "
+                "and each attempted molecule's GNINA child job. Nothing was "
+                "reparsed, reformatted or regenerated.",
+                "`integrity` says what each hash establishes. "
+                "`matches_recorded_sha256` means the campaign or child job "
+                "recorded a SHA-256 for that file before this export and "
+                "the copied bytes still match it. "
+                "`export_time_digest_only` means no hash was recorded at "
+                "run time, so the digest identifies the copy in this bundle "
+                "and is not evidence of a check made at run time.",
+                "Per-molecule raw GNINA outputs, captured logs and child "
+                "job records live under `jobs/<gnina_job_id>/` and can be "
+                "compared against each child job's recorded execution and "
+                "published poses.",
+            ]
+        elif source_kind == "gnina_job":
+            source_notes = [
+                "These are copies of the exact bytes the job preserved. "
+                "Nothing was reparsed, reformatted or regenerated.",
+                "`integrity` says what each hash establishes. "
+                "`matches_recorded_sha256` means the job recorded a SHA-256 "
+                "for that file before this export and the copied bytes still "
+                "match it. `export_time_digest_only` means the job records no "
+                "hash for that file, so the digest identifies the copy in this "
+                "bundle and is not evidence of a check made at run time.",
+                "The raw engine output and captured logs are in the second "
+                "group. Their content can be compared against the stdout, "
+                "stderr and per-pose scores retained inside record.json.",
+            ]
+        else:
+            source_notes = [
+                "These are copies of the exact flexible side-chain pose "
+                "artifacts preserved by this sidechain_flex campaign. "
+                "Nothing was reparsed, reformatted or regenerated.",
+                "`matches_recorded_sha256` means the batch record held a "
+                "SHA-256 for that moved side-chain file before this export "
+                "and the copied bytes still match it.",
+            ]
         payload["source_files"] = {
             "files": source_files,
-            "notes": (
-                [
-                    "These are copies of the exact bytes preserved by the "
-                    "screening campaign, its pinned applied selection manifest, "
-                    "and each attempted molecule's GNINA child job. Nothing was "
-                    "reparsed, reformatted or regenerated.",
-                    "`integrity` says what each hash establishes. "
-                    "`matches_recorded_sha256` means the campaign or child job "
-                    "recorded a SHA-256 for that file before this export and "
-                    "the copied bytes still match it. "
-                    "`export_time_digest_only` means no hash was recorded at "
-                    "run time, so the digest identifies the copy in this bundle "
-                    "and is not evidence of a check made at run time.",
-                    "Per-molecule raw GNINA outputs, captured logs and child "
-                    "job records live under `jobs/<gnina_job_id>/` and can be "
-                    "compared against each child job's recorded execution and "
-                    "published poses.",
-                ]
-                if source_kind == "gnina_screening"
-                else [
-                    "These are copies of the exact bytes the job preserved. "
-                    "Nothing was reparsed, reformatted or regenerated.",
-                    "`integrity` says what each hash establishes. "
-                    "`matches_recorded_sha256` means the job recorded a SHA-256 "
-                    "for that file before this export and the copied bytes still "
-                    "match it. `export_time_digest_only` means the job records no "
-                    "hash for that file, so the digest identifies the copy in this "
-                    "bundle and is not evidence of a check made at run time.",
-                    "The raw engine output and captured logs are in the second "
-                    "group. Their content can be compared against the stdout, "
-                    "stderr and per-pose scores retained inside record.json.",
-                ]
-            ),
+            "notes": source_notes,
         }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
@@ -385,6 +468,31 @@ def _gnina_ensemble_and_refinement_notes(campaign: ExportedCampaign) -> list[str
     return extra
 
 
+def _flexibility_notes(campaign: ExportedCampaign) -> list[str]:
+    notes: list[str] = []
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        labels = [
+            f"{str(item.get('residue_name', '')).upper()} "
+            f"{item.get('chain_id', '')}:{item.get('sequence_number', '')}"
+            f"{item.get('insertion_code', '')}"
+            for item in campaign.flex_residues
+        ]
+        residue_clause = f" ({', '.join(labels)})" if labels else ""
+        notes.append(
+            f"Receptor side-chain flexibility (`sidechain_flex`) was enabled for "
+            f"{len(labels)} selected residue{'s' if len(labels) != 1 else ''}"
+            f"{residue_clause}; backbone coordinates and all non-selected residues "
+            "remained rigid, and moved side-chain artifacts are preserved beside each pose."
+        )
+    if campaign.engine == "AutoDock Vina" and campaign.parameters.get("scoring") == "vinardo":
+        notes.append(
+            "Vina evaluated the Vinardo empirical scoring function (--scoring vinardo) "
+            "rather than the default Vina function; Vinardo scores are not interchangeable "
+            "with default Vina scores."
+        )
+    return notes
+
+
 def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
     if campaign.row_kind == "pose":
         return [
@@ -411,6 +519,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "the one with the lowest recorded energy."
             ),
             *_gnina_ensemble_and_refinement_notes(campaign),
+            *_flexibility_notes(campaign),
             (
                 "All of these GNINA quantities are predictions of this engine "
                 "for this pose. None is an experimentally measured binding "
@@ -479,6 +588,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
                 "recorded failure codes."
             ),
             *_gnina_ensemble_and_refinement_notes(campaign),
+            *_flexibility_notes(campaign),
         ]
         for warning in campaign.warnings:
             if warning.get("code") == "GNINA_CNN_VS_NONPOSITIVE_AFFINITY":
@@ -501,6 +611,7 @@ def _scientific_notes(campaign: ExportedCampaign) -> list[str]:
             "Values from different engines are on different scales and must "
             "not be merged, averaged, or combined into a consensus score."
         ),
+        *_flexibility_notes(campaign),
     ]
 
 
@@ -527,6 +638,16 @@ def readme(
                 f"CNN ensemble  {campaign.cnn_model_identity.get('selector')} "
                 f"({', '.join(members)})"
             )
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        labels = [
+            f"{str(item.get('residue_name', '')).upper()} "
+            f"{item.get('chain_id', '')}:{item.get('sequence_number', '')}"
+            f"{item.get('insertion_code', '')}"
+            for item in campaign.flex_residues
+        ]
+        lines.append(
+            f"FlexRes       sidechain_flex ({', '.join(labels) if labels else 'recorded'})"
+        )
     if bundle_identity is not None:
         lines += [
             f"Name          {bundle_identity.display_name or '(not assigned)'}",
@@ -686,6 +807,24 @@ def _common_row(entry: Any, rank: int) -> dict[str, Any]:
     }
 
 
+def _flex_export_fields(record: Any) -> dict[str, Any]:
+    mode = getattr(record, "receptor_flex_mode", ReceptorFlexMode.RIGID)
+    if mode is not ReceptorFlexMode.SIDECHAIN_FLEX:
+        return {}
+    return {
+        "receptor_flex_mode": mode.value,
+        "receptor_flex_sha256": getattr(record, "receptor_flex_sha256", None),
+        "flex_residues": [
+            item.model_dump(mode="json") for item in (getattr(record, "flex_residues", []) or [])
+        ],
+        "flex_atom_types": list(getattr(record, "flex_atom_types", []) or []),
+    }
+
+
+def _record_warnings(record: Any) -> list[dict[str, Any]]:
+    return [item.model_dump(mode="json") for item in (getattr(record, "warnings", []) or [])]
+
+
 def from_vina_batch(
     record: VinaBatchDockingRecord,
     *,
@@ -725,6 +864,8 @@ def from_vina_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=rows,
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -779,6 +920,8 @@ def from_autodock4_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=_autodock_rows(list(record.entries)),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -809,6 +952,8 @@ def from_autodock_gpu_batch(
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
         rows=_autodock_rows(list(record.entries)),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -878,6 +1023,8 @@ def from_gnina_job(
             if record.cnn_model_identity is not None
             else None
         ),
+        warnings=_record_warnings(record),
+        **_flex_export_fields(record),
     )
 
 
@@ -1060,6 +1207,7 @@ def from_gnina_screening(
             else None
         ),
         warnings=[warning.model_dump(mode="json") for warning in record.warnings],
+        **_flex_export_fields(record),
     )
 
 
@@ -1117,15 +1265,41 @@ def _gnina_job_artifacts(record: GninaJobRecord) -> list[_JobArtifact]:
             "the GNINA job record this bundle was built from",
         ),
     ]
-    artifacts += [
-        _JobArtifact(
-            pose.artifact.filename,
-            f"poses/{pose.artifact.filename}",
-            pose.artifact.sha256,
-            f"the published pose for mode {pose.mode}",
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        artifacts.extend(
+            [
+                _JobArtifact(
+                    "receptor_flex.pdbqt",
+                    "inputs/receptor_flex.pdbqt",
+                    record.receptor_flex_sha256,
+                    "the prepared flexible side-chain PDBQT GNINA was given",
+                ),
+                _JobArtifact(
+                    "raw_flex.pdb",
+                    "raw/raw_flex.pdb",
+                    None,
+                    "the unparsed flexible side-chain PDB GNINA wrote",
+                ),
+            ]
         )
-        for pose in record.poses
-    ]
+    for pose in record.poses:
+        artifacts.append(
+            _JobArtifact(
+                pose.artifact.filename,
+                f"poses/{pose.artifact.filename}",
+                pose.artifact.sha256,
+                f"the published pose for mode {pose.mode}",
+            )
+        )
+        if pose.artifact.flex_filename is not None:
+            artifacts.append(
+                _JobArtifact(
+                    pose.artifact.flex_filename,
+                    f"poses/{pose.artifact.flex_filename}",
+                    pose.artifact.pose_flex_sidechains_sha256,
+                    f"the preserved moved side chains for mode {pose.mode}",
+                )
+            )
     return artifacts
 
 
@@ -1308,11 +1482,444 @@ def collect_recorded_evidence(
     validations, validation_warnings = collect_recorded_validations(
         root=resolved_root, catalog_id=catalog_id, export_directory=destination
     )
+    (
+        pose_quality_assessments,
+        interaction_rule_evaluations,
+        interaction_rule_sets,
+        v02_warnings,
+    ) = collect_v02_recorded_evidence(
+        root=resolved_root, catalog_ids=[catalog_id], export_directory=destination
+    )
     return RecordedEvidence(
         analyses=sorted(analyses, key=lambda item: str(item["analysis_id"])),
         figures=sorted(figures, key=lambda item: str(item["figure_id"])),
-        collection_warnings=[*warnings, *validation_warnings],
+        collection_warnings=[*warnings, *validation_warnings, *v02_warnings],
         validations=validations,
+        pose_quality_assessments=pose_quality_assessments,
+        interaction_rule_evaluations=interaction_rule_evaluations,
+        interaction_rule_sets=interaction_rule_sets,
+    )
+
+
+def collect_analog_expansion_evidence(
+    *,
+    root: Path,
+    binding_site_id: str | None,
+    library_id: str | None,
+    export_directory: Path,
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    list[dict[str, str]],
+    AnalogSearchRecord | None,
+    AnalogSelectionRecord | None,
+    BindingSiteRecord | None,
+]:
+    """Copy immutable ADR-033 POSE_FOCUSED / Analog Expansion records verbatim into Export v6."""
+    resolved_root = root.resolve()
+    destination = export_directory.resolve()
+    project_root = resolve_project_root(resolved_root)
+    artifacts: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+    provenance_summary: dict[str, Any] = {}
+    focused_site: BindingSiteRecord | None = None
+    selection_rec: AnalogSelectionRecord | None = None
+    search_rec: AnalogSearchRecord | None = None
+
+    if binding_site_id:
+        site_path = project_root / "derived" / "binding_sites" / binding_site_id / "record.json"
+        if site_path.is_file():
+            try:
+                site = BindingSiteRecord.model_validate_json(site_path.read_text(encoding="utf-8"))
+                if site.decisions.source is BindingSiteSource.POSE_FOCUSED:
+                    focused_site = site
+                    target = (
+                        destination
+                        / "evidence"
+                        / "analog_expansion"
+                        / "pose_focused_site"
+                        / binding_site_id
+                        / "record.json"
+                    )
+                    digest, size = _copy_preserved(site_path, target)
+                    artifacts.append(
+                        {
+                            "kind": "pose_focused_binding_site",
+                            "artifact_id": binding_site_id,
+                            "path": _relative(target, destination),
+                            "sha256": digest,
+                            "size_bytes": size,
+                        }
+                    )
+                    provenance_summary["pose_focused_binding_site_id"] = binding_site_id
+                    if site.pose_focused_evidence is not None:
+                        provenance_summary["source_pose_artifact_id"] = (
+                            site.pose_focused_evidence.pose_artifact_id
+                        )
+                        provenance_summary["source_pose_sha256"] = (
+                            site.pose_focused_evidence.pose_sha256
+                        )
+            except (OSError, ValueError) as error:
+                warnings.append(
+                    {
+                        "kind": "pose_focused_site_unreadable",
+                        "identity": binding_site_id,
+                        "reason": str(error),
+                    }
+                )
+
+    if library_id:
+        lig_store = LigandArtifactStore(root=resolved_root)
+        analog_store = AnalogExpansionStore(root=resolved_root)
+        try:
+            lib = lig_store.load_library_record(library_id)
+        except AnkoraDomainError:
+            lib = None
+        if lib is not None and (
+            lib.artifact.origin_analog_selection_id or lib.artifact.origin_analog_search_id
+        ):
+            sel_id = lib.artifact.origin_analog_selection_id
+            search_id = lib.artifact.origin_analog_search_id
+            if sel_id:
+                sel_path = (
+                    project_root
+                    / "derived"
+                    / "analog_expansion"
+                    / "selections"
+                    / sel_id
+                    / "record.json"
+                )
+                if sel_path.is_file():
+                    try:
+                        selection_rec = analog_store.load_selection(sel_id)
+                        target = (
+                            destination
+                            / "evidence"
+                            / "analog_expansion"
+                            / "selections"
+                            / sel_id
+                            / "record.json"
+                        )
+                        digest, size = _copy_preserved(sel_path, target)
+                        artifacts.append(
+                            {
+                                "kind": "analog_selection",
+                                "artifact_id": sel_id,
+                                "path": _relative(target, destination),
+                                "sha256": digest,
+                                "size_bytes": size,
+                            }
+                        )
+                        provenance_summary["analog_selection_id"] = sel_id
+                        provenance_summary["include_seed_control"] = (
+                            selection_rec.include_seed_control
+                        )
+                        if not search_id:
+                            search_id = selection_rec.analog_search_id
+                    except (AnkoraDomainError, OSError, ValueError) as error:
+                        warnings.append(
+                            {
+                                "kind": "analog_selection_unreadable",
+                                "identity": sel_id,
+                                "reason": str(error),
+                            }
+                        )
+            if search_id:
+                search_path = (
+                    project_root
+                    / "derived"
+                    / "analog_expansion"
+                    / "searches"
+                    / search_id
+                    / "record.json"
+                )
+                if search_path.is_file():
+                    try:
+                        search_rec = analog_store.load_search(search_id)
+                        target = (
+                            destination
+                            / "evidence"
+                            / "analog_expansion"
+                            / "searches"
+                            / search_id
+                            / "record.json"
+                        )
+                        digest, size = _copy_preserved(search_path, target)
+                        artifacts.append(
+                            {
+                                "kind": "analog_search",
+                                "artifact_id": search_id,
+                                "path": _relative(target, destination),
+                                "sha256": digest,
+                                "size_bytes": size,
+                            }
+                        )
+                        provenance_summary["analog_search_id"] = search_id
+                        provenance_summary["search_mode"] = search_rec.mode.value
+                        provenance_summary["rdkit_version"] = search_rec.rdkit_version
+                        raw_resp = analog_store.search_raw_response_path(search_id)
+                        if raw_resp is not None and raw_resp.is_file():
+                            raw_target = (
+                                destination
+                                / "evidence"
+                                / "analog_expansion"
+                                / "searches"
+                                / search_id
+                                / raw_resp.name
+                            )
+                            r_sha, r_size = _copy_preserved(raw_resp, raw_target)
+                            artifacts.append(
+                                {
+                                    "kind": "external_provider_raw_response",
+                                    "artifact_id": search_id,
+                                    "path": _relative(raw_target, destination),
+                                    "sha256": r_sha,
+                                    "size_bytes": r_size,
+                                }
+                            )
+                        if search_rec.analog_catalog_id:
+                            cat_id = search_rec.analog_catalog_id
+                            cat_path = (
+                                project_root
+                                / "derived"
+                                / "analog_expansion"
+                                / "catalogs"
+                                / cat_id
+                                / "record.json"
+                            )
+                            if cat_path.is_file():
+                                cat_rec = analog_store.load_catalog(cat_id)
+                                cat_target = (
+                                    destination
+                                    / "evidence"
+                                    / "analog_expansion"
+                                    / "catalogs"
+                                    / cat_id
+                                    / "record.json"
+                                )
+                                c_sha, c_size = _copy_preserved(cat_path, cat_target)
+                                artifacts.append(
+                                    {
+                                        "kind": "analog_catalog_record",
+                                        "artifact_id": cat_id,
+                                        "path": _relative(cat_target, destination),
+                                        "sha256": c_sha,
+                                        "size_bytes": c_size,
+                                    }
+                                )
+                                raw_cat = analog_store.catalog_content_path(cat_id)
+                                if raw_cat.stat().st_size <= 5 * 1024 * 1024:
+                                    raw_cat_dst = (
+                                        destination
+                                        / "evidence"
+                                        / "analog_expansion"
+                                        / "catalogs"
+                                        / cat_id
+                                        / raw_cat.name
+                                    )
+                                    rc_sha, rc_size = _copy_preserved(raw_cat, raw_cat_dst)
+                                    artifacts.append(
+                                        {
+                                            "kind": "analog_catalog_snapshot",
+                                            "artifact_id": cat_id,
+                                            "path": _relative(raw_cat_dst, destination),
+                                            "sha256": rc_sha,
+                                            "size_bytes": rc_size,
+                                        }
+                                    )
+                                    provenance_summary["catalog_snapshot_embedded"] = True
+                                else:
+                                    provenance_summary["catalog_snapshot_embedded"] = False
+                                    provenance_summary["catalog_snapshot_omitted_size_policy"] = (
+                                        True
+                                    )
+                                    provenance_summary["catalog_sha256"] = cat_rec.sha256
+                    except (AnkoraDomainError, OSError, ValueError) as error:
+                        warnings.append(
+                            {
+                                "kind": "analog_search_unreadable",
+                                "identity": search_id,
+                                "reason": str(error),
+                            }
+                        )
+
+    if not artifacts:
+        return [], None, warnings, None, None, None
+    provenance_summary["artifact_count"] = len(artifacts)
+    return artifacts, provenance_summary, warnings, search_rec, selection_rec, focused_site
+
+
+def collect_v02_recorded_evidence(
+    *,
+    root: Path,
+    catalog_ids: list[str],
+    export_directory: Path,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, str]],
+]:
+    """Copy existing immutable M3 pose-quality and M4 interaction-rule records verbatim."""
+    resolved_root = root.resolve()
+    destination = export_directory.resolve()
+    project_root = resolve_project_root(resolved_root)
+    target_catalogs = set(catalog_ids)
+
+    quality_entries: list[dict[str, Any]] = []
+    rule_eval_entries: list[dict[str, Any]] = []
+    rule_set_entries: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+
+    quality_root = project_root / "analysis" / "pose_quality"
+    for source in sorted(quality_root.glob("*/record.json")):
+        identity = source.parent.name
+        try:
+            raw = source.read_text(encoding="utf-8")
+            qrec = PoseQualityRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "pose_quality_record_unreadable",
+                    "identity": identity,
+                    "reason": str(error),
+                }
+            )
+            continue
+        if qrec.catalog_id not in target_catalogs:
+            continue
+        if qrec.assessment_id != identity:
+            warnings.append(
+                {
+                    "kind": "pose_quality_record_identity_mismatch",
+                    "identity": identity,
+                    "reason": "Folder and record identifiers do not match.",
+                }
+            )
+            continue
+        target = destination / "evidence" / "pose_quality" / identity / "record.json"
+        digest, size = _copy_preserved(source, target)
+        quality_entries.append(
+            {
+                "assessment_id": qrec.assessment_id,
+                "catalog_id": qrec.catalog_id,
+                "ligand_id": qrec.ligand_id,
+                "pose_artifact_id": qrec.pose.artifact_id,
+                "pose_complex_sha256": qrec.assessment.pose_complex.complex_identity_sha256,
+                "overall_status": qrec.assessment.overall_status.value,
+                "passed_count": qrec.passed_count,
+                "failed_count": qrec.failed_count,
+                "not_applicable_count": qrec.not_applicable_count,
+                "not_evaluable_count": qrec.not_evaluable_count,
+                "strain_delta_e_ref_kcal_mol": (
+                    qrec.assessment.strain.delta_e_ref_kcal_mol
+                    if qrec.assessment.strain is not None
+                    else None
+                ),
+                "posebusters_version": qrec.posebusters_version,
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    referenced_rule_set_ids: set[str] = set()
+    evals_root = project_root / "analysis" / "interaction_rule_evaluations"
+    for source in sorted(evals_root.glob("*/record.json")):
+        identity = source.parent.name
+        try:
+            raw = source.read_text(encoding="utf-8")
+            erec = InteractionRuleEvaluationRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_evaluation_unreadable",
+                    "identity": identity,
+                    "reason": str(error),
+                }
+            )
+            continue
+        if erec.catalog_id not in target_catalogs:
+            continue
+        if erec.evaluation_id != identity:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_evaluation_identity_mismatch",
+                    "identity": identity,
+                    "reason": "Folder and record identifiers do not match.",
+                }
+            )
+            continue
+        target = (
+            destination / "evidence" / "interaction_rule_evaluations" / identity / "record.json"
+        )
+        digest, size = _copy_preserved(source, target)
+        referenced_rule_set_ids.add(erec.rule_set_id)
+        rule_eval_entries.append(
+            {
+                "evaluation_id": erec.evaluation_id,
+                "rule_set_id": erec.rule_set_id,
+                "rule_set_identity_sha256": erec.rule_set_identity_sha256,
+                "catalog_id": erec.catalog_id,
+                "ligand_id": erec.ligand_id,
+                "pose_artifact_id": erec.pose.artifact_id,
+                "pose_complex_sha256": erec.pose_complex.complex_identity_sha256,
+                "overall_status": erec.overall_status.value,
+                "passed_clause_count": erec.passed_clause_count,
+                "failed_clause_count": erec.failed_clause_count,
+                "tanimoto_similarity": (
+                    erec.tanimoto.similarity if erec.tanimoto is not None else None
+                ),
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    rule_sets_root = project_root / "analysis" / "interaction_rule_sets"
+    for rule_set_id in sorted(referenced_rule_set_ids):
+        source = rule_sets_root / rule_set_id / "record.json"
+        if not source.is_file():
+            warnings.append(
+                {
+                    "kind": "interaction_rule_set_missing",
+                    "identity": rule_set_id,
+                    "reason": "Referenced sealed rule set record was not found on disk.",
+                }
+            )
+            continue
+        try:
+            raw = source.read_text(encoding="utf-8")
+            rs_rec = InteractionRuleSetRecord.model_validate_json(raw)
+        except (OSError, ValueError) as error:
+            warnings.append(
+                {
+                    "kind": "interaction_rule_set_unreadable",
+                    "identity": rule_set_id,
+                    "reason": str(error),
+                }
+            )
+            continue
+        target = destination / "evidence" / "interaction_rule_sets" / rule_set_id / "record.json"
+        digest, size = _copy_preserved(source, target)
+        rule_set_entries.append(
+            {
+                "rule_set_id": rs_rec.rule_set_id,
+                "name": rs_rec.name,
+                "receptor_id": rs_rec.receptor_id,
+                "rule_set_identity_sha256": rs_rec.rule_set_identity_sha256,
+                "clause_count": len(rs_rec.clauses),
+                "path": _relative(target, destination),
+                "sha256": digest,
+                "size_bytes": size,
+            }
+        )
+
+    return (
+        sorted(quality_entries, key=lambda item: str(item["assessment_id"])),
+        sorted(rule_eval_entries, key=lambda item: str(item["evaluation_id"])),
+        sorted(rule_set_entries, key=lambda item: str(item["rule_set_id"])),
+        warnings,
     )
 
 
@@ -1418,6 +2025,27 @@ def _verify_gnina_source(record: GninaJobRecord, store: GninaJobStore) -> dict[s
         raise _source_incomplete(
             record.job_id, "raw_poses.pdbqt", "Raw output differs from published poses."
         )
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+        try:
+            paired_flex = pair_gnina_flex_models(
+                raw,
+                gnina_flex_pdb_text=preserved["raw_flex.pdb"].decode("utf-8"),
+                meeko_flex_template_pdbqt=preserved["receptor_flex.pdbqt"].decode("utf-8"),
+            )
+        except (AnkoraDomainError, UnicodeDecodeError, ValueError) as error:
+            raise _source_incomplete(
+                record.job_id, "raw_flex.pdb", "The raw flexible side-chain output is invalid."
+            ) from error
+        if len(paired_flex) != len(record.poses) or any(
+            pose.artifact.flex_filename is None
+            or sha256(flex_bytes).hexdigest() != pose.artifact.pose_flex_sidechains_sha256
+            for flex_bytes, pose in zip(paired_flex, record.poses, strict=False)
+        ):
+            raise _source_incomplete(
+                record.job_id,
+                "raw_flex.pdb",
+                "Raw flexible side-chain output differs from published flex poses.",
+            )
     return preserved
 
 
@@ -1468,6 +2096,7 @@ class _VerifiedGninaScreening:
     state_bytes: bytes
     selection_bytes: bytes
     receptor_bytes: bytes
+    receptor_flex_bytes: bytes | None
     completed_jobs: dict[str, GninaJobRecord]
     completed_preserved: dict[str, dict[str, bytes]]
     failed_jobs: dict[str, GninaJobRecord]
@@ -1540,6 +2169,10 @@ def _verify_gnina_screening_source(
         or snapshot.box != record.box
         or snapshot.receptor_output_artifact_id != record.receptor_output_artifact_id
         or snapshot.receptor_sha256 != record.receptor_sha256
+        or snapshot.receptor_flex_mode != record.receptor_flex_mode
+        or snapshot.receptor_flex_output_artifact_id != record.receptor_flex_output_artifact_id
+        or snapshot.receptor_flex_sha256 != record.receptor_flex_sha256
+        or snapshot.flex_residues != record.flex_residues
         or len(snapshot.entries) != len(record.entries)
         or any(
             initial.ligand_id != final.ligand_id
@@ -1612,6 +2245,7 @@ def _verify_gnina_screening_source(
     failed_jobs: dict[str, GninaJobRecord] = {}
     failed_preserved: dict[str, dict[str, bytes]] = {}
     receptor_bytes: bytes | None = None
+    receptor_flex_bytes: bytes | None = None
 
     for entry in record.entries:
         if entry.status is DockingJobStatus.COMPLETED:
@@ -1630,12 +2264,21 @@ def _verify_gnina_screening_source(
                     "A completed screening entry's GNINA job could not be read.",
                 ) from error
             preserved_child = _verify_gnina_source(child_job, resolved_jobs)
-            for label, expected_hash, observed_hash in (
+            hash_checks: list[tuple[str, str | None, str | None]] = [
                 ("receptor.pdbqt", record.receptor_sha256, child_job.receptor_sha256),
                 ("ligand.pdbqt", entry.ligand_sha256, child_job.ligand_sha256),
                 ("conformer.sdf", entry.conformer_sha256, child_job.conformer_sha256),
                 ("gnina", record.tool.sha256, child_job.tool.sha256),
-            ):
+            ]
+            if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+                hash_checks.append(
+                    (
+                        "receptor_flex.pdbqt",
+                        record.receptor_flex_sha256,
+                        child_job.receptor_flex_sha256,
+                    )
+                )
+            for label, expected_hash, observed_hash in hash_checks:
                 if expected_hash != observed_hash:
                     raise AnkoraDomainError(
                         code="EXPORT_SOURCE_TAMPERED",
@@ -1673,6 +2316,27 @@ def _verify_gnina_screening_source(
                     message="Receptor bytes differ across campaign jobs; no bundle was written.",
                     details={"campaign_id": campaign_id, "job_id": verified_job.job_id},
                 )
+            if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX:
+                child_flex = preserved_child.get("receptor_flex.pdbqt")
+                if child_flex is None:
+                    raise _screening_incomplete(
+                        campaign_id,
+                        "receptor_flex.pdbqt",
+                        "Flexible receptor bytes were missing from a completed child job.",
+                    )
+                if receptor_flex_bytes is None:
+                    receptor_flex_bytes = child_flex
+                elif child_flex != receptor_flex_bytes:
+                    raise AnkoraDomainError(
+                        code="EXPORT_SOURCE_TAMPERED",
+                        stage=_STAGE,
+                        status_code=409,
+                        message=(
+                            "Flexible receptor bytes differ across campaign jobs; "
+                            "no bundle was written."
+                        ),
+                        details={"campaign_id": campaign_id, "job_id": verified_job.job_id},
+                    )
             completed_jobs[entry.ligand_id] = verified_job
             completed_preserved[verified_job.job_id] = preserved_child
         elif entry.gnina_job_id is not None:
@@ -1697,7 +2361,7 @@ def _verify_gnina_screening_source(
                     "A failed screening entry's linked GNINA job belongs elsewhere.",
                 )
             failed_files: dict[str, bytes] = {"record.json": raw_record}
-            for optional_name in ("stdout.log", "stderr.log", "raw_poses.pdbqt"):
+            for optional_name in ("stdout.log", "stderr.log", "raw_poses.pdbqt", "raw_flex.pdb"):
                 with suppress(AnkoraDomainError, OSError, ValueError):
                     candidate = resolved_jobs.output_path(entry.gnina_job_id, optional_name)
                     if candidate.is_file():
@@ -1711,6 +2375,15 @@ def _verify_gnina_screening_source(
             "receptor.pdbqt",
             "Verified receptor PDBQT bytes were not available for this campaign.",
         )
+    if record.receptor_flex_mode is ReceptorFlexMode.SIDECHAIN_FLEX and (
+        receptor_flex_bytes is None
+        or sha256(receptor_flex_bytes).hexdigest() != record.receptor_flex_sha256
+    ):
+        raise _screening_incomplete(
+            campaign_id,
+            "receptor_flex.pdbqt",
+            "Verified flexible side-chain PDBQT bytes were not available for this campaign.",
+        )
 
     return _VerifiedGninaScreening(
         record=record,
@@ -1718,6 +2391,7 @@ def _verify_gnina_screening_source(
         state_bytes=state_bytes,
         selection_bytes=selection_bytes,
         receptor_bytes=receptor_bytes,
+        receptor_flex_bytes=receptor_flex_bytes,
         completed_jobs=completed_jobs,
         completed_preserved=completed_preserved,
         failed_jobs=failed_jobs,
@@ -1796,6 +2470,18 @@ def collect_gnina_screening_source_files(
             description="the terminal GNINA campaign SQLite state database",
         ),
     ]
+    if verified.receptor_flex_bytes is not None:
+        carried.insert(
+            1,
+            _write_verified_file(
+                destination=destination,
+                relative_path="inputs/receptor_flex.pdbqt",
+                filename="receptor_flex.pdbqt",
+                content=verified.receptor_flex_bytes,
+                recorded_sha256=record.receptor_flex_sha256,
+                description="the prepared flexible side-chain PDBQT shared by this GNINA campaign",
+            ),
+        )
 
     for entry in record.entries:
         completed = verified.completed_jobs.get(entry.ligand_id)
@@ -1803,7 +2489,7 @@ def collect_gnina_screening_source_files(
             preserved = verified.completed_preserved[completed.job_id]
             prefix = f"jobs/{completed.job_id}"
             for artifact in _gnina_job_artifacts(completed):
-                if artifact.filename == "receptor.pdbqt":
+                if artifact.filename in {"receptor.pdbqt", "receptor_flex.pdbqt"}:
                     # Shared across the campaign and already written once under inputs/.
                     continue
                 carried.append(
@@ -1832,7 +2518,7 @@ def collect_gnina_screening_source_files(
                     description=f"the failed GNINA child job record ({entry.ligand_id})",
                 )
             )
-            for optional_name in ("raw_poses.pdbqt", "stdout.log", "stderr.log"):
+            for optional_name in ("raw_poses.pdbqt", "raw_flex.pdb", "stdout.log", "stderr.log"):
                 if optional_name in failed_files:
                     carried.append(
                         _write_verified_file(
@@ -2082,6 +2768,26 @@ class CampaignExportService:
             catalog_id=f"{source_kind}:{batch_id}",
             export_directory=directory,
         )
+        (
+            analog_artifacts,
+            analog_provenance,
+            analog_warnings,
+            analog_search,
+            analog_selection,
+            focused_site,
+        ) = collect_analog_expansion_evidence(
+            root=self._root,
+            binding_site_id=campaign.binding_site_id,
+            library_id=campaign.library_id,
+            export_directory=directory,
+        )
+        if analog_artifacts or analog_warnings:
+            evidence = replace(
+                evidence,
+                collection_warnings=[*evidence.collection_warnings, *analog_warnings],
+                analog_expansion_artifacts=analog_artifacts,
+                analog_expansion_provenance=analog_provenance,
+            )
         # The single job's or screening campaign's own preserved bytes: required
         # inputs, so a failure aborts the export before any partial bundle exists.
         source_files: list[dict[str, Any]] = []
@@ -2094,6 +2800,12 @@ class CampaignExportService:
         elif verified_screening is not None:
             source_files = collect_gnina_screening_source_files(
                 verified=verified_screening,
+                export_directory=directory,
+            )
+        elif campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+            source_files = self._collect_batch_flex_source_files(
+                source_kind=source_kind,
+                batch_id=batch_id,
                 export_directory=directory,
             )
 
@@ -2119,6 +2831,17 @@ class CampaignExportService:
         # here rather than left for the author to reconstruct from the
         # manifest, and omitted rather than faked if it cannot be produced.
         methods = _methods_markdown(source_kind, batch_id)
+        if analog_search is not None or analog_selection is not None or focused_site is not None:
+            from ankora_backend.services.methods_report import render_analog_expansion_methods
+
+            analog_methods = render_analog_expansion_methods(
+                search=analog_search,
+                selection=analog_selection,
+                focused_site=focused_site,
+            )
+            methods = (
+                f"{methods.rstrip()}\n\n{analog_methods}" if methods is not None else analog_methods
+            )
         if methods is not None:
             files["methods.md"] = methods
         for name, content in files.items():
@@ -2182,6 +2905,73 @@ class CampaignExportService:
         if not path.is_file():
             raise self._not_found(export_id, filename)
         return path
+
+    def _collect_batch_flex_source_files(
+        self,
+        *,
+        source_kind: str,
+        batch_id: str,
+        export_directory: Path,
+    ) -> list[dict[str, Any]]:
+        """Preserve per-pose moved side-chain artifacts for sidechain_flex batches."""
+        destination = export_directory.resolve()
+        carried: list[dict[str, Any]] = []
+        if source_kind == "vina_batch":
+            batch: Any = self._docking_store.load_batch_record(batch_id)
+            resolver: Any = self._docking_store.batch_pose_flex_content_path
+            entries: list[Any] = list(batch.entries)
+            pose_attr = "poses"
+        elif source_kind == "autodock4_batch":
+            batch = self._autodock4_store.load_batch(batch_id)
+            resolver = self._autodock4_store.batch_pose_flex_content_path
+            entries = list(batch.entries)
+            pose_attr = "runs"
+        elif source_kind == "autodock_gpu_batch":
+            batch = self._autodock_gpu_store.load_batch(batch_id)
+            resolver = self._autodock_gpu_store.batch_pose_flex_content_path
+            entries = list(batch.entries)
+            pose_attr = "runs"
+        else:
+            return carried
+
+        for entry in entries:
+            for item in getattr(entry, pose_attr, []):
+                artifact = item.artifact
+                if artifact.flex_filename is None or artifact.pose_flex_sidechains_sha256 is None:
+                    continue
+                flex_path = resolver(batch_id, entry.ligand_id, artifact.artifact_id)
+                if flex_path is None or not flex_path.is_file():
+                    continue
+                content = flex_path.read_bytes()
+                if sha256(content).hexdigest() != artifact.pose_flex_sidechains_sha256:
+                    raise AnkoraDomainError(
+                        code="EXPORT_SOURCE_TAMPERED",
+                        stage=_STAGE,
+                        status_code=409,
+                        message=(
+                            "A flexible side-chain pose artifact differs from its recorded "
+                            "hash; no bundle was written."
+                        ),
+                        details={
+                            "batch_id": batch_id,
+                            "ligand_id": entry.ligand_id,
+                            "filename": artifact.flex_filename,
+                        },
+                    )
+                carried.append(
+                    _write_verified_file(
+                        destination=destination,
+                        relative_path=f"poses/{entry.ligand_id}/{artifact.flex_filename}",
+                        filename=artifact.flex_filename,
+                        content=content,
+                        recorded_sha256=artifact.pose_flex_sidechains_sha256,
+                        description=(
+                            f"preserved moved side chains for {entry.ligand_id} "
+                            f"({artifact.flex_filename})"
+                        ),
+                    )
+                )
+        return carried
 
     def _load(self, source_kind: str, batch_id: str) -> ExportedCampaign:
         if source_kind == "vina_batch":
@@ -2303,6 +3093,12 @@ def _campaign_inputs(campaign: ExportedCampaign) -> dict[str, Any]:
         "map_set_id": campaign.map_set_id,
         "map_set_identity_key": campaign.map_set_identity_key,
     }
+    if campaign.receptor_flex_mode == ReceptorFlexMode.SIDECHAIN_FLEX.value:
+        payload["receptor_flex_mode"] = campaign.receptor_flex_mode
+        payload["receptor_flex_pdbqt_sha256"] = campaign.receptor_flex_sha256
+        payload["flex_residues"] = campaign.flex_residues
+        if campaign.flex_atom_types:
+            payload["flex_atom_types"] = campaign.flex_atom_types
     if campaign.ligand_id is not None:
         payload["ligand_id"] = campaign.ligand_id
     for key, value in (

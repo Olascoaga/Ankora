@@ -71,6 +71,7 @@ _FAILURE_SENTINEL = "The job was not successful."
 SUPPORTED_AUTODOCK_GPU_VERSION = "1.6"
 
 LIGAND_FILENAME = "ligand.pdbqt"
+FLEXRES_FILENAME = "receptor_flex.pdbqt"
 MAPS_FIELD_FILENAME = "receptor.maps.fld"
 RESULT_BASENAME = "ligand"
 DOCKING_LOG_FILENAME = f"{RESULT_BASENAME}.dlg"
@@ -271,6 +272,7 @@ def build_arguments(
     population_size: int,
     local_search_method: str,
     cluster_rmsd_tolerance_angstrom: float,
+    flexres_filename: str | None = None,
 ) -> list[str]:
     """The exact command line, with every search setting stated explicitly.
 
@@ -281,10 +283,24 @@ def build_arguments(
     `--nev` is omitted only when heuristics are on, because the heuristic is
     then what sets the evaluation count.
     """
+    if flexres_filename is not None and (
+        not flexres_filename
+        or Path(flexres_filename).name != flexres_filename
+        or any(ch.isspace() for ch in flexres_filename)
+        or not flexres_filename.isascii()
+    ):
+        raise AnkoraDomainError(
+            code="AUTODOCK_GPU_FLEXRES_INVALID",
+            stage=_STAGE,
+            message="The AutoDock-GPU flexible residue filename must be a plain ASCII filename.",
+            status_code=422,
+            details={"flexres_filename": flexres_filename},
+        )
     arguments = [
         "--ffile", field_filename,
         "--lfile", LIGAND_FILENAME,
         "--resnam", RESULT_BASENAME,
+        *(["--flexres", flexres_filename] if flexres_filename is not None else []),
         "--devnum", str(device_number),
         "--nrun", str(runs),
         "--seed", ",".join(str(value) for value in seed),

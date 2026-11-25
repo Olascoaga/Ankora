@@ -15,6 +15,7 @@ dependencies = [
   "gemmi>=0.7.3,<0.8",
   "httpx>=0.28,<1",
   "meeko>=0.7.1,<0.8",
+  "posebusters>=0.6.5,<0.7",
   "prolif>=2.2,<3",
   # Load-bearing for the CPU and memory readout in the status bar.
   "psutil>=5.9,<8",
@@ -72,7 +73,7 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 [[tool.mypy.overrides]]
-module = ["meeko", "meeko.*", "prolif", "prolif.*"]
+module = ["meeko", "meeko.*", "posebusters", "posebusters.*", "prolif", "prolif.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 

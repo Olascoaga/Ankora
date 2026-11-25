@@ -9,12 +9,18 @@ import type {
   InteractionContact,
   PoseInventory,
   PoseReference,
+  PoseRescoreResult,
+  RescoreSourceEngine,
+  ScoringFunctionId,
 } from "../../types/api";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import type { MolecularViewerHandle } from "../../viewer/MolecularViewer";
 import type { ViewerContact, ViewerSelection, ViewerSource } from "../../viewer/adapter";
+import { AnalogExpansionPanel } from "../expansion/AnalogExpansionPanel";
 import { FigureExportControls } from "./FigureExportControls";
+import { InteractionRulesSection } from "./InteractionRulesSection";
 import { PoseComplexExportControls } from "./PoseComplexExportControls";
+import { PoseQualitySection } from "./PoseQualitySection";
 import {
   DIAGRAM_ASPECT_RATIO,
   InteractionDiagram,
@@ -30,6 +36,48 @@ interface PoseInteractionPanelProps {
   onClose: () => void;
 }
 
+interface LocalRefinementSummary {
+  refinementId: string;
+  engine: "vina" | "gnina";
+  headline: { label: string; value: number; unit: string };
+  breakdown: { label: string; value: number | null | undefined }[];
+  poseComplexIdentitySha256: string | null;
+}
+
+interface RescoreFunctionOption {
+  id: ScoringFunctionId;
+  label: string;
+  note: string;
+  requiresMaps?: boolean;
+}
+
+const RESCORE_FUNCTION_OPTIONS: RescoreFunctionOption[] = [
+  { id: "vina", label: "AutoDock Vina", note: "kcal/mol · lower is better" },
+  { id: "vinardo", label: "Vinardo", note: "kcal/mol · lower is better" },
+  {
+    id: "autodock4",
+    label: "AutoDock4 (epdb)",
+    note: "kcal/mol · requires AutoGrid4 maps",
+    requiresMaps: true,
+  },
+  { id: "gnina_cnn_score", label: "GNINA CNNscore", note: "dimensionless · Linux" },
+  { id: "gnina_cnn_affinity", label: "GNINA CNNaffinity", note: "pK · Linux" },
+  { id: "gnina_cnn_vs", label: "GNINA CNN_VS", note: "pK_weighted · Linux" },
+  {
+    id: "gnina_minimized_affinity",
+    label: "GNINA Affinity",
+    note: "kcal/mol · Linux",
+  },
+];
+
+function rescoreSourceEngineFor(engineKey: string): RescoreSourceEngine | null {
+  if (engineKey === "vina_job") return "vina";
+  if (engineKey === "autodock4_job") return "autodock4";
+  if (engineKey === "autodock_gpu_job") return "autodock_gpu";
+  if (engineKey === "gnina_job") return "gnina";
+  return null;
+}
+
 export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteractionPanelProps) {
   const [inventory, setInventory] = useState<PoseInventory | null>(null);
   const [selectedPoseId, setSelectedPoseId] = useState<string | null>(null);
@@ -41,6 +89,19 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Off by default: the coupled complex is the honest single picture of a
+  // flexible pose, and the overlay is an explicit comparison against it.
+  const [overlayCrystalRotamers, setOverlayCrystalRotamers] = useState(false);
+  const [refinement, setRefinement] = useState<LocalRefinementSummary | null>(null);
+  const [refining, setRefining] = useState(false);
+  const [rescoreOpen, setRescoreOpen] = useState(false);
+  const [rescoreFunctions, setRescoreFunctions] = useState<ScoringFunctionId[]>(["vina", "vinardo"]);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState<PoseRescoreResult | null>(null);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [expansionOpen, setExpansionOpen] = useState(false);
   const analysisGeneration = useRef(0);
   const diagramSvgRef = useRef<SVGSVGElement | null>(null);
   const viewerHandleRef = useRef<MolecularViewerHandle | null>(null);
@@ -66,6 +127,16 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
   }, [entry.catalog_id, molecule.ligand_id]);
+
+  // Reset pose-scoped toggles before paint so a deferred effect can never
+  // clobber a user click immediately after a pose appears.
+  useLayoutEffect(() => {
+    setRefinement(null);
+    setRescoreResult(null);
+    setRescoreError(null);
+    setOverlayCrystalRotamers(false);
+    setExpansionOpen(false);
+  }, [selectedPoseId]);
 
   useEffect(() => {
     if (!selectedPoseId) return;
@@ -118,9 +189,21 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
   }, [analysis]);
 
   const pose = inventory?.poses.find((item) => item.artifact_id === selectedPoseId) ?? null;
+  const coupledFlexPose = isCoupledFlexPose(pose);
+  const localRefinementEngine: "vina" | "gnina" | null =
+    entry.engine_key === "vina_job"
+      ? "vina"
+      : entry.engine_key === "gnina_job"
+        ? "gnina"
+        : null;
+  const rescoreSourceEngine = rescoreSourceEngineFor(entry.engine_key);
   const viewerSources = useMemo(
-    () => sourcesFor(inventory, pose),
-    [inventory, pose],
+    () => sourcesFor(inventory, pose, {
+      catalogId: entry.catalog_id,
+      ligandId: molecule.ligand_id,
+      overlayCrystalRotamers: overlayCrystalRotamers && coupledFlexPose,
+    }),
+    [inventory, pose, entry.catalog_id, molecule.ligand_id, overlayCrystalRotamers, coupledFlexPose],
   );
   /**
    * The contacts the viewer draws, positioned by the detector rather than here.
@@ -208,6 +291,98 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
     }
   }
 
+  /**
+   * Create one `--local_only` refinement derivative of this exact pose.
+   *
+   * This is a create-only action (ADR-004 / ADR-005): the parent job and the
+   * parent pose keep their recorded coordinates and scores, and the result is
+   * a new record with its own identity. A local minimization is not a new
+   * search, so its energy must not be read as a re-docking result.
+   */
+  async function refineLocalOnly() {
+    if (!pose || !localRefinementEngine) return;
+    setRefining(true);
+    setError(null);
+    try {
+      const request = { parent_job_id: entry.record_id, parent_pose_artifact_id: pose.artifact_id };
+      if (localRefinementEngine === "vina") {
+        const record = await ankoraApi.refineVinaPoseLocalOnly(request);
+        setRefinement({
+          refinementId: record.refinement_id,
+          engine: "vina",
+          headline: {
+            label: "Minimized free energy",
+            value: record.estimated_free_energy_kcal_mol,
+            unit: "kcal/mol",
+          },
+          breakdown: [
+            { label: "Intermolecular", value: record.intermolecular_kcal_mol },
+            { label: "Total internal", value: record.total_internal_kcal_mol },
+            { label: "Torsional free energy", value: record.torsional_free_energy_kcal_mol },
+            { label: "Unbound system", value: record.unbound_system_energy_kcal_mol },
+          ],
+          poseComplexIdentitySha256: record.refined_pose.pose_complex_identity_sha256 ?? null,
+        });
+      } else {
+        const record = await ankoraApi.refineGninaPoseLocalOnly(request);
+        setRefinement({
+          refinementId: record.refinement_id,
+          engine: "gnina",
+          headline: {
+            label: "Minimized affinity",
+            value: record.minimized_affinity_kcal_mol,
+            unit: "kcal/mol",
+          },
+          breakdown: [
+            { label: "CNN score", value: record.cnn_score },
+            { label: "CNN affinity", value: record.cnn_affinity },
+            { label: "CNN VS", value: record.cnn_vs },
+          ],
+          poseComplexIdentitySha256: record.refined_pose.pose_complex_identity_sha256 ?? null,
+        });
+      }
+    } catch (reason: unknown) {
+      setError(message(reason, "The local-only refinement could not be created."));
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  function toggleRescoreFunction(id: ScoringFunctionId) {
+    setRescoreFunctions((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }
+
+  /**
+   * Evaluate the exact saved pose in place (`--score_only`) across explicit
+   * compatible scoring functions without mutating the parent pose. Each
+   * returned observation stays strictly in its native unit (`ADR-031`).
+   */
+  async function crossScorePose() {
+    if (!pose || !rescoreSourceEngine || rescoreFunctions.length === 0) return;
+    setRescoring(true);
+    setRescoreError(null);
+    try {
+      const result = await ankoraApi.rescorePoseOnly({
+        source_engine: rescoreSourceEngine,
+        job_id: entry.record_id,
+        pose_artifact_id: pose.artifact_id,
+        scoring_functions: rescoreFunctions,
+        ...(rescoreFunctions.includes("autodock4") && entry.map_set_id
+          ? { autogrid_job_id: entry.map_set_id }
+          : {}),
+      });
+      setRescoreResult(result);
+    } catch (reason: unknown) {
+      setRescoreError(message(reason, "The --score_only evaluation could not be completed."));
+    } finally {
+      setRescoring(false);
+    }
+  }
+
   return (
     <section className="pose-interaction-panel" aria-label={`Pose interactions for ${molecule.name}`}>
       <header className="pose-interaction-heading">
@@ -269,7 +444,256 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
           <button type="button" className="primary-button" disabled={!pose || analyzing} onClick={analyze}>
             {analyzing ? "Analyzing with ProLIF…" : analysis ? "Create another analysis" : "Analyze this pose with ProLIF"}
           </button>
+          {localRefinementEngine ? (
+            <button
+              type="button"
+              className="quiet-button"
+              disabled={!pose || refining}
+              onClick={refineLocalOnly}
+            >
+              {refining ? "Refining locally (--local_only)…" : "Refine locally (--local_only)"}
+            </button>
+          ) : null}
+          {rescoreSourceEngine ? (
+            <button
+              type="button"
+              className="quiet-button"
+              disabled={!pose}
+              aria-expanded={rescoreOpen}
+              onClick={() => setRescoreOpen((open) => !open)}
+            >
+              Cross-score (--score_only)
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={qualityOpen}
+            onClick={() => setQualityOpen((open) => !open)}
+          >
+            Pose quality (PoseBusters + MMFF94s)
+          </button>
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={rulesOpen}
+            onClick={() => setRulesOpen((open) => !open)}
+          >
+            Pharmacophore rules (ProLIF PIC)
+          </button>
+          <button
+            type="button"
+            className="quiet-button"
+            disabled={!pose}
+            aria-expanded={expansionOpen}
+            onClick={() => setExpansionOpen((open) => !open)}
+          >
+            Expand analogs (ADR-033)
+          </button>
+          {coupledFlexPose ? (
+            <label className="check-row pose-flex-overlay-toggle">
+              <input
+                type="checkbox"
+                checked={overlayCrystalRotamers}
+                onChange={(event) => setOverlayCrystalRotamers(event.target.checked)}
+              />
+              <span>
+                <strong>Overlay crystal rotamers (translucent reference)</strong>
+                <small>
+                  Default view shows the coupled FlexRes complex with moved side chains; enable
+                  this toggle to compare against the original prepared crystal rotamers.
+                </small>
+              </span>
+            </label>
+          ) : null}
         </div>
+      ) : null}
+
+      {coupledFlexPose && pose ? (
+        <div className="pose-flex-identity-banner" role="status">
+          <strong>Coupled FlexRes complex (E8)</strong>
+          {pose.pose_complex_identity_sha256 ? (
+            <span>Complex SHA-256 <code>{pose.pose_complex_identity_sha256.slice(0, 12)}…</code></span>
+          ) : null}
+          {pose.pose_flex_sidechains_sha256 ? (
+            <span>Moved side chains <code>{pose.pose_flex_sidechains_sha256.slice(0, 12)}…</code></span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {refinement ? (
+        <div className="local-refinement-result" role="status" aria-label="Local-only refinement derivative">
+          <strong>
+            Create-only --local_only derivative ({refinement.engine === "vina" ? "AutoDock Vina" : "GNINA"})
+          </strong>
+          <p className="field-note">
+            Parent job and pose remain immutable. A local minimization is not a new search and
+            must not be compared as a re-docked global pose.
+          </p>
+          <dl>
+            <div><dt>Derivative ID</dt><dd><code>{refinement.refinementId}</code></dd></div>
+            <div>
+              <dt>{refinement.headline.label}</dt>
+              <dd>{formatScientificNumber(refinement.headline.value, 3)} {refinement.headline.unit}</dd>
+            </div>
+            {refinement.breakdown
+              .filter((item) => item.value !== null && item.value !== undefined)
+              .map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd>{formatScientificNumber(item.value ?? null, 3)}</dd>
+                </div>
+              ))}
+            {refinement.poseComplexIdentitySha256 ? (
+              <div>
+                <dt>Coupled complex SHA-256</dt>
+                <dd><code>{refinement.poseComplexIdentitySha256.slice(0, 12)}…</code></dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
+
+      {rescoreSourceEngine && rescoreOpen && pose ? (
+        <section
+          className="pose-rescore-panel"
+          aria-label="Cross-score pose (--score_only)"
+        >
+          <div>
+            <strong>Cross-engine --score_only evaluation</strong>
+            <p className="field-note">
+              Evaluate this exact saved pose in place across compatible scoring
+              functions without mutating the parent pose. Returned values remain
+              strictly in their native engine units and are never pooled or averaged.
+            </p>
+          </div>
+          <div className="pose-rescore-options" role="group" aria-label="Scoring functions">
+            {RESCORE_FUNCTION_OPTIONS.map((option) => {
+              const disabled = Boolean(option.requiresMaps && !entry.map_set_id);
+              return (
+                <label key={option.id}>
+                  <input
+                    type="checkbox"
+                    checked={rescoreFunctions.includes(option.id)}
+                    disabled={disabled || rescoring}
+                    onChange={() => toggleRescoreFunction(option.id)}
+                  />
+                  <span>
+                    {option.label} <small>({option.note})</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {rescoreError ? (
+            <div className="structure-error" role="alert">{rescoreError}</div>
+          ) : null}
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={rescoring || rescoreFunctions.length === 0}
+              onClick={() => void crossScorePose()}
+            >
+              {rescoring ? "Cross-scoring (--score_only)…" : "Cross-score pose (--score_only)"}
+            </button>
+          </div>
+          {rescoreResult ? (
+            <div
+              className="pose-rescore-result"
+              role="region"
+              aria-label="Cross-score (--score_only) results"
+            >
+              <p className="field-note">
+                {rescoreResult.mutated_original_pose === false
+                  ? "Original pose bytes were not mutated (mutated_original_pose: false)."
+                  : "Pose immutability flag was not confirmed."}{" "}
+                Each row stays in its native unit; scales are never combined.
+              </p>
+              {rescoreResult.evidence.some((ev) => ev.unbound_reference_shifted) ? (
+                <div className="pose-rescore-f4-notice" role="alert">
+                  <strong>Unbound reference shifted (Gate 0 F4):</strong> AutoDock Vina{" "}
+                  <code>--score_only --flex</code> recomputes the unbound system energy
+                  from the moved side chains. Do not compare or subtract this score
+                  directly against a docking-time total without noting the unbound
+                  reference shift.
+                </div>
+              ) : null}
+              <table>
+                <thead>
+                  <tr>
+                    <th>Scoring function</th>
+                    <th>Family</th>
+                    <th>Score</th>
+                    <th>Unit</th>
+                    <th>Direction</th>
+                    <th>Tool</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rescoreResult.observations.map((obs) => (
+                    <tr key={`${obs.scoring_function}-${obs.protocol_identity_sha256}`}>
+                      <td><code>{obs.scoring_function}</code></td>
+                      <td>{obs.scoring_family}</td>
+                      <td>
+                        {obs.raw_score !== null && obs.raw_score !== undefined
+                          ? formatScientificNumber(obs.raw_score, 4)
+                          : "—"}
+                      </td>
+                      <td>{obs.unit}</td>
+                      <td>
+                        {obs.direction === "higher_is_better"
+                          ? "Higher is better"
+                          : "Lower is better"}
+                      </td>
+                      <td>{obs.tool_name} {obs.tool_version}</td>
+                      <td>
+                        {obs.status}
+                        {obs.failure_code ? ` (${obs.failure_code})` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {qualityOpen && pose ? (
+        <PoseQualitySection
+          catalogId={entry.catalog_id}
+          ligandId={molecule.ligand_id}
+          poseArtifactId={pose.artifact_id}
+        />
+      ) : null}
+
+      {rulesOpen && pose ? (
+        <InteractionRulesSection
+          catalogId={entry.catalog_id}
+          ligandId={molecule.ligand_id}
+          poseArtifactId={pose.artifact_id}
+          receptorId={entry.receptor_id}
+          currentAnalysis={analysis}
+          onFocusContact={(contact) => {
+            setContactType("");
+            setSelectedContact(contact);
+          }}
+        />
+      ) : null}
+
+      {expansionOpen && pose ? (
+        <AnalogExpansionPanel
+          sourceCatalogId={entry.catalog_id}
+          sourceLigandId={molecule.ligand_id}
+          sourcePoseArtifactId={pose.artifact_id}
+          receptorId={entry.receptor_id}
+          parentBindingSiteId={entry.binding_site_id}
+          seedLabel={molecule.name}
+        />
       ) : null}
 
       {analysis ? (
@@ -415,6 +839,15 @@ export function PoseInteractionPanel({ entry, molecule, onClose }: PoseInteracti
                     <div><dt>Docking receptor SHA-256</dt><dd><code>{analysis.docking_receptor_sha256}</code></dd></div>
                     <div><dt>Analysis receptor SHA-256</dt><dd><code>{analysis.analysis_receptor_sha256}</code></dd></div>
                     <div><dt>Conformer SHA-256</dt><dd><code>{analysis.conformer_sha256}</code></dd></div>
+                    {analysis.pose_flex_sidechains_sha256 ? (
+                      <div><dt>Moved side-chains SHA-256</dt><dd><code>{analysis.pose_flex_sidechains_sha256}</code></dd></div>
+                    ) : null}
+                    {analysis.pose_complex_identity_sha256 ? (
+                      <div><dt>Coupled complex SHA-256</dt><dd><code>{analysis.pose_complex_identity_sha256}</code></dd></div>
+                    ) : null}
+                    {analysis.materialized_coupled_receptor_sha256 ? (
+                      <div><dt>Materialized receptor PDB SHA-256</dt><dd><code>{analysis.materialized_coupled_receptor_sha256}</code></dd></div>
+                    ) : null}
                     <div><dt>Detector profile</dt><dd>{analysis.profile.profile_id} · {analysis.profile.vicinity_cutoff_angstrom} Å vicinity</dd></div>
                   </dl>
                 </details>
@@ -531,27 +964,87 @@ function angleLabel(contact: InteractionContact): string {
     .join(" · ");
 }
 
-function sourcesFor(inventory: PoseInventory | null, pose: PoseReference | null): ViewerSource[] {
+/** A pose produced against a FlexRes receptor carries moved side chains. */
+export function isCoupledFlexPose(pose: PoseReference | null): boolean {
+  return Boolean(pose?.pose_flex_sidechains_sha256);
+}
+
+interface PoseSourceOptions {
+  catalogId: string;
+  ligandId: string;
+  /** Show the crystal rotamers behind the moved side chains (ADR-032 §4 E8). */
+  overlayCrystalRotamers: boolean;
+}
+
+/**
+ * The structures the viewer loads for one pose.
+ *
+ * A rigid pose keeps the frozen v0.1 pairing: prepared receptor as context
+ * plus the ligand pose. A flexible pose is a *coupled complex*, so by default
+ * it loads the deterministically materialized complex — the rigid receptor,
+ * the moved side chains and the ligand as one document — rather than drawing
+ * the ligand against a receptor whose pocket rotamers it never had. Showing
+ * only the rigid crystal receptor there would misstate the result.
+ */
+function sourcesFor(
+  inventory: PoseInventory | null,
+  pose: PoseReference | null,
+  options: PoseSourceOptions,
+): ViewerSource[] {
   if (!inventory || !pose) return [];
-  const sources: ViewerSource[] = [];
-  if (inventory.receptor_content_url && inventory.receptor_artifact_id) {
-    sources.push({
+  const crystalReceptor = inventory.receptor_content_url && inventory.receptor_artifact_id
+    ? {
       id: inventory.receptor_artifact_id,
       url: ankoraApi.receptorOutputUrl(inventory.receptor_content_url),
-      format: "pdb",
+      format: "pdb" as const,
       label: "Exact prepared receptor",
-      appearance: "interaction-context",
-    });
-  }
-  sources.push({
+    }
+    : null;
+  // PDBQT retains PDB coordinate columns; Mol* uses the compatible parser only for display.
+  const ligandPose: ViewerSource = {
     id: pose.artifact_id,
     url: ankoraApi.dockingPoseUrl(pose.content_url),
-    // PDBQT retains PDB coordinate columns; Mol* uses the compatible parser only for display.
     format: "pdb",
     label: pose.label,
     appearance: "interaction-ligand",
-  });
-  return sources;
+  };
+
+  if (!isCoupledFlexPose(pose)) {
+    return crystalReceptor
+      ? [{ ...crystalReceptor, appearance: "interaction-context" }, ligandPose]
+      : [ligandPose];
+  }
+
+  if (options.overlayCrystalRotamers) {
+    // Crystal rotamers translucent behind the moved side chains, so what the
+    // search actually moved — and how far — is visible rather than inferred.
+    return [
+      ...(crystalReceptor
+        ? [{
+          ...crystalReceptor,
+          label: "Crystal rotamers (reference)",
+          appearance: "flex-crystal-reference" as const,
+        }]
+        : []),
+      ...(pose.flex_content_url
+        ? [{
+          id: `${pose.artifact_id}-flex`,
+          url: ankoraApi.dockingPoseUrl(pose.flex_content_url),
+          format: "pdb" as const,
+          label: "Moved side chains",
+          appearance: "flex-moved-sidechains" as const,
+        }]
+        : []),
+      ligandPose,
+    ];
+  }
+
+  return [{
+    id: `${pose.artifact_id}-complex`,
+    url: ankoraApi.poseComplexUrl(options.catalogId, options.ligandId, pose.artifact_id),
+    format: "pdb",
+    label: "Coupled FlexRes complex",
+  }];
 }
 
 export function residueLabel(contact: InteractionContact): string {

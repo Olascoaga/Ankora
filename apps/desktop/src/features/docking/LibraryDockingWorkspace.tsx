@@ -12,7 +12,10 @@ import type {
   VinaBatchDockingRecord,
   VinaBatchLigandResult,
   VinaBatchProgress,
+  VinaScoringFunction,
 } from "../../types/api";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import { formatScientificNumber, formatSignedScientificNumber } from "../../utils/format";
 import { CampaignExportPanel } from "./CampaignExportPanel";
@@ -87,7 +90,7 @@ export function LibraryDockingWorkspace({
   const displayOutput = receptor.outputs.find(
     (item) => item.artifact_id === receptor.display_output_artifact_id,
   );
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const active = Boolean(batch && !TERMINAL_STATUSES.has(batch.status));
   const controlsLocked = active || starting || restoring;
   const selectedEntry = batch?.entries.find((entry) => entry.ligand_id === selectedLigandId) ?? null;
@@ -284,6 +287,20 @@ export function LibraryDockingWorkspace({
     });
   }
 
+  /**
+   * As in single-ligand docking, plain Vina omits the key entirely so a
+   * default batch request keeps the exact recorded v0.1 parameter shape.
+   */
+  function selectScoring(scoring: VinaScoringFunction) {
+    setAcknowledged(false);
+    setParameters((current) => {
+      const next = { ...current };
+      if (scoring === "vinardo") next.scoring = "vinardo";
+      else delete next.scoring;
+      return next;
+    });
+  }
+
   function selectSamplingProtocol(protocol: VinaSamplingProtocol) {
     setAcknowledged(false);
     setParameters((current) => applyVinaSamplingProtocol(current, protocol));
@@ -356,6 +373,7 @@ export function LibraryDockingWorkspace({
         <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
         <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
         <InputState ready={preparedCount > 0} label="Applied library selection" detail={`${preparedCount} / ${libraryInput.selected_count} selected molecules prepared · ${libraryInput.library_name}`} />
+        <ActiveFlexResBanner receptor={receptor} engineFamily="vina" />
         {unavailableCount > 0 ? <div className="protonation-blocker"><strong>{unavailableCount} selected {unavailableCount === 1 ? "molecule is" : "molecules are"} not docking-ready</strong><small>The complete manifest remains in the campaign. Ready molecules will run; every unavailable molecule will be retained as an explicit preflight failure.</small></div> : null}
         <p className="field-note">Manifest SHA-256 · {libraryInput.selection_manifest_sha256.slice(0, 16)}…</p>
       </section>
@@ -367,6 +385,19 @@ export function LibraryDockingWorkspace({
           disabled={controlsLocked}
           onChange={selectSamplingProtocol}
         />
+        <label className="numeric-field vina-scoring-field">
+          Scoring function
+          <select
+            aria-label="Vina scoring function"
+            value={parameters.scoring ?? "vina"}
+            disabled={controlsLocked}
+            onChange={(event) => selectScoring(event.target.value as VinaScoringFunction)}
+          >
+            <option value="vina">Vina (default)</option>
+            <option value="vinardo">Vinardo</option>
+          </select>
+        </label>
+        <p className="field-note">Vinardo scores are on their own scale and are not comparable with Vina scores. One campaign ranking must use a single scoring function.</p>
         <div className="docking-parameter-grid">
           <NumberField label="Total CPU threads" value={parameters.total_cpu_threads} min={1} max={256} disabled={controlsLocked} onChange={(value) => updateParameter("total_cpu_threads", value)} />
           <NumberField label="Concurrent ligands" value={parameters.parallel_ligands} min={1} max={Math.min(64, parameters.total_cpu_threads)} disabled={controlsLocked} onChange={(value) => updateParameter("parallel_ligands", value)} />

@@ -30,14 +30,18 @@ Read these contracts before comparing campaigns, interpreting scores, or citing 
 
 ---
 
-## 3. Validation Status, Frozen Reference Cases & Evidence Index
+## 3. Validation Status, External Benchmarks & Evidence Index
 
 | Resource | Purpose |
 | --- | --- |
 | [Public Validation Status](validation/VALIDATION_STATUS.md) · [`JSON`](validation/VALIDATION_STATUS.json) | CI-enforced summary of frozen reference cases (`PIK3CD 6OCO / M5V` completed; `SERPINE1 7AQF / RV2` frozen with documented gaps) and claims not yet established. |
-| [**Complete Validation & Evidence Index**](validation/INDEX.md) | Categorized index of all **128** scientific, benchmark, cross-platform numeric, Linux/GNINA, and offline-packaging validation records under `docs/validation/`. |
+| [**Complete Validation & Evidence Index**](validation/INDEX.md) | Categorized index of all **146** scientific, benchmark, cross-platform numeric, Linux/GNINA, offline-packaging, and `v0.2` `M1–M6.5` / `ADR-031` records under `docs/validation/`. |
+| [Multi-Target Holo Benchmark vs. `DockM8 v1.1.1`](validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md) | Two-axis `ADR-031` comparison across 3 `LIT-PCBA` targets (`ESR_antago`, `TP53`, `PPARG`, `N = 780` locked Confirmation parents) with paired bootstrap CIs and shared `PoseBusters 0.6.5` audits (Record `143`; single-target baseline in [Record `142`](validation/V02_EXTERNAL_BENCHMARK_ESR1_ANT_VS_DOCKM8.md)). |
+| [Induced-Fit `FlexRes` Benchmark vs. `DockM8 v1.1.1`](validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md) | Crystallographic cross-docking (`1PRG <- KRC`, cofactor-free boundary control `1US0 <- TOL`) and full apo `1PRG` two-axis `FlexRes` screening (`N = 180`, coupled `E8 PoseBusters 0.6.5`, Record `144`). |
+| [Holo & `FlexRes` Benchmark vs. `AMDockVS v0.14.1`](validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md) | Two-axis `ADR-031` suite across all 3 holo targets (`N = 780`) and induced-fit `1PRG`/`1US0` (`Uni-Dock 1.2.0 CUDA`, `Vina 1.2.7`, `GNINA 1.3.3 CUDA`), publishing positive, null, split (`GNINA CNN_VS`), chemical-integrity, and throughput trade-offs verbatim (Record `146`). |
+| [Post-Benchmark `v0.2` Offline Installer Attestation](validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md) | Unified `ADR-031` byte-budget proof (`<= 814.63 KiB` delta across `.exe`/`.deb`/`.tar.zst`), Windows sanitized-PATH `10/10` smoke, and Linux `D4` clean-room smoke with 1-click `GNINA 1.3.3 CUDA` (Record `145`; conditional `M7` OpenMM deferral in [Record `141`](validation/V02_M7_OPENMM_OFFLINE_SPIKE.md)). |
 | [Validation Strategy](validation/VALIDATION_STRATEGY.md) | Methodology separating engineering smoke checks, retrospective reference cases, and prospective biological claims. |
-| [Virtual Screening Benchmark Protocol](validation/VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) | Preregistered retrospective LIT-PCBA benchmark design, receptor/ligand freezes, primary Vina metrics, and sensitivity plan. |
+| [Virtual Screening Benchmark Protocol](validation/VIRTUAL_SCREENING_BENCHMARK_PROTOCOL.md) | Preregistered retrospective `LIT-PCBA` benchmark design, receptor/ligand freezes, primary Vina metrics, and sensitivity plan. |
 
 ---
 
@@ -53,7 +57,7 @@ Read these contracts before comparing campaigns, interpreting scores, or citing 
 
 ---
 
-## 5. Architecture & Key Decision Records (`ADR-001`–`ADR-029`)
+## 5. Architecture & Key Decision Records (`ADR-001`–`ADR-033`)
 
 Start with [System Architecture](architecture/ARCHITECTURE.md) for the end-to-end Tauri v2 (`WebView2` on Windows, `WebKitGTK` on Linux) + React/TypeScript + localhost FastAPI/Python 3.12 design, resource arbitration, and isolated toolchains. Full decision records live in [`docs/architecture/ADR/`](architecture/ADR):
 
@@ -63,6 +67,7 @@ Start with [System Architecture](architecture/ARCHITECTURE.md) for the end-to-en
 | **Chemistry & Sampling Rigor** | [ADR-012](architecture/ADR/ADR-012-validation-by-reference-cases.md) (reference-case validation), [ADR-015](architecture/ADR/ADR-015-autodock4-engine.md) (AutoDock4 & AutoGrid4), [ADR-016](architecture/ADR/ADR-016-explicit-screening-microstates.md) (explicit screening microstates), [ADR-017](architecture/ADR/ADR-017-explicit-receptor-protonation-decisions.md) (receptor protonation review), [ADR-018](architecture/ADR/ADR-018-exploratory-search-space-and-vina-sampling.md) & [ADR-019](architecture/ADR/ADR-019-purpose-labelled-vina-sampling-protocols.md) (box volume & Vina sampling), [ADR-025](architecture/ADR/ADR-025-topology-guarded-receptor-repair.md) (`topology_guard_v3` receptor reconstruction). |
 | **Execution Reliability & Windows Packaging** | [ADR-020](architecture/ADR/ADR-020-durable-work-recovery.md) (durable work leases & startup reconciliation), [ADR-021](architecture/ADR/ADR-021-incremental-batch-state.md) (incremental SQLite batch state), [ADR-022](architecture/ADR/ADR-022-global-resource-arbitration.md) (`ResourceArbiter` CPU/GPU/RAM/VRAM/disk), [ADR-024](architecture/ADR/ADR-024-complete-scientific-installer.md) (self-contained offline scientific installer). |
 | **Linux Port, GNINA & Modular Distribution** | [ADR-026](architecture/ADR/ADR-026-linux-port-and-native-acceptance.md) (Linux port & bare-metal workstation gate, superseding [ADR-001](architecture/ADR/ADR-001-windows-only-personal-workbench.md)), [ADR-027](architecture/ADR/ADR-027-linux-gnina.md) (Linux `GNINA 1.3.3` engine, superseding [ADR-008](architecture/ADR/ADR-008-vina-and-gnina.md) deferral on Linux), [ADR-028](architecture/ADR/ADR-028-gnina-cnn-vs-refinement-ensemble.md) (`CNN_VS`, CUDA `refinement`, built-in CNN ensembles & VRAM arbitration), [ADR-029](architecture/ADR/ADR-029-linux-offline-distribution.md) (modular `.deb`/`.tar.zst` Core installer + 1-click offline GNINA CUDA 12.8 pack). |
+| **v0.2 Governance & Milestones (`M0`–`M6.5` verified)** | [ADR-030](architecture/ADR/ADR-030-rank-space-consensus-prioritization.md) (opt-in rank-space `PC-Q`/`PC-ECR`/`PC-L2` consensus, dual-OS verified in [`V02_M5_PCQ_CONSENSUS.md`](validation/V02_M5_PCQ_CONSENSUS.md)), [ADR-031](architecture/ADR/ADR-031-external-benchmark-boundary.md) (external comparison benchmark boundary, preregistered protocol [`V02_EXTERNAL_BENCHMARK_PROTOCOL.md`](validation/V02_EXTERNAL_BENCHMARK_PROTOCOL.md), `Export v5` & CI installer-size budget guard dual-OS verified in [`V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md`](validation/V02_M6_EXPORT_V5_AND_BENCHMARK_HARNESS.md)), [ADR-032](architecture/ADR/ADR-032-explicit-flexibility-and-pose-complex-identity.md) & Addendum `A1`–`A6` (explicit semi-flexible ligand control, bounded receptor side-chain `FlexRes`, `E7`/`E8` coupled `PoseComplexIdentity`, dual-OS verified in [`V02_M1_EXPLICIT_FLEXIBILITY.md`](validation/V02_M1_EXPLICIT_FLEXIBILITY.md)), [ADR-033](architecture/ADR/ADR-033-hit-to-analog-expansion-and-pose-focused-screening.md) (hit-to-analog structural similarity expansion — 100% offline RDKit + opt-in PubChem/ChEMBL behind IP consent gate, immutable `POSE_FOCUSED` site with `FlexRes` containment, in-place `MCS core RMSD`, mandatory `seed_control` & `Export v6`, dual-OS verified in [`V02_M65_HIT_TO_ANALOG_EXPANSION.md`](validation/V02_M65_HIT_TO_ANALOG_EXPANSION.md)). |
 
 ---
 

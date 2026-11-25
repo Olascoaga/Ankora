@@ -111,3 +111,31 @@ It reports Spearman's rank correlation (`rho`) over commonly docked molecules
 and Top-`N` overlap, without computing a merged score. Incompatible inputs fail
 closed, and GNINA campaigns remain in their separate CNN catalog family without
 cross-engine Spearman pooling.
+
+## Explicit receptor side-chain flexibility, `Vinardo`, and local refinement (`v0.2 M1`, `ADR-032`)
+
+- **Engine-native `FlexRes` execution across all four engines:**
+  - **AutoDock Vina `1.2.7`** (`adapters/engines/vina_v02.py`, keeping frozen
+    `v0.1` `vina.py` byte-identical): accepts `--flex <receptor_flex.pdbqt>` and
+    explicit scoring selection (`--scoring vina` default or `--scoring vinardo`),
+    splitting coupled `MODEL`/`BEGIN_RES` blocks cleanly (including Windows NUL
+    line sanitization).
+  - **AutoDock4 `4.2.6` (CPU)** (`flexres`) and **AutoDock-GPU `1.6`**
+    (`--flexres`): enforce `E7` map-union coverage against `PDBQT_RIGID` maps
+    and persist each pose's exact moved side-chain `PDBQT` alongside the ligand.
+  - **Linux GNINA `1.3.3`:** passes `--flex <receptor_flex.pdbqt>` and requires
+    `--out_flex <.pdb>` (refusing `.pdbqt`), pairs moved flex models by 0-based
+    ordinal index, and re-injects moved coordinates into the immutable Meeko
+    `PDBQT_FLEX` template.
+- **Coupled `PoseComplexIdentity` (`E8`):** every `sidechain_flex` pose binds
+  `(receptor_rigid_sha256, pose_flex_sidechains_sha256, ligand_pose_sha256)`.
+  Downstream `ProLIF 2.2.1` contact analysis, `Mol*` inspection (with optional
+  translucent crystal-rotamer overlay), `Methods`, and `Export v4` operate on
+  the exact per-pose moved side-chain coordinates rather than stale static
+  receptor coordinates.
+- **Create-only `--local_only` pose refinement:** supported for individual
+  `Vina 1.2.7` and Linux `GNINA 1.3.3` poses. Refinement always writes a new
+  derivative record without mutating parent pose bytes (Vina records its
+  authoritative `stdout` energy breakdown; GNINA strips `MODEL`/`ENDMDL` and
+  prior parent score `REMARK` headers only on the ephemeral staging copy).
+

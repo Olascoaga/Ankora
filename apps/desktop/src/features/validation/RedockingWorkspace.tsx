@@ -5,6 +5,7 @@ import { ankoraApi } from "../../api/client";
 import type { RedockingRunRecord } from "../../types/api";
 import { formatScientificNumber } from "../../utils/format";
 import { CreateRedockingValidation } from "./CreateRedockingValidation";
+import { ProtocolCalibrationWorkspace } from "./ProtocolCalibrationWorkspace";
 import "./redocking.css";
 
 /**
@@ -22,7 +23,11 @@ import "./redocking.css";
 
 interface RedockingWorkspaceProps {
   modeSwitch?: ReactNode;
+  receptorId?: string | null;
+  bindingSiteId?: string | null;
 }
+
+type ValidationMode = "redocking" | "calibration";
 
 const OUTCOME_LABEL: Record<string, string> = {
   recovered_and_ranked: "Recovered and ranked first",
@@ -30,7 +35,12 @@ const OUTCOME_LABEL: Record<string, string> = {
   not_recovered: "Not recovered",
 };
 
-export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
+export function RedockingWorkspace({
+  modeSwitch,
+  receptorId,
+  bindingSiteId,
+}: RedockingWorkspaceProps) {
+  const [validationMode, setValidationMode] = useState<ValidationMode>("redocking");
   const [runs, setRuns] = useState<RedockingRunRecord[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +48,7 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (validationMode !== "redocking") return;
     let disposed = false;
     setLoading(true); setError(null);
     void ankoraApi.listRedockingValidations()
@@ -56,7 +67,41 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
         }
       }).finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [reload]);
+  }, [reload, validationMode]);
+
+  const validationSwitch = (
+    <>
+      {modeSwitch}
+      <div className="validation-mode-switch" role="group" aria-label="Validation workspace view">
+        <button
+          type="button"
+          className={validationMode === "redocking" ? "selected" : ""}
+          aria-pressed={validationMode === "redocking"}
+          onClick={() => setValidationMode("redocking")}
+        >
+          Redocking
+        </button>
+        <button
+          type="button"
+          className={validationMode === "calibration" ? "selected" : ""}
+          aria-pressed={validationMode === "calibration"}
+          onClick={() => setValidationMode("calibration")}
+        >
+          Protocol calibration
+        </button>
+      </div>
+    </>
+  );
+
+  if (validationMode === "calibration") {
+    return (
+      <ProtocolCalibrationWorkspace
+        receptorId={receptorId}
+        bindingSiteId={bindingSiteId}
+        modeSwitch={validationSwitch}
+      />
+    );
+  }
 
   const selected = runs?.find((run) => run.validation_id === selectedId) ?? null;
 
@@ -69,7 +114,7 @@ export function RedockingWorkspace({ modeSwitch }: RedockingWorkspaceProps) {
             <h2>Redocking against a known pose</h2>
           </div>
           <div className="workspace-actions">
-            {modeSwitch}
+            {validationSwitch}
             <span className="read-only-badge">M7 · Redocking</span>
           </div>
         </div>

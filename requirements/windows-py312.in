@@ -18,6 +18,7 @@ mypy==1.20.2
 numpy==2.5.2
 packaging==26.2
 pdb2pqr==3.7.1
+posebusters==0.6.5
 prolif==2.2.1
 propka==3.5.1
 psutil==7.2.2

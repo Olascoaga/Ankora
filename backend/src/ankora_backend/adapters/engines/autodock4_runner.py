@@ -29,6 +29,7 @@ SUPPORTED_AUTODOCK4_VERSION = "4.2.6"
 DOCKING_PARAMETER_FILENAME = "ligand.dpf"
 DOCKING_LOG_FILENAME = "ligand.dlg"
 LIGAND_FILENAME = "ligand.pdbqt"
+FLEXRES_FILENAME = "receptor_flex.pdbqt"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,21 +133,46 @@ def validate_ligand_against_autodock4_limits(
     atom_count: int,
     torsional_degrees_of_freedom: int,
     map_count: int,
+    flex_atom_count: int = 0,
+    flex_torsions: int = 0,
 ) -> None:
-    if atom_count > installation.max_atoms:
+    total_atoms = atom_count + flex_atom_count
+    if total_atoms > installation.max_atoms:
+        details: dict[str, object] = {
+            "atom_count": total_atoms,
+            "max_atoms": installation.max_atoms,
+        }
+        if flex_atom_count > 0:
+            details["ligand_atom_count"] = atom_count
+            details["flex_atom_count"] = flex_atom_count
         raise _rejected(
             "AUTODOCK4_LIGAND_TOO_LARGE",
-            "This ligand has more atoms than the AutoDock4 build supports.",
-            {"atom_count": atom_count, "max_atoms": installation.max_atoms},
+            (
+                "The combined ligand and flexible side-chain atoms exceed what this "
+                "AutoDock4 build supports."
+                if flex_atom_count > 0
+                else "This ligand has more atoms than the AutoDock4 build supports."
+            ),
+            details,
         )
-    if torsional_degrees_of_freedom > installation.max_torsions:
+    total_torsions = torsional_degrees_of_freedom + flex_torsions
+    if total_torsions > installation.max_torsions:
+        details = {
+            "torsional_degrees_of_freedom": total_torsions,
+            "max_torsions": installation.max_torsions,
+        }
+        if flex_torsions > 0:
+            details["ligand_torsional_degrees_of_freedom"] = torsional_degrees_of_freedom
+            details["flex_torsions"] = flex_torsions
         raise _rejected(
             "AUTODOCK4_LIGAND_TOO_FLEXIBLE",
-            "This ligand has more torsions than the AutoDock4 build supports.",
-            {
-                "torsional_degrees_of_freedom": torsional_degrees_of_freedom,
-                "max_torsions": installation.max_torsions,
-            },
+            (
+                "The combined ligand and flexible side-chain torsions exceed what this "
+                "AutoDock4 build supports."
+                if flex_torsions > 0
+                else "This ligand has more torsions than the AutoDock4 build supports."
+            ),
+            details,
         )
     if map_count > installation.max_maps:
         raise _rejected(

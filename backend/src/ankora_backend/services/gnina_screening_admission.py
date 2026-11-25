@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from hashlib import sha256
 
 from ankora_backend.adapters.engines.gnina import (
     _linux_host,
@@ -22,8 +21,8 @@ from ankora_backend.schemas.gnina_screening import (
     GninaScreeningRequest,
     GninaScreeningSelection,
 )
-from ankora_backend.schemas.receptors import ReceptorOutputStage, ReceptorPreparationStatus
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.gnina_docking import resolve_gnina_receptor_inputs
 from ankora_backend.services.gnina_screening_preflight import prepare_screening_entries
 from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.resource_arbiter import ResourceArbiter, gnina_claim
@@ -52,27 +51,11 @@ def admit_screening(
             request.filter_run_id,
         }
     )
-    receptor = receptors.load_record(request.receptor_id)
-    if receptor.status is not ReceptorPreparationStatus.DOCKING_READY:
-        raise _error("GNINA_RECEPTOR_NOT_READY", "The receptor is not docking ready.")
-    output = next(
-        (item for item in receptor.outputs if item.stage is ReceptorOutputStage.PDBQT), None
-    )
-    if output is None:
-        raise _error("GNINA_RECEPTOR_PDBQT_MISSING", "The receptor has no PDBQT output.")
+    receptor = resolve_gnina_receptor_inputs(receptors, request.receptor_id)
+    output = receptor.rigid
     site = sites.load_record(request.binding_site_id)
     if site.receptor_id != request.receptor_id or site.stale:
         raise _error("GNINA_BINDING_SITE_INVALID", "The binding site is stale or mismatched.")
-    try:
-        receptor_bytes = receptors.content_path(
-            request.receptor_id, output.artifact_id
-        ).read_bytes()
-    except OSError as error:
-        raise _error(
-            "GNINA_INPUT_UNREADABLE", "The prepared receptor could not be read."
-        ) from error
-    if sha256(receptor_bytes).hexdigest() != output.sha256:
-        raise _error("GNINA_INPUT_CHANGED", "The prepared receptor no longer matches its record.")
     now = datetime.now(UTC)
     preflight = prepare_screening_entries(
         store=ligands, library_id=request.library_id, filter_run_id=request.filter_run_id, now=now
@@ -88,7 +71,7 @@ def admit_screening(
     entries = list(preflight.entries)
     failures = sum(entry.status is DockingJobStatus.FAILED for entry in entries)
     prepared_count = len(entries) - failures
-    warnings: list[StructuredWarning] = []
+    warnings = receptor.warnings.copy()
     if request.parameters.cnn_scoring == "refinement":
         warnings.append(
             StructuredWarning(
@@ -128,6 +111,10 @@ def admit_screening(
         ),
         receptor_output_artifact_id=output.artifact_id,
         receptor_sha256=output.sha256,
+        receptor_flex_mode=receptor.mode,
+        receptor_flex_output_artifact_id=receptor.flex.artifact_id if receptor.flex else None,
+        receptor_flex_sha256=receptor.flex.sha256 if receptor.flex else None,
+        flex_residues=receptor.flex_residues,
         box=site.box,
         selected_count=len(entries),
         completed_count=failures,

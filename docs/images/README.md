@@ -80,3 +80,21 @@ contacts or scientific values were recoloured or rewritten. The original
 tutorial's 810 files were hash-checked unchanged before and after capture.
 The [refresh acceptance record](../validation/USER_GUIDE_REFRESH_2026-10-21.md)
 lists the figure hashes, input identities, PDF inspection and scope limits.
+
+## `v0.2` external benchmark summary plate — 25 November 2026
+
+- `readme-benchmarks-v02.svg`: self-contained 4-panel vector summary chart
+  (`1200 × 784`, zero scripts or external references, SHA-256
+  `9b8c56046ca3bed9631eba28f358f4d30a9508f366146b74ad69ad578f382462`) plotted
+  directly from the recorded `ADR-031` two-axis benchmark metrics and package
+  attestations in:
+  - [`V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md`](../validation/V02_EXTERNAL_BENCHMARK_MULTITARGET_VS_DOCKM8.md) (Record `143`)
+  - [`V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md`](../validation/V02_EXTERNAL_BENCHMARK_INDUCED_FIT_FLEXRES_VS_DOCKM8.md) (Record `144`)
+  - [`V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md`](../validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md) (Record `145`)
+  - [`V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md`](../validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md) (Record `146`)
+- The chart displays positive, null, split (`AMDockVS GNINA CNN_VS` leading
+  Axis B holo macro `BEDROC_20` at `0.3256` vs. `0.2827` with `0/3` targets
+  statistically `external_preferred`), chemical-governance, and raw rigid
+  throughput trade-off results side by side. It is a retrospective benchmark
+  summary of Ankora `v0.2` and does not establish prospective affinity
+  prediction, biological activity, or cross-target generality.

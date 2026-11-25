@@ -13,6 +13,8 @@ import type {
   ReceptorPreparationRecord,
   ToolsResponse,
 } from "../../types/api";
+import { findDockingReceptorPdbqt } from "../receptor/flexResidues";
+import { ActiveFlexResBanner } from "./ActiveFlexResBanner";
 import { MolecularViewer } from "../../viewer/MolecularViewer";
 import { formatScientificNumber } from "../../utils/format";
 import { CampaignExportPanel } from "./CampaignExportPanel";
@@ -85,7 +87,7 @@ export function AutoDock4LibraryWorkspace({
   const displayOutput = receptor.outputs.find(
     (item) => item.artifact_id === receptor.display_output_artifact_id,
   );
-  const receptorPdbqt = receptor.outputs.find((item) => item.stage === "pdbqt");
+  const receptorPdbqt = findDockingReceptorPdbqt(receptor.outputs);
   const mapsBusy = Boolean(mapJob && !TERMINAL.has(mapJob.status));
   const batchBusy = Boolean(batch && !TERMINAL.has(batch.status));
   // Either freshly generated, or the one the restored campaign already used:
@@ -408,6 +410,7 @@ export function AutoDock4LibraryWorkspace({
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
           <InputState ready label="Applied selection" detail={`${libraryInput.selected_count} molecules · ${libraryInput.prepared_count} prepared`} />
+          <ActiveFlexResBanner receptor={receptor} engineFamily="autodock4" />
         </section>
         <section className="receptor-section">
           <div className="filter-heading"><span>2 · Affinity maps</span><small>{tools?.autogrid4.available ? tools.autogrid4.version : "Unavailable"}</small></div>
