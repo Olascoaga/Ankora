@@ -155,6 +155,17 @@ implemented and dual-OS verified across Windows 11 x64 and Linux x86\_64
   engines fail (`DockM8 5.6991 Å` / `7.8072 Å`), alongside an honest cofactor-free `1US0 <- TOL`
   boundary control and apo `1PRG` two-axis `FlexRes` screening (`174/174` flex geometry PASS,
   `GNINA CNN_VS` lifted `4.41×` over rigid `1PRG`, `PC-Q Core` `ankora_preferred` on Axis A).
+  A companion two-axis comparison vs. pinned **`AMDockVS v0.14.1`** (`827e8057`, `Uni-Dock 1.2.0 CUDA`,
+  `Vina 1.2.7`, `GNINA 1.3.3 CUDA`; [`V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md`](docs/validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md))
+  records `Ankora PC-Q Neural` outperforming every `AMDockVS` default engine on `3/3` holo targets
+  across both axes (`1.30×–1.58×` macro `BEDROC_20`), statistically `ankora_preferred` on unbiased
+  `TP53` Axis A vs. `AMDockVS GNINA CNN_VS` (`0.2754` vs. `0.1270`, `2.17×`) while transparently
+  reporting `AMDockVS GNINA CNN_VS` leading Axis B holo macro (`0.3256` vs. `0.2827`, `0/3`
+  significant) and `AMDockVS`'s faster batch prep/`Uni-Dock` throughput, alongside Ankora's
+  advantage on apo `1PRG FlexRes` (`2.97×–3.57×` macro; `ankora_preferred` vs. `Uni-Dock` Axis B
+  and `Vina` Axis A), metal-aware `TP53` protonation, `GNINA` SDF valence fidelity (`0%` vs.
+  `22.6%–31.7%` export failures), and offline footprint (`272.7 MiB` `.deb` + optional GNINA pack
+  vs. `11.1 GB` Conda + `ms_env`).
   Discrete receptor ensemble docking remains deferred to `v0.3+`.
 
 ## A workbench you can inspect

@@ -2,6 +2,36 @@
 
 All notable project changes are recorded here.
 
+## Ankora `v0.2` External Benchmark vs. Pinned `AMDockVS v0.14.1` (`ESR_antago`, `TP53`, `PPARG`, `1PRG`, `1US0`, `codex/v0.2-dev`) - 2026-11-25
+
+- **Two-axis holo & induced-fit external benchmark record (`docs/validation/V02_EXTERNAL_BENCHMARK_VS_AMDOCKVS.md`, `146` records):**
+  evaluated verified Ankora `v0.2 @ 9ec95a1` `Export v5` bundles against isolated pinned **`AMDockVS v0.14.1`**
+  (`827e8057`, `ms_adtools 0.2.0`, `pdb2pqr 3.7.1`, `Vina 1.2.7`, `Uni-Dock 1.2.0 CUDA`, `GNINA 1.3.3 CUDA`;
+  `11.1 GB` Conda + `ms_env` on-disk footprint, `0` standalone installers) on the identical sealed `LIT-PCBA`
+  Bemis–Murcko splits (`N = 780` holo Confirmation + `N = 180` apo `1PRG` + cross-docking `1PRG <- KRC`,
+  `1US0 <- TOL`) with shared `PoseBusters 0.6.5` (including fair docked-water HOH matching and dual strict vs.
+  `N+1`-repaired `GNINA` reporting):
+  - **Holo 3-target suite (`N = 780`):** `Ankora PC-Q Neural` outperformed every `AMDockVS` default engine on
+    `3/3` targets on both axes (`1.43×–1.58×` Axis A, `1.30×–1.42×` Axis B vs. `GNINA rank-1 minimizedAffinity`,
+    `Uni-Dock 1.2.0 CUDA`, and `Vina 1.2.7`; `ankora_preferred` on `PPARG` across all three on Axis A and vs.
+    `Uni-Dock` raw & `PB` / `Vina` `PB` on Axis B). Against `AMDockVS`'s strongest extracted neural metric
+    (`GNINA CNN_VS`), Ankora led Axis A macro (`0.3082` vs. `0.2762`, `1.12×`, **`ankora_preferred`** on unbiased
+    `TP53`: `0.2754` vs. `0.1270`, `+0.1484 [+0.0072, +0.3066]`), while `AMDockVS GNINA CNN_VS` posted higher
+    Axis B holo macro (`0.3256` vs. `0.2827`, `0.87×`; `0/3` targets significant, Ankora higher on macro `ROC-AUC`
+    `0.6587` vs. `0.6460` and unbiased `TP53`). Non-neural `PC-Q Core` tied `AMDockVS Vina`/`Uni-Dock` on
+    `BEDROC_20` (`1.00×–1.02×`) with higher Axis B `ROC-AUC` (`0.6647` vs. `0.6193`/`0.6232`).
+  - **Induced-fit `FlexRes` (`1PRG`, `1US0`):** `Uni-Dock 1.2.0` failed on `> 1` flex torsion (`Uni-Dock#159`),
+    `AMDockVS`'s `gnina.py` lacks `--flex`/`--out_flex`, and its OpenCL `adgpu` failed on WSL2 (`clGetPlatformIDs -1001`).
+    `AMDockVS Vina --flex` recovered `1PRG <- KRC` at `0.7818 Å` (vs. Ankora `Vina` `0.6851 Å`, `GNINA` `1.0833 Å` `5/5`
+    valid, `AD-GPU` `2.6325 Å` `5/5` valid). On apo `1PRG` screening (`N = 180`), Ankora led every `AMDockVS`
+    configuration on both axes (`PC-Q Core` and `PC-ECR` **`ankora_preferred`** over `Vina` Axis A; `M1 FlexRes PC-Q Neural`
+    **`ankora_preferred`** over `Uni-Dock` Axis B; `PC-ECR` `2.97×` `AMDockVS Vina --flex` and `3.57×` `AMDockVS GNINA CNN_VS`
+    rigid; coupled `PB` `92.53%` vs. `87.78%`).
+  - **Chemical governance & throughput trade-off:** `AMDockVS` excelled in batch prep (`~7–8 s` / `300` SMILES)
+    and rigid `Uni-Dock` GPU speed (`27–42 s`), while exhibiting metal-unaware `TP53` `ZN 313` protonation (`HD1`/`HG`
+    clashes with `warnings: None`), `22.6%–31.7%` neutral 4-bonded `N` export failures on `GNINA` SDFs, and
+    `retained_structural_waters` mismatch on `TP53`/`PPARG`.
+
 ## Ankora `v0.2` Post-Benchmark Offline Installer Rebuild (`86d89ed`), `ADR-031` Attestation & Clean-Room `D4` Smoke (`codex/v0.2-dev`) - 2026-11-24
 
 - **Refreshed three-artifact offline installer rebuild & `ADR-031` byte attestation (`docs/validation/V02_OFFLINE_INSTALLER_ATTESTATION_POST_BENCHMARK.md`, `145` records):**

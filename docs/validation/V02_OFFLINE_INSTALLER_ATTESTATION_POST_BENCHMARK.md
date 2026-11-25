@@ -28,7 +28,7 @@ Corresponding source companions & preserved baseline integrity:
 ## 2. Packaged Runtime Smoke Evidence (`86d89ed`)
 
 ### 2.1 Windows 11 x64 Packaged Frozen Backend (`ankora-backend.exe`)
-- Built cleanly with PyInstaller `6.22.2` (`ankora_backend.spec`) and launched directly with sanitized `PATH=C:\Windows\System32;C:\Windows` (zero Python or Conda on `PATH`), `ANKORA_APP_MODE=packaged`:
+- Built cleanly with PyInstaller `6.22.2` (`ankora_backend.spec`) and launched directly with sanitized system-only `PATH` (`%SystemRoot%\System32;%SystemRoot%`, zero Python or Conda on `PATH`), `ANKORA_APP_MODE=packaged`:
   - `app_mode = "packaged"`, `python_version = "3.12.13"`.
   - **`10/10` scientific tools reported `available = true`** (`autodock4`, `autodock_gpu`, `autogrid4`, `meeko`, `meeko_ligand`, `p2rank`, `pdb2pqr`, `pdbfixer`, `propka`, `vina`).
   - Live `v0.2` REST routes (`/api/v1/calibrations`, `/api/v1/consensus/runs`, `/api/v1/analog-expansion/catalogs`) responded **`200 OK`**.
