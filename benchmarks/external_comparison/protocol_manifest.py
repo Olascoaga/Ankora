@@ -194,6 +194,10 @@ class ComparisonProtocolManifest:
         _require_non_blank(self.preregistered_at, "preregistered_at")
         if self.schema_version != 1:
             raise ProtocolManifestError("schema_version must be 1")
+        if not isinstance(self.ankora_higher_is_better, bool):
+            raise ProtocolManifestError("ankora_higher_is_better must be a boolean")
+        if not isinstance(self.external_higher_is_better, bool):
+            raise ProtocolManifestError("external_higher_is_better must be a boolean")
         if self.primary_metric != "bedroc_20":
             raise ProtocolManifestError(
                 "ADR-031 §3 fixes primary_metric == 'bedroc_20' (no post-hoc substitution)"
@@ -264,9 +268,13 @@ class ComparisonProtocolManifest:
             ),
             split=SplitMembershipSpec.from_dict(dict(data.get("split") or {})),
             ankora_score_column=str(data.get("ankora_score_column", "pcq_score")),
-            ankora_higher_is_better=bool(data.get("ankora_higher_is_better", True)),
+            ankora_higher_is_better=_require_bool(
+                data, "ankora_higher_is_better", True
+            ),
             external_score_column=str(data.get("external_score_column", "score")),
-            external_higher_is_better=bool(data.get("external_higher_is_better", True)),
+            external_higher_is_better=_require_bool(
+                data, "external_higher_is_better", True
+            ),
             primary_metric=str(data.get("primary_metric", "bedroc_20")),
             bedroc_alpha=float(data.get("bedroc_alpha", 20.0)),
             top_fraction=float(data.get("top_fraction", 0.01)),
@@ -276,3 +284,15 @@ class ComparisonProtocolManifest:
             axes_declared=tuple(data.get("axes_declared") or ()),
             protocol_sha256=str(data.get("protocol_sha256", "")),
         )
+
+
+def _require_bool(data: dict[str, Any], key: str, default: bool) -> bool:
+    """Enforce strict JSON booleans so string 'false' can never coerce to True (D4-014)."""
+    if key not in data:
+        return default
+    value = data[key]
+    if not isinstance(value, bool):
+        raise ProtocolManifestError(
+            f"{key} must be a JSON boolean (true/false), got {type(value).__name__}: {value!r}"
+        )
+    return value

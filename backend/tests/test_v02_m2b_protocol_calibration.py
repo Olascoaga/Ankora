@@ -41,7 +41,10 @@ from ankora_backend.schemas.receptors import (
     ReceptorFlexSpec,
     ResidueLocator,
 )
-from ankora_backend.schemas.screening_benchmark import ScoreDirection
+from ankora_backend.schemas.screening_benchmark import (
+    ScoreDirection,
+    ScreeningBenchmarkObservation,
+)
 from ankora_backend.schemas.v02_contracts import (
     ObservationStatus,
     PoseComplexIdentity,
@@ -57,6 +60,7 @@ from ankora_backend.services.protocol_calibration import (
     audit_physicochemical_bias,
     extract_compound_properties,
     observations_for_split,
+    paired_parent_bootstrap_delta,
 )
 from ankora_backend.services.screening_benchmark import _quantile
 
@@ -1167,3 +1171,104 @@ def test_parsimony_rank_key_orders_simpler_protocols_first() -> None:
     assert rigid.is_sidechain_flex is False
     assert flex_two.is_sidechain_flex is True
     assert flex_two.flex_residue_count == 2
+
+
+def test_d2_012_zero_within_class_variance_with_distinct_means_flags_bias() -> None:
+    """Perfect linear property separation with zero pooled SD must still flag bias (D2-012)."""
+    from math import sqrt
+
+    from ankora_backend.schemas.calibration import CompoundPropertyProfile
+
+    # 2 actives (formal_charge=+1) vs 2 inactives (formal_charge=0): KS p-value is 1/3 >= 0.05,
+    # so only finite combined-SD separation guarantees flagging complete linear separability.
+    profiles = [
+        CompoundPropertyProfile(
+            parent_id=f"ACT-{idx}",
+            canonical_smiles="c1ccccc1",
+            is_active=True,
+            murcko_scaffold="c1ccccc1",
+            is_acyclic=False,
+            molecular_weight=200.0,
+            clogp=2.0,
+            hbd=1,
+            hba=2,
+            rotatable_bonds=2,
+            formal_charge=1,
+        )
+        for idx in range(2)
+    ] + [
+        CompoundPropertyProfile(
+            parent_id=f"DEC-{idx}",
+            canonical_smiles="c1ccccc1",
+            is_active=False,
+            murcko_scaffold="c1ccccc1",
+            is_acyclic=False,
+            molecular_weight=200.0,
+            clogp=2.0,
+            hbd=1,
+            hba=2,
+            rotatable_bonds=2,
+            formal_charge=0,
+        )
+        for idx in range(2)
+    ]
+    audit = audit_physicochemical_bias(profiles)
+    by_name = {metric.property_name: metric for metric in audit.metrics}
+
+    charge = by_name["formal_charge"]
+    assert charge.standardized_mean_difference == pytest.approx(sqrt(3.0), abs=1e-9)
+    assert charge.flagged_bias is True
+    assert "formal_charge" in audit.flagged_properties
+    assert audit.any_bias_flagged is True
+
+    # Identical constant properties across both classes remain exact 0.0 and unflagged.
+    mw = by_name["molecular_weight"]
+    assert mw.standardized_mean_difference == 0.0
+    assert mw.flagged_bias is False
+
+
+def test_d2_021_paired_bootstrap_rejects_single_class_observations_cleanly() -> None:
+    """Single-class paired bootstrap inputs must raise AnkoraDomainError instead of ZeroDivision."""
+    only_actives = [
+        ScreeningBenchmarkObservation(
+            parent_id=f"ACT-{idx}",
+            state_id=f"ST-{idx}",
+            is_active=True,
+            score=-8.0 - 0.1 * idx,
+        )
+        for idx in range(4)
+    ]
+    with pytest.raises(AnkoraDomainError) as exc_act:
+        paired_parent_bootstrap_delta(
+            candidate_protocol_id="cand",
+            reference_protocol_id="ref",
+            split_name="calibration",
+            candidate_observations=only_actives,
+            reference_observations=only_actives,
+            candidate_direction=ScoreDirection.LOWER_IS_BETTER,
+            reference_direction=ScoreDirection.LOWER_IS_BETTER,
+            policy=TEST_POLICY,
+        )
+    assert exc_act.value.code == "CALIBRATION_PAIRED_CLASS_MISSING"
+
+    only_inactives = [
+        ScreeningBenchmarkObservation(
+            parent_id=f"DEC-{idx}",
+            state_id=f"ST-{idx}",
+            is_active=False,
+            score=-6.0 - 0.1 * idx,
+        )
+        for idx in range(4)
+    ]
+    with pytest.raises(AnkoraDomainError) as exc_inact:
+        paired_parent_bootstrap_delta(
+            candidate_protocol_id="cand",
+            reference_protocol_id="ref",
+            split_name="calibration",
+            candidate_observations=only_inactives,
+            reference_observations=only_inactives,
+            candidate_direction=ScoreDirection.LOWER_IS_BETTER,
+            reference_direction=ScoreDirection.LOWER_IS_BETTER,
+            policy=TEST_POLICY,
+        )
+    assert exc_inact.value.code == "CALIBRATION_PAIRED_CLASS_MISSING"
