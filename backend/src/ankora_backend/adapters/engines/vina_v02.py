@@ -7,6 +7,7 @@ without weakening historical benchmark manifests.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 from dataclasses import dataclass
@@ -405,13 +406,29 @@ def parse_vina_stdout_energy(stdout: str) -> ParsedVinaEnergyBreakdown:
     torsional_match = _STDOUT_TORSIONAL_PATTERN.search(stdout)
     unbound_match = _STDOUT_UNBOUND_PATTERN.search(stdout)
     return ParsedVinaEnergyBreakdown(
-        estimated_free_energy_kcal_mol=float(binding_match.group(1)),
-        intermolecular_kcal_mol=float(inter_match.group(1)) if inter_match else None,
-        total_internal_kcal_mol=float(internal_match.group(1)) if internal_match else None,
-        torsional_free_energy_kcal_mol=(
-            float(torsional_match.group(1)) if torsional_match else None
+        estimated_free_energy_kcal_mol=_require_finite_float(
+            binding_match.group(1), "Estimated Free Energy of Binding"
         ),
-        unbound_system_energy_kcal_mol=float(unbound_match.group(1)) if unbound_match else None,
+        intermolecular_kcal_mol=(
+            _require_finite_float(inter_match.group(1), "Final Intermolecular Energy")
+            if inter_match
+            else None
+        ),
+        total_internal_kcal_mol=(
+            _require_finite_float(internal_match.group(1), "Final Total Internal Energy")
+            if internal_match
+            else None
+        ),
+        torsional_free_energy_kcal_mol=(
+            _require_finite_float(torsional_match.group(1), "Torsional Free Energy")
+            if torsional_match
+            else None
+        ),
+        unbound_system_energy_kcal_mol=(
+            _require_finite_float(unbound_match.group(1), "Unbound System's Energy")
+            if unbound_match
+            else None
+        ),
     )
 
 
@@ -489,6 +506,9 @@ def _parse_pose_block(
     match = _RESULT_PATTERN.match(result_lines[0])
     if match is None:
         raise _invalid_output(f"mode {mode} has a malformed VINA RESULT record")
+    affinity = _require_finite_float(match.group(1), f"mode {mode} affinity")
+    rmsd_lb = _require_finite_float(match.group(2), f"mode {mode} rmsd_lb")
+    rmsd_ub = _require_finite_float(match.group(3), f"mode {mode} rmsd_ub")
     raw_block = "".join(lines)
     has_flex = expect_flex_sidechains or any(
         line.lstrip().startswith("BEGIN_RES") for line in lines
@@ -496,9 +516,9 @@ def _parse_pose_block(
     if not has_flex:
         return ParsedVinaPose(
             mode=mode,
-            affinity_kcal_mol=float(match.group(1)),
-            rmsd_lower_bound_angstrom=float(match.group(2)),
-            rmsd_upper_bound_angstrom=float(match.group(3)),
+            affinity_kcal_mol=affinity,
+            rmsd_lower_bound_angstrom=rmsd_lb,
+            rmsd_upper_bound_angstrom=rmsd_ub,
             content=raw_block.encode("utf-8"),
         )
     try:
@@ -509,14 +529,21 @@ def _parse_pose_block(
         raise _invalid_output(f"mode {mode} is missing expected BEGIN_RES flexible side chains")
     return ParsedVinaPose(
         mode=mode,
-        affinity_kcal_mol=float(match.group(1)),
-        rmsd_lower_bound_angstrom=float(match.group(2)),
-        rmsd_upper_bound_angstrom=float(match.group(3)),
+        affinity_kcal_mol=affinity,
+        rmsd_lower_bound_angstrom=rmsd_lb,
+        rmsd_upper_bound_angstrom=rmsd_ub,
         content=split.ligand_pdbqt,
         flex_sidechains_content=split.flex_sidechains_pdbqt,
         flex_residue_markers=split.flex_residue_markers,
         stripped_nul_line_count=split.stripped_nul_line_count,
     )
+
+
+def _require_finite_float(raw: str, label: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise _invalid_output(f"{label} is not finite: {raw!r}")
+    return value
 
 
 def _invalid_output(reason: str) -> AnkoraDomainError:

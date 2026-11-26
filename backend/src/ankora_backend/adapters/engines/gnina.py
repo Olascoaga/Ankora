@@ -840,8 +840,13 @@ def require_matching_topology(pose: GninaPdbqtPose, conformer_sdf: bytes) -> Non
             position = coordinates.GetAtomPosition(atom)
             if not all(math.isfinite(value) for value in (position.x, position.y, position.z)):
                 raise ValueError("The reconstructed ligand has non-finite coordinates.")
-        ligand_smiles = Chem.MolToSmiles(Chem.RemoveHs(ligands[0]), isomericSmiles=True)
-        expected_smiles = Chem.MolToSmiles(Chem.RemoveHs(template), isomericSmiles=True)
+        ligand_check = Chem.Mol(ligands[0])
+        template_check = Chem.Mol(template)
+        Chem.AssignStereochemistryFrom3D(ligand_check)
+        if template_check.GetNumConformers():
+            Chem.AssignStereochemistryFrom3D(template_check)
+        ligand_smiles = Chem.MolToSmiles(Chem.RemoveHs(ligand_check), isomericSmiles=True)
+        expected_smiles = Chem.MolToSmiles(Chem.RemoveHs(template_check), isomericSmiles=True)
     except Exception as error:  # noqa: BLE001 - normalize third-party parsing failures
         raise _error(
             "GNINA_POSE_TOPOLOGY_UNVERIFIED",

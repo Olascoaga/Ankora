@@ -182,7 +182,7 @@ def test_end_to_end_offline_analog_expansion_pose_focused_site_dag_and_export_v6
     """Full ADR-033 loop: catalog -> search -> selection -> library -> POSE_FOCUSED -> Export v6."""
     data_dir = tmp_path / "ankora_data"
     monkeypatch.setenv("ANKORA_DATA_DIR", str(data_dir))
-    seeded = _seed_project_with_saved_pose(data_dir, with_flex_res=False)
+    seeded = _seed_project_with_saved_pose(data_dir, with_flex_res=False, bonded_pose=True)
     app = create_app()
 
     with TestClient(app) as client:

@@ -208,21 +208,38 @@ def _proposal_from_row(
             },
         )
     selected_state = override or default_state
-    output_state = output_state_map.get(identity)
-    if residue.residue_name == "HIS" and output_state is None:
+    output_state = None if is_terminal else output_state_map.get(identity)
+    if not is_terminal and residue.residue_name == "HIS" and output_state is None:
         raise _analysis_error(
             "PDB2PQR did not report the written histidine tautomer.",
             {"residue": residue.model_dump(mode="json")},
         )
-    if override in {"HID", "HIE", "HIP"} and output_state != override:
-        raise _analysis_error(
-            "The written histidine tautomer does not match the explicit override.",
-            {
-                "residue": residue.model_dump(mode="json"),
-                "requested_state": override,
-                "output_state": output_state,
-            },
-        )
+    if output_state is not None:
+        if selected_state == "HIS_NEUTRAL_AUTO":
+            mismatch = output_state not in {"HID", "HIE"}
+        else:
+            mismatch = output_state != selected_state
+        if mismatch:
+            message = (
+                "The written histidine tautomer does not match the explicit override."
+                if override is not None and residue.residue_name == "HIS"
+                else (
+                    "The written protonation state does not match the explicit override."
+                    if override is not None
+                    else (
+                        "The written protonation state does not match the PROPKA "
+                        "titration decision."
+                    )
+                )
+            )
+            raise _analysis_error(
+                message,
+                {
+                    "residue": residue.model_dump(mode="json"),
+                    "requested_state": selected_state,
+                    "output_state": output_state,
+                },
+            )
     positions = _residue_positions(model, residue)
     reference_distance = _minimum_distance(positions, reference_positions)
     nearby_metals: list[ProtonationMetalContact] = []

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
@@ -209,6 +210,13 @@ class MedoidConsensusBreakdown(BaseModel):
     inter_family_disagreement: float = Field(ge=0.0, le=100.0, allow_inf_nan=False)
     pc_ecr_score: float = Field(gt=0.0, allow_inf_nan=False)
 
+    @model_validator(mode="after")
+    def validate_finite_native_scores(self) -> Self:
+        for fn, val in self.native_scores.items():
+            if not math.isfinite(float(val)):
+                raise ValueError(f"native_scores[{fn.value}] must be finite")
+        return self
+
 
 class PcL2ModelArtifact(BaseModel):
     """Strictly convex non-negative L2 logistic model gated on locked Confirmation (ADR-030 §3)."""
@@ -234,6 +242,7 @@ class PcL2ModelArtifact(BaseModel):
     confirmation_deltas_vs_single_engines: dict[str, PairedBootstrapDelta] = Field(
         default_factory=dict
     )
+    confirmation_delta_vs_pcq: PairedBootstrapDelta | None = None
 
     @model_validator(mode="after")
     def validate_non_negative_weights(self) -> Self:
@@ -292,6 +301,13 @@ class ConsensusPoseScoreInput(BaseModel):
     search_engines_present: tuple[SourceEngine, ...] = Field(min_length=1)
     scores_by_function: dict[ScoringFunctionId, float] = Field(default_factory=dict)
     missing_or_failed_codes: tuple[NonBlankStr, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_finite_scores(self) -> Self:
+        for fn, val in self.scores_by_function.items():
+            if not math.isfinite(float(val)):
+                raise ValueError(f"scores_by_function[{fn.value}] must be finite")
+        return self
 
 
 class ConsensusParentInput(BaseModel):

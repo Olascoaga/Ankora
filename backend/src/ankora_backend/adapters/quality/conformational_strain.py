@@ -132,7 +132,15 @@ def evaluate_dual_mmff94s_strain(
                 _RESTRAINT_FORCE_CONSTANT_KCAL_MOL_A2,
             )
     restrained_ff.Initialize()
-    restrained_ff.Minimize(maxIts=_MAX_MINIMIZATION_ITERATIONS)
+    minimize_status = int(restrained_ff.Minimize(maxIts=_MAX_MINIMIZATION_ITERATIONS))
+    if minimize_status < 0:
+        return _not_evaluable(
+            rdkit_ver=rdkit_ver,
+            threshold=strain_flag_threshold_kcal_mol,
+            reason="Restrained MMFF94s pose minimization encountered a force-field error.",
+            warning_code=WarningCode.POSE_QUALITY_NOT_EVALUABLE,
+            details={"parent_state_id": parent_state_id, "minimize_status": minimize_status},
+        )
 
     # Measure pure unconstrained MMFF94s energy of the locally relaxed pose geometry.
     pure_pose_ff = AllChem.MMFFGetMoleculeForceField(work_pose, mmff_props)
@@ -157,7 +165,12 @@ def evaluate_dual_mmff94s_strain(
         )
 
     # 2. Deterministic free-conformer reference ensemble on identical parent state & H policy.
+    # Perceive 3D tetrahedral & E/Z alkene stereochemistry before clearing conformers so
+    # ETKDGv3 cannot silently isomerize untagged 3D inputs (D2-004).
     free_mol = Chem.Mol(work_pose)
+    Chem.AssignStereochemistryFrom3D(free_mol)
+    Chem.DetectBondStereochemistry(free_mol)
+    Chem.AssignStereochemistry(free_mol, cleanIt=True, force=True)
     free_mol.RemoveAllConformers()
     embed_params = AllChem.ETKDGv3()
     embed_params.randomSeed = int(conformer_seed)
@@ -187,26 +200,26 @@ def evaluate_dual_mmff94s_strain(
         mmffVariant="MMFF94s",
     )
     converged_energies: list[float] = []
-    all_finite_energies: list[float] = []
     for status_code, energy in opt_results:
         numeric_energy = float(energy)
         if not math.isfinite(numeric_energy):
             continue
-        all_finite_energies.append(numeric_energy)
         if int(status_code) == 0:
             converged_energies.append(numeric_energy)
 
-    reference_energies = converged_energies if converged_energies else all_finite_energies
-    if not reference_energies:
+    if not converged_energies:
         return _not_evaluable(
             rdkit_ver=rdkit_ver,
             threshold=strain_flag_threshold_kcal_mol,
-            reason="MMFF94s optimization produced no finite free-conformer energies.",
+            reason=(
+                "No free ETKDGv3/MMFF94s reference conformer converged within the "
+                "iteration budget; refusing to report an unconverged strain PASS."
+            ),
             warning_code=WarningCode.POSE_QUALITY_NOT_EVALUABLE,
             details={"parent_state_id": parent_state_id, "conformer_budget": conformer_budget},
         )
 
-    lowest_free = min(reference_energies)
+    lowest_free = min(converged_energies)
     delta_e = pose_energy - lowest_free
     diagnostic = ConformationalStrainDiagnostic(
         force_field="MMFF94s",
@@ -242,7 +255,7 @@ def evaluate_dual_mmff94s_strain(
 
     note = (
         f"Restrained MMFF94s pose ({pose_energy:.2f} kcal/mol, heavy-atom drift "
-        f"{relax_rmsd:.3f} A) minus lowest of {len(reference_energies)}/{conformer_budget} "
+        f"{relax_rmsd:.3f} A) minus lowest of {len(converged_energies)}/{conformer_budget} "
         f"free ETKDGv3/MMFF94s conformers ({lowest_free:.2f} kcal/mol). Diagnostic flag only; "
         "finite conformer budget does not claim a global minimum."
     )

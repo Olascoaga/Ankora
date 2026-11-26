@@ -609,6 +609,12 @@ def _parse_pdb_atoms(text: str) -> list[_ParsedAtomRecord]:
                 "Unparseable residue index or XYZ coordinate in structure document.",
                 details={"line_number": line_index + 1},
             ) from error
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+            raise _error(
+                "FLEX_POSE_PDBQT_INVALID",
+                "Non-finite XYZ coordinate in structure document.",
+                details={"line_number": line_index + 1},
+            )
         element = _extract_element(raw_line, atom_name)
         atoms.append(
             _ParsedAtomRecord(

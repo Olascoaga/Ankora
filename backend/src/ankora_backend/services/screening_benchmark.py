@@ -128,12 +128,17 @@ def bootstrap_benchmark(
     replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
     seed: int = DEFAULT_BOOTSTRAP_SEED,
     confidence_level: float = DEFAULT_CONFIDENCE_LEVEL,
+    preserve_input_order: bool = False,
 ) -> ScreeningBenchmarkEstimate:
     """Estimate per-target and macro uncertainty with fixed-class resampling.
 
     Each replicate samples active and inactive parent units independently with
     replacement inside every target.  The same replicate index is then macro-
     averaged across targets, retaining target equality and class prevalence.
+    By default (`preserve_input_order=False`), observations within each target
+    are canonicalized by `parent_id` prior to resampling so intervals are
+    invariant to input row permutations; `preserve_input_order=True` is reserved
+    for reproducing frozen v0.1 historical benchmark manifests verbatim.
     """
 
     if replicates < 1:
@@ -152,13 +157,19 @@ def bootstrap_benchmark(
         for target_id, observations in target_observations
     ]
     point_report = summarize_targets(points)
-    rows_by_target = {
-        target_id: (
-            [row for row in observations if row.is_active],
-            [row for row in observations if not row.is_active],
+    rows_by_target: dict[
+        str, tuple[list[ScreeningBenchmarkObservation], list[ScreeningBenchmarkObservation]]
+    ] = {}
+    for target_id, observations in target_observations:
+        ordered = (
+            list(observations)
+            if preserve_input_order
+            else sorted(observations, key=lambda row: row.parent_id)
         )
-        for target_id, observations in target_observations
-    }
+        rows_by_target[target_id] = (
+            [row for row in ordered if row.is_active],
+            [row for row in ordered if not row.is_active],
+        )
     samples: dict[str, dict[str, list[float]]] = {
         target.target_id: _empty_samples() for target in points
     }
@@ -389,13 +400,21 @@ def _bedroc(
             weighted_active_sum += (group_actives / group_size) * positional_sum
         rank += group_size
 
-    normalization = (
-        (-expm1(-alpha)) / total_count / expm1(alpha / total_count)
-    )
+    step = alpha / total_count
+    if step > 500.0:
+        normalization = ((-expm1(-alpha)) / total_count) * (exp(-step) / (-expm1(-step)))
+    else:
+        normalization = (-expm1(-alpha)) / total_count / expm1(step)
+    if normalization <= 0.0:
+        return 0.0
     rie = weighted_active_sum / (active_count * normalization)
     ratio = active_count / total_count
     rie_max = (-expm1(-alpha * ratio)) / (ratio * -expm1(-alpha))
-    rie_min = expm1(alpha * ratio) / (ratio * expm1(alpha))
+    if alpha > 500.0:
+        # Overflow-safe identity for expm1(alpha * ratio) / expm1(alpha) when alpha > 500
+        rie_min = (exp(-alpha * (1.0 - ratio)) - exp(-alpha)) / (ratio * -expm1(-alpha))
+    else:
+        rie_min = expm1(alpha * ratio) / (ratio * expm1(alpha))
     value = (rie - rie_min) / (rie_max - rie_min)
     return min(1.0, max(0.0, value))
 

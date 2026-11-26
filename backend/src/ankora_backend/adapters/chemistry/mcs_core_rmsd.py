@@ -27,17 +27,20 @@ rdFMCS: Any = import_module("rdkit.Chem.rdFMCS")
 
 _STAGE = "analog_mcs_core_rmsd"
 _MAX_SUBSTRUCT_MATCHES = 1000
-_PSEUDOATOM_TYPE_RE = re.compile(r"^(?:C?G\d+|G|DU|LP)$", re.IGNORECASE)
+_DUMMY_GLUE_TYPE_RE = re.compile(r"^(?:G\d+|G|DU|LP)$", re.IGNORECASE)
+_MACROCYCLE_CARBON_TYPE_RE = re.compile(r"^CG\d+$", re.IGNORECASE)
 
 
 def _strip_macrocycle_pseudoatoms(pdbqt_text: str) -> str:
+    """Drop Meeko dummy glue pseudoatoms (G0..G9, G, DU, LP) and normalize real CGn carbons."""
     kept: list[str] = []
     for line in pdbqt_text.splitlines():
         if line.startswith(("ATOM  ", "HETATM")):
-            atom_name = line[12:16].strip()
-            ad_type = line[77:].strip() if len(line) > 77 else ""
-            if _PSEUDOATOM_TYPE_RE.match(ad_type) or _PSEUDOATOM_TYPE_RE.match(atom_name):
+            ad_type = line[77:80].strip() if len(line) > 77 else ""
+            if _DUMMY_GLUE_TYPE_RE.match(ad_type):
                 continue
+            if _MACROCYCLE_CARBON_TYPE_RE.match(ad_type):
+                line = f"{line[:77]}C "
         kept.append(line)
     return "\n".join(kept) + "\n"
 
@@ -47,22 +50,91 @@ def _load_pose_heavy_mol(*, pose_pdbqt_text: str, conformer_sdf_path: Path) -> A
     template = load_reference(conformer_sdf_path)
     cleaned_pdbqt = _strip_macrocycle_pseudoatoms(pose_pdbqt_text)
     pdb_block = pdbqt_to_pdb_block(cleaned_pdbqt, keep_hydrogens=False)
-    pose_mol = Chem.MolFromPDBBlock(pdb_block, removeHs=True, sanitize=True)
-    if pose_mol is None:
+    pose_mol = Chem.MolFromPDBBlock(pdb_block, removeHs=True, sanitize=False)
+    if pose_mol is None or pose_mol.GetNumConformers() == 0:
         raise AnkoraDomainError(
             code="ANALOG_MCS_POSE_UNREADABLE",
             stage=_STAGE,
             message="Could not construct a valid RDKit heavy-atom molecule from the docked PDBQT.",
             status_code=422,
         )
+    conf = pose_mol.GetConformer()
+    for atom_idx in range(pose_mol.GetNumAtoms()):
+        pos = conf.GetAtomPosition(atom_idx)
+        if not (
+            math.isfinite(float(pos.x))
+            and math.isfinite(float(pos.y))
+            and math.isfinite(float(pos.z))
+        ):
+            raise AnkoraDomainError(
+                code="ANALOG_MCS_POSE_UNREADABLE",
+                stage=_STAGE,
+                message="Docked pose contains non-finite heavy-atom coordinates.",
+                status_code=422,
+                details={"atom_index": atom_idx},
+            )
+    if pose_mol.GetNumAtoms() != template.GetNumAtoms():
+        raise AnkoraDomainError(
+            code="ANALOG_MCS_TOPOLOGY_MISMATCH",
+            stage=_STAGE,
+            message=(
+                "Docked PDBQT heavy-atom count does not match its reference conformer template; "
+                "refusing to compute an unverified MCS core RMSD."
+            ),
+            status_code=422,
+            details={
+                "pose_heavy_atoms": int(pose_mol.GetNumAtoms()),
+                "template_heavy_atoms": int(template.GetNumAtoms()),
+            },
+        )
     try:
         assigned = AllChem.AssignBondOrdersFromTemplate(template, pose_mol)
-        return Chem.RemoveHs(assigned)
-    except Exception:  # noqa: BLE001
-        # Fall back cleanly to the PDB-parsed heavy-atom graph if template order assignment
-        # cannot reconcile a minor protonation/tautomer valence mismatch, preserving exact
-        # receptor-frame heavy-atom coordinates.
-        return Chem.RemoveHs(pose_mol)
+    except Exception as error:  # noqa: BLE001 — RDKit raises bare ValueError/RuntimeError
+        raise AnkoraDomainError(
+            code="ANALOG_MCS_BOND_ORDER_ASSIGNMENT_FAILED",
+            stage=_STAGE,
+            message=(
+                "Could not transfer verified template bond orders onto the docked PDBQT pose; "
+                "refusing to fall back to an all-single-bond PDB graph."
+            ),
+            status_code=422,
+            details={
+                "pose_heavy_atoms": int(pose_mol.GetNumAtoms()),
+                "template_heavy_atoms": int(template.GetNumAtoms()),
+                "technical_message": str(error),
+            },
+        ) from error
+    return Chem.RemoveHs(assigned)
+
+
+def _reduce_seed_matches_by_query_automorphisms(
+    query: Any,
+    seed_matches: tuple[tuple[int, ...], ...],
+    *,
+    target_match_count: int,
+) -> tuple[tuple[int, ...], ...]:
+    """Quotient seed embeddings by Aut(query) without losing distinct sites or supergraph orbits."""
+    if len(seed_matches) <= 1 or target_match_count >= _MAX_SUBSTRUCT_MATCHES:
+        return seed_matches
+    try:
+        query_graph = Chem.Mol(query)
+        query_graph.UpdatePropertyCache(strict=False)
+        Chem.FastFindRings(query_graph)
+        auts = query_graph.GetSubstructMatches(
+            query, uniquify=False, maxMatches=_MAX_SUBSTRUCT_MATCHES
+        )
+    except RuntimeError:
+        return seed_matches
+    if not auts or len(auts) >= _MAX_SUBSTRUCT_MATCHES:
+        return seed_matches
+    n_atoms = len(seed_matches[0])
+    if any(len(perm) != n_atoms for perm in auts):
+        return seed_matches
+    orbits: dict[tuple[int, ...], tuple[int, ...]] = {}
+    for match in seed_matches:
+        canonical = min(tuple(match[perm[idx]] for idx in range(n_atoms)) for perm in auts)
+        orbits.setdefault(canonical, match)
+    return tuple(orbits.values())
 
 
 def compute_receptor_frame_mcs_core_rmsd(
@@ -120,21 +192,30 @@ def compute_receptor_frame_mcs_core_rmsd(
 
     mcs_atoms = int(mcs.numAtoms)
     mcs_smarts = str(mcs.smartsString) if mcs.smartsString else None
-    if mcs_atoms < 1 or not mcs_smarts:
+    coverage_seed = round(mcs_atoms / seed_heavy, 4) if seed_heavy > 0 else None
+    coverage_target = round(mcs_atoms / target_heavy, 4) if target_heavy > 0 else None
+
+    def _result(
+        *,
+        status: McsCoreRmsdStatus,
+        smarts: str | None,
+        atom_count: int,
+        rmsd_angstrom: float | None,
+    ) -> McsCoreRmsdResult:
         return McsCoreRmsdResult(
             seed_pose_artifact_id=seed_pose_artifact_id,
             seed_pose_sha256=seed_pose_sha256,
             target_pose_artifact_id=target_pose_artifact_id,
             target_pose_sha256=target_pose_sha256,
-            status=McsCoreRmsdStatus.NO_COMMON_SUBSTRUCTURE,
-            mcs_smarts=None,
-            mcs_heavy_atom_count=0,
+            status=status,
+            mcs_smarts=smarts,
+            mcs_heavy_atom_count=atom_count,
             seed_heavy_atom_count=seed_heavy,
             target_heavy_atom_count=target_heavy,
-            mcs_coverage_seed=0.0 if seed_heavy > 0 else None,
-            mcs_coverage_target=0.0 if target_heavy > 0 else None,
+            mcs_coverage_seed=0.0 if atom_count == 0 else coverage_seed,
+            mcs_coverage_target=0.0 if atom_count == 0 else coverage_target,
             mcs_timed_out=timed_out,
-            receptor_frame_rmsd_angstrom=None,
+            receptor_frame_rmsd_angstrom=rmsd_angstrom,
             superposition_applied=False,
             timeout_seconds=timeout_seconds,
             atom_compare="CompareElements",
@@ -144,29 +225,21 @@ def compute_receptor_frame_mcs_core_rmsd(
             warnings=warnings,
         )
 
+    if mcs_atoms < 1 or not mcs_smarts:
+        return _result(
+            status=McsCoreRmsdStatus.NO_COMMON_SUBSTRUCTURE,
+            smarts=None,
+            atom_count=0,
+            rmsd_angstrom=None,
+        )
+
     query = Chem.MolFromSmarts(mcs_smarts)
     if query is None:
-        return McsCoreRmsdResult(
-            seed_pose_artifact_id=seed_pose_artifact_id,
-            seed_pose_sha256=seed_pose_sha256,
-            target_pose_artifact_id=target_pose_artifact_id,
-            target_pose_sha256=target_pose_sha256,
+        return _result(
             status=McsCoreRmsdStatus.NOT_EVALUABLE,
-            mcs_smarts=mcs_smarts,
-            mcs_heavy_atom_count=mcs_atoms,
-            seed_heavy_atom_count=seed_heavy,
-            target_heavy_atom_count=target_heavy,
-            mcs_coverage_seed=round(mcs_atoms / seed_heavy, 4) if seed_heavy > 0 else None,
-            mcs_coverage_target=round(mcs_atoms / target_heavy, 4) if target_heavy > 0 else None,
-            mcs_timed_out=timed_out,
-            receptor_frame_rmsd_angstrom=None,
-            superposition_applied=False,
-            timeout_seconds=timeout_seconds,
-            atom_compare="CompareElements",
-            bond_compare="CompareOrderExact",
-            ring_matches_ring_only=ring_matches_ring_only,
-            complete_rings_only=complete_rings_only,
-            warnings=warnings,
+            smarts=mcs_smarts,
+            atom_count=mcs_atoms,
+            rmsd_angstrom=None,
         )
 
     seed_matches = seed_mol.GetSubstructMatches(
@@ -176,68 +249,60 @@ def compute_receptor_frame_mcs_core_rmsd(
         query, uniquify=False, maxMatches=_MAX_SUBSTRUCT_MATCHES
     )
     if not seed_matches or not target_matches:
-        return McsCoreRmsdResult(
-            seed_pose_artifact_id=seed_pose_artifact_id,
-            seed_pose_sha256=seed_pose_sha256,
-            target_pose_artifact_id=target_pose_artifact_id,
-            target_pose_sha256=target_pose_sha256,
+        return _result(
             status=McsCoreRmsdStatus.NOT_EVALUABLE,
-            mcs_smarts=mcs_smarts,
-            mcs_heavy_atom_count=mcs_atoms,
-            seed_heavy_atom_count=seed_heavy,
-            target_heavy_atom_count=target_heavy,
-            mcs_coverage_seed=round(mcs_atoms / seed_heavy, 4) if seed_heavy > 0 else None,
-            mcs_coverage_target=round(mcs_atoms / target_heavy, 4) if target_heavy > 0 else None,
-            mcs_timed_out=timed_out,
-            receptor_frame_rmsd_angstrom=None,
-            superposition_applied=False,
-            timeout_seconds=timeout_seconds,
-            atom_compare="CompareElements",
-            bond_compare="CompareOrderExact",
-            ring_matches_ring_only=ring_matches_ring_only,
-            complete_rings_only=complete_rings_only,
-            warnings=warnings,
+            smarts=mcs_smarts,
+            atom_count=mcs_atoms,
+            rmsd_angstrom=None,
         )
 
     seed_conf = seed_mol.GetConformer()
     target_conf = target_mol.GetConformer()
-    # Fix one canonical seed match and iterate over all symmetry-equivalent target matches
-    # (equivalent to minimizing over all automorphism pairs since query symmetry acts on both).
-    seed_match = seed_matches[0]
-    seed_coords = [seed_conf.GetAtomPosition(idx) for idx in seed_match]
+    reduced_seed_matches = _reduce_seed_matches_by_query_automorphisms(
+        query,
+        tuple(tuple(int(idx) for idx in match) for match in seed_matches),
+        target_match_count=len(target_matches),
+    )
+    seed_coord_sets = [
+        [
+            (
+                float(seed_conf.GetAtomPosition(idx).x),
+                float(seed_conf.GetAtomPosition(idx).y),
+                float(seed_conf.GetAtomPosition(idx).z),
+            )
+            for idx in s_match
+        ]
+        for s_match in reduced_seed_matches
+    ]
+    target_coord_sets = [
+        [
+            (
+                float(target_conf.GetAtomPosition(idx).x),
+                float(target_conf.GetAtomPosition(idx).y),
+                float(target_conf.GetAtomPosition(idx).z),
+            )
+            for idx in t_match
+        ]
+        for t_match in target_matches
+    ]
 
     best_rmsd = float("inf")
-    for t_match in target_matches:
-        sq_sum = 0.0
-        for s_pos, t_idx in zip(seed_coords, t_match, strict=True):
-            t_pos = target_conf.GetAtomPosition(t_idx)
-            dx = float(s_pos.x) - float(t_pos.x)
-            dy = float(s_pos.y) - float(t_pos.y)
-            dz = float(s_pos.z) - float(t_pos.z)
-            sq_sum += dx * dx + dy * dy + dz * dz
-        rmsd = math.sqrt(sq_sum / float(len(seed_coords)))
-        if rmsd < best_rmsd:
-            best_rmsd = rmsd
+    for seed_coords in seed_coord_sets:
+        n_coords = float(len(seed_coords))
+        for target_coords in target_coord_sets:
+            sq_sum = 0.0
+            for (sx, sy, sz), (tx, ty, tz) in zip(seed_coords, target_coords, strict=True):
+                dx = sx - tx
+                dy = sy - ty
+                dz = sz - tz
+                sq_sum += dx * dx + dy * dy + dz * dz
+            rmsd = math.sqrt(sq_sum / n_coords)
+            if rmsd < best_rmsd:
+                best_rmsd = rmsd
 
-    return McsCoreRmsdResult(
-        seed_pose_artifact_id=seed_pose_artifact_id,
-        seed_pose_sha256=seed_pose_sha256,
-        target_pose_artifact_id=target_pose_artifact_id,
-        target_pose_sha256=target_pose_sha256,
+    return _result(
         status=McsCoreRmsdStatus.EVALUATED,
-        mcs_smarts=mcs_smarts,
-        mcs_heavy_atom_count=mcs_atoms,
-        seed_heavy_atom_count=seed_heavy,
-        target_heavy_atom_count=target_heavy,
-        mcs_coverage_seed=round(mcs_atoms / seed_heavy, 4) if seed_heavy > 0 else None,
-        mcs_coverage_target=round(mcs_atoms / target_heavy, 4) if target_heavy > 0 else None,
-        mcs_timed_out=timed_out,
-        receptor_frame_rmsd_angstrom=round(best_rmsd, 6),
-        superposition_applied=False,
-        timeout_seconds=timeout_seconds,
-        atom_compare="CompareElements",
-        bond_compare="CompareOrderExact",
-        ring_matches_ring_only=ring_matches_ring_only,
-        complete_rings_only=complete_rings_only,
-        warnings=warnings,
+        smarts=mcs_smarts,
+        atom_count=mcs_atoms,
+        rmsd_angstrom=round(best_rmsd, 6),
     )

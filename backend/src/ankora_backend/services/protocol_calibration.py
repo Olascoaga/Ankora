@@ -192,7 +192,8 @@ def extract_compound_properties(
 
 
 def _standardized_mean_difference(active: Sequence[float], inactive: Sequence[float]) -> float:
-    """Return Cohen's `d` on the pooled standard deviation, or `0.0` when it vanishes."""
+    """Return Cohen's `d` on pooled SD, or combined-SD separation when within-class SD vanishes."""
+    mean_diff = fmean(active) - fmean(inactive)
     active_n = len(active)
     inactive_n = len(inactive)
     pooled_variance = (
@@ -200,8 +201,14 @@ def _standardized_mean_difference(active: Sequence[float], inactive: Sequence[fl
     ) / (active_n + inactive_n - 2)
     pooled_sd = sqrt(pooled_variance) if pooled_variance > 0 else 0.0
     if pooled_sd == 0.0:
-        return 0.0
-    return (fmean(active) - fmean(inactive)) / pooled_sd
+        if mean_diff == 0.0:
+            return 0.0
+        # Within-class degeneracy with distinct class means (e.g., all actives charge +1
+        # vs all inactives charge 0): normalize by finite combined sample SD so perfect
+        # property separation always flags bias while preserving `allow_inf_nan=False`.
+        combined_sd = sqrt(variance([*active, *inactive]))
+        return mean_diff / combined_sd
+    return mean_diff / pooled_sd
 
 
 def audit_physicochemical_bias(
@@ -466,6 +473,17 @@ def paired_parent_bootstrap_delta(
             )
 
     active_indices, inactive_indices = _class_indices(candidate_observations)
+    if not active_indices or not inactive_indices:
+        _invalid(
+            "CALIBRATION_PAIRED_CLASS_MISSING",
+            "A paired bootstrap requires at least one active and one inactive parent compound.",
+            details={
+                "candidate_protocol_id": candidate_protocol_id,
+                "reference_protocol_id": reference_protocol_id,
+                "active_count": len(active_indices),
+                "inactive_count": len(inactive_indices),
+            },
+        )
     alpha = policy.bedroc_alpha
     active_count = len(active_indices)
     point_delta = _replicate_bedroc(

@@ -42,7 +42,9 @@ from ankora_backend.services.pose_interactions import PoseInteractionService
 from ankora_backend.services.project_dependencies import ProjectDependencyService
 
 _VINA_LARGE_SEARCH_SPACE_VOLUME = 27_000.0
-_PSEUDOATOM_TYPE_RE = re.compile(r"^(?:C?G\d+|G|DU|LP)$", re.IGNORECASE)
+# Meeko macrocycle ring-closure dummy glue pseudoatoms (G0..G9, G, DU, LP).
+# Real macrocycle carbons (CG0..CG9) and PDB atom names (CG1/CG2) are real heavy atoms.
+_PSEUDOATOM_TYPE_RE = re.compile(r"^(?:G\d+|G|DU|LP)$", re.IGNORECASE)
 _HYDROGEN_AD_TYPES = frozenset({"H", "HD", "HS"})
 
 
@@ -396,7 +398,7 @@ def _extract_pose_heavy_atom_positions(
         if upper_type in _HYDROGEN_AD_TYPES or (not upper_type and upper_name.startswith("H")):
             excluded_h += 1
             continue
-        if _PSEUDOATOM_TYPE_RE.match(upper_type) or _PSEUDOATOM_TYPE_RE.match(upper_name):
+        if _PSEUDOATOM_TYPE_RE.match(upper_type):
             excluded_pseudo += 1
             continue
         positions.append(gemmi.Position(x, y, z))

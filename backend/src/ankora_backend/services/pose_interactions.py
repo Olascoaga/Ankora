@@ -577,7 +577,7 @@ class PoseInteractionService:
             record = store.load_batch(record_id)
             entry = _entry(record.entries, ligand_id)
             maps = self._autogrid.load_record(record.map_set_id)
-            return [_autodock_pose(item) for item in entry.runs], {
+            return [_autodock_pose(item) for item in _ordered_autodock_runs(entry.runs)], {
                 "engine_label": _autodock_label(record, engine_key),
                 "ligand_preparation_id": _required(entry.ligand_preparation_id),
                 "receptor_id": record.receptor_id,
@@ -589,7 +589,7 @@ class PoseInteractionService:
             record = store.load_job(record_id)
             _same_ligand(record.request.ligand_id, ligand_id)
             maps = self._autogrid.load_record(record.map_set_id)
-            return [_autodock_pose(item) for item in record.runs], {
+            return [_autodock_pose(item) for item in _ordered_autodock_runs(record.runs)], {
                 "engine_label": _autodock_label(record, engine_key),
                 "ligand_preparation_id": record.request.ligand_preparation_id,
                 "receptor_id": record.receptor_id,
@@ -840,6 +840,19 @@ def _free_chain_id(receptor_lines: list[str]) -> str:
         "POSE_COMPLEX_NO_FREE_CHAIN",
         "This receptor already uses every chain identifier, so the pose cannot "
         "be added without overwriting one.",
+    )
+
+
+def _ordered_autodock_runs(runs: list[Any]) -> list[Any]:
+    """Order AutoDock4/AutoDock-GPU runs by cluster rank first, matching redocking validation."""
+    return sorted(
+        runs,
+        key=lambda item: (
+            int(item.cluster_rank),
+            int(item.sub_rank),
+            float(item.binding_energy_kcal_mol),
+            int(item.run),
+        ),
     )
 
 

@@ -94,7 +94,7 @@ END
 # Synthetic ligand pose PDBQT:
 # - Two real heavy atoms at (0, 0, 0) and (4, 2, 6) -> heavy bbox center=(2, 1, 3), span=(4, 2, 6)
 # - Far-away hydrogen HD at (50, 50, 50) -> MUST be excluded
-# - Far-away Meeko macrocycle glue pseudoatoms G0 and CG0 at (-50, -50, -50) -> MUST be excluded
+# - Far-away Meeko macrocycle dummy glue pseudoatoms G0 and G1 at (-50, -50, -50) -> excluded
 _SYNTH_POSE_PDBQT = """\
 MODEL 1
 REMARK VINA RESULT:      -7.5      0.000      0.000
@@ -103,7 +103,21 @@ ATOM      1  C1  UNL     1       0.000   0.000   0.000  1.00  0.00    +0.000 C
 ATOM      2  O1  UNL     1       4.000   2.000   6.000  1.00  0.00    +0.000 OA
 ATOM      3  H1  UNL     1      50.000  50.000  50.000  1.00  0.00    +0.000 HD
 ATOM      4  G0  UNL     1     -50.000 -50.000 -50.000  1.00  0.00    +0.000 G0
-ATOM      5  CG0 UNL     1     -45.000 -45.000 -45.000  1.00  0.00    +0.000 CG0
+ATOM      5  G1  UNL     1     -45.000 -45.000 -45.000  1.00  0.00    +0.000 G1
+ENDROOT
+TORSDOF 0
+ENDMDL
+"""
+
+_SYNTH_BONDED_POSE_PDBQT = """\
+MODEL 1
+REMARK VINA RESULT:      -7.5      0.000      0.000
+ROOT
+ATOM      1  C1  UNL     1       0.000   0.000   0.000  1.00  0.00    +0.000 C
+ATOM      2  O1  UNL     1       1.400   0.000   0.000  1.00  0.00    +0.000 OA
+ATOM      3  H1  UNL     1      50.000  50.000  50.000  1.00  0.00    +0.000 HD
+ATOM      4  G0  UNL     1     -50.000 -50.000 -50.000  1.00  0.00    +0.000 G0
+ATOM      5  G1  UNL     1     -45.000 -45.000 -45.000  1.00  0.00    +0.000 G1
 ENDROOT
 TORSDOF 0
 ENDMDL
@@ -126,6 +140,7 @@ def _seed_project_with_saved_pose(
     data_dir: Path,
     *,
     with_flex_res: bool = False,
+    bonded_pose: bool = False,
 ) -> dict[str, str]:
     now = datetime.now(UTC)
     tool = ToolIdentity(name="synthetic-test", version="0.0.0")
@@ -383,7 +398,7 @@ def _seed_project_with_saved_pose(
         ),
     )
     prep_id = lig_store.new_preparation_id()
-    pose_bytes = _SYNTH_POSE_PDBQT.encode("utf-8")
+    pose_bytes = (_SYNTH_BONDED_POSE_PDBQT if bonded_pose else _SYNTH_POSE_PDBQT).encode("utf-8")
     lig_store.create_pdbqt(
         ligand_id,
         prep_id,

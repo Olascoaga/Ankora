@@ -193,6 +193,8 @@ def compute_primary_metrics(source: dict[str, Any]) -> dict[str, Any]:
             )
         )
 
+    # Preserve the frozen v0.1 LIT_PCBA_ANKORA_VS_V1 campaign row ordering so the
+    # historical primary metrics manifest reproduces its recorded SHA-256 verbatim.
     estimate = bootstrap_benchmark(
         [(target_id, by_target[target_id]) for target_id in target_order],
         score_direction=ScoreDirection.LOWER_IS_BETTER,
@@ -201,6 +203,7 @@ def compute_primary_metrics(source: dict[str, Any]) -> dict[str, Any]:
         replicates=DEFAULT_BOOTSTRAP_REPLICATES,
         seed=DEFAULT_BOOTSTRAP_SEED,
         confidence_level=DEFAULT_CONFIDENCE_LEVEL,
+        preserve_input_order=True,
     )
     source_census = _required_object(source.get("campaign_census"), "campaign census")
     if _required_positive_int(source_census, "requested") != len(entries):

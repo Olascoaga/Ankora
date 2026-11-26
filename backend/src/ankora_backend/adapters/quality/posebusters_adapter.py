@@ -116,6 +116,11 @@ def reconstruct_ligand_mol_from_pose(
                 },
             ) from error
 
+    if ligand.GetNumConformers() > 0:
+        Chem.AssignStereochemistryFrom3D(ligand)
+        Chem.DetectBondStereochemistry(ligand)
+        Chem.AssignStereochemistry(ligand, cleanIt=True, force=True)
+
     pose_smiles = _canonical_smiles(Chem, ligand)
     if pose_smiles != template_smiles:
         raise AnkoraDomainError(

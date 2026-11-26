@@ -38,10 +38,83 @@ from protocol_manifest import (
 
 REPO_ROOT = _THIS_DIR.parents[1]
 VERIFIER_PATH = REPO_ROOT / "scripts" / "verify_export_bundle.py"
+EVALUATOR_VERSION = "2.0.0"
+
+_SECONDARY_CONSENSUS_RANKING_KEYS: dict[str, str] = {
+    "pcq_core_score": "core_ranking",
+    "pc_ecr_score_inv_sigma": "ecr_ranking",
+    "pc_l2_score": "pc_l2_ranking",
+}
 
 
 class ComparisonEvaluationError(ValueError):
     """Raised when inputs fail integrity verification or denominator invariants."""
+
+
+def _parse_finite_float(raw: str, *, context: str) -> float:
+    """Parse a finite float or fail closed (D2-005 / D4-009)."""
+    try:
+        value = float(raw)
+    except ValueError as err:
+        raise ComparisonEvaluationError(f"Non-numeric score in {context}: {raw!r}") from err
+    if not math.isfinite(value):
+        raise ComparisonEvaluationError(f"Non-finite score in {context}: {raw!r}")
+    return value
+
+
+def _record_pb_status(
+    table: dict[str, bool | None], key: str, overall_status: object
+) -> None:
+    """Conservatively aggregate PoseBusters overall_status for an exact pose identity (D4-004).
+
+    Never uses permissive OR: any 'fail' dominates as False; any non-'pass' status
+    (e.g., 'not_evaluable') prevents a True promotion.
+    """
+    status = overall_status if isinstance(overall_status, str) else ""
+    if status == "fail":
+        table[key] = False
+    elif status == "pass":
+        if key not in table:
+            table[key] = True
+    else:
+        if table.get(key) is not False:
+            table[key] = None
+
+
+def _load_secondary_consensus_pose_shas(
+    bundle_path: Path,
+    manifest: dict[str, Any],
+    score_column: str,
+) -> dict[str, str]:
+    """Resolve per-parent selected pose_complex_sha256 for secondary consensus rankings."""
+    ranking_key = _SECONDARY_CONSENSUS_RANKING_KEYS.get(score_column)
+    if ranking_key is None:
+        return {}
+    recorded_evidence = manifest.get("recorded_evidence") or {}
+    consensus_records = recorded_evidence.get("consensus_records") or []
+    if not consensus_records or not isinstance(consensus_records, list):
+        return {}
+    rec_path = consensus_records[0].get("path")
+    if not isinstance(rec_path, str) or not rec_path:
+        return {}
+    try:
+        rec_payload = json.loads(_read_bundle_file(bundle_path, rec_path).decode("utf-8"))
+    except (KeyError, OSError, json.JSONDecodeError, zipfile.BadZipFile):
+        return {}
+    ranking = rec_payload.get(ranking_key)
+    if not isinstance(ranking, dict):
+        return {}
+    pose_shas: dict[str, str] = {}
+    for entry in ranking.get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        pid = entry.get("parent_compound_id")
+        pose_complex = entry.get("selected_pose_complex")
+        if isinstance(pid, str) and isinstance(pose_complex, dict):
+            sha = pose_complex.get("complex_identity_sha256")
+            if isinstance(sha, str) and sha:
+                pose_shas[pid] = sha
+    return pose_shas
 
 
 def _load_bundle_verifier() -> ModuleType:
@@ -112,20 +185,32 @@ def load_ankora_export_scores(
             f"available: {reader.fieldnames}"
         )
 
-    # Extract optional M3 PoseBusters pass/fail status by ligand/parent from Export v5 evidence.
-    pb_status_by_ligand: dict[str, bool] = {}
+    # Extract M3 PoseBusters status keyed strictly by exact pose identity (D4-004):
+    # primary key is pose_complex_sha256, with pose_artifact_id for single-engine exports.
+    pb_by_pose_complex_sha: dict[str, bool | None] = {}
+    pb_by_pose_artifact_id: dict[str, bool | None] = {}
+    pb_by_ligand_id: dict[str, bool | None] = {}
     recorded_evidence = manifest.get("recorded_evidence") or {}
     for item in recorded_evidence.get("pose_quality_assessments") or []:
-        lig_id = item.get("ligand_id")
+        if not isinstance(item, dict):
+            continue
         overall = item.get("overall_status")
-        if isinstance(lig_id, str) and overall in {"pass", "fail"}:
-            # Conservative aggregation if multiple assessments exist for one ligand:
-            # mark True only if at least one selected/recorded assessment passes.
-            pb_status_by_ligand[lig_id] = pb_status_by_ligand.get(lig_id, False) or (
-                overall == "pass"
-            )
+        pose_sha = item.get("pose_complex_sha256")
+        if isinstance(pose_sha, str) and pose_sha.strip():
+            _record_pb_status(pb_by_pose_complex_sha, pose_sha.strip(), overall)
+        pose_art = item.get("pose_artifact_id")
+        if isinstance(pose_art, str) and pose_art.strip():
+            _record_pb_status(pb_by_pose_artifact_id, pose_art.strip(), overall)
+        lig_id = item.get("ligand_id")
+        if isinstance(lig_id, str) and lig_id.strip():
+            _record_pb_status(pb_by_ligand_id, lig_id.strip(), overall)
 
     row_kind = verification["row_kind"]
+    secondary_pose_shas = (
+        _load_secondary_consensus_pose_shas(bundle_path, manifest, score_column)
+        if row_kind == "consensus_parent"
+        else {}
+    )
     records: dict[str, ParentScoreRecord] = {}
     for row in reader:
         if row_kind == "consensus_parent":
@@ -135,15 +220,30 @@ def load_ankora_export_scores(
             codes = (row.get("failure_or_exclusion_codes") or "").strip() or None
             if not parent_id:
                 continue
+            if parent_id in records:
+                raise ComparisonEvaluationError(
+                    f"Duplicate parent_compound_id in Ankora export results.csv: {parent_id!r}"
+                )
+            if score_column in _SECONDARY_CONSENSUS_RANKING_KEYS:
+                selected_pose_sha = secondary_pose_shas.get(parent_id, "")
+            else:
+                selected_pose_sha = (row.get("selected_pose_complex_sha256") or "").strip()
+            pb_flag = (
+                pb_by_pose_complex_sha.get(selected_pose_sha)
+                if selected_pose_sha
+                else None
+            )
             if tier == "full_profile" and raw_val:
-                val = float(raw_val)
+                val = _parse_finite_float(
+                    raw_val, context=f"Ankora export ({bundle_path.name}, {parent_id})"
+                )
                 oriented = val if higher_is_better else -val
                 records[parent_id] = ParentScoreRecord(
                     parent_id=parent_id,
                     scored=True,
                     oriented_score=oriented,
                     failure_code=None,
-                    posebusters_pass=pb_status_by_ligand.get(parent_id),
+                    posebusters_pass=pb_flag,
                 )
             else:
                 records[parent_id] = ParentScoreRecord(
@@ -151,7 +251,7 @@ def load_ankora_export_scores(
                     scored=False,
                     oriented_score=None,
                     failure_code=codes or "PARTIAL_OR_UNSCORED",
-                    posebusters_pass=pb_status_by_ligand.get(parent_id),
+                    posebusters_pass=pb_flag,
                 )
         else:
             parent_id = (
@@ -165,10 +265,32 @@ def load_ankora_export_scores(
             fcode = (row.get("failure_code") or "").strip() or None
             if not parent_id:
                 continue
+            if row_kind != "pose" and parent_id in records:
+                raise ComparisonEvaluationError(
+                    f"Duplicate parent_compound_id in Ankora export results.csv: {parent_id!r}"
+                )
+            pose_sha = (
+                row.get("selected_pose_complex_sha256")
+                or row.get("pose_complex_sha256")
+                or ""
+            ).strip()
+            pose_art = (
+                row.get("top_pose_artifact_id") or row.get("pose_artifact_id") or ""
+            ).strip()
+            lig_key = (row.get("ligand_id") or "").strip()
+            if pose_sha:
+                pb_flag = pb_by_pose_complex_sha.get(pose_sha)
+            elif pose_art:
+                pb_flag = pb_by_pose_artifact_id.get(pose_art)
+            elif lig_key:
+                pb_flag = pb_by_ligand_id.get(lig_key)
+            else:
+                pb_flag = None
             if status == "completed" and raw_val:
-                val = float(raw_val)
+                val = _parse_finite_float(
+                    raw_val, context=f"Ankora export ({bundle_path.name}, {parent_id})"
+                )
                 oriented = val if higher_is_better else -val
-                # Keep best oriented score per parent if multiple microstates appear
                 prev = records.get(parent_id)
                 if (
                     prev is None
@@ -183,7 +305,7 @@ def load_ankora_export_scores(
                         scored=True,
                         oriented_score=oriented,
                         failure_code=None,
-                        posebusters_pass=pb_status_by_ligand.get(parent_id),
+                        posebusters_pass=pb_flag,
                     )
             elif parent_id not in records:
                 records[parent_id] = ParentScoreRecord(
@@ -191,7 +313,7 @@ def load_ankora_export_scores(
                     scored=False,
                     oriented_score=None,
                     failure_code=fcode or f"STATUS_{status.upper()}",
-                    posebusters_pass=pb_status_by_ligand.get(parent_id),
+                    posebusters_pass=pb_flag,
                 )
 
     return records, verification
@@ -230,6 +352,10 @@ def load_external_scores_csv(
         parent_id = (row.get("parent_compound_id") or "").strip()
         if not parent_id:
             continue
+        if parent_id in records:
+            raise ComparisonEvaluationError(
+                f"Duplicate parent_compound_id in external CSV {csv_path.name}: {parent_id!r}"
+            )
         status = (row.get("status") or "scored").strip().lower()
         raw_val = (row.get(score_column) or "").strip()
         fcode = (row.get("failure_code") or "").strip() or None
@@ -242,7 +368,9 @@ def load_external_scores_csv(
             else None
         )
         if status in {"scored", "completed", "ok"} and raw_val:
-            val = float(raw_val)
+            val = _parse_finite_float(
+                raw_val, context=f"external CSV {csv_path.name} ({parent_id})"
+            )
             oriented = val if higher_is_better else -val
             records[parent_id] = ParentScoreRecord(
                 parent_id=parent_id,
@@ -279,11 +407,14 @@ def _tie_aware_rank_groups(
         if (
             usable
             and require_posebusters_pass
-            and rec is not None
-            and rec.posebusters_pass is False
+            and (rec is None or rec.posebusters_pass is not True)
         ):
             usable = False
         if usable and rec is not None and rec.oriented_score is not None:
+            if not math.isfinite(rec.oriented_score):
+                raise ComparisonEvaluationError(
+                    f"Non-finite oriented_score for parent {pid!r}: {rec.oriented_score!r}"
+                )
             scored_count += 1
             score_buckets.setdefault(rec.oriented_score, []).append(pid)
         else:
@@ -305,6 +436,14 @@ def compute_tie_aware_enrichment(
     require_posebusters_pass: bool = False,
 ) -> dict[str, Any]:
     """Compute exact tie-aware BEDROC_alpha, EF_x%, ROC-AUC, PR-AUC, and failure census."""
+    if not math.isfinite(bedroc_alpha) or bedroc_alpha <= 0.0:
+        raise ComparisonEvaluationError(
+            f"bedroc_alpha must be finite and > 0, got {bedroc_alpha!r}"
+        )
+    if not math.isfinite(top_fraction) or not (0.0 < top_fraction <= 1.0):
+        raise ComparisonEvaluationError(
+            f"top_fraction must be finite and in (0, 1], got {top_fraction!r}"
+        )
     n_total = len(parent_ids)
     n_active = sum(1 for pid in parent_ids if pid in active_set)
     n_inactive = n_total - n_active
@@ -350,12 +489,10 @@ def compute_tie_aware_enrichment(
         # Exact tie-aware ROC-AUC (Mann-Whitney U / trapezoid)
         roc_area += g_act * (n_inactive - fp_so_far - 0.5 * g_inact)
 
-        # Tie-aware step-interpolated PR-AUC (average precision across group ranks)
+        # Exact non-interpolated threshold Average Precision matching
+        # ankora_backend.services.screening_benchmark._average_precision (D2-011).
         if g_act > 0:
-            for k in range(1, g_act + 1):
-                tp_k = tp_so_far + k
-                fp_k = fp_so_far + (k * g_inact / g_act)
-                pr_area += tp_k / (tp_k + fp_k)
+            pr_area += g_act * ((tp_so_far + g_act) / (pos + g_size))
 
         tp_so_far += g_act
         fp_so_far += g_inact
@@ -365,10 +502,21 @@ def compute_tie_aware_enrichment(
     # matching ankora_backend.services.screening_benchmark._bedroc to <= 1e-12.
     ra = n_active / n_total
     alpha = bedroc_alpha
-    normalization = (-math.expm1(-alpha)) / n_total / math.expm1(alpha / n_total)
+    step = alpha / n_total
+    if step > 500.0:
+        normalization = (
+            ((-math.expm1(-alpha)) / n_total) * (math.exp(-step) / (-math.expm1(-step)))
+        )
+    else:
+        normalization = (-math.expm1(-alpha)) / n_total / math.expm1(step)
     rie = weighted_sum / (n_active * normalization) if normalization > 0.0 else 0.0
     rie_max = (-math.expm1(-alpha * ra)) / (ra * -math.expm1(-alpha))
-    rie_min = math.expm1(alpha * ra) / (ra * math.expm1(alpha))
+    if alpha > 500.0:
+        rie_min = (math.exp(-alpha * (1.0 - ra)) - math.exp(-alpha)) / (
+            ra * -math.expm1(-alpha)
+        )
+    else:
+        rie_min = math.expm1(alpha * ra) / (ra * math.expm1(alpha))
     bedroc = (rie - rie_min) / (rie_max - rie_min) if rie_max > rie_min else 0.0
     bedroc = max(0.0, min(1.0, bedroc))
 
@@ -390,11 +538,7 @@ def compute_tie_aware_enrichment(
             pb_evaluated += 1
             if rec.posebusters_pass:
                 pb_passed += 1
-        if (
-            require_posebusters_pass
-            and rec is not None
-            and rec.posebusters_pass is False
-        ):
+        if require_posebusters_pass and (rec is None or rec.posebusters_pass is not True):
             is_scored = False
         if is_act:
             if is_scored:
@@ -434,6 +578,15 @@ def compute_tie_aware_enrichment(
     }
 
 
+def _interpolated_quantile(ordered: list[float], probability: float) -> float:
+    """Linear `(n - 1) * p` quantile matching screening_benchmark._quantile (D2-020)."""
+    position = (len(ordered) - 1) * probability
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(ordered) - 1)
+    weight = position - lower_index
+    return ordered[lower_index] * (1.0 - weight) + ordered[upper_index] * weight
+
+
 def paired_parent_bootstrap_delta(
     *,
     parent_ids: tuple[str, ...],
@@ -447,7 +600,12 @@ def paired_parent_bootstrap_delta(
     confidence_level: float = 0.95,
     require_posebusters_pass: bool = False,
 ) -> dict[str, Any]:
-    """Paired parent-compound bootstrap for delta = BEDROC(Ankora) - BEDROC(External)."""
+    """Stratified fixed-class paired parent-compound bootstrap for delta = BEDROC(Ankora) - BEDROC(External)."""
+    if replicates < 1:
+        raise ComparisonEvaluationError("Bootstrap replicates must be >= 1")
+    if not (0.0 < confidence_level < 1.0):
+        raise ComparisonEvaluationError("Bootstrap confidence_level must be in (0, 1)")
+
     ank_point = compute_tie_aware_enrichment(
         parent_ids=parent_ids,
         active_set=active_set,
@@ -466,31 +624,29 @@ def paired_parent_bootstrap_delta(
     )
     point_delta = ank_point["bedroc"] - ext_point["bedroc"]
 
+    # Canonicalize class pools by parent_id for permutation invariance & zero dropped replicates (D2-020)
+    active_parents = tuple(sorted(pid for pid in parent_ids if pid in active_set))
+    inactive_parents = tuple(sorted(pid for pid in parent_ids if pid not in active_set))
+    n_active = len(active_parents)
+    n_inactive = len(inactive_parents)
+
     rng = random.Random(seed)
-    n = len(parent_ids)
     deltas: list[float] = []
     for _ in range(replicates):
-        # Stratified-safe check: resample parents with replacement; skip degenerate single-class draws
-        sample_indices = [rng.randrange(n) for _ in range(n)]
-        sample_pids = tuple(
-            f"r{idx}_{parent_ids[s]}" for idx, s in enumerate(sample_indices)
+        sampled_all = rng.choices(active_parents, k=n_active) + rng.choices(
+            inactive_parents, k=n_inactive
         )
-        sample_actives = frozenset(
-            sample_pids[idx]
-            for idx, s in enumerate(sample_indices)
-            if parent_ids[s] in active_set
-        )
-        if not sample_actives or len(sample_actives) == n:
-            continue
+        sample_pids = tuple(f"r{idx}_{pid}" for idx, pid in enumerate(sampled_all))
+        sample_actives = frozenset(sample_pids[:n_active])
         sample_ank = {
-            sample_pids[idx]: ankora_records[parent_ids[s]]
-            for idx, s in enumerate(sample_indices)
-            if parent_ids[s] in ankora_records
+            sample_pids[idx]: ankora_records[pid]
+            for idx, pid in enumerate(sampled_all)
+            if pid in ankora_records
         }
         sample_ext = {
-            sample_pids[idx]: external_records[parent_ids[s]]
-            for idx, s in enumerate(sample_indices)
-            if parent_ids[s] in external_records
+            sample_pids[idx]: external_records[pid]
+            for idx, pid in enumerate(sampled_all)
+            if pid in external_records
         }
         a_m = compute_tie_aware_enrichment(
             parent_ids=sample_pids,
@@ -510,11 +666,6 @@ def paired_parent_bootstrap_delta(
         )
         deltas.append(a_m["bedroc"] - e_m["bedroc"])
 
-    if not deltas:
-        raise ComparisonEvaluationError(
-            "Bootstrap produced zero non-degenerate replicates"
-        )
-
     deltas.sort()
     mean_delta = sum(deltas) / len(deltas)
     variance = (
@@ -524,10 +675,8 @@ def paired_parent_bootstrap_delta(
     )
     se = math.sqrt(variance)
     tail = (1.0 - confidence_level) / 2.0
-    lo_idx = max(0, min(len(deltas) - 1, math.floor(tail * (len(deltas) - 1))))
-    hi_idx = max(0, min(len(deltas) - 1, math.ceil((1.0 - tail) * (len(deltas) - 1))))
-    ci_lower = deltas[lo_idx]
-    ci_upper = deltas[hi_idx]
+    ci_lower = _interpolated_quantile(deltas, tail)
+    ci_upper = _interpolated_quantile(deltas, 1.0 - tail)
 
     if ci_lower > 0.0:
         verdict = "ankora_preferred"
@@ -555,6 +704,8 @@ def paired_parent_bootstrap_delta(
         "confidence_level": confidence_level,
         "valid_replicates": len(deltas),
         "bootstrap_seed": seed,
+        "bootstrap_method": "stratified_fixed_class_paired_parent_bootstrap",
+        "percentile_method": "linear_interpolated_n_minus_1",
         "within_one_se": abs(point_delta) <= se,
         "verdict": verdict,
         "verdict_text": verdict_text,
@@ -665,6 +816,7 @@ def evaluate_two_axis_comparison(
     )
     body: dict[str, Any] = {
         "schema_version": 1,
+        "evaluator_version": EVALUATOR_VERSION,
         "evaluated_at": datetime.now(UTC).isoformat(),
         "adr": "ADR-031",
         "protocol_id": protocol.protocol_id,

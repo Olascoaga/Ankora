@@ -13,9 +13,11 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.schemas.receptors import ResidueLocator
 from ankora_backend.schemas.v02_contracts import DiagnosticStatus, PoseDiagnosticCheck
 
+_STAGE = "pose_quality_flex_geometry"
 _TOOL_NAME = "Ankora FlexComplexGeometry"
 _TOOL_VERSION = "0.2.0"
 _MAX_BOND_LENGTH_DELTA_ANGSTROM = 0.05
@@ -58,12 +60,40 @@ def evaluate_flex_sidechain_geometry(
             crystal_by_res.setdefault(atom.residue_key, {})[atom.atom_name] = atom
 
     coupled_by_res: dict[_ResidueKey, dict[str, _HeavyAtom]] = {}
-    rigid_atoms: list[_HeavyAtom] = []
+    all_coupled_by_res: dict[_ResidueKey, dict[str, _HeavyAtom]] = {}
     for atom in coupled_atoms:
+        all_coupled_by_res.setdefault(atom.residue_key, {})[atom.atom_name] = atom
         if atom.residue_key in target_keys:
             coupled_by_res.setdefault(atom.residue_key, {})[atom.atom_name] = atom
-        else:
-            rigid_atoms.append(atom)
+
+    # Determine true peptide-bonded residue adjacency via C-N covalent distance (<= 1.95 A)
+    # on the same chain so insertion codes and chain breaks are never falsely skipped.
+    covalently_adjacent: dict[_ResidueKey, set[_ResidueKey]] = {}
+    coupled_keys = list(all_coupled_by_res)
+    for idx_a, key_a in enumerate(coupled_keys):
+        atoms_a = all_coupled_by_res[key_a]
+        c_a = atoms_a.get("C")
+        n_a = atoms_a.get("N")
+        if c_a is None and n_a is None:
+            continue
+        for key_b in coupled_keys[idx_a + 1 :]:
+            if key_a[0] != key_b[0]:
+                continue
+            atoms_b = all_coupled_by_res[key_b]
+            n_b = atoms_b.get("N")
+            c_b = atoms_b.get("C")
+            bonded = (
+                c_a is not None
+                and n_b is not None
+                and _dist(c_a.xyz, n_b.xyz) <= _COVALENT_HEAVY_BOND_CUTOFF_ANGSTROM
+            ) or (
+                c_b is not None
+                and n_a is not None
+                and _dist(c_b.xyz, n_a.xyz) <= _COVALENT_HEAVY_BOND_CUTOFF_ANGSTROM
+            )
+            if bonded:
+                covalently_adjacent.setdefault(key_a, set()).add(key_b)
+                covalently_adjacent.setdefault(key_b, set()).add(key_a)
 
     # 1. Covalent heavy-atom bond length preservation inside each FlexRes residue
     checked_bonds = 0
@@ -134,33 +164,36 @@ def evaluate_flex_sidechain_geometry(
             if abs(v_c) > 0.1 and (v_c * v_m <= 0.0):
                 inverted_centers.append(f"{res_key[0]}:{res_key[1]}{res_key[2]}:CB")
 
-    # 3. Severe steric clash between distal moved FlexRes atoms and rigid receptor atoms
+    # 3. Severe steric clash between distal moved FlexRes atoms and all other receptor atoms
+    #    (both rigid receptor atoms and OTHER flexible side chains).
     min_flex_rigid_dist: float | None = None
     worst_clash_label: str | None = None
     for res_key in sorted(target_keys):
         m_map = coupled_by_res.get(res_key)
         if not m_map:
             continue
+        adjacent_keys = covalently_adjacent.get(res_key, set())
         distal_atoms = [
             atom for name, atom in m_map.items() if name not in _ANCHOR_EXCLUSION_ATOMS
         ]
         for flex_atom in distal_atoms:
-            for rigid_atom in rigid_atoms:
-                # Skip immediately adjacent peptide backbone atoms on neighboring sequence numbers
+            for other_atom in coupled_atoms:
+                if other_atom.residue_key == res_key:
+                    continue
                 if (
-                    rigid_atom.residue_key[0] == res_key[0]
-                    and abs(rigid_atom.residue_key[1] - res_key[1]) <= 1
-                    and rigid_atom.atom_name in _BACKBONE_ATOMS
+                    other_atom.residue_key in adjacent_keys
+                    and other_atom.atom_name in _BACKBONE_ATOMS
                 ):
                     continue
-                d = _dist(flex_atom.xyz, rigid_atom.xyz)
+                d = _dist(flex_atom.xyz, other_atom.xyz)
                 if min_flex_rigid_dist is None or d < min_flex_rigid_dist:
                     min_flex_rigid_dist = d
                     worst_clash_label = (
-                        f"{flex_atom.residue_name} {res_key[0]}:{res_key[1]}:{flex_atom.atom_name}"
-                        f" -- {rigid_atom.residue_name} "
-                        f"{rigid_atom.residue_key[0]}:{rigid_atom.residue_key[1]}:"
-                        f"{rigid_atom.atom_name}"
+                        f"{flex_atom.residue_name} "
+                        f"{res_key[0]}:{res_key[1]}{res_key[2]}:{flex_atom.atom_name}"
+                        f" -- {other_atom.residue_name} "
+                        f"{other_atom.residue_key[0]}:{other_atom.residue_key[1]}"
+                        f"{other_atom.residue_key[2]}:{other_atom.atom_name}"
                     )
 
     if missing_flex_residue or checked_bonds == 0:
@@ -217,7 +250,17 @@ def evaluate_flex_sidechain_geometry(
         message=chiral_msg,
     )
 
-    if min_flex_rigid_dist is None:
+    if missing_flex_residue:
+        clash_check = PoseDiagnosticCheck(
+            check_id="flex_sidechain_receptor_clash",
+            tool_name=_TOOL_NAME,
+            tool_version=_TOOL_VERSION,
+            status=DiagnosticStatus.NOT_EVALUABLE,
+            value=None,
+            threshold=_SEVERE_FLEX_RECEPTOR_CLASH_ANGSTROM,
+            message="One or more declared FlexRes residues were missing from the receptor PDB.",
+        )
+    elif min_flex_rigid_dist is None:
         clash_check = PoseDiagnosticCheck(
             check_id="flex_sidechain_receptor_clash",
             tool_name=_TOOL_NAME,
@@ -225,7 +268,7 @@ def evaluate_flex_sidechain_geometry(
             status=DiagnosticStatus.NOT_APPLICABLE,
             value=None,
             threshold=_SEVERE_FLEX_RECEPTOR_CLASH_ANGSTROM,
-            message="No non-adjacent rigid receptor heavy atoms available to compare.",
+            message="No non-adjacent receptor heavy atoms available to compare.",
         )
     else:
         clash_check = PoseDiagnosticCheck(
@@ -240,7 +283,7 @@ def evaluate_flex_sidechain_geometry(
             value=min_flex_rigid_dist,
             threshold=_SEVERE_FLEX_RECEPTOR_CLASH_ANGSTROM,
             message=(
-                f"Minimum distal FlexRes-to-rigid heavy-atom distance: "
+                f"Minimum distal FlexRes-to-receptor heavy-atom distance: "
                 f"{min_flex_rigid_dist:.3f} A ({worst_clash_label})."
             ),
         )
@@ -250,9 +293,19 @@ def evaluate_flex_sidechain_geometry(
 
 def _parse_heavy_atoms(pdb_text: str) -> list[_HeavyAtom]:
     atoms: list[_HeavyAtom] = []
-    for line in pdb_text.splitlines():
-        if not line.startswith(("ATOM  ", "HETATM")) or len(line) < 54:
+    for line_no, line in enumerate(pdb_text.splitlines(), start=1):
+        if not line.startswith(("ATOM  ", "HETATM")):
             continue
+        if len(line) < 54:
+            raise AnkoraDomainError(
+                code="FLEX_GEOMETRY_PDB_INVALID",
+                stage=_STAGE,
+                status_code=422,
+                message=(
+                    "Truncated ATOM/HETATM record in receptor PDB during FlexRes geometry check."
+                ),
+                details={"line_number": line_no},
+            )
         atom_name = line[12:16].strip()
         element = line[76:78].strip().upper() if len(line) >= 78 else ""
         if element == "H" or (not element and atom_name.startswith("H")):
@@ -264,8 +317,22 @@ def _parse_heavy_atoms(pdb_text: str) -> list[_HeavyAtom]:
             x = float(line[30:38])
             y = float(line[38:46])
             z = float(line[46:54])
-        except ValueError:
-            continue
+        except ValueError as error:
+            raise AnkoraDomainError(
+                code="FLEX_GEOMETRY_PDB_INVALID",
+                stage=_STAGE,
+                status_code=422,
+                message="Unparseable residue index or XYZ coordinate in receptor PDB.",
+                details={"line_number": line_no},
+            ) from error
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+            raise AnkoraDomainError(
+                code="FLEX_GEOMETRY_PDB_INVALID",
+                stage=_STAGE,
+                status_code=422,
+                message="Non-finite XYZ coordinate in receptor PDB.",
+                details={"line_number": line_no},
+            )
         ins_code = line[26:27].strip()
         atoms.append(
             _HeavyAtom(

@@ -963,6 +963,8 @@ def _build_selected_receptor(
                     and decision.action is ReceptorDecisionAction.REPAIR
                 ):
                     _select_altloc(residue, decision.selected_altloc)
+            if len(residue) == 0:
+                del chain[residue_index]
 
     pdb_text = structure.make_pdb_string()
     if not pdb_text.strip():

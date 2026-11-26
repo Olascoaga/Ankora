@@ -16,6 +16,7 @@ from ankora_backend.services.screening_benchmark import (
     BOOTSTRAP_METHOD,
     DEFAULT_BEDROC_ALPHA,
     PERCENTILE_METHOD,
+    _quantile,
     bootstrap_benchmark,
     evaluate_target,
     summarize_targets,
@@ -207,3 +208,60 @@ def test_bootstrap_rejects_invalid_sampling_contracts() -> None:
         bootstrap_benchmark(targets, replicates=0)
     with pytest.raises(AnkoraDomainError, match="confidence level"):
         bootstrap_benchmark(targets, confidence_level=1.0)
+
+
+def test_d2_013_bootstrap_is_invariant_to_input_row_order_by_default() -> None:
+    """Default bootstrap canonicalizes rows by parent_id so permutations match verbatim (D2-013)."""
+    target_a = [_row(index, index < 4, float((index * 7) % 11)) for index in range(16)]
+    target_b = [_row(index + 50, index < 5, float((index * 5) % 9)) for index in range(16)]
+
+    forward = bootstrap_benchmark(
+        [("target-a", target_a), ("target-b", target_b)],
+        replicates=40,
+        seed=101,
+    )
+    reversed_input = bootstrap_benchmark(
+        [("target-a", list(reversed(target_a))), ("target-b", list(reversed(target_b)))],
+        replicates=40,
+        seed=101,
+    )
+    assert forward == reversed_input
+
+
+def test_d2_022_bedroc_handles_large_alpha_without_overflow() -> None:
+    """Large BEDROC alpha (e.g. 800.0) must not raise OverflowError in expm1(alpha) (D2-022)."""
+    perfect = [_row(index, index < 2, float(index)) for index in range(20)]
+    reverse = [_row(index, index >= 18, float(index)) for index in range(20)]
+
+    m_perf = evaluate_target("large-alpha-perfect", perfect, bedroc_alpha=800.0)
+    m_rev = evaluate_target("large-alpha-reverse", reverse, bedroc_alpha=800.0)
+    assert m_perf.bedroc == pytest.approx(1.0, abs=1e-12)
+    assert m_rev.bedroc == pytest.approx(0.0, abs=1e-12)
+
+
+def test_d2_018_boundary_and_quantile_interpolation_oracles() -> None:
+    """Boundary and quantile interpolation tests killing screening_benchmark mutants (D2-018)."""
+    rows = [_row(0, True, -9.0), _row(1, False, -5.0)]
+    # M01: bedroc_alpha == 0.0 must be refused (boundary_lte_to_lt)
+    with pytest.raises(AnkoraDomainError):
+        evaluate_target("alpha-zero", rows, bedroc_alpha=0.0)
+
+    # M06: replicates == 1 must be accepted (boundary_lt_to_lte)
+    # M07: confidence_level == 0.5 must be accepted (const_0.0_to_0.5)
+    targets = [
+        ("target-a", [_row(index, index < 3, float((index * 3) % 7)) for index in range(10)]),
+        ("target-b", [_row(index + 20, index < 3, float((index * 5) % 7)) for index in range(10)]),
+    ]
+    one_rep = bootstrap_benchmark(targets, replicates=1, seed=7, confidence_level=0.5)
+    assert one_rep.bootstrap_replicates == 1
+    assert one_rep.confidence_level == 0.5
+
+    # M12: _quantile weight = position - lower_index (arith_sub_to_add)
+    assert _quantile([10.0, 20.0, 30.0, 40.0], 0.5) == pytest.approx(25.0, abs=1e-12)
+    assert _quantile([10.0, 20.0, 30.0, 40.0], 0.95) == pytest.approx(38.5, abs=1e-12)
+    four_rep = bootstrap_benchmark(targets, replicates=4, seed=13, confidence_level=0.9)
+    for target in four_rep.targets:
+        assert 0.0 <= target.intervals.roc_auc.lower <= target.intervals.roc_auc.upper <= 1.0
+        assert 0.0 <= target.intervals.bedroc.lower <= target.intervals.bedroc.upper <= 1.0
+    macro_roc = four_rep.macro_intervals.roc_auc
+    assert 0.0 <= macro_roc.lower <= macro_roc.upper <= 1.0

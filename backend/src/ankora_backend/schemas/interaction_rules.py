@@ -208,6 +208,12 @@ class InteractionRuleClause(BaseModel):
 
     @model_validator(mode="after")
     def validate_clause_semantics(self) -> Self:
+        canonical_keys = [
+            canonical_contract_sha256(_canonical_target_dict(target))
+            for target in self.targets
+        ]
+        if len(set(canonical_keys)) != len(canonical_keys):
+            raise ValueError("InteractionRuleClause targets must be unique")
         if self.kind is InteractionRuleKind.ALTERNATIVE_OR:
             if len(self.targets) < 2:
                 raise ValueError("ALTERNATIVE_OR clauses require at least two interaction targets")

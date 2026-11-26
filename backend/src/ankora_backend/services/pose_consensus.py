@@ -472,6 +472,27 @@ class PoseConsensusService:
                                 ),
                             )
                         )
+                        observed_state_sig = (
+                            verified.conformer.inspection.canonical_smiles,
+                            int(verified.conformer.inspection.formal_charge),
+                        )
+                        existing_state_sig = meta.get("chemical_state_signature")
+                        if existing_state_sig is None:
+                            meta["chemical_state_signature"] = observed_state_sig
+                        elif existing_state_sig != observed_state_sig:
+                            raise _consensus_error(
+                                "CONSENSUS_CHEMICAL_STATE_MISMATCH",
+                                (
+                                    f"Parent compound '{parent_id}' has inconsistent chemical "
+                                    "states (stereoisomer or protonation state) across source "
+                                    "campaigns or rows; refusing to cluster distinct states."
+                                ),
+                                parent_compound_id=parent_id,
+                                expected_canonical_smiles=existing_state_sig[0],
+                                expected_formal_charge=existing_state_sig[1],
+                                observed_canonical_smiles=observed_state_sig[0],
+                                observed_formal_charge=observed_state_sig[1],
+                            )
                         if meta["parent_state_id"] is None:
                             meta["parent_state_id"] = verified.resolved.ligand_preparation_id
                         if meta["conformer_path"] is None:
