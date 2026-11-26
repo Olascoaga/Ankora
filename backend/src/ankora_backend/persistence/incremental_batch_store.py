@@ -207,11 +207,17 @@ class IncrementalBatchStore[RecordT: BaseModel, EntryT: BaseModel]:
             )
             with self._connect(directory) as database:
                 database.execute("BEGIN IMMEDIATE")
+                existing_summary = self._summary(database)
                 for entry in selected:
                     self._upsert_entry(database, entry)
                 summary = record.model_dump(mode="json", exclude={"entries"})
-                if selected:
-                    self._apply_counts(database, summary)
+                # Always recompute live counters from SQLite entries and advance
+                # revision monotonically inside BEGIN IMMEDIATE (D5-005).
+                self._apply_counts(database, summary)
+                summary["revision"] = max(
+                    int(existing_summary.get("revision", 0)) + 1,
+                    int(summary.get("revision", 0)),
+                )
                 self._write_summary(database, summary)
                 database.commit()
             if str(summary.get("status")) in _TERMINAL_STATUSES:

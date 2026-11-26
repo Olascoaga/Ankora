@@ -1,7 +1,9 @@
 """Storage for AutoDock4 job state, raw evidence, and immutable pose artifacts."""
 
 import json
+import logging
 import os
+import sqlite3
 import threading
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,12 +11,15 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.atomic_io import atomic_write_json
 from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.autodock4 import (
     AutoDock4BatchLigandResult,
     AutoDock4BatchRecord,
     AutoDock4DockingJobRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 def _best_autodock4_result(entry: AutoDock4BatchLigandResult) -> float | None:
@@ -56,11 +61,7 @@ class AutoDock4JobStore:
             directory = self._job_dir(record.job_id)
             if not directory.is_dir():
                 raise self._not_found(record.job_id)
-            temporary = directory / "record.json.tmp"
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
-                stream.write("\n")
-            os.replace(temporary, directory / "record.json")
+            atomic_write_json(directory / "record.json", record.model_dump(mode="json"))
 
     def load_job(self, job_id: str) -> AutoDock4DockingJobRecord:
         with self._record_lock:
@@ -126,7 +127,13 @@ class AutoDock4JobStore:
                 continue
             try:
                 records.append(self.load_job(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable AutoDock4 job %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -233,7 +240,13 @@ class AutoDock4JobStore:
                 continue
             try:
                 records.append(self.load_batch(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable AutoDock4 batch %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -247,7 +260,13 @@ class AutoDock4JobStore:
                 continue
             try:
                 records.append(self.load_batch_overview(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable AutoDock4 batch overview %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 

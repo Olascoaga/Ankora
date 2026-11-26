@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -10,6 +11,8 @@ from uuid import UUID, uuid4
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.pose_quality import PoseQualityRecord
+
+_LOG = logging.getLogger(__name__)
 
 _STAGE = "pose_quality_storage"
 
@@ -55,7 +58,13 @@ class PoseQualityStore:
                 record = PoseQualityRecord.model_validate_json(
                     path.read_text(encoding="utf-8")
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable pose quality record %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if (
                 record.catalog_id == catalog_id

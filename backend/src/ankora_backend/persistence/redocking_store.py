@@ -7,6 +7,7 @@ what it judged.
 """
 
 import json
+import logging
 import os
 import threading
 from pathlib import Path
@@ -15,6 +16,8 @@ from uuid import UUID, uuid4
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.redocking import RedockingRunRecord
+
+_LOG = logging.getLogger(__name__)
 
 _STAGE = "redocking_storage"
 
@@ -62,7 +65,13 @@ class RedockingValidationStore:
                 continue
             try:
                 records.append(self.load(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable redocking validation %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return sorted(
             records,

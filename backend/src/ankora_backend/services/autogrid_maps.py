@@ -1,6 +1,7 @@
 """Immutable AutoGrid4 map-set generation with reuse by exact scientific identity."""
 
 import json
+import logging
 import shutil
 import threading
 import time
@@ -317,87 +318,118 @@ class AutoGridMapService:
         prepared: "_PreparedMapSet",
         cancel_event: threading.Event,
     ) -> None:
+        logger = logging.getLogger(__name__)
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTOGRID_JOB, job_id)
-        record = self._map_store.load_job(job_id)
-        if self._resources is not None:
-            try:
-                resource_lease = self._resources.acquire(
-                    autogrid_claim(
-                        job_id,
-                        npts=prepared.geometry.npts,
-                        map_count=len(prepared.preflight.ligand_atom_types) + 2,
-                    ),
-                    cancel_event=cancel_event,
-                )
-            except ResourceRequestCanceled:
-                self._finish_job(record, status=AutoGridJobStatus.CANCELED)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
-                self._forget(job_id)
-                return
-            except AnkoraDomainError as error:
-                self._finish_job(
-                    record,
-                    status=AutoGridJobStatus.FAILED,
-                    failure=AutoGridFailure(
-                        code=error.code,
-                        message=error.message,
-                        details=dict(error.details),
-                    ),
-                )
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
-                self._forget(job_id)
-                return
-        if cancel_event.is_set():
-            self._finish_job(record, status=AutoGridJobStatus.CANCELED)
-            if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
-            self._forget(job_id)
-            return
-        running = record.model_copy(
-            update={
-                "status": AutoGridJobStatus.RUNNING,
-                "phase": AutoGridJobPhase.GENERATING_MAPS,
-                "started_at": datetime.now(UTC),
-            }
-        )
-        self._map_store.update_job(running)
+        lease_acquired = False
+        active_record: AutoGridMapJobRecord | None = None
         try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTOGRID_JOB, job_id)
+                lease_acquired = True
+            record = self._map_store.load_job(job_id)
+            active_record = record
+            if self._resources is not None:
+                try:
+                    resource_lease = self._resources.acquire(
+                        autogrid_claim(
+                            job_id,
+                            npts=prepared.geometry.npts,
+                            map_count=len(prepared.preflight.ligand_atom_types) + 2,
+                        ),
+                        cancel_event=cancel_event,
+                    )
+                except ResourceRequestCanceled:
+                    self._finish_job(record, status=AutoGridJobStatus.CANCELED)
+                    return
+                except AnkoraDomainError as error:
+                    self._finish_job(
+                        record,
+                        status=AutoGridJobStatus.FAILED,
+                        failure=AutoGridFailure(
+                            code=error.code,
+                            message=error.message,
+                            details=dict(error.details),
+                        ),
+                    )
+                    return
+            if cancel_event.is_set():
+                self._finish_job(record, status=AutoGridJobStatus.CANCELED)
+                return
+            running = record.model_copy(
+                update={
+                    "status": AutoGridJobStatus.RUNNING,
+                    "phase": AutoGridJobPhase.GENERATING_MAPS,
+                    "started_at": datetime.now(UTC),
+                }
+            )
+            active_record = running
+            self._map_store.update_job(running)
             map_set = self._generate(prepared, cancel_event=cancel_event, job=running)
-        except _JobCanceled as canceled:
-            self._finish_job(
-                running,
-                status=AutoGridJobStatus.CANCELED,
-                execution=canceled.execution,
-                evidence_directory=canceled.evidence_directory,
-            )
-        except AnkoraDomainError as error:
-            self._finish_job(
-                running,
-                status=AutoGridJobStatus.FAILED,
-                failure=AutoGridFailure(
-                    code=error.code, message=error.message, details=dict(error.details)
-                ),
-                evidence_directory=_as_optional_str(error.details.get("evidence_directory")),
-            )
-        else:
             self._finish_job(
                 running,
                 status=AutoGridJobStatus.COMPLETED,
                 map_set_id=map_set.map_set_id,
                 execution=map_set.execution,
             )
+        except _JobCanceled as canceled:
+            target = active_record or self._safe_load_job(job_id)
+            if target is not None:
+                self._finish_job(
+                    target,
+                    status=AutoGridJobStatus.CANCELED,
+                    execution=canceled.execution,
+                    evidence_directory=canceled.evidence_directory,
+                )
+        except AnkoraDomainError as error:
+            target = active_record or self._safe_load_job(job_id)
+            if target is not None:
+                self._finish_job(
+                    target,
+                    status=AutoGridJobStatus.FAILED,
+                    failure=AutoGridFailure(
+                        code=error.code, message=error.message, details=dict(error.details)
+                    ),
+                    evidence_directory=_as_optional_str(error.details.get("evidence_directory")),
+                )
+        except Exception as error:  # noqa: BLE001 - final worker containment (D5-004)
+            logger.exception("Unexpected error in AutoGrid job %s", job_id)
+            target = active_record or self._safe_load_job(job_id)
+            if target is not None:
+                try:
+                    self._finish_job(
+                        target,
+                        status=AutoGridJobStatus.FAILED,
+                        failure=AutoGridFailure(
+                            code="AUTOGRID_JOB_INTERNAL_ERROR",
+                            message="Ankora could not complete AutoGrid map generation.",
+                            details={"reason": str(error)},
+                        ),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("Could not persist FAILED state for AutoGrid job %s", job_id)
         finally:
             if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
+                try:
+                    resource_lease.release()
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed releasing resource lease for AutoGrid job %s", job_id)
+            if lease_acquired and self._leases is not None:
+                try:
+                    self._leases.release(WorkKind.AUTOGRID_JOB, job_id)
+                except OSError as error:
+                    logger.warning(
+                        "Failed releasing work lease for AutoGrid job %s: %s", job_id, error
+                    )
             self._forget(job_id)
+
+    def _safe_load_job(self, job_id: str) -> AutoGridMapJobRecord | None:
+        try:
+            return self._map_store.load_job(job_id)
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception(
+                "Could not load AutoGrid job %s during failure recovery", job_id
+            )
+            return None
 
     def _finish_job(
         self,

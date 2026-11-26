@@ -971,7 +971,12 @@ class VinaDockingService:
             if resource_lease is not None:
                 resource_lease.release()
             if lease_acquired and self._leases is not None:
-                self._leases.release(WorkKind.VINA_BATCH, batch_id)
+                try:
+                    self._leases.release(WorkKind.VINA_BATCH, batch_id)
+                except OSError as error:
+                    _LOG.warning(
+                        "Failed releasing work lease for Vina batch %s: %s", batch_id, error
+                    )
             self._forget(batch_id)
 
     def _fail_batch_safely(
@@ -1647,7 +1652,10 @@ class VinaDockingService:
             if resource_lease is not None:
                 resource_lease.release()
             if lease_acquired and self._leases is not None:
-                self._leases.release(WorkKind.VINA_JOB, job_id)
+                try:
+                    self._leases.release(WorkKind.VINA_JOB, job_id)
+                except OSError as error:
+                    _LOG.warning("Failed releasing work lease for Vina job %s: %s", job_id, error)
             self._forget(job_id)
 
     def _safe_load_record(

@@ -1,6 +1,8 @@
 """Create-only storage for immutable AutoGrid4 map sets and their raw evidence."""
 
+import hashlib
 import json
+import logging
 import os
 import threading
 from pathlib import Path
@@ -8,7 +10,10 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.atomic_io import atomic_write_json
 from ankora_backend.schemas.autogrid import AutoGridMapJobRecord, AutoGridMapSetRecord
+
+_LOG = logging.getLogger(__name__)
 
 
 class AutoGridMapStore:
@@ -64,7 +69,13 @@ class AutoGridMapStore:
                 continue
             try:
                 records.append(self.load_record(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable AutoGrid map set %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -114,11 +125,7 @@ class AutoGridMapStore:
             directory = self._job_dir(record.job_id)
             if not directory.is_dir():
                 raise self._job_not_found(record.job_id)
-            temporary = directory / "record.json.tmp"
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
-                stream.write("\n")
-            os.replace(temporary, directory / "record.json")
+            atomic_write_json(directory / "record.json", record.model_dump(mode="json"))
 
     def load_job(self, job_id: str) -> AutoGridMapJobRecord:
         with self._record_lock:
@@ -138,7 +145,13 @@ class AutoGridMapStore:
                 continue
             try:
                 records.append(self.load_job(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable AutoGrid job %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -171,8 +184,43 @@ class AutoGridMapStore:
         )
 
     def _artifacts_present(self, record: AutoGridMapSetRecord) -> bool:
+        """Verify every cached map exists and matches size_bytes + SHA-256 (D5-011)."""
         directory = self._map_set_dir(record.map_set_id)
-        return all((directory / item.filename).is_file() for item in record.artifacts)
+        for item in record.artifacts:
+            path = directory / item.filename
+            if not path.is_file():
+                return False
+            try:
+                if path.stat().st_size != item.size_bytes:
+                    _LOG.warning(
+                        "AutoGrid map set %s artifact %s size mismatch (expected %d, got %d); "
+                        "refusing cached reuse",
+                        record.map_set_id,
+                        item.filename,
+                        item.size_bytes,
+                        path.stat().st_size,
+                    )
+                    return False
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                if digest.hexdigest() != item.sha256:
+                    _LOG.warning(
+                        "AutoGrid map set %s artifact %s SHA-256 mismatch; refusing cached reuse",
+                        record.map_set_id,
+                        item.filename,
+                    )
+                    return False
+            except OSError as error:
+                _LOG.warning(
+                    "AutoGrid map set %s artifact %s unreadable (%s); refusing cached reuse",
+                    record.map_set_id,
+                    item.filename,
+                    error,
+                )
+                return False
+        return True
 
     def _map_sets_dir(self) -> Path:
         path = self._project_root / "derived" / "autogrid_maps"

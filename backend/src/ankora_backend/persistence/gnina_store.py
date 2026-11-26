@@ -1,6 +1,7 @@
 """Project-scoped, create-only scientific artifacts for GNINA jobs."""
 
 import json
+import logging
 import os
 import threading
 from hashlib import sha256
@@ -14,6 +15,8 @@ from ankora_backend.schemas.gnina import (
     GninaLocalRefinementRecord,
     GninaPoseArtifact,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class GninaJobStore:
@@ -72,7 +75,13 @@ class GninaJobStore:
                 continue
             try:
                 records.append(self.load_job(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable GNINA job %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 

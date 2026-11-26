@@ -20,6 +20,7 @@ import posixpath
 import re
 import sys
 import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
@@ -112,9 +113,12 @@ class _BundleSource:
         safe = _validate_safe_relpath(rel_path)
         if safe not in self._members:
             raise BundleVerificationError(f"Missing required file in bundle: {safe}")
-        if self._zip is not None:
-            return self._zip.read(safe)
-        return (self.target / safe).read_bytes()
+        try:
+            if self._zip is not None:
+                return self._zip.read(safe)
+            return (self.target / safe).read_bytes()
+        except (zipfile.BadZipFile, zlib.error, OSError, RuntimeError) as err:
+            raise BundleVerificationError(f"Unable to read bundle member {safe}: {err}") from err
 
     def sha256_and_size(self, rel_path: str) -> tuple[str, int]:
         safe = _validate_safe_relpath(rel_path)
@@ -122,16 +126,19 @@ class _BundleSource:
             raise BundleVerificationError(f"Missing referenced file in bundle: {safe}")
         digest = hashlib.sha256()
         total = 0
-        if self._zip is not None:
-            with self._zip.open(safe, "r") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-                    total += len(chunk)
-        else:
-            with (self.target / safe).open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-                    total += len(chunk)
+        try:
+            if self._zip is not None:
+                with self._zip.open(safe, "r") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        total += len(chunk)
+            else:
+                with (self.target / safe).open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        total += len(chunk)
+        except (zipfile.BadZipFile, zlib.error, OSError, RuntimeError) as err:
+            raise BundleVerificationError(f"Unable to hash bundle member {safe}: {err}") from err
         return digest.hexdigest(), total
 
 

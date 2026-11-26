@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -13,6 +14,8 @@ from ankora_backend.schemas.interaction_rules import (
     InteractionRuleEvaluationRecord,
     InteractionRuleSetRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 _STAGE = "interaction_rules_storage"
 
@@ -56,7 +59,13 @@ class InteractionRuleSetStore:
                 record = InteractionRuleSetRecord.model_validate_json(
                     path.read_text(encoding="utf-8")
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable interaction rule artifact %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if receptor_id is None or record.receptor_id == receptor_id:
                 records.append(record)
@@ -127,7 +136,13 @@ class InteractionRuleEvaluationStore:
                 record = InteractionRuleEvaluationRecord.model_validate_json(
                     path.read_text(encoding="utf-8")
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable interaction rule artifact %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if (
                 record.catalog_id == catalog_id

@@ -1,5 +1,6 @@
 """One-process lease ownership with durable periodic heartbeats."""
 
+import logging
 import threading
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -10,6 +11,8 @@ from ankora_backend.schemas.work_recovery import (
     WorkLeaseRecord,
     WorkLeaseState,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class WorkLeaseManager:
@@ -68,7 +71,16 @@ class WorkLeaseManager:
         with self._lock:
             for key, record in list(self._active.items()):
                 updated = record.model_copy(update={"heartbeat_at": now})
-                self._store.write(updated)
+                try:
+                    self._store.write(updated)
+                except OSError as error:
+                    _LOG.warning(
+                        "Transient lease heartbeat write failure for %s:%s: %s",
+                        key[0].value,
+                        key[1],
+                        error,
+                    )
+                    continue
                 self._active[key] = updated
 
     def shutdown(self) -> None:
@@ -78,7 +90,7 @@ class WorkLeaseManager:
             thread.join(timeout=max(1.0, self._heartbeat_interval_seconds * 2))
 
     def _ensure_thread(self) -> None:
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             return
         self._thread = threading.Thread(
             target=self._heartbeat_loop,
@@ -89,4 +101,7 @@ class WorkLeaseManager:
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(self._heartbeat_interval_seconds):
-            self.heartbeat_once()
+            try:
+                self.heartbeat_once()
+            except Exception:  # noqa: BLE001
+                _LOG.exception("Unexpected error in work-lease heartbeat loop; continuing")

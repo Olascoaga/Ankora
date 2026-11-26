@@ -1,16 +1,19 @@
 """Atomic durable lease records for long-running local scientific work."""
 
-import json
+import logging
 import os
 import threading
 from pathlib import Path
 from uuid import UUID
 
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.atomic_io import atomic_write_json
 from ankora_backend.schemas.work_recovery import (
     WorkKind,
     WorkLeaseRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class WorkLeaseStore:
@@ -28,16 +31,7 @@ class WorkLeaseStore:
         with self._lock:
             path = self._path(record.work_kind, record.work_id)
             path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = path.with_suffix(".json.tmp")
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(
-                    record.model_dump(mode="json"),
-                    stream,
-                    indent=2,
-                    ensure_ascii=False,
-                )
-                stream.write("\n")
-            os.replace(temporary, path)
+            atomic_write_json(path, record.model_dump(mode="json"))
 
     def load(self, work_kind: WorkKind, work_id: str) -> WorkLeaseRecord | None:
         with self._lock:
@@ -55,7 +49,13 @@ class WorkLeaseStore:
         for path in directory.glob("*/*.json"):
             try:
                 record = WorkLeaseRecord.model_validate_json(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable work lease %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if record.state.value == "active":
                 records.append(record)

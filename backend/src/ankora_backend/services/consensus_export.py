@@ -353,6 +353,7 @@ class ConsensusExportService:
     ) -> dict[str, Any]:
         record = self._consensus_store.load_run(consensus_id)
         normalized_name = _normalize_display_name(display_name)
+        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         export_id = str(uuid4())
         directory = (self._project_root / "exports" / export_id).resolve()
         directory.mkdir(parents=True, exist_ok=False)
@@ -680,7 +681,6 @@ class ConsensusExportService:
 
         portable = _write_portable_bundle(directory, archive_filename)
 
-        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         written_to = directory
         if chosen is not None:
             written_to = free_directory(

@@ -1,6 +1,7 @@
 """Create-only storage for immutable M3 ligand originals."""
 
 import json
+import logging
 import os
 import re
 import threading
@@ -31,6 +32,7 @@ from ankora_backend.schemas.ligands import (
     LigandSource,
 )
 
+_LOG = logging.getLogger(__name__)
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 # Route handlers construct a fresh LigandArtifactStore per request, so the lock
@@ -81,7 +83,13 @@ class LigandArtifactStore:
                 continue
             try:
                 record = self.load_record(candidate.name)
-            except (AnkoraDomainError, OSError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable ligand record %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if record.artifact.source is LigandSource.CRYSTALLOGRAPHIC:
                 records.append(record)

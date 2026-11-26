@@ -2848,6 +2848,7 @@ class CampaignExportService:
         )
         campaign = self._with_box(campaign)
         normalized_name = _normalize_display_name(display_name)
+        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         export_id = str(uuid4())
         directory = self._export_dir(export_id)
         directory.mkdir(parents=True, exist_ok=False)
@@ -2973,10 +2974,8 @@ class CampaignExportService:
                 stream.write(content)
         portable = _write_portable_bundle(directory, bundle_identity.archive_filename)
 
-        # The bundle is assembled in the project first, so the record and the
-        # files it serves back exist whatever happens next; a chosen folder
-        # then receives a complete copy under a name that says what it is.
-        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
+        # Destination was already validated before creating the export directory
+        # (D5-021) so invalid destinations never leave orphan folders behind.
         written_to = directory
         if chosen is not None:
             written_to = free_directory(

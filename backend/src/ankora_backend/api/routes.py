@@ -403,7 +403,9 @@ def retry_recovered_work(
     request: Request,
 ) -> WorkRetryResponse:
     """Launch a reconciled request again under a fresh immutable identity."""
-    return _work_retry_service(request).retry(work_kind, work_id, retry_request)
+    return _project_runtime(request).run_locked(
+        lambda: _work_retry_service(request).retry(work_kind, work_id, retry_request)
+    )
 
 
 @router.get("/tools", response_model=ToolsResponse)
@@ -1104,7 +1106,9 @@ def create_gnina_docking_job(
     request: GninaDockingRequest,
     http_request: Request,
 ) -> GninaJobRecord:
-    return _gnina_docking_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _gnina_docking_service(http_request).start(request)
+    )
 
 
 @router.post(
@@ -1179,7 +1183,9 @@ def create_vina_docking_job(
     request: VinaDockingRequest,
     http_request: Request,
 ) -> VinaDockingJobRecord:
-    return _vina_docking_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _vina_docking_service(http_request).start(request)
+    )
 
 
 def _pose_file_response(path: Path | None) -> FileResponse:
@@ -1278,7 +1284,9 @@ def get_gnina_pose_flex(job_id: str, artifact_id: str, request: Request) -> File
 def create_vina_refinement(
     request: VinaLocalRefinementRequest, http_request: Request
 ) -> VinaLocalRefinementRecord:
-    return _vina_docking_service(http_request).refine_pose_local_only(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _vina_docking_service(http_request).refine_pose_local_only(request)
+    )
 
 
 @router.get("/docking/refinements/{refinement_id}", response_model=VinaLocalRefinementRecord)
@@ -1318,7 +1326,9 @@ def get_vina_refinement_pose_flex(
 def create_gnina_refinement(
     request: GninaLocalRefinementRequest, http_request: Request
 ) -> GninaLocalRefinementRecord:
-    return _gnina_docking_service(http_request).refine_pose_local_only(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _gnina_docking_service(http_request).refine_pose_local_only(request)
+    )
 
 
 @router.get("/docking/gnina/refinements/{refinement_id}", response_model=GninaLocalRefinementRecord)
@@ -1392,7 +1402,9 @@ def create_vina_docking_batch(
     batch_request: VinaBatchDockingRequest,
     request: Request,
 ) -> VinaBatchDockingRecord:
-    return _vina_docking_service(request).start_batch(batch_request)
+    return _project_runtime(request).run_locked(
+        lambda: _vina_docking_service(request).start_batch(batch_request)
+    )
 
 
 @router.get("/docking/batches/latest", response_model=VinaBatchDockingRecord)
@@ -1468,7 +1480,9 @@ def ensure_autogrid_map_set(
     request: AutoGridMapSetRequest,
     http_request: Request,
 ) -> AutoGridMapSetSummary:
-    return _autogrid_map_service(http_request).ensure_map_set(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autogrid_map_service(http_request).ensure_map_set(request)
+    )
 
 
 @router.post(
@@ -1480,7 +1494,9 @@ def start_autogrid_job(
     request: AutoGridMapSetRequest,
     http_request: Request,
 ) -> AutoGridMapJobRecord:
-    return _autogrid_map_service(http_request).start_map_set(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autogrid_map_service(http_request).start_map_set(request)
+    )
 
 
 @router.get("/autogrid/jobs/{job_id}", response_model=AutoGridMapJobRecord)
@@ -1531,7 +1547,9 @@ def create_autodock4_job(
     request: AutoDock4DockingRequest,
     http_request: Request,
 ) -> AutoDock4DockingJobRecord:
-    return _autodock4_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock4_service(http_request).start(request)
+    )
 
 
 @router.get(
@@ -1577,7 +1595,9 @@ def create_autodock_gpu_job(
     request: AutoDockGpuDockingRequest,
     http_request: Request,
 ) -> AutoDockGpuDockingJobRecord:
-    return _autodock_gpu_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock_gpu_service(http_request).start(request)
+    )
 
 
 @router.get(
@@ -1623,7 +1643,9 @@ def create_autodock_gpu_batch(
     request: AutoDockGpuBatchRequest,
     http_request: Request,
 ) -> AutoDockGpuBatchRecord:
-    return _autodock_gpu_service(http_request).start_batch(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock_gpu_service(http_request).start_batch(request)
+    )
 
 
 @router.get(
@@ -1695,7 +1717,9 @@ def create_autodock4_batch(
     request: AutoDock4BatchRequest,
     http_request: Request,
 ) -> AutoDock4BatchRecord:
-    return _autodock4_service(http_request).start_batch(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock4_service(http_request).start_batch(request)
+    )
 
 
 @router.get(

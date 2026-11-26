@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import project_scope
@@ -62,6 +63,9 @@ class ProjectServiceBundle:
         self.gnina_screening.shutdown()
         self.gnina.shutdown()
         self.work_leases.shutdown()
+
+
+_T = TypeVar("_T")
 
 
 class ProjectRuntime:
@@ -129,6 +133,11 @@ class ProjectRuntime:
             self.publish(state)
             previous.shutdown()
             return project
+
+    def run_locked(self, fn: Callable[[], _T]) -> _T:
+        """Execute an admission or scheduling operation under the project-switch lock (D5-013)."""
+        with self._lock, project_scope(self._bundle.project_id):
+            return fn()
 
     def start_gnina_screening(self, request: GninaScreeningRequest) -> GninaScreeningCampaignRecord:
         """Admit and schedule under the same lock that protects project switches."""
