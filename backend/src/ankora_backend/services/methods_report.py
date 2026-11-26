@@ -254,6 +254,13 @@ class MethodsReportService:
     def render(self, catalog_id: str) -> MethodsReport:
         entry = self._catalog.get_campaign(catalog_id)
         draft = _Draft()
+        if bool(getattr(entry, "stale", False)):
+            stale_reasons = list(getattr(entry, "stale_reasons", ()) or ())
+            reasons = "; ".join(stale_reasons) if stale_reasons else "upstream artifact modified"
+            draft.say(
+                f"> **WARNING — STALE ARTIFACT (ADR-011):** This campaign is marked stale "
+                f"and must not be presented as current ({reasons}).\n"
+            )
 
         if entry.engine_key == GNINA_JOB:
             self._gnina_sections(draft, entry)
@@ -1974,14 +1981,26 @@ class MethodsReportService:
             value = "Vinardo score" if parameters.get("scoring") == "vinardo" else "Vina score"
         else:
             value = "AutoDock4 binding energy"
-        draft.say(
-            f"{entry.selected_count} compounds were submitted, of which "
-            f"{entry.succeeded_count} produced poses and {entry.failed_count} "
-            "failed. Compounds are ranked by their best "
-            f"{value} in kcal mol⁻¹; these values are computational estimates "
-            "from an empirical scoring function and are not measured binding "
-            "affinities."
-        )
+        canceled_count = int(getattr(entry, "canceled_count", 0) or 0)
+        entry_status = str(getattr(entry, "status", "") or "")
+        if canceled_count > 0 or entry_status == "canceled":
+            draft.say(
+                f"The campaign was canceled before completion; {entry.selected_count} "
+                f"compounds were submitted, of which {entry.succeeded_count} produced poses, "
+                f"{entry.failed_count} failed, and {canceled_count} were canceled. "
+                f"Compounds are ranked by their best {value} in kcal mol⁻¹; these values "
+                "are computational estimates from an empirical scoring function and are not "
+                "measured binding affinities."
+            )
+        else:
+            draft.say(
+                f"{entry.selected_count} compounds were submitted, of which "
+                f"{entry.succeeded_count} produced poses and {entry.failed_count} "
+                "failed. Compounds are ranked by their best "
+                f"{value} in kcal mol⁻¹; these values are computational estimates "
+                "from an empirical scoring function and are not measured binding "
+                "affinities."
+            )
         self._reproducibility_prose(draft, entry)
         draft.say("")
 

@@ -35,6 +35,10 @@ from ankora_backend.schemas.results_catalog import (
     ScoringFamily,
 )
 from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
+from ankora_backend.services.project_dependencies import (
+    ArtifactFreshness,
+    ProjectDependencyService,
+)
 from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "results_catalog"
@@ -139,8 +143,12 @@ class ResultCatalogService:
         # keep a stable order between requests.
         entries.sort(key=lambda item: (item.created_at, item.record_id), reverse=True)
         window = entries[offset : offset + limit]
+        freshness_map = self._freshness_map()
         return CatalogPage(
-            entries=[self._with_box(entry) for entry in window],
+            entries=[
+                self._with_freshness(self._with_box(entry), freshness_map)
+                for entry in window
+            ],
             total=len(entries),
             offset=offset,
             limit=limit,
@@ -149,10 +157,42 @@ class ResultCatalogService:
     def get_campaign(self, catalog_id: str) -> CatalogEntry:
         engine_key, record_id = self._split(catalog_id)
         entry = self._project(engine_key, record_id)
-        return self._with_box(
+        enriched = self._with_box(
             entry.model_copy(
                 update={"reproducibility": self._reproducibility.assessment(catalog_id)}
             )
+        )
+        return self._with_freshness(enriched, self._freshness_map())
+
+    def _dependency_service(self) -> ProjectDependencyService | None:
+        project_root = getattr(self._docking_store, "_project_root", None)
+        if project_root is None or not hasattr(project_root, "parent"):
+            return None
+        if project_root.parent.name != "projects":
+            return None
+        return ProjectDependencyService.for_project_root(project_root)
+
+    def _freshness_map(self) -> dict[str, ArtifactFreshness]:
+        deps = self._dependency_service()
+        if deps is None:
+            return {}
+        try:
+            return deps.all_freshness_map()
+        except AnkoraDomainError:
+            return {}
+
+    @staticmethod
+    def _with_freshness(
+        entry: CatalogEntry, freshness_map: dict[str, ArtifactFreshness]
+    ) -> CatalogEntry:
+        freshness = freshness_map.get(entry.record_id)
+        if freshness is None or not freshness.stale:
+            return entry
+        return entry.model_copy(
+            update={
+                "stale": True,
+                "stale_reasons": list(freshness.stale_reasons),
+            }
         )
 
     def _all(self) -> list[CatalogEntry]:

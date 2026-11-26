@@ -87,6 +87,22 @@ _OUTPUT_OWNER_KINDS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ArtifactFreshness:
+    """Read-only stale-state summary for one artifact or set of source artifacts (ADR-011)."""
+
+    stale: bool
+    stale_reasons: tuple[str, ...] = ()
+    unresolved_parent_ids: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stale": self.stale,
+            "stale_reasons": list(self.stale_reasons),
+            "unresolved_parent_ids": list(self.unresolved_parent_ids),
+        }
+
+
 @dataclass(slots=True)
 class _Candidate:
     node_id: str
@@ -142,6 +158,53 @@ class ProjectDependencyService:
                     ],
                 },
             )
+
+    def freshness_for(self, node_ids: Iterable[str]) -> ArtifactFreshness:
+        """Return stale status and reasons for one artifact (or union of source artifacts)."""
+        requested_raw = [_normalized_reference(value) for value in node_ids if value]
+        if not requested_raw:
+            return ArtifactFreshness(stale=False)
+        candidates = self._candidates()
+        if not candidates:
+            return ArtifactFreshness(stale=False)
+        aliases = {alias: item.node_id for item in candidates for alias in item.aliases}
+        aliases.update({item.node_id: item.node_id for item in candidates})
+        requested = {aliases.get(value, value) for value in requested_raw}
+        graph = self._graph(offset=0, limit=max(1, len(candidates)), candidates=candidates)
+        reasons: list[str] = []
+        unresolved: list[str] = []
+        stale = False
+        for node in graph.nodes:
+            if node.node_id not in requested:
+                continue
+            if node.stale:
+                stale = True
+                for reason in node.stale_reasons:
+                    if reason not in reasons:
+                        reasons.append(reason)
+            for ref in node.unresolved_parent_ids:
+                if ref not in unresolved:
+                    unresolved.append(ref)
+        return ArtifactFreshness(
+            stale=stale,
+            stale_reasons=tuple(reasons),
+            unresolved_parent_ids=tuple(unresolved),
+        )
+
+    def all_freshness_map(self) -> dict[str, ArtifactFreshness]:
+        """Return a node_id -> ArtifactFreshness map in one single graph build."""
+        candidates = self._candidates()
+        if not candidates:
+            return {}
+        graph = self._graph(offset=0, limit=max(1, len(candidates)), candidates=candidates)
+        return {
+            node.node_id: ArtifactFreshness(
+                stale=node.stale,
+                stale_reasons=tuple(node.stale_reasons),
+                unresolved_parent_ids=tuple(node.unresolved_parent_ids),
+            )
+            for node in graph.nodes
+        }
 
     def graph(self, *, offset: int = 0, limit: int = 100) -> ProjectDependencyGraph:
         if offset < 0 or limit < 1 or limit > 500:
