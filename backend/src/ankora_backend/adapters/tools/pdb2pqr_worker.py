@@ -28,11 +28,13 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _parser().parse_args()
-    from pdb2pqr import biomolecule, io
-    from pdb2pqr.main import run_pdb2pqr
+    from pdb2pqr import aa, biomolecule, io
+    from pdb2pqr import main as pdb2pqr_main
 
     overrides = _parse_overrides(args.override)
     applied: list[dict[str, object]] = []
+    captured_pka_rows: list[dict[str, object]] = []
+    original_run_propka = pdb2pqr_main.run_propka
     original_apply = biomolecule.Biomolecule.apply_pka_values
     original_hold = biomolecule.Biomolecule.hold_residues
     explicit_histidines = {
@@ -42,23 +44,46 @@ def main() -> None:
     }
     fixed_histidines: set[tuple[str, str, int, str]] = set()
 
+    def run_propka_and_capture(run_args: Any, bio: Any) -> Any:
+        rows, pka_str = original_run_propka(run_args, bio)
+        captured_pka_rows.clear()
+        captured_pka_rows.extend(rows or [])
+        return rows, pka_str
+
     def apply_with_overrides(
         instance: Any, force_field: str, ph: float, pkadic: dict[str, float]
     ) -> None:
-        available = dict(pkadic)
+        if not captured_pka_rows:
+            original_apply(instance, force_field, ph, pkadic)
+            return
+
+        sidechain_pka: dict[tuple[str, str, int, str], float] = {}
+        nterm_pka: dict[tuple[str, int, str], float] = {}
+        cterm_pka: dict[tuple[str, int, str], float] = {}
+        for row in captured_pka_rows:
+            chain_id = str(row.get("chain_id") or "").strip()
+            res_name = str(row["res_name"]).strip()
+            res_num = int(str(row["res_num"]))
+            ins_code = str(row.get("ins_code") or "").strip()
+            group_label = str(row["group_label"])
+            pka_value = float(str(row["pKa"]))
+            if group_label.startswith("N+"):
+                nterm_pka[(chain_id, res_num, ins_code)] = pka_value
+            elif group_label.startswith("C-"):
+                cterm_pka[(chain_id, res_num, ins_code)] = pka_value
+            elif group_label.startswith(res_name):
+                sidechain_pka[(chain_id, res_name, res_num, ins_code)] = pka_value
+
         for identity, state in overrides.items():
             chain_id, residue_name, sequence_number, insertion_code = identity
-            if insertion_code:
+            if identity not in sidechain_pka:
                 raise ValueError(
-                    "PDB2PQR does not expose insertion codes in its pKa assignment key; "
-                    f"cannot safely override {chain_id}:{sequence_number}{insertion_code}."
+                    "The requested protonation override did not match "
+                    f"{residue_name} {sequence_number}{insertion_code} {chain_id}."
                 )
-            key = f"{residue_name} {sequence_number} {chain_id}".strip()
-            if key not in pkadic:
-                raise ValueError(f"The requested protonation override did not match {key}.")
-            predicted_pka = float(pkadic[key])
+            predicted_pka = float(sidechain_pka[identity])
             forced_pka = _forced_pka(residue_name, state, ph)
-            pkadic[key] = forced_pka
+            sidechain_pka[identity] = forced_pka
             applied.append(
                 {
                     "chain_id": chain_id,
@@ -70,14 +95,75 @@ def main() -> None:
                     "forced_pka": forced_pka,
                 }
             )
-        original_apply(instance, force_field, ph, pkadic)
+
+        ff_lower = str(force_field).strip().lower()
+        for residue in instance.residues:
+            if not isinstance(residue, aa.Amino):
+                continue
+            resname = str(residue.name).strip()
+            resnum = int(residue.res_seq)
+            chain_id = str(residue.chain_id or "").strip()
+            ins_code = str(residue.ins_code or "").strip()
+            term_key = (chain_id, resnum, ins_code)
+            if residue.is_n_term and term_key in nterm_pka:
+                term_value = nterm_pka.pop(term_key)
+                if ph >= term_value and ff_lower not in {
+                    "amber",
+                    "charmm",
+                    "tyl06",
+                    "peoepb",
+                    "swanson",
+                }:
+                    instance.apply_patch("NEUTRAL-NTERM", residue)
+            if residue.is_c_term and term_key in cterm_pka:
+                term_value = cterm_pka.pop(term_key)
+                if ph < term_value and ff_lower not in {
+                    "amber",
+                    "charmm",
+                    "tyl06",
+                    "peoepb",
+                    "swanson",
+                }:
+                    instance.apply_patch("NEUTRAL-CTERM", residue)
+            res_identity = (chain_id, resname, resnum, ins_code)
+            if res_identity not in sidechain_pka:
+                continue
+            value = sidechain_pka.pop(res_identity)
+            if resname == "ARG" and ph >= value and ff_lower == "parse":
+                instance.apply_patch("AR0", residue)
+            elif resname == "ASP" and ph < value:
+                if not (
+                    (residue.is_c_term or residue.is_n_term)
+                    and ff_lower in {"amber", "tyl06", "swanson"}
+                ):
+                    instance.apply_patch("ASH", residue)
+            elif resname == "CYS" and ph >= value and ff_lower != "charmm":
+                instance.apply_patch("CYM", residue)
+            elif resname == "GLU" and ph < value:
+                if not (
+                    (residue.is_c_term or residue.is_n_term)
+                    and ff_lower in {"amber", "tyl06", "swanson"}
+                ):
+                    instance.apply_patch("GLH", residue)
+            elif resname == "HIS" and ph < value:
+                instance.apply_patch("HIP", residue)
+            elif resname == "LYS" and ph >= value:
+                blocked = (
+                    ff_lower == "charmm"
+                    or (ff_lower in {"amber", "tyl06", "swanson"} and residue.is_c_term)
+                    or (ff_lower == "tyl06" and residue.is_n_term)
+                )
+                if not blocked:
+                    instance.apply_patch("LYN", residue)
+            elif (
+                resname == "TYR"
+                and ph >= value
+                and ff_lower not in {"charmm", "amber", "tyl06", "peoepb", "swanson"}
+            ):
+                instance.apply_patch("TYM", residue)
+
         if len(applied) != len(overrides):
-            missing = [
-                "|".join((chain, name, str(number), insertion))
-                for chain, name, number, insertion in overrides
-                if f"{name} {number} {chain}".strip() not in available
-            ]
-            raise ValueError(f"Unapplied protonation overrides: {missing}")
+            raise ValueError("Not all requested protonation overrides were applied.")
 
     def hold_with_tautomer_overrides(instance: Any, hlist: object) -> None:
         if explicit_histidines and not fixed_histidines:
@@ -106,10 +192,11 @@ def main() -> None:
             original_hold(instance, fixed_keys)
         original_hold(instance, hlist)
 
+    pdb2pqr_main.run_propka = run_propka_and_capture
     biomolecule.Biomolecule.apply_pka_values = apply_with_overrides
     biomolecule.Biomolecule.hold_residues = hold_with_tautomer_overrides
     io.setup_logger(str(args.pqr_output), "INFO")
-    _, pka_rows, _ = run_pdb2pqr(
+    _, pka_rows, _ = pdb2pqr_main.run_pdb2pqr(
         [
             f"--ff={args.force_field}",
             "--keep-chain",
@@ -121,7 +208,7 @@ def main() -> None:
         ]
     )
     predictions = [_json_row(row) for row in (pka_rows or [])]
-    output_states = _histidine_output_states(
+    output_states = _titratable_output_states(
         pdb_path=args.pdb_output,
         pqr_path=args.pqr_output,
         predictions=predictions,
@@ -136,14 +223,17 @@ def main() -> None:
             int(str(item["sequence_number"])),
             str(item["insertion_code"]),
         )
-        if identity[1] != "HIS":
-            continue
         observed = output_state_map.get(identity)
         if observed is None:
-            raise ValueError(f"No written histidine state was found for {identity}.")
+            raise ValueError(f"No written protonation state was found for {identity}.")
         item["output_state"] = observed
         requested = str(item["state"])
-        if requested in {"HID", "HIE", "HIP"} and observed != requested:
+        if requested == "HIS_NEUTRAL_AUTO":
+            if observed not in {"HID", "HIE"}:
+                raise ValueError(
+                    f"PDB2PQR wrote {observed} for {identity}, not neutral HID/HIE."
+                )
+        elif observed != requested:
             raise ValueError(
                 f"PDB2PQR wrote {observed} for {identity}, not requested {requested}."
             )
@@ -210,45 +300,81 @@ def _fix_histidine_tautomer(residue: Any, state: str) -> None:
     residue.remove_atom(removed)
 
 
-def _histidine_output_states(
+_TITRATABLE_CANONICAL: dict[str, str] = {
+    "ASP": "ASP",
+    "ASH": "ASP",
+    "GLU": "GLU",
+    "GLH": "GLU",
+    "CYS": "CYS",
+    "CYM": "CYS",
+    "CYX": "CYS",
+    "HIS": "HIS",
+    "HID": "HIS",
+    "HIE": "HIS",
+    "HIP": "HIS",
+    "LYS": "LYS",
+    "LYN": "LYS",
+}
+
+
+def _titratable_output_states(
     *, pdb_path: Path, pqr_path: Path, predictions: list[dict[str, object]]
 ) -> list[dict[str, object]]:
     identities = {
         (
-            str(row.get("chain_id") or ""),
-            "HIS",
+            str(row.get("chain_id") or "").strip(),
+            str(row.get("res_name") or "").strip(),
             int(str(row["res_num"])),
-            str(row.get("ins_code") or ""),
+            str(row.get("ins_code") or "").strip(),
         )
         for row in predictions
-        if str(row.get("res_name") or "") == "HIS"
-        and str(row.get("group_label") or "").startswith("HIS")
+        if str(row.get("res_name") or "").strip() in {"ASP", "GLU", "CYS", "HIS", "LYS"}
+        and str(row.get("group_label") or "").startswith(
+            str(row.get("res_name") or "").strip()
+        )
     }
     pdb_atoms = _residue_atom_names(pdb_path, identities)
     pqr_atoms = _residue_atom_names(pqr_path, identities)
     output: list[dict[str, object]] = []
     for identity in sorted(identities):
-        pdb_state = _histidine_state(pdb_atoms.get(identity, set()), identity, "PDB")
-        pqr_state = _histidine_state(pqr_atoms.get(identity, set()), identity, "PQR")
+        res_name = identity[1]
+        pdb_state = _titratable_state(res_name, pdb_atoms.get(identity, set()), identity, "PDB")
+        pqr_state = _titratable_state(res_name, pqr_atoms.get(identity, set()), identity, "PQR")
         if pdb_state != pqr_state:
             raise ValueError(
-                f"Written PDB/PQR histidine states disagree for {identity}: "
+                f"Written PDB/PQR protonation states disagree for {identity}: "
                 f"{pdb_state} versus {pqr_state}."
             )
-        output.append(
-            {
-                "chain_id": identity[0],
-                "residue_name": identity[1],
-                "sequence_number": identity[2],
-                "insertion_code": identity[3],
-                "state": pdb_state,
-                "ring_hydrogens": sorted(
-                    pdb_atoms[identity].intersection({"HD1", "HE2"})
-                ),
-                "verified_in": ["pdb", "pqr"],
-            }
-        )
+        entry: dict[str, object] = {
+            "chain_id": identity[0],
+            "residue_name": res_name,
+            "sequence_number": identity[2],
+            "insertion_code": identity[3],
+            "state": pdb_state,
+            "verified_in": ["pdb", "pqr"],
+        }
+        if res_name == "HIS":
+            entry["ring_hydrogens"] = sorted(
+                pdb_atoms[identity].intersection({"HD1", "HE2"})
+            )
+        output.append(entry)
     return output
+
+
+def _histidine_output_states(
+    *, pdb_path: Path, pqr_path: Path, predictions: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    his_only = [
+        row
+        for row in predictions
+        if str(row.get("res_name") or "").strip() == "HIS"
+        and str(row.get("group_label") or "").startswith("HIS")
+    ]
+    return _titratable_output_states(
+        pdb_path=pdb_path,
+        pqr_path=pqr_path,
+        predictions=his_only,
+    )
 
 
 def _residue_atom_names(
@@ -260,10 +386,13 @@ def _residue_atom_names(
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.startswith(("ATOM  ", "HETATM")) or len(line) < 27:
             continue
+        canonical = _TITRATABLE_CANONICAL.get(line[17:20].strip(), "")
+        if not canonical:
+            continue
         try:
             identity = (
                 line[21].strip(),
-                "HIS" if line[17:20].strip() in {"HIS", "HID", "HIE", "HIP"} else "",
+                canonical,
                 int(line[22:26]),
                 line[26].strip(),
             )
@@ -272,6 +401,28 @@ def _residue_atom_names(
         if identity in atoms:
             atoms[identity].add(line[12:16].strip())
     return atoms
+
+
+def _titratable_state(
+    residue_name: str,
+    atom_names: set[str],
+    identity: tuple[str, str, int, str],
+    label: str,
+) -> str:
+    if residue_name == "HIS":
+        return _histidine_state(atom_names, identity, label)
+    if not atom_names:
+        raise ValueError(f"Written {label} has no {residue_name} residue for {identity}.")
+    if residue_name == "ASP":
+        return "ASH" if ("HD1" in atom_names or "HD2" in atom_names) else "ASP"
+    if residue_name == "GLU":
+        return "GLH" if ("HE1" in atom_names or "HE2" in atom_names) else "GLU"
+    if residue_name == "CYS":
+        return "CYS" if "HG" in atom_names else "CYM"
+    if residue_name == "LYS":
+        hz_count = len(atom_names.intersection({"HZ1", "HZ2", "HZ3"}))
+        return "LYS" if hz_count >= 3 else "LYN"
+    raise ValueError(f"Unsupported titratable residue {residue_name} for {identity}.")
 
 
 def _histidine_state(

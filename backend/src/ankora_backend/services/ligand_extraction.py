@@ -34,6 +34,7 @@ _BOND_TYPES: dict[str, Any] = {
     "doub": Chem.BondType.DOUBLE,
     "trip": Chem.BondType.TRIPLE,
     "arom": Chem.BondType.AROMATIC,
+    "delo": Chem.BondType.AROMATIC,
 }
 
 
@@ -226,12 +227,26 @@ def _build_observed_molecule(
         left = row["_chem_comp_bond.atom_id_1"]
         right = row["_chem_comp_bond.atom_id_2"]
         if left in indices and right in indices:
-            order = row["_chem_comp_bond.value_order"]
-            builder.AddBond(
-                indices[left],
-                indices[right],
-                _BOND_TYPES.get(order, Chem.BondType.SINGLE),
-            )
+            raw_order = str(row["_chem_comp_bond.value_order"])
+            order = raw_order.strip().lower()
+            bond_type = _BOND_TYPES.get(order)
+            if bond_type is None:
+                raise AnkoraDomainError(
+                    code="LIGAND_BOND_ORDER_UNSUPPORTED",
+                    stage="ligand_extraction",
+                    message=(
+                        f"mmCIF bond between {left} and {right} declares unsupported "
+                        f"value_order '{raw_order}'; refusing to downgrade to a single bond."
+                    ),
+                    status_code=422,
+                    details={
+                        "component_name": locator.component_name,
+                        "atom_id_1": left,
+                        "atom_id_2": right,
+                        "value_order": raw_order,
+                    },
+                )
+            builder.AddBond(indices[left], indices[right], bond_type)
     molecule = builder.GetMol()
     conformer = Chem.Conformer(molecule.GetNumAtoms())
     for name, index in indices.items():

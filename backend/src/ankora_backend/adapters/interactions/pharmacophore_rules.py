@@ -6,6 +6,7 @@ evidence emitted by `ProLIF 2.2.1` on the exact coupled `PoseComplex` (`ADR-032 
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -197,6 +198,30 @@ def compute_ifp_tanimoto(
     min_threshold: float | None = None,
 ) -> IfpTanimotoResult:
     """Compute exact binary Tanimoto similarity |A ∩ B| / |A ∪ B| over residue x type bits."""
+    pose_interactions = set(pose_ifp.profile.interactions)
+    ref_interactions = set(reference_ifp.profile.interactions)
+    if pose_interactions != ref_interactions or not math.isclose(
+        pose_ifp.profile.vicinity_cutoff_angstrom,
+        reference_ifp.profile.vicinity_cutoff_angstrom,
+        abs_tol=1e-9,
+    ):
+        raise AnkoraDomainError(
+            code="INTERACTION_IFP_PROFILE_MISMATCH",
+            stage=_STAGE,
+            status_code=422,
+            message=(
+                "Cannot compute IFP Tanimoto similarity between fingerprints built under "
+                "incompatible interaction profiles."
+            ),
+            details={
+                "pose_interactions": sorted(pose_interactions),
+                "reference_interactions": sorted(ref_interactions),
+                "pose_vicinity_cutoff_angstrom": pose_ifp.profile.vicinity_cutoff_angstrom,
+                "reference_vicinity_cutoff_angstrom": (
+                    reference_ifp.profile.vicinity_cutoff_angstrom
+                ),
+            },
+        )
     pose_map = {bit.sort_key(): bit for bit in pose_ifp.bits}
     ref_map = {bit.sort_key(): bit for bit in reference_ifp.bits}
     pose_keys = set(pose_map)

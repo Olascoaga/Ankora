@@ -546,3 +546,118 @@ def test_sealed_rule_set_integrates_with_m2_calibration_with_invariant_denominat
                 "vina_pic_gated": list(tampered_conf_obs),
             },
         )
+
+
+def test_pharmacophore_rules_profile_mismatch_duplicate_targets_and_boundary_oracles() -> None:
+    """D2-015 + mutation oracles: profile guard, unique targets, exact threshold/distance bounds."""
+    prof_hb = InteractionProfile(interactions=["HBDonor"])
+    prof_hyd = InteractionProfile(interactions=["Hydrophobic"])
+    prof_far = InteractionProfile(interactions=["HBDonor"], vicinity_cutoff_angstrom=8.0)
+
+    ifp_hb = fingerprint_from_explicit_bits(
+        [IfpBit(residue=_RES_SER, interaction_type="HBDonor")], profile=prof_hb
+    )
+    ifp_hyd = fingerprint_from_explicit_bits(
+        [IfpBit(residue=_RES_SER, interaction_type="Hydrophobic")], profile=prof_hyd
+    )
+    ifp_far = fingerprint_from_explicit_bits(
+        [IfpBit(residue=_RES_SER, interaction_type="HBDonor")], profile=prof_far
+    )
+
+    # 1. Cross-profile IFP Tanimoto comparison must fail closed
+    with pytest.raises(AnkoraDomainError) as exc_type:
+        compute_ifp_tanimoto(pose_ifp=ifp_hb, reference_ifp=ifp_hyd)
+    assert exc_type.value.code == "INTERACTION_IFP_PROFILE_MISMATCH"
+    with pytest.raises(AnkoraDomainError) as exc_cut:
+        compute_ifp_tanimoto(pose_ifp=ifp_hb, reference_ifp=ifp_far)
+    assert exc_cut.value.code == "INTERACTION_IFP_PROFILE_MISMATCH"
+
+    # 2. Duplicate canonical targets in ALTERNATIVE_OR must fail validation
+    dup_target = InteractionTarget(residue=_RES_SER, interaction_types=("HBDonor",))
+    with pytest.raises(ValidationError, match="targets must be unique"):
+        InteractionRuleClause(
+            clause_id="dup-or",
+            label="Duplicate alternative targets",
+            kind=InteractionRuleKind.ALTERNATIVE_OR,
+            targets=(dup_target, dup_target),
+            min_satisfied=2,
+        )
+
+    # 3. Exact Tanimoto threshold boundaries (kills M06, M07, M08, M09)
+    prof = InteractionProfile()
+    ref_two = fingerprint_from_explicit_bits(
+        [
+            IfpBit(residue=_RES_SER, interaction_type="HBDonor"),
+            IfpBit(residue=_RES_TYR, interaction_type="FaceToFace"),
+        ],
+        profile=prof,
+    )
+    pose_one = fingerprint_from_explicit_bits(
+        [IfpBit(residue=_RES_SER, interaction_type="HBDonor")],
+        profile=prof,
+    )
+    # similarity == 0.5 exactly
+    assert compute_ifp_tanimoto(
+        pose_ifp=pose_one, reference_ifp=ref_two, min_threshold=None
+    ).status is DiagnosticStatus.PASS
+    assert compute_ifp_tanimoto(
+        pose_ifp=pose_one, reference_ifp=ref_two, min_threshold=0.5
+    ).status is DiagnosticStatus.PASS
+    assert compute_ifp_tanimoto(
+        pose_ifp=pose_one, reference_ifp=ref_two, min_threshold=0.5 + 1e-13
+    ).status is DiagnosticStatus.PASS
+    assert compute_ifp_tanimoto(
+        pose_ifp=pose_one, reference_ifp=ref_two, min_threshold=0.505
+    ).status is DiagnosticStatus.FAIL
+
+    # 4. Exact max_distance_angstrom equality must match (kills M11)
+    exact_clause = InteractionRuleClause(
+        clause_id="exact-dist",
+        label="Exact distance threshold",
+        kind=InteractionRuleKind.REQUIRED,
+        targets=(
+            InteractionTarget(
+                residue=_RES_SER, interaction_types=("HBDonor",), max_distance_angstrom=3.0
+            ),
+        ),
+    )
+    c_exact = _contact("c-exact", _RES_SER, "HBDonor", 3.0)
+    rs_exact = _rule_set(clauses=(exact_clause,), reference_ifp=pose_one, min_tanimoto=0.5)
+    out_exact = evaluate_rule_set_against_contacts(rule_set=rs_exact, contacts=[c_exact])
+    assert out_exact.overall_status is DiagnosticStatus.PASS
+    # Passing Tanimoto must NOT emit INTERACTION_IFP_TANIMOTO_BELOW_THRESHOLD (kills M16)
+    assert not any(
+        w.code is WarningCode.INTERACTION_IFP_TANIMOTO_BELOW_THRESHOLD for w in out_exact.warnings
+    )
+
+    # 5. Empty 0/0 union with passing/failing clauses & optional vs required Tanimoto (kills M20)
+    empty_ifp = fingerprint_from_explicit_bits([], profile=prof)
+    rs_empty_opt_only_ref = _rule_set(clauses=(), reference_ifp=empty_ifp, min_tanimoto=None)
+    out_only_ref = evaluate_rule_set_against_contacts(
+        rule_set=rs_empty_opt_only_ref, contacts=[]
+    )
+    assert out_only_ref.overall_status is DiagnosticStatus.NOT_EVALUABLE
+
+    # Optional empty Tanimoto + non-empty passing FORBIDDEN clause => overall PASS
+    forbid_clause = InteractionRuleClause(
+        clause_id="forbid-tyr",
+        label="No TYR contact",
+        kind=InteractionRuleKind.FORBIDDEN,
+        targets=(InteractionTarget(residue=_RES_TYR, interaction_types=("FaceToFace",)),),
+    )
+    rs_empty_opt_with_clause = _rule_set(
+        clauses=(forbid_clause,), reference_ifp=empty_ifp, min_tanimoto=None
+    )
+    out_with_clause = evaluate_rule_set_against_contacts(
+        rule_set=rs_empty_opt_with_clause, contacts=[]
+    )
+    assert out_with_clause.overall_status is DiagnosticStatus.PASS
+
+    # Required empty Tanimoto + passing FORBIDDEN clause => overall NOT_EVALUABLE
+    rs_empty_req_with_clause = _rule_set(
+        clauses=(forbid_clause,), reference_ifp=empty_ifp, min_tanimoto=0.5
+    )
+    out_req_with_clause = evaluate_rule_set_against_contacts(
+        rule_set=rs_empty_req_with_clause, contacts=[]
+    )
+    assert out_req_with_clause.overall_status is DiagnosticStatus.NOT_EVALUABLE

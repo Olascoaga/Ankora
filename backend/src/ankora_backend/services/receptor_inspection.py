@@ -343,32 +343,40 @@ def _cif_cell(category: dict[str, list[str]], column: str, index: int) -> str:
 
 
 def _alternate_location_issues(model: gemmi.Model) -> list[_RawIssue]:
-    issues: list[_RawIssue] = []
-    seen: set[tuple[str, int, str]] = set()
+    grouped_labels: dict[tuple[str, int, str], set[str]] = {}
+    first_resname: dict[tuple[str, int, str], str] = {}
+    order: list[tuple[str, int, str]] = []
     for chain in model:
         for residue in chain:
             sequence_number = residue.seqid.num
             if sequence_number is None:
                 continue
-            labels = sorted(
-                {_clean_char(atom.altloc) for atom in residue if _clean_char(atom.altloc)}
-            )
+            labels = {
+                _clean_char(atom.altloc) for atom in residue if _clean_char(atom.altloc)
+            }
+            if not labels:
+                continue
             key = (chain.name, sequence_number, _clean_char(residue.seqid.icode))
-            if labels and key not in seen:
-                seen.add(key)
-                issues.append(
-                    _RawIssue(
-                        kind=ReceptorIssueKind.ALTERNATE_LOCATION,
-                        locator=ResidueLocator(
-                            chain_id=chain.name,
-                            residue_name=residue.name.strip() or "UNK",
-                            sequence_number=sequence_number,
-                            insertion_code=_clean_char(residue.seqid.icode),
-                        ),
-                        alternate_locations=labels,
-                    )
-                )
-    return issues
+            if key not in grouped_labels:
+                grouped_labels[key] = set()
+                first_resname[key] = residue.name.strip() or "UNK"
+                order.append(key)
+            grouped_labels[key].update(labels)
+    return [
+        _RawIssue(
+            kind=ReceptorIssueKind.ALTERNATE_LOCATION,
+            locator=ResidueLocator(
+                chain_id=chain_id,
+                residue_name=first_resname[(chain_id, sequence_number, insertion_code)],
+                sequence_number=sequence_number,
+                insertion_code=insertion_code,
+            ),
+            alternate_locations=sorted(
+                grouped_labels[(chain_id, sequence_number, insertion_code)]
+            ),
+        )
+        for chain_id, sequence_number, insertion_code in order
+    ]
 
 
 def _nonstandard_residue_issues(model: gemmi.Model) -> list[_RawIssue]:

@@ -118,6 +118,9 @@ class ProlifInteractionAdapter:
                 "The exact prepared receptor could not be converted for interaction analysis.",
             )
 
+        prolif_protein, synthetic_residue_map = _protein_with_unique_prolif_residue_numbers(
+            Chem, protein
+        )
         try:
             fingerprint = plf.Fingerprint(
                 interactions=profile.interactions,
@@ -127,7 +130,7 @@ class ProlifInteractionAdapter:
             )
             result = fingerprint.generate(
                 plf.Molecule.from_rdkit(ligand),
-                plf.Molecule.from_rdkit(protein),
+                plf.Molecule.from_rdkit(prolif_protein),
                 metadata=True,
             )
         except Exception as error:
@@ -137,17 +140,70 @@ class ProlifInteractionAdapter:
                 details={"reason": str(error)},
             ) from error
 
-        contacts = _contacts_from_ifp(result, ligand, protein)
+        contacts = _contacts_from_ifp(
+            result,
+            ligand,
+            protein,
+            synthetic_residue_map=synthetic_residue_map,
+        )
         diagram_mol = Chem.Mol(ligand)
         rdDepictor.Compute2DCoords(diagram_mol)
         return contacts, _diagram_from_mol(diagram_mol)
 
 
 def _canonical_smiles(chem: Any, molecule: Any) -> str:
-    return str(chem.MolToSmiles(chem.RemoveHs(molecule), isomericSmiles=True))
+    copy = chem.Mol(molecule)
+    if copy.GetNumConformers():
+        chem.AssignStereochemistryFrom3D(copy)
+    return str(chem.MolToSmiles(chem.RemoveHs(copy), isomericSmiles=True))
 
 
-def _contacts_from_ifp(result: Any, ligand: Any, protein: Any) -> list[InteractionContact]:
+def _protein_with_unique_prolif_residue_numbers(
+    chem: Any, protein: Any
+) -> tuple[Any, dict[tuple[str, str, int], ResidueLocator]]:
+    """Assign unique synthetic residue numbers per `(chain, seq, icode, name)` for ProLIF.
+
+    ProLIF's `ResidueId(name, number, chain)` ignores PDB insertion codes and overwrites
+    earlier residues sharing `(chain, number, name)`. Cloning with unique synthetic residue
+    numbers preserves exact atom indices so `_residue_locator` recovers the true residue
+    (with insertion code) from the original unmodified RDKit protein.
+    """
+    prolif_protein = chem.Mol(protein)
+    key_to_synthetic: dict[tuple[str, int, str, str], int] = {}
+    synthetic_to_locator: dict[tuple[str, str, int], ResidueLocator] = {}
+    next_number = 1
+    for atom in prolif_protein.GetAtoms():
+        info = atom.GetPDBResidueInfo()
+        if info is None:
+            continue
+        chain_id = info.GetChainId().strip()
+        residue_name = info.GetResidueName().strip()
+        sequence_number = int(info.GetResidueNumber())
+        insertion_code = info.GetInsertionCode().strip()
+        key = (chain_id, sequence_number, insertion_code, residue_name)
+        synthetic_number = key_to_synthetic.get(key)
+        if synthetic_number is None:
+            synthetic_number = next_number
+            next_number += 1
+            key_to_synthetic[key] = synthetic_number
+            synthetic_to_locator[(chain_id, residue_name, synthetic_number)] = ResidueLocator(
+                chain_id=chain_id,
+                residue_name=residue_name or "UNK",
+                sequence_number=sequence_number,
+                insertion_code=insertion_code,
+            )
+        info.SetResidueNumber(synthetic_number)
+        info.SetInsertionCode(" ")
+    return prolif_protein, synthetic_to_locator
+
+
+def _contacts_from_ifp(
+    result: Any,
+    ligand: Any,
+    protein: Any,
+    *,
+    synthetic_residue_map: dict[tuple[str, str, int], ResidueLocator] | None = None,
+) -> list[InteractionContact]:
     contacts: list[InteractionContact] = []
     for (_, residue_id), interactions in result.items():
         for detector_type, occurrences in interactions.items():
@@ -155,7 +211,12 @@ def _contacts_from_ifp(result: Any, ligand: Any, protein: Any) -> list[Interacti
                 parents = metadata.get("parent_indices", {})
                 ligand_indices = [int(value) for value in parents.get("ligand", ())]
                 protein_indices = [int(value) for value in parents.get("protein", ())]
-                residue = _residue_locator(protein, protein_indices, residue_id)
+                residue = _residue_locator(
+                    protein,
+                    protein_indices,
+                    residue_id,
+                    synthetic_residue_map=synthetic_residue_map,
+                )
                 geometry = {
                     str(key): float(value)
                     for key, value in metadata.items()
@@ -223,7 +284,13 @@ def _centroid(molecule: Any, indices: list[int]) -> Point3D | None:
     )
 
 
-def _residue_locator(protein: Any, indices: list[int], residue_id: Any) -> ResidueLocator:
+def _residue_locator(
+    protein: Any,
+    indices: list[int],
+    residue_id: Any,
+    *,
+    synthetic_residue_map: dict[tuple[str, str, int], ResidueLocator] | None = None,
+) -> ResidueLocator:
     if indices:
         info = protein.GetAtomWithIdx(indices[0]).GetPDBResidueInfo()
         if info is not None:
@@ -233,6 +300,16 @@ def _residue_locator(protein: Any, indices: list[int], residue_id: Any) -> Resid
                 sequence_number=int(info.GetResidueNumber()),
                 insertion_code=info.GetInsertionCode().strip(),
             )
+    if synthetic_residue_map is not None:
+        mapped = synthetic_residue_map.get(
+            (
+                str(residue_id.chain or "").strip(),
+                str(residue_id.name).strip(),
+                int(residue_id.number),
+            )
+        )
+        if mapped is not None:
+            return mapped
     return ResidueLocator(
         chain_id=str(residue_id.chain or ""),
         residue_name=str(residue_id.name),
