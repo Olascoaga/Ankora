@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
@@ -26,6 +27,14 @@ from ankora_backend.services.work_leases import WorkLeaseManager
 
 _LOG = logging.getLogger(__name__)
 _TERMINAL = {DockingJobStatus.COMPLETED, DockingJobStatus.FAILED, DockingJobStatus.CANCELED}
+_DO_NOT_RECOVER_CODES = frozenset(
+    {
+        "GNINA_SCREENING_CHILD_STILL_ACTIVE",
+        "GNINA_SCREENING_CHILD_MISMATCH",
+        "GNINA_SCREENING_ALREADY_ACTIVE",
+        "GNINA_SCREENING_NOT_FRESH",
+    }
+)
 
 
 class GninaScreeningService:
@@ -92,8 +101,6 @@ class GninaScreeningService:
                 self._executor.submit(self._run, record.campaign_id)
             except Exception:
                 self._scheduled.discard(record.campaign_id)
-                from datetime import UTC, datetime
-
                 self._store.recover_interrupted_campaign(
                     record.campaign_id, interrupted_at=datetime.now(UTC)
                 )
@@ -103,8 +110,28 @@ class GninaScreeningService:
     def _run(self, campaign_id: str) -> None:
         try:
             self._runner.run(campaign_id)
-        except Exception:
+        except Exception as error:
             _LOG.exception("GNINA screening worker failed for campaign %s", campaign_id)
+            if not (
+                isinstance(error, AnkoraDomainError)
+                and error.code in _DO_NOT_RECOVER_CODES
+            ):
+                try:
+                    progress = self._store.load_progress(campaign_id)
+                    has_active_child = any(
+                        job.screening_campaign_id == campaign_id
+                        and job.status not in _TERMINAL
+                        for job in self._store.jobs.list_jobs()
+                    )
+                    if progress.status not in _TERMINAL and not has_active_child:
+                        self._store.recover_interrupted_campaign(
+                            campaign_id, interrupted_at=datetime.now(UTC)
+                        )
+                except Exception:
+                    _LOG.exception(
+                        "Failed to reconcile interrupted GNINA screening campaign %s",
+                        campaign_id,
+                    )
         finally:
             with self._lock:
                 self._scheduled.discard(campaign_id)

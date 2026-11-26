@@ -1,5 +1,6 @@
 """AutoDock4 CPU single-ligand docking against an immutable AutoGrid map set."""
 
+import logging
 import os
 import shutil
 import threading
@@ -249,73 +250,88 @@ class AutoDock4DockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK4_JOB, job_id)
-        record = self._job_store.load_job(job_id)
-        if self._resources is not None:
-            try:
+        lease_acquired = False
+        active_record: AutoDock4DockingJobRecord | None = None
+        try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK4_JOB, job_id)
+                lease_acquired = True
+            record = self._job_store.load_job(job_id)
+            active_record = record
+            if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     autodock4_claim(job_id, concurrent_processes=1, ligand_count=1),
                     cancel_event=cancel_event,
                 )
-            except ResourceRequestCanceled:
+            if cancel_event.is_set():
                 self._finish(record, status=AutoDock4JobStatus.CANCELED)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
-                self._forget(job_id)
                 return
-            except AnkoraDomainError as error:
+            running = record.model_copy(
+                update={
+                    "status": AutoDock4JobStatus.RUNNING,
+                    "phase": AutoDock4JobPhase.DOCKING,
+                    "started_at": datetime.now(UTC),
+                }
+            )
+            self._job_store.update_job(running)
+            active_record = running
+            self._execute(running, prepared, cancel_event)
+        except ResourceRequestCanceled:
+            target = self._safe_load_job(job_id, fallback=active_record)
+            if target is not None:
+                self._finish(target, status=AutoDock4JobStatus.CANCELED)
+        except _JobCanceled as canceled:
+            target = self._safe_load_job(job_id, fallback=active_record)
+            if target is not None:
                 self._finish(
-                    record,
+                    target,
+                    status=AutoDock4JobStatus.CANCELED,
+                    execution=canceled.execution,
+                )
+        except AnkoraDomainError as error:
+            target = self._safe_load_job(job_id, fallback=active_record)
+            if target is not None:
+                self._finish(
+                    target,
                     status=AutoDock4JobStatus.FAILED,
                     failure=AutoDock4Failure(
-                        code=error.code,
-                        message=error.message,
-                        details=dict(error.details),
+                        code=error.code, message=error.message, details=dict(error.details)
                     ),
                 )
-                if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
-                self._forget(job_id)
-                return
-        if cancel_event.is_set():
-            self._finish(record, status=AutoDock4JobStatus.CANCELED)
-            if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
-            self._forget(job_id)
-            return
-        running = record.model_copy(
-            update={
-                "status": AutoDock4JobStatus.RUNNING,
-                "phase": AutoDock4JobPhase.DOCKING,
-                "started_at": datetime.now(UTC),
-            }
-        )
-        self._job_store.update_job(running)
-        try:
-            self._execute(running, prepared, cancel_event)
-        except _JobCanceled as canceled:
-            self._finish(
-                running,
-                status=AutoDock4JobStatus.CANCELED,
-                execution=canceled.execution,
+        except Exception as error:  # noqa: BLE001 — final worker lifecycle containment (D1-005)
+            logging.getLogger(__name__).exception(
+                "AutoDock4 job worker failed unexpectedly for %s", job_id
             )
-        except AnkoraDomainError as error:
-            self._finish(
-                running,
-                status=AutoDock4JobStatus.FAILED,
-                failure=AutoDock4Failure(
-                    code=error.code, message=error.message, details=dict(error.details)
-                ),
-            )
+            target = self._safe_load_job(job_id, fallback=active_record)
+            if target is not None:
+                self._finish(
+                    target,
+                    status=AutoDock4JobStatus.FAILED,
+                    failure=AutoDock4Failure(
+                        code="AUTODOCK4_JOB_INTERNAL_ERROR",
+                        message="Ankora could not complete the AutoDock4 docking job.",
+                        details={"reason": str(error)},
+                    ),
+                )
         finally:
             if resource_lease is not None:
                 resource_lease.release()
-            if self._leases is not None:
+            if lease_acquired and self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
             self._forget(job_id)
+
+    def _safe_load_job(
+        self, job_id: str, *, fallback: AutoDock4DockingJobRecord | None
+    ) -> AutoDock4DockingJobRecord | None:
+        if fallback is not None:
+            return fallback
+        try:
+            return self._job_store.load_job(job_id)
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception(
+                "Could not load AutoDock4 job %s during failure recovery", job_id
+            )
+            return None
 
     def _execute(
         self,
@@ -1030,9 +1046,11 @@ class AutoDock4DockingService:
 
     def _run_batch(self, batch_id: str, cancel_event: threading.Event) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.AUTODOCK4_BATCH, batch_id)
+        lease_acquired = False
         try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.AUTODOCK4_BATCH, batch_id)
+                lease_acquired = True
             record = self._job_store.load_batch(batch_id)
             if self._resources is not None:
                 resource_lease = self._resources.acquire(
@@ -1107,21 +1125,51 @@ class AutoDock4DockingService:
                 message=error.message,
                 details=dict(error.details),
             )
-            self._update_batch(
-                batch_id,
-                lambda current: current.model_copy(
-                    update={
-                        "status": AutoDock4JobStatus.FAILED,
-                        "phase": AutoDock4JobPhase.COMPLETE,
-                        "completed_at": datetime.now(UTC),
-                        "failure": failure,
-                    }
-                ),
+            try:
+                self._update_batch(
+                    batch_id,
+                    lambda current: current.model_copy(
+                        update={
+                            "status": AutoDock4JobStatus.FAILED,
+                            "phase": AutoDock4JobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                            "failure": failure,
+                        }
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).exception(
+                    "Could not persist AutoDock4 batch %s failure", batch_id
+                )
+        except Exception as error:  # noqa: BLE001 — final batch worker containment (D1-006)
+            logging.getLogger(__name__).exception(
+                "AutoDock4 batch worker failed unexpectedly for %s", batch_id
             )
+            failure = AutoDock4Failure(
+                code="AUTODOCK4_BATCH_INTERNAL_ERROR",
+                message="Ankora could not complete the AutoDock4 docking campaign.",
+                details={"reason": str(error)},
+            )
+            try:
+                self._update_batch(
+                    batch_id,
+                    lambda current: current.model_copy(
+                        update={
+                            "status": AutoDock4JobStatus.FAILED,
+                            "phase": AutoDock4JobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                            "failure": failure,
+                        }
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).exception(
+                    "Could not persist AutoDock4 batch %s failure", batch_id
+                )
         finally:
             if resource_lease is not None:
                 resource_lease.release()
-            if self._leases is not None:
+            if lease_acquired and self._leases is not None:
                 self._leases.release(WorkKind.AUTODOCK4_BATCH, batch_id)
             self._forget(batch_id)
             with self._batch_lock:
@@ -1349,6 +1397,22 @@ class AutoDock4DockingService:
                 status=AutoDock4JobStatus.FAILED,
                 failure=AutoDock4Failure(
                     code=error.code, message=error.message, details=dict(error.details)
+                ),
+            )
+        except Exception as error:  # noqa: BLE001 — per-ligand batch isolation (D1-006)
+            logging.getLogger(__name__).exception(
+                "AutoDock4 batch ligand worker failed unexpectedly for %s/%s",
+                batch_id,
+                ligand_id,
+            )
+            self._finish_entry(
+                batch_id,
+                ligand_id,
+                status=AutoDock4JobStatus.FAILED,
+                failure=AutoDock4Failure(
+                    code="AUTODOCK4_BATCH_ENTRY_INTERNAL_ERROR",
+                    message="Ankora could not complete AutoDock4 docking for this molecule.",
+                    details={"reason": str(error)},
                 ),
             )
 

@@ -114,11 +114,22 @@ class ParsedAutoDock4EpdbResult:
         """
         if (
             self.unbound_system_energy_kcal_mol is not None
+            and math.isfinite(self.unbound_system_energy_kcal_mol)
             and abs(self.unbound_system_energy_kcal_mol) <= 1e-9
-            and self.intermolecular_kcal_mol is not None
-            and self.torsional_free_energy_kcal_mol is not None
         ):
+            if (
+                self.intermolecular_kcal_mol is None
+                or self.torsional_free_energy_kcal_mol is None
+                or not math.isfinite(self.intermolecular_kcal_mol)
+                or not math.isfinite(self.torsional_free_energy_kcal_mol)
+            ):
+                raise _invalid_output(
+                    "AutoDock4 epdb log requires finite (1) Intermolecular and "
+                    "(3) Torsional terms when (4) Unbound is 0.00"
+                )
             return round(self.intermolecular_kcal_mol + self.torsional_free_energy_kcal_mol, 4)
+        if not math.isfinite(self.estimated_free_energy_kcal_mol):
+            raise _invalid_output("AutoDock4 epdb Estimated Free Energy is non-finite")
         return self.estimated_free_energy_kcal_mol
 
 
@@ -210,6 +221,18 @@ def parse_autodock4_epdb_dlg(
                 unbound = float(match.group(1))
     if estimated is None or not math.isfinite(estimated):
         raise _invalid_output("AutoDock4 epdb log is missing Estimated Free Energy of Binding")
+    if intermolecular is None or not math.isfinite(intermolecular):
+        raise _invalid_output(
+            "AutoDock4 epdb log is missing finite (1) Final Intermolecular Energy"
+        )
+    if torsional is None or not math.isfinite(torsional):
+        raise _invalid_output(
+            "AutoDock4 epdb log is missing finite (3) Torsional Free Energy"
+        )
+    if unbound is None or not math.isfinite(unbound):
+        raise _invalid_output("AutoDock4 epdb log is missing finite (4) Unbound System's Energy")
+    if total_internal is not None and not math.isfinite(total_internal):
+        raise _invalid_output("AutoDock4 epdb log has non-finite (2) Final Total Internal Energy")
     if expect_flex and not saw_moving_receptor:
         raise _invalid_output(
             "AutoDock4 flexres epdb log is missing Moving Ligand-Moving Receptor energy block"
@@ -326,6 +349,10 @@ def parse_autodock4_log(
         raise _invalid_output("no DOCKED conformations")
     ranked_runs = {row.run for row in ranking}
     pose_runs = {pose.run for pose in poses}
+    if len(ranked_runs) != len(ranking):
+        raise _invalid_output("duplicate run number in AutoDock4 RANKING table")
+    if len(pose_runs) != len(poses):
+        raise _invalid_output("duplicate run number in AutoDock4 DOCKED conformations")
     if ranked_runs != pose_runs:
         raise _invalid_output(
             f"ranked runs {sorted(ranked_runs)} do not match "
@@ -340,6 +367,12 @@ def parse_autodock4_log(
     return ParsedAutoDock4Log(clusters=clusters, ranking=ranking, poses=poses)
 
 
+def _require_finite(value: float, label: str) -> float:
+    if not math.isfinite(value):
+        raise _invalid_output(f"non-finite {label} in AutoDock4 log")
+    return value
+
+
 def _parse_ranking(document: str) -> list[AutoDock4RankingRow]:
     rows: list[AutoDock4RankingRow] = []
     for line in document.splitlines():
@@ -351,9 +384,11 @@ def _parse_ranking(document: str) -> list[AutoDock4RankingRow]:
                 cluster_rank=int(match.group(1)),
                 sub_rank=int(match.group(2)),
                 run=int(match.group(3)),
-                binding_energy_kcal_mol=float(match.group(4)),
-                cluster_rmsd_angstrom=float(match.group(5)),
-                reference_rmsd_angstrom=float(match.group(6)),
+                binding_energy_kcal_mol=_require_finite(
+                    float(match.group(4)), "ranking binding energy"
+                ),
+                cluster_rmsd_angstrom=_require_finite(float(match.group(5)), "cluster RMSD"),
+                reference_rmsd_angstrom=_require_finite(float(match.group(6)), "reference RMSD"),
             )
         )
     return rows
@@ -379,9 +414,13 @@ def _parse_clusters(document: str) -> list[AutoDock4Cluster]:
         clusters.append(
             AutoDock4Cluster(
                 cluster_rank=int(match.group(1)),
-                lowest_binding_energy_kcal_mol=float(match.group(2)),
+                lowest_binding_energy_kcal_mol=_require_finite(
+                    float(match.group(2)), "cluster lowest binding energy"
+                ),
                 representative_run=int(match.group(3)),
-                mean_binding_energy_kcal_mol=float(match.group(4)),
+                mean_binding_energy_kcal_mol=_require_finite(
+                    float(match.group(4)), "cluster mean binding energy"
+                ),
                 run_count=int(match.group(5)),
             )
         )
@@ -430,6 +469,8 @@ def _parse_poses(
                 raise _invalid_output(
                     "a DOCKED conformation has no run number or binding energy"
                 )
+            if not math.isfinite(energy):
+                raise _invalid_output("a DOCKED conformation has non-finite binding energy")
             raw_block = "\n".join(block) + "\n"
             has_flex = expect_flex_sidechains or any(
                 item.lstrip().startswith("BEGIN_RES") for item in block

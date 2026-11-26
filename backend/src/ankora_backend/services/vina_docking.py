@@ -1,5 +1,6 @@
 """Validated, cancellable AutoDock Vina jobs for ligands and libraries."""
 
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -64,6 +65,7 @@ from ankora_backend.services.resource_arbiter import (
 )
 from ankora_backend.services.work_leases import WorkLeaseManager
 
+_LOG = logging.getLogger(__name__)
 VINA_SEARCH_VOLUME_WARNING_ANGSTROM3 = 27_000.0
 
 
@@ -896,9 +898,11 @@ class VinaDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.VINA_BATCH, batch_id)
+        lease_acquired = False
         try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.VINA_BATCH, batch_id)
+                lease_acquired = True
             record = self._docking_store.load_batch_overview(batch_id)
             if self._resources is not None:
                 resource_lease = self._resources.acquire(
@@ -955,49 +959,47 @@ class VinaDockingService:
         except ResourceRequestCanceled:
             self._finish_batch(batch_id, canceled=True)
         except AnkoraDomainError as error:
-            with self._lock:
-                record = self._docking_store.load_batch_overview(batch_id)
-                self._docking_store.update_batch_record(
-                    record.model_copy(
-                        update={
-                            "status": DockingJobStatus.FAILED,
-                            "phase": DockingJobPhase.COMPLETE,
-                            "completed_at": datetime.now(UTC),
-                            "revision": record.revision + 1,
-                            "failure": DockingFailure(
-                                code=error.code,
-                                message=error.message,
-                                details=dict(error.details),
-                            ),
-                        }
-                    ),
-                    changed_entries=[],
-                )
+            self._fail_batch_safely(batch_id, error.code, error.message, dict(error.details))
         except Exception as error:  # pragma: no cover - final supervisor containment
-            with self._lock:
-                record = self._docking_store.load_batch_overview(batch_id)
-                self._docking_store.update_batch_record(
-                    record.model_copy(
-                        update={
-                            "status": DockingJobStatus.FAILED,
-                            "phase": DockingJobPhase.COMPLETE,
-                            "completed_at": datetime.now(UTC),
-                            "revision": record.revision + 1,
-                            "failure": DockingFailure(
-                                code="VINA_BATCH_INTERNAL_ERROR",
-                                message="Ankora could not complete the docking batch.",
-                                details={"reason": str(error)},
-                            ),
-                        }
-                    ),
-                    changed_entries=[],
-                )
+            self._fail_batch_safely(
+                batch_id,
+                "VINA_BATCH_INTERNAL_ERROR",
+                "Ankora could not complete the docking batch.",
+                {"reason": str(error)},
+            )
         finally:
             if resource_lease is not None:
                 resource_lease.release()
-            if self._leases is not None:
+            if lease_acquired and self._leases is not None:
                 self._leases.release(WorkKind.VINA_BATCH, batch_id)
             self._forget(batch_id)
+
+    def _fail_batch_safely(
+        self, batch_id: str, code: str, message: str, details: dict[str, object]
+    ) -> None:
+        try:
+            with self._lock:
+                record = self._docking_store.load_batch_overview(batch_id)
+                self._docking_store.update_batch_record(
+                    record.model_copy(
+                        update={
+                            "status": DockingJobStatus.FAILED,
+                            "phase": DockingJobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                            "revision": record.revision + 1,
+                            "failure": DockingFailure(
+                                code=code,
+                                message=message,
+                                details=details,
+                            ),
+                        }
+                    ),
+                    changed_entries=[],
+                )
+        except Exception:
+            _LOG.exception(
+                "Could not persist Vina batch %s failure (%s)", batch_id, code
+            )
 
     def _run_batch_item(
         self,
@@ -1530,11 +1532,14 @@ class VinaDockingService:
         cancel_event: threading.Event,
     ) -> None:
         resource_lease: ResourceLease | None = None
-        if self._leases is not None:
-            self._leases.acquire(WorkKind.VINA_JOB, job_id)
-        record = self._docking_store.load_record(job_id)
-        if self._resources is not None:
-            try:
+        lease_acquired = False
+        record: VinaDockingJobRecord | None = None
+        try:
+            if self._leases is not None:
+                self._leases.acquire(WorkKind.VINA_JOB, job_id)
+                lease_acquired = True
+            record = self._docking_store.load_record(job_id)
+            if self._resources is not None:
                 resource_lease = self._resources.acquire(
                     vina_claim(
                         job_id,
@@ -1544,36 +1549,19 @@ class VinaDockingService:
                     ),
                     cancel_event=cancel_event,
                 )
-            except ResourceRequestCanceled:
+            if cancel_event.is_set():
                 self._finish_canceled(record, None)
-                if self._leases is not None:
-                    self._leases.release(WorkKind.VINA_JOB, job_id)
-                self._forget(job_id)
                 return
-            except AnkoraDomainError as error:
-                self._finish_failed(record, None, error.code, error.message, dict(error.details))
-                if self._leases is not None:
-                    self._leases.release(WorkKind.VINA_JOB, job_id)
-                self._forget(job_id)
-                return
-        if cancel_event.is_set():
-            self._finish_canceled(record, None)
-            if resource_lease is not None:
-                resource_lease.release()
-            if self._leases is not None:
-                self._leases.release(WorkKind.VINA_JOB, job_id)
-            self._forget(job_id)
-            return
-        started = datetime.now(UTC)
-        running = record.model_copy(
-            update={
-                "status": DockingJobStatus.RUNNING,
-                "phase": DockingJobPhase.DOCKING,
-                "started_at": started,
-            }
-        )
-        self._docking_store.update_record(running)
-        try:
+            started = datetime.now(UTC)
+            running = record.model_copy(
+                update={
+                    "status": DockingJobStatus.RUNNING,
+                    "phase": DockingJobPhase.DOCKING,
+                    "started_at": started,
+                }
+            )
+            self._docking_store.update_record(running)
+            record = running
             require_current_inputs(
                 record.request,
                 binding_site_store=self._binding_site_store,
@@ -1631,30 +1619,45 @@ class VinaDockingService:
                 )
                 self._docking_store.update_record(parsing)
                 self._finish_completed(parsing, output_path.read_bytes(), evidence)
+        except ResourceRequestCanceled:
+            current = self._safe_load_record(job_id, fallback=record)
+            if current is not None:
+                self._finish_canceled(current, current.execution)
         except AnkoraDomainError as error:
-            current = self._docking_store.load_record(job_id)
-            self._finish_failed(
-                current,
-                current.execution,
-                error.code,
-                error.message,
-                error.details,
-            )
+            current = self._safe_load_record(job_id, fallback=record)
+            if current is not None:
+                self._finish_failed(
+                    current,
+                    current.execution,
+                    error.code,
+                    error.message,
+                    dict(error.details),
+                )
         except Exception as error:  # pragma: no cover - final worker containment
-            current = self._docking_store.load_record(job_id)
-            self._finish_failed(
-                current,
-                current.execution,
-                "VINA_JOB_INTERNAL_ERROR",
-                "Ankora could not complete the docking job.",
-                {"reason": str(error)},
-            )
+            current = self._safe_load_record(job_id, fallback=record)
+            if current is not None:
+                self._finish_failed(
+                    current,
+                    current.execution,
+                    "VINA_JOB_INTERNAL_ERROR",
+                    "Ankora could not complete the docking job.",
+                    {"reason": str(error)},
+                )
         finally:
             if resource_lease is not None:
                 resource_lease.release()
-            if self._leases is not None:
+            if lease_acquired and self._leases is not None:
                 self._leases.release(WorkKind.VINA_JOB, job_id)
             self._forget(job_id)
+
+    def _safe_load_record(
+        self, job_id: str, *, fallback: VinaDockingJobRecord | None
+    ) -> VinaDockingJobRecord | None:
+        try:
+            return self._docking_store.load_record(job_id)
+        except Exception:
+            _LOG.exception("Could not reload Vina job %s during error recovery", job_id)
+            return fallback
 
     def _finish_completed(
         self,
