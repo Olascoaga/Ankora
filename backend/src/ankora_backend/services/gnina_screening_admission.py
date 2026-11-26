@@ -43,14 +43,33 @@ def admit_screening(
         raise _error("GNINA_LINUX_ONLY", "GNINA is available only in the Linux edition.")
     if request.parameters.compute == "cuda" and not enable_experimental_cuda:
         raise _error("GNINA_CUDA_VERIFICATION_UNAVAILABLE", "GNINA CUDA execution is not enabled.")
-    ProjectDependencyService.for_project_root(sites.project_root).require_current(
-        {
-            request.receptor_id,
-            request.binding_site_id,
-            request.library_id,
-            request.filter_run_id,
-        }
-    )
+    identities = {
+        request.receptor_id,
+        request.binding_site_id,
+        request.library_id,
+        request.filter_run_id,
+    }
+    try:
+        selection = ligands.load_filter_run(request.library_id, request.filter_run_id)
+        preparation = ligands.load_preparation_status(request.library_id)
+    except AnkoraDomainError:
+        selection = None
+        preparation = None
+    if selection is not None and preparation is not None:
+        for ligand_id in selection.selected_ligand_ids:
+            identities.add(ligand_id)
+            prep_entry = preparation.entries.get(ligand_id)
+            if prep_entry is not None:
+                identities.update(
+                    value
+                    for value in (
+                        prep_entry.chemical_state_id,
+                        prep_entry.conformer_id,
+                        prep_entry.pdbqt_preparation_id,
+                    )
+                    if value
+                )
+    ProjectDependencyService.for_project_root(sites.project_root).require_current(identities)
     receptor = resolve_gnina_receptor_inputs(receptors, request.receptor_id)
     output = receptor.rigid
     site = sites.load_record(request.binding_site_id)

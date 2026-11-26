@@ -50,6 +50,7 @@ class DependencyNodeKind(StrEnum):
     AUTOGRID_MAP_SET = "autogrid_map_set"
     DOCKING_CAMPAIGN = "docking_campaign"
     VALIDATION = "validation"
+    CALIBRATION = "calibration"
     POSE_ANALYSIS = "pose_analysis"
     ANALOG_CATALOG = "analog_catalog"
     ANALOG_SEARCH = "analog_search"

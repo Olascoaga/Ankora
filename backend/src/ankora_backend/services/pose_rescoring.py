@@ -74,6 +74,7 @@ from ankora_backend.schemas.v02_contracts import (
     ScoringFunctionId,
     canonical_contract_sha256,
 )
+from ankora_backend.services.execution_freshness import require_current_for_store
 
 _STAGE = "pose_rescoring"
 _STALE_SCORE_REMARKS = frozenset(
@@ -565,6 +566,19 @@ class PoseRescoringService:
             if fld_art is None or not fld_art.filename.endswith(".maps.fld"):
                 raise _context_mismatch("The AutoGrid map set has no valid .maps.fld artifact.")
             map_prefix = fld_art.filename.removesuffix(".maps.fld")
+
+        rescore_check_ids = [
+            request.job_id,
+            request.pose_artifact_id,
+            receptor_id,
+            parent_compound_id,
+            parent_state_id,
+        ]
+        if request.autogrid_job_id:
+            rescore_check_ids.append(request.autogrid_job_id)
+        if map_set is not None:
+            rescore_check_ids.append(map_set.map_set_id)
+        require_current_for_store(receptors, rescore_check_ids)
 
         context = PoseRescoreContext(
             receptor_flex_spec=receptor_spec,

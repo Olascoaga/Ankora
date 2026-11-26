@@ -8,6 +8,7 @@ marking a node never edits or deletes the record that made it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from collections import deque
@@ -28,6 +29,7 @@ from ankora_backend.schemas.projects import (
     ProjectDependencyGraph,
 )
 
+_LOG = logging.getLogger(__name__)
 _STAGE = "project_dependencies"
 _LOCK = threading.RLock()
 _REFERENCE_KEYS = {
@@ -36,6 +38,7 @@ _REFERENCE_KEYS = {
     "analog_selection_id",
     "analysis_id",
     "analysis_receptor_artifact_id",
+    "autogrid_map_set_id",
     "binding_site_id",
     "calibration_id",
     "catalog_id",
@@ -54,17 +57,25 @@ _REFERENCE_KEYS = {
     "panel_id",
     "parent_binding_site_id",
     "parent_compound_id",
+    "parent_job_id",
+    "parent_pose_artifact_id",
     "parent_state_id",
     "pose_artifact_id",
+    "pose_focused_binding_site_id",
     "preparation_id",
     "receptor_id",
     "receptor_output_artifact_id",
     "record_id",
     "reference_ligand_id",
+    "reference_panel_id",
     "report_id",
     "rule_set_id",
+    "screening_campaign_id",
     "selection_manifest_artifact_id",
+    "source_analysis_id",
     "source_artifact_id",
+    "source_catalog_id",
+    "source_catalog_ids",
     "source_consensus_id",
     "source_id",
     "source_library_id",
@@ -113,6 +124,7 @@ class _Candidate:
     parent_refs: set[str]
     aliases: set[str]
     intrinsic_stale: bool
+    intrinsic_stale_reason: str | None = None
 
 
 class ProjectDependencyService:
@@ -239,7 +251,8 @@ class ProjectDependencyService:
         for item in candidates:
             if item.intrinsic_stale:
                 reasons.setdefault(item.node_id, []).append(
-                    "The immutable record already declares this artifact stale."
+                    item.intrinsic_stale_reason
+                    or "The immutable record already declares this artifact stale."
                 )
         children: dict[str, set[str]] = {}
         for parent, child in edge_pairs:
@@ -321,11 +334,33 @@ class ProjectDependencyService:
             return []
         candidates: list[_Candidate] = []
         for path in self._record_paths():
+            rel_parts = path.relative_to(self._project_root).parts
+            kind = _kind_for(rel_parts)
+            node_id = path.parent.name
             raw = _read_object(path)
             if raw is None:
+                rel_posix = path.relative_to(self._project_root).as_posix()
+                _LOG.warning(
+                    "Unreadable or corrupt dependency record %s; marking node %s stale (D5-016)",
+                    rel_posix,
+                    node_id,
+                )
+                candidates.append(
+                    _Candidate(
+                        node_id=node_id,
+                        kind=kind,
+                        label=f"Corrupted {kind.value.replace('_', ' ').title()} · {node_id[:8]}",
+                        path=path,
+                        raw={},
+                        parent_refs=set(),
+                        aliases=set(),
+                        intrinsic_stale=True,
+                        intrinsic_stale_reason=(
+                            f"Record file {rel_posix} is unreadable or corrupted."
+                        ),
+                    )
+                )
                 continue
-            kind = _kind_for(path.relative_to(self._project_root).parts)
-            node_id = path.parent.name
             # Library entries are immutable output snapshots, not upstream
             # inputs. Likewise the initial state embedded in a ligand is its
             # output, not an input that may make its parent stale backwards.
@@ -481,6 +516,8 @@ def _kind_for(parts: tuple[str, ...]) -> DependencyNodeKind:
         return DependencyNodeKind.DOCKING_CAMPAIGN
     if parts[:2] == ("validation", "redocking"):
         return DependencyNodeKind.VALIDATION
+    if (parts and parts[0] == "calibrations") or parts[:2] == ("analysis", "calibrations"):
+        return DependencyNodeKind.CALIBRATION
     if parts[:2] in {
         ("analysis", "pose_interactions"),
         ("analysis", "pose_quality"),
@@ -504,10 +541,15 @@ def _read_object(path: Path) -> dict[str, Any] | None:
 def _references(value: Any) -> Iterable[str]:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in _REFERENCE_KEYS and isinstance(item, str) and item:
-                yield _normalized_reference(item)
+            if key in _REFERENCE_KEYS:
+                if isinstance(item, str) and item:
+                    yield _normalized_reference(item)
+                elif isinstance(item, (list, tuple)):
+                    for elem in item:
+                        if isinstance(elem, str) and elem:
+                            yield _normalized_reference(elem)
             yield from _references(item)
-    elif isinstance(value, list):
+    elif isinstance(value, (list, tuple)):
         for item in value:
             yield from _references(item)
 

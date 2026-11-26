@@ -27,6 +27,7 @@ from ankora_backend.schemas.v02_contracts import (
     PoseDiagnosticCheck,
 )
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.execution_freshness import require_current_for_store
 from ankora_backend.services.pose_interactions import PoseInteractionService
 
 _STAGE = "pose_quality_assessment"
@@ -72,6 +73,18 @@ class PoseQualityService:
             catalog_id, ligand_id, pose_artifact_id
         )
         resolved = verified.resolved
+        require_current_for_store(
+            self._store,
+            (
+                catalog_id,
+                resolved.record_id,
+                ligand_id,
+                pose_artifact_id,
+                resolved.receptor_id,
+                resolved.ligand_preparation_id,
+                verified.conformer.artifact.conformer_id,
+            ),
+        )
         before_pose_sha = sha256(resolved.pose_path.read_bytes()).hexdigest()
         before_flex_sha = (
             sha256(resolved.pose_flex_path.read_bytes()).hexdigest()

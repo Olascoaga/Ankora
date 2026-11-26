@@ -178,7 +178,7 @@ class ResultCatalogService:
             return {}
         try:
             return deps.all_freshness_map()
-        except AnkoraDomainError:
+        except (AnkoraDomainError, AttributeError):
             return {}
 
     @staticmethod

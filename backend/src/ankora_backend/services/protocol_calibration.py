@@ -81,6 +81,7 @@ from ankora_backend.schemas.v02_contracts import (
     ScoringFunctionId,
 )
 from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
+from ankora_backend.services.execution_freshness import require_current_for_store
 
 # `_rank_groups` and `_bedroc` are v0.1 benchmark internals, reused verbatim
 # rather than reimplemented: a bootstrap replicate holds repeated parents and
@@ -576,6 +577,7 @@ class ProtocolCalibrationService:
         created_at: datetime | None = None,
     ) -> CalibrationRunRecord:
         """Construct and persist the split before any comparison number exists."""
+        require_current_for_store(self._store, (receptor_id, binding_site_id))
         split_policy = policy if policy is not None else CalibrationSplitPolicy()
         timestamp = created_at if created_at is not None else datetime.now(UTC)
         profiles = extract_compound_properties(compounds)
@@ -706,6 +708,9 @@ class ProtocolCalibrationService:
     ) -> CalibrationRunRecord:
         """Choose a protocol on Calibration alone and seal the decision."""
         run = self._store.get_run(calibration_id)
+        require_current_for_store(
+            self._store, (calibration_id, run.receptor_id, run.binding_site_id)
+        )
         if run.status != "split_locked":
             _invalid(
                 "CALIBRATION_SELECTION_ALREADY_SEALED",
@@ -831,6 +836,9 @@ class ProtocolCalibrationService:
     ) -> CalibrationRunRecord:
         """Unlock, evaluate, and permanently consume the Confirmation split."""
         run = self._store.get_run(calibration_id)
+        require_current_for_store(
+            self._store, (calibration_id, run.receptor_id, run.binding_site_id)
+        )
         if run.status == "split_locked":
             _invalid(
                 "CALIBRATION_SELECTION_REQUIRED",
