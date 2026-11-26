@@ -6,7 +6,8 @@ Zero new dependencies: runs exclusively on already-locked `numpy==2.5.2` and
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module
@@ -214,6 +215,48 @@ def build_reference_panel(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _RankingRow:
+    """One full-profile row pairing a ranking method's score with its OWN winning medoid."""
+
+    detail: ConsensusParentDetail
+    score_value: float
+    pose_complex: PoseComplexIdentity
+    percentile: float | None
+    inter_family_disagreement: float
+    search_convergence_count: int
+    search_engine_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CoreMedoidScore:
+    """Core-family consensus metrics evaluated independently of optional neural scoring."""
+
+    cluster_id: str
+    pose_complex: PoseComplexIdentity
+    canonical_coordinate_sha256: str
+    pcq_core_score: float
+    inter_family_disagreement: float
+    search_convergence_count: int
+    search_engine_count: int
+
+
+def _scores_tied(score_a: float, score_b: float) -> bool:
+    """Scale-invariant score equality check (safe across [0, 100] and 1e-15 PC-ECR scales)."""
+    return math.isclose(score_a, score_b, rel_tol=1e-12, abs_tol=0.0)
+
+
+def _select_best_medoid[T](
+    items: Sequence[T],
+    score_fn: Callable[[T], float],
+    hash_fn: Callable[[T], str],
+) -> T:
+    """Select highest-scoring medoid with scale-invariant E3 coordinate-hash tie-breaking."""
+    best_score = max(score_fn(item) for item in items)
+    tied = [item for item in items if _scores_tied(score_fn(item), best_score)]
+    return min(tied, key=hash_fn)
+
+
 def parent_weighted_midrank_quantile(
     *,
     panel: ReferencePanelArtifact,
@@ -221,13 +264,27 @@ def parent_weighted_midrank_quantile(
     raw_score: float,
 ) -> float:
     """Evaluate exact ADR-030 §1.3 parent-weighted midrank empirical CDF q_j(d_j * s) in [0, 1]."""
+    numeric_raw = float(raw_score)
+    if not math.isfinite(numeric_raw):
+        raise _math_error(
+            "CONSENSUS_NON_FINITE_SCORE",
+            f"Non-finite score for {scoring_function.value}: {raw_score!r}.",
+            scoring_function=scoring_function.value,
+        )
     d_j = ORIENTATION_BY_FUNCTION[scoring_function]
-    x = d_j * float(raw_score)
+    x = d_j * numeric_raw
 
     by_parent: dict[str, list[float]] = {}
     for entry in panel.entries:
-        oriented = d_j * float(entry.scores_by_function[scoring_function])
-        by_parent.setdefault(entry.parent_compound_id, []).append(oriented)
+        panel_val = float(entry.scores_by_function[scoring_function])
+        if not math.isfinite(panel_val):
+            raise _math_error(
+                "CONSENSUS_NON_FINITE_SCORE",
+                f"Reference panel contains non-finite score for {scoring_function.value}.",
+                scoring_function=scoring_function.value,
+                parent_compound_id=entry.parent_compound_id,
+            )
+        by_parent.setdefault(entry.parent_compound_id, []).append(d_j * panel_val)
 
     n_r = float(len(by_parent))
     total = 0.0
@@ -270,42 +327,46 @@ def _build_two_tier_ranking(
     *,
     method: RankingMethod,
     reference_panel_sha256: str,
-    full_rows: Sequence[tuple[ConsensusParentDetail, float, PoseComplexIdentity, float | None]],
+    full_rows: Sequence[_RankingRow],
     partial_rows: Sequence[ConsensusParentDetail],
     tie_policy: str,
     failure_policy: str,
 ) -> RankingArtifact:
-    # Sort full-profile parents descending by consensus score; break ties deterministically
-    # by selected pose coordinate hash / parent_compound_id.
-    ordered_full = sorted(
+    # Sort full-profile parents descending by raw score (no fixed decimal rounding that would
+    # collapse small PC-ECR values at large N_panel); group scale-relative ties deterministically.
+    sorted_raw = sorted(
         full_rows,
-        key=lambda item: (
-            -round(item[1], 12),
-            item[0].parent_compound_id,
-        ),
+        key=lambda item: (-item.score_value, item.detail.parent_compound_id),
     )
+    ordered_full: list[tuple[int, _RankingRow]] = []
+    idx = 0
+    total_full = len(sorted_raw)
+    while idx < total_full:
+        anchor_score = sorted_raw[idx].score_value
+        end = idx + 1
+        while end < total_full and _scores_tied(sorted_raw[end].score_value, anchor_score):
+            end += 1
+        bucket = sorted(sorted_raw[idx:end], key=lambda item: item.detail.parent_compound_id)
+        rank = idx + 1
+        for row in bucket:
+            ordered_full.append((rank, row))
+        idx = end
+
     entries: list[RankingEntry] = []
-    previous_score: float | None = None
-    previous_rank = 0
-    for idx, (detail, score_val, pose_complex, pct) in enumerate(ordered_full, start=1):
-        if previous_score is not None and abs(score_val - previous_score) <= 1e-12:
-            rank = previous_rank
-        else:
-            rank = idx
-            previous_rank = rank
-            previous_score = score_val
+    for rank, row in ordered_full:
+        detail = row.detail
         entries.append(
             RankingEntry(
                 parent_compound_id=detail.parent_compound_id,
                 parent_state_id=detail.parent_state_id,
                 tier="full_profile",
                 rank=rank,
-                score_value=score_val,
-                percentile=pct,
-                inter_family_disagreement=detail.inter_family_disagreement,
-                search_convergence_count=detail.search_convergence_count,
-                search_engine_count=detail.search_engine_count,
-                selected_pose_complex=pose_complex,
+                score_value=row.score_value,
+                percentile=row.percentile,
+                inter_family_disagreement=row.inter_family_disagreement,
+                search_convergence_count=row.search_convergence_count,
+                search_engine_count=row.search_engine_count,
+                selected_pose_complex=row.pose_complex,
                 failure_or_exclusion_codes=(),
             )
         )
@@ -374,18 +435,14 @@ def compute_pcq_and_ecr_consensus(
         enabled_functions=core_functions,
     )
 
+    core_set = set(core_functions)
     seen_parents: set[str] = set()
     parent_details: list[ConsensusParentDetail] = []
-    full_pcq_rows: list[
-        tuple[ConsensusParentDetail, float, PoseComplexIdentity, float | None]
-    ] = []
-    full_core_rows: list[
-        tuple[ConsensusParentDetail, float, PoseComplexIdentity, float | None]
-    ] = []
-    full_ecr_rows: list[
-        tuple[ConsensusParentDetail, float, PoseComplexIdentity, float | None]
-    ] = []
+    full_pcq_rows: list[_RankingRow] = []
+    full_core_rows: list[_RankingRow] = []
+    full_ecr_rows: list[_RankingRow] = []
     partial_rows: list[ConsensusParentDetail] = []
+    partial_core_rows: list[ConsensusParentDetail] = []
     high_disagreement_parents: list[str] = []
 
     for parent in parents:
@@ -398,9 +455,56 @@ def compute_pcq_and_ecr_consensus(
         seen_parents.add(parent.parent_compound_id)
 
         breakdowns: list[MedoidConsensusBreakdown] = []
+        core_breakdowns: list[_CoreMedoidScore] = []
         collected_failure_codes: list[str] = list(parent.failure_or_exclusion_codes)
 
         for medoid in parent.medoids:
+            conv_count = min(len(medoid.search_engines_present), search_engine_count)
+            core_fn_quantiles: dict[ScoringFunctionId, float] | None = None
+            if core_set.issubset(medoid.scores_by_function):
+                core_fn_quantiles = {
+                    fn: parent_weighted_midrank_quantile(
+                        panel=reference_panel,
+                        scoring_function=fn,
+                        raw_score=medoid.scores_by_function[fn],
+                    )
+                    for fn in core_functions
+                }
+                core_block_q = {
+                    family: sum(
+                        core_within_weights[fn] * core_fn_quantiles[fn]
+                        for fn in core_functions
+                        if FAMILY_BY_FUNCTION[fn] is family
+                    )
+                    for family in core_block_weights
+                }
+                pcq_core_score = 100.0 * sum(
+                    core_block_weights[family] * core_block_q[family]
+                    for family in core_block_weights
+                )
+                mean_core_q = pcq_core_score / 100.0
+                core_disagreement = 100.0 * sqrt(
+                    max(
+                        0.0,
+                        sum(
+                            core_block_weights[family]
+                            * ((core_block_q[family] - mean_core_q) ** 2)
+                            for family in core_block_weights
+                        ),
+                    )
+                )
+                core_breakdowns.append(
+                    _CoreMedoidScore(
+                        cluster_id=medoid.cluster_id,
+                        pose_complex=medoid.pose_complex,
+                        canonical_coordinate_sha256=medoid.canonical_coordinate_sha256,
+                        pcq_core_score=pcq_core_score,
+                        inter_family_disagreement=core_disagreement,
+                        search_convergence_count=conv_count,
+                        search_engine_count=search_engine_count,
+                    )
+                )
+
             if not enabled_set.issubset(medoid.scores_by_function):
                 missing = sorted(
                     f"MISSING_FAMILY_{FAMILY_BY_FUNCTION[fn].value.upper()}_{fn.value.upper()}"
@@ -410,10 +514,14 @@ def compute_pcq_and_ecr_consensus(
                 continue
 
             fn_quantiles: dict[ScoringFunctionId, float] = {
-                fn: parent_weighted_midrank_quantile(
-                    panel=reference_panel,
-                    scoring_function=fn,
-                    raw_score=medoid.scores_by_function[fn],
+                fn: (
+                    core_fn_quantiles[fn]
+                    if core_fn_quantiles is not None and fn in core_fn_quantiles
+                    else parent_weighted_midrank_quantile(
+                        panel=reference_panel,
+                        scoring_function=fn,
+                        raw_score=medoid.scores_by_function[fn],
+                    )
                 )
                 for fn in enabled_functions
             }
@@ -438,20 +546,7 @@ def compute_pcq_and_ecr_consensus(
                 )
             )
 
-            # Always compute Windows-comparable pcq-core-v1 alongside neural runs
-            core_block_q = {
-                family: sum(
-                    core_within_weights[fn] * fn_quantiles[fn]
-                    for fn in core_functions
-                    if FAMILY_BY_FUNCTION[fn] is family
-                )
-                for family in core_block_weights
-            }
-            pcq_core_score = 100.0 * sum(
-                core_block_weights[family] * core_block_q[family]
-                for family in core_block_weights
-            )
-
+            medoid_core_score = core_breakdowns[-1].pcq_core_score
             pc_ecr_score = compute_pc_ecr_from_block_quantiles(
                 block_quantiles=block_quantiles,
                 block_weights=block_weights,
@@ -459,7 +554,6 @@ def compute_pcq_and_ecr_consensus(
                 tau=FROZEN_ECR_TAU,
             )
 
-            conv_count = min(len(medoid.search_engines_present), search_engine_count)
             breakdowns.append(
                 MedoidConsensusBreakdown(
                     cluster_id=medoid.cluster_id,
@@ -477,11 +571,21 @@ def compute_pcq_and_ecr_consensus(
                     function_quantiles=fn_quantiles,
                     block_quantiles=block_quantiles,
                     pcq_score=pcq_score,
-                    pcq_core_score=pcq_core_score,
+                    pcq_core_score=medoid_core_score,
                     inter_family_disagreement=disagreement,
                     pc_ecr_score=pc_ecr_score,
                 )
             )
+
+        best_core_independent = (
+            _select_best_medoid(
+                core_breakdowns,
+                score_fn=lambda item: item.pcq_core_score,
+                hash_fn=lambda item: item.canonical_coordinate_sha256,
+            )
+            if core_breakdowns
+            else None
+        )
 
         if not breakdowns:
             unique_codes = tuple(dict.fromkeys(collected_failure_codes)) or (
@@ -496,24 +600,42 @@ def compute_pcq_and_ecr_consensus(
                 total_clusters_found=parent.total_clusters_found,
                 retained_cluster_count=len(parent.medoids),
                 truncated_by_k_max=parent.truncated_by_k_max,
+                pcq_core_score=(
+                    best_core_independent.pcq_core_score
+                    if best_core_independent is not None
+                    else None
+                ),
                 failure_or_exclusion_codes=unique_codes,
             )
             parent_details.append(detail)
             partial_rows.append(detail)
+            if best_core_independent is not None:
+                full_core_rows.append(
+                    _RankingRow(
+                        detail=detail,
+                        score_value=best_core_independent.pcq_core_score,
+                        pose_complex=best_core_independent.pose_complex,
+                        percentile=best_core_independent.pcq_core_score,
+                        inter_family_disagreement=best_core_independent.inter_family_disagreement,
+                        search_convergence_count=best_core_independent.search_convergence_count,
+                        search_engine_count=best_core_independent.search_engine_count,
+                    )
+                )
+            else:
+                partial_core_rows.append(detail)
             continue
 
         # Molecule-second reduction: S_i = max_{c <= K_max} S_ic, E3 tie-break by lowest coord hash
-        best_pcq = min(
+        best_pcq = _select_best_medoid(
             breakdowns,
-            key=lambda m: (-round(m.pcq_score, 12), m.canonical_coordinate_sha256),
+            score_fn=lambda m: m.pcq_score,
+            hash_fn=lambda m: m.canonical_coordinate_sha256,
         )
-        best_core = min(
+        assert best_core_independent is not None
+        best_ecr = _select_best_medoid(
             breakdowns,
-            key=lambda m: (-round(m.pcq_core_score, 12), m.canonical_coordinate_sha256),
-        )
-        best_ecr = min(
-            breakdowns,
-            key=lambda m: (-round(m.pc_ecr_score, 12), m.canonical_coordinate_sha256),
+            score_fn=lambda m: m.pc_ecr_score,
+            hash_fn=lambda m: m.canonical_coordinate_sha256,
         )
         if best_pcq.inter_family_disagreement >= HIGH_DISAGREEMENT_WARNING_THRESHOLD:
             high_disagreement_parents.append(parent.parent_compound_id)
@@ -530,7 +652,7 @@ def compute_pcq_and_ecr_consensus(
             selected_medoid_cluster_id=best_pcq.cluster_id,
             selected_pose_complex=best_pcq.pose_complex,
             pcq_score=best_pcq.pcq_score,
-            pcq_core_score=best_core.pcq_core_score,
+            pcq_core_score=best_core_independent.pcq_core_score,
             pc_ecr_score=best_ecr.pc_ecr_score,
             pc_ecr_selected_cluster_id=best_ecr.cluster_id,
             inter_family_disagreement=best_pcq.inter_family_disagreement,
@@ -541,12 +663,38 @@ def compute_pcq_and_ecr_consensus(
         )
         parent_details.append(detail)
         full_pcq_rows.append(
-            (detail, best_pcq.pcq_score, best_pcq.pose_complex, best_pcq.pcq_score)
+            _RankingRow(
+                detail=detail,
+                score_value=best_pcq.pcq_score,
+                pose_complex=best_pcq.pose_complex,
+                percentile=best_pcq.pcq_score,
+                inter_family_disagreement=best_pcq.inter_family_disagreement,
+                search_convergence_count=best_pcq.search_convergence_count,
+                search_engine_count=best_pcq.search_engine_count,
+            )
         )
         full_core_rows.append(
-            (detail, best_core.pcq_core_score, best_core.pose_complex, best_core.pcq_core_score)
+            _RankingRow(
+                detail=detail,
+                score_value=best_core_independent.pcq_core_score,
+                pose_complex=best_core_independent.pose_complex,
+                percentile=best_core_independent.pcq_core_score,
+                inter_family_disagreement=best_core_independent.inter_family_disagreement,
+                search_convergence_count=best_core_independent.search_convergence_count,
+                search_engine_count=best_core_independent.search_engine_count,
+            )
         )
-        full_ecr_rows.append((detail, best_ecr.pc_ecr_score, best_ecr.pose_complex, None))
+        full_ecr_rows.append(
+            _RankingRow(
+                detail=detail,
+                score_value=best_ecr.pc_ecr_score,
+                pose_complex=best_ecr.pose_complex,
+                percentile=None,
+                inter_family_disagreement=best_ecr.inter_family_disagreement,
+                search_convergence_count=best_ecr.search_convergence_count,
+                search_engine_count=best_ecr.search_engine_count,
+            )
+        )
 
     primary_method = (
         RankingMethod.PC_Q_NEURAL_V1
@@ -569,7 +717,7 @@ def compute_pcq_and_ecr_consensus(
             method=RankingMethod.PC_Q_CORE_V1,
             reference_panel_sha256=reference_panel.reference_panel_sha256,
             full_rows=full_core_rows,
-            partial_rows=partial_rows,
+            partial_rows=partial_core_rows,
             tie_policy=tie_policy,
             failure_policy=failure_policy,
         )
@@ -627,9 +775,9 @@ def compute_pcq_and_ecr_consensus(
         quantile_step = round(100.0 / float(n_panel), 4)
         full_count = len(full_pcq_rows)
         saturated_parents = [
-            row[0].parent_compound_id
+            row.detail.parent_compound_id
             for row in full_pcq_rows
-            if row[1] >= _UPPER_TAIL_SATURATION_THRESHOLD
+            if row.score_value >= _UPPER_TAIL_SATURATION_THRESHOLD
         ]
         saturation_fraction = (
             round(float(len(saturated_parents)) / float(full_count), 4) if full_count > 0 else 0.0
@@ -783,19 +931,21 @@ def fit_and_gate_pc_l2(
         fn: max(0.0, float(res.x[idx + 1])) for idx, fn in enumerate(feature_functions)
     }
 
-    # Score every parent at its frozen PC-Q-selected medoid c* (higher linear predictor = better)
+    # Score every parent at its frozen PC-Q-selected medoid c* (higher linear predictor = better).
+    # Single-engine Confirmation baselines use each engine's OWN best medoid max_c q_fn(c) so no
+    # single engine is handicapped at PC-Q's c* (D2-006 / ADR-030 §3).
     pcl2_scores_by_parent: dict[str, float | None] = {}
+    pcq_scores_by_parent: dict[str, float | None] = {}
     single_scores_by_fn: dict[ScoringFunctionId, dict[str, float | None]] = {
         fn: {} for fn in feature_functions
     }
-    full_pcl2_rows: list[
-        tuple[ConsensusParentDetail, float, PoseComplexIdentity, float | None]
-    ] = []
+    full_pcl2_rows: list[_RankingRow] = []
     partial_pcl2_rows: list[ConsensusParentDetail] = []
 
     for pid, detail in parent_details_by_id.items():
         if detail.tier != "full_profile" or not detail.selected_medoid_cluster_id:
             pcl2_scores_by_parent[pid] = None
+            pcq_scores_by_parent[pid] = None
             for fn in feature_functions:
                 single_scores_by_fn[fn][pid] = None
             partial_pcl2_rows.append(detail)
@@ -807,12 +957,28 @@ def fit_and_gate_pc_l2(
             weight_map[fn] * float(selected.function_quantiles[fn]) for fn in feature_functions
         )
         pcl2_scores_by_parent[pid] = linear_score
+        pcq_scores_by_parent[pid] = detail.pcq_score
         for fn in feature_functions:
-            single_scores_by_fn[fn][pid] = float(selected.function_quantiles[fn])
-        full_pcl2_rows.append((detail, linear_score, selected.pose_complex, None))
+            single_scores_by_fn[fn][pid] = max(
+                float(medoid.function_quantiles[fn]) for medoid in detail.medoids
+            )
+        full_pcl2_rows.append(
+            _RankingRow(
+                detail=detail,
+                score_value=linear_score,
+                pose_complex=selected.pose_complex,
+                percentile=None,
+                inter_family_disagreement=selected.inter_family_disagreement,
+                search_convergence_count=selected.search_convergence_count,
+                search_engine_count=selected.search_engine_count,
+            )
+        )
 
-    # Gate on locked Confirmation split: must beat EVERY admitted single scoring function
-    # with paired parent bootstrap 95% CI strictly above 0 (ADR-030 §3).
+    # Gate on locked Confirmation split (ADR-030 §3 & ADR-031 §3):
+    # 1. Split must NOT be confirmation_underpowered.
+    # 2. Must beat EVERY admitted single scoring function (at its own best medoid) with
+    #    paired parent bootstrap 95% CI strictly above 0.
+    # 3. Under 1-SE parsimony, fitted PC-L2 must strictly beat unfitted PC-Q (ci_lower > 0).
     conf_parents = tuple(split.confirmation_parent_ids)
 
     def _to_benchmark_rows(
@@ -851,6 +1017,17 @@ def fit_and_gate_pc_l2(
         return rows
 
     pcl2_conf_rows = _to_benchmark_rows(pcl2_scores_by_parent)
+    pcq_conf_rows = _to_benchmark_rows(pcq_scores_by_parent)
+    delta_vs_pcq = paired_parent_bootstrap_delta(
+        candidate_protocol_id="pc_l2_v1",
+        reference_protocol_id="pc_q",
+        split_name="confirmation",
+        candidate_observations=pcl2_conf_rows,
+        reference_observations=pcq_conf_rows,
+        candidate_direction=ScoreDirection.HIGHER_IS_BETTER,
+        reference_direction=ScoreDirection.HIGHER_IS_BETTER,
+        policy=split.policy,
+    )
     deltas: dict[str, PairedBootstrapDelta] = {}
     all_beat = True
     for fn in feature_functions:
@@ -869,10 +1046,15 @@ def fit_and_gate_pc_l2(
         if delta.ci_lower <= 0.0:
             all_beat = False
 
-    promoted = all_beat and len(deltas) == len(feature_functions)
+    promoted = (
+        (not split.confirmation_underpowered)
+        and all_beat
+        and delta_vs_pcq.ci_lower > 0.0
+        and len(deltas) == len(feature_functions)
+    )
     verdict_text = (
         "Promoted: PC-L2 paired parent bootstrap Delta BEDROC_20 strictly exceeds 0 "
-        "against every admitted single scoring function on locked Confirmation."
+        "against unfitted PC-Q and every admitted single scoring function on locked Confirmation."
         if promoted
         else INSUFFICIENT_EVIDENCE_TEXT
     )
@@ -886,10 +1068,15 @@ def fit_and_gate_pc_l2(
                     f"PC-L2 did not clear the locked Confirmation promotion gate: {verdict_text}."
                 ),
                 details={
+                    "confirmation_underpowered": bool(split.confirmation_underpowered),
+                    "delta_vs_pcq": {
+                        "point_delta": delta_vs_pcq.point_delta,
+                        "ci_lower": delta_vs_pcq.ci_lower,
+                    },
                     "deltas": {
                         fn: {"point_delta": d.point_delta, "ci_lower": d.ci_lower}
                         for fn, d in deltas.items()
-                    }
+                    },
                 },
             )
         )
@@ -918,6 +1105,7 @@ def fit_and_gate_pc_l2(
         promoted=promoted,
         promotion_verdict_text=verdict_text,
         confirmation_deltas_vs_single_engines=deltas,
+        confirmation_delta_vs_pcq=delta_vs_pcq,
     )
     ranking = _build_two_tier_ranking(
         method=RankingMethod.PC_L2_V1,

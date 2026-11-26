@@ -7,6 +7,8 @@ in-place heavy-atom RMSD over moved `FlexRes` side chains under `sidechain_flex`
 
 from __future__ import annotations
 
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -68,8 +70,22 @@ class ParentClusteringResult:
     pairwise_joint_rmsd: dict[tuple[str, str], float]
 
 
+_DUMMY_GLUE_TYPE_RE = re.compile(r"^(?:G\d+|G|DU|LP)$", re.IGNORECASE)
+_MACROCYCLE_CARBON_TYPE_RE = re.compile(r"^CG\d+$", re.IGNORECASE)
+
+
 def _strip_nul_lines(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if line.strip("\x00\r\n"))
+
+
+def _canonical_3d_isomeric_smiles(chem: Any, molecule: Any) -> str:
+    """Compute canonical isomeric SMILES (with formal charges) perceived from 3D geometry."""
+    copy = chem.Mol(molecule)
+    if copy.GetNumConformers() > 0:
+        chem.AssignStereochemistryFrom3D(copy)
+        chem.DetectBondStereochemistry(copy)
+        chem.AssignStereochemistry(copy, cleanIt=True, force=True)
+    return str(chem.MolToSmiles(chem.RemoveHs(copy), isomericSmiles=True))
 
 
 def _load_cluster_ligand_mol(pdbqt_text: str, reference_conformer_mol: Any) -> Any:
@@ -77,37 +93,75 @@ def _load_cluster_ligand_mol(pdbqt_text: str, reference_conformer_mol: Any) -> A
 
     Prefers Meeko's recorded molecular graph (`meeko.PDBQTMolecule`) when available so
     sterically self-clashing poses cannot acquire spurious proximity covalent bonds and
-    Meeko macrocycle glue pseudoatoms (`CG0`/`G0`) are resolved cleanly. Falls back to
-    `redocking_rmsd.load_pose` for non-Meeko PDBQT fixtures while enforcing exact heavy
-    atom and bond count equality against `reference_conformer_mol`.
+    Meeko macrocycle glue pseudoatoms (`CG0`/`G0`) are resolved cleanly. Enforces exact
+    3D stereochemical and formal-charge identity against `reference_conformer_mol` so
+    opposite enantiomers or distinct protonation states can never collapse into one cluster.
     """
     chem: Any = import_module("rdkit.Chem")
     ref_no_h = chem.RemoveHs(reference_conformer_mol)
     expected_atoms = int(ref_no_h.GetNumAtoms())
     expected_bonds = int(ref_no_h.GetNumBonds())
+    expected_smiles = _canonical_3d_isomeric_smiles(chem, reference_conformer_mol)
+    meeko_error: str | None = None
+    meeko_candidate: Any | None = None
     try:
         meeko: Any = import_module("meeko")
         pmol = meeko.PDBQTMolecule(pdbqt_text, skip_typing=True)
         reconstructed = meeko.RDKitMolCreate.from_pdbqt_mol(pmol)
-        candidate = next((mol for mol in reconstructed if mol is not None), None)
-        if candidate is not None:
-            heavy = chem.RemoveHs(candidate)
-            if (
-                int(heavy.GetNumAtoms()) == expected_atoms
-                and int(heavy.GetNumBonds()) == expected_bonds
-                and heavy.HasSubstructMatch(ref_no_h)
-            ):
-                return heavy
-    except Exception:
-        pass
-    loaded = load_pose(pdbqt_text, reference_conformer_mol)
+        meeko_candidate = next((mol for mol in reconstructed if mol is not None), None)
+    except Exception as error:  # noqa: BLE001 — preserve third-party Meeko error cause (D1-009)
+        meeko_error = f"{type(error).__name__}: {error}"
+
+    if meeko_candidate is not None:
+        heavy = chem.RemoveHs(meeko_candidate)
+        observed_smiles = _canonical_3d_isomeric_smiles(chem, meeko_candidate)
+        if (
+            int(heavy.GetNumAtoms()) != expected_atoms
+            or int(heavy.GetNumBonds()) != expected_bonds
+            or not heavy.HasSubstructMatch(ref_no_h, useChirality=True)
+            or observed_smiles != expected_smiles
+        ):
+            raise _clustering_error(
+                "CONSENSUS_POSE_TOPOLOGY_MISMATCH",
+                (
+                    "Reconstructed pose chemical state or 3D stereochemistry does not match "
+                    "the reference conformer."
+                ),
+                expected_smiles=expected_smiles,
+                observed_smiles=observed_smiles,
+                expected_heavy_atoms=expected_atoms,
+                observed_heavy_atoms=int(heavy.GetNumAtoms()),
+                expected_bonds=expected_bonds,
+                observed_bonds=int(heavy.GetNumBonds()),
+            )
+        return heavy
+
+    try:
+        loaded = load_pose(pdbqt_text, reference_conformer_mol)
+    except AnkoraDomainError as error:
+        if meeko_error is not None:
+            details = dict(error.details)
+            details["meeko_reason"] = meeko_error
+            raise AnkoraDomainError(
+                code=error.code,
+                stage=error.stage,
+                message=error.message,
+                status_code=error.status_code,
+                details=details,
+                recoverable=error.recoverable,
+            ) from error
+        raise
+    observed_loaded_smiles = _canonical_3d_isomeric_smiles(chem, loaded)
     if (
         int(loaded.GetNumAtoms()) != expected_atoms
         or int(loaded.GetNumBonds()) != expected_bonds
+        or observed_loaded_smiles != expected_smiles
     ):
         raise _clustering_error(
             "CONSENSUS_POSE_TOPOLOGY_MISMATCH",
-            "Reconstructed pose bond graph does not match the reference conformer topology.",
+            "Reconstructed pose bond graph or 3D stereochemistry does not match reference.",
+            expected_smiles=expected_smiles,
+            observed_smiles=observed_loaded_smiles,
             expected_heavy_atoms=expected_atoms,
             observed_heavy_atoms=int(loaded.GetNumAtoms()),
             expected_bonds=expected_bonds,
@@ -122,13 +176,22 @@ def extract_heavy_atom_coords_from_pdbqt(
     """Parse heavy atoms `(chain, resseq, icode, resname, atom_name) -> (x, y, z)` from PDBQT."""
     cleaned = _strip_nul_lines(pdbqt_text)
     atoms: list[tuple[_FlexAtomKey, tuple[float, float, float]]] = []
-    for line in cleaned.splitlines():
+    for line_no, line in enumerate(cleaned.splitlines(), start=1):
         if not line.startswith(("ATOM  ", "HETATM")):
             continue
         if len(line) < 54:
+            raise _clustering_error(
+                "CONSENSUS_COORDINATES_UNREADABLE",
+                "Pose PDBQT contains a truncated ATOM/HETATM coordinate record.",
+                line_number=line_no,
+            )
+        atom_type = line[77:80].strip().upper() if len(line) >= 78 else ""
+        if atom_type and _DUMMY_GLUE_TYPE_RE.match(atom_type):
             continue
-        atom_type = line[77:79].strip() if len(line) >= 78 else ""
-        element = autodock_type_to_element(atom_type) if atom_type else None
+        if atom_type and _MACROCYCLE_CARBON_TYPE_RE.match(atom_type):
+            element: str | None = "C"
+        else:
+            element = autodock_type_to_element(atom_type) if atom_type else None
         atom_name = line[12:16].strip()
         if element == "H" or (element is None and atom_name.upper().startswith("H")):
             continue
@@ -144,7 +207,14 @@ def extract_heavy_atom_coords_from_pdbqt(
                 "CONSENSUS_COORDINATES_UNREADABLE",
                 "Pose PDBQT contains unreadable coordinate records.",
                 reason=str(error),
+                line_number=line_no,
             ) from error
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+            raise _clustering_error(
+                "CONSENSUS_COORDINATES_UNREADABLE",
+                "Pose PDBQT contains non-finite XYZ coordinates.",
+                line_number=line_no,
+            )
         icode = line[26:27].strip()
         atoms.append(((chain_id, resseq, icode, resname, atom_name), (x, y, z)))
     return atoms
