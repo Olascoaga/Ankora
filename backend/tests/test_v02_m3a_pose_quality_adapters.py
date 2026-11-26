@@ -463,6 +463,74 @@ def test_flex_sidechain_geometry_flex_to_flex_icode_missing_malformed_and_3d_ora
             )
         assert bad_exc.value.code == "FLEX_GEOMETRY_PDB_INVALID"
 
+    # 7. Exact analytical _signed_volume & parser/peptide-bond boundary oracles
+    from ankora_backend.adapters.quality.flex_sidechain_geometry import (
+        _parse_heavy_atoms,
+        _signed_volume,
+    )
+
+    # Off-origin non-orthogonal tetrahedron: v1=(1,2,3), v2=(4,1,2), v3=(2,5,1) -> det = 45
+    vol_exact = _signed_volume(
+        (10.0, 20.0, 30.0),
+        (11.0, 22.0, 33.0),
+        (14.0, 21.0, 32.0),
+        (12.0, 25.0, 31.0),
+    )
+    assert vol_exact == pytest.approx(45.0, abs=1e-12)
+
+    # Exact 54-char PDB line (no element col, non-H atom) + exact 78-char H line (cols 76-78)
+    line_54 = "ATOM      1  CB  ALA A   1      10.000  20.000  30.000"
+    assert len(line_54) == 54
+    line_78_h = (
+        "ATOM      2  HB1 ALA A   1      10.500  20.500  30.500  1.00  0.00           H"
+    )
+    assert len(line_78_h) == 78
+    parsed_atoms = _parse_heavy_atoms(line_54 + "\n" + line_78_h + "\nEND\n")
+    assert len(parsed_atoms) == 1
+    assert parsed_atoms[0].atom_name == "CB"
+
+    # Peptide-bond boundary at exact 1.95 A (including C-only residue A:30 -> N-only A:31)
+    # GLY A:31 CA sits 0.50 A from SER A:30 OG (must be skipped ONLY because C-N <= 1.95 A!),
+    # while distant GLY A:99 provides a valid non-adjacent heavy atom so clash check evaluates.
+    res30_loc = ResidueLocator(chain_id="A", residue_name="SER", sequence_number=30)
+    pep_cryst = (
+        _line(1, "C", "SER", "A", 30, " ", (0.000, 0.000, 0.000), "C")
+        + _line(2, "OG", "SER", "A", 30, " ", (0.000, 1.500, 0.000), "O")
+        + _line(3, "N", "GLY", "A", 31, " ", (1.950, 0.000, 0.000), "N")
+        + _line(4, "CA", "GLY", "A", 31, " ", (0.000, 2.000, 0.000), "C")
+        + _line(5, "CA", "GLY", "A", 99, " ", (15.000, 0.000, 0.000), "C")
+        + "END\n"
+    )
+    res_pep_fwd = {
+        c.check_id: c
+        for c in evaluate_flex_sidechain_geometry(
+            crystal_receptor_pdb=pep_cryst,
+            coupled_receptor_pdb=pep_cryst,
+            flex_residues=[res30_loc],
+        )
+    }
+    assert res_pep_fwd["flex_sidechain_receptor_clash"].status is DiagnosticStatus.PASS
+
+    # Reverse peptide direction (N-only flex residue A:31 bonded to C-only A:30 at exact 1.95 A)
+    res31_loc = ResidueLocator(chain_id="A", residue_name="SER", sequence_number=31)
+    pep_rev_cryst = (
+        _line(1, "C", "ALA", "A", 30, " ", (0.000, 0.000, 0.000), "C")
+        + _line(2, "CA", "ALA", "A", 30, " ", (1.950, 2.000, 0.000), "C")
+        + _line(3, "N", "SER", "A", 31, " ", (1.950, 0.000, 0.000), "N")
+        + _line(4, "OG", "SER", "A", 31, " ", (1.950, 1.500, 0.000), "O")
+        + _line(5, "CA", "GLY", "A", 99, " ", (15.000, 0.000, 0.000), "C")
+        + "END\n"
+    )
+    res_pep_rev = {
+        c.check_id: c
+        for c in evaluate_flex_sidechain_geometry(
+            crystal_receptor_pdb=pep_rev_cryst,
+            coupled_receptor_pdb=pep_rev_cryst,
+            flex_residues=[res31_loc],
+        )
+    }
+    assert res_pep_rev["flex_sidechain_receptor_clash"].status is DiagnosticStatus.PASS
+
 
 def test_conformational_strain_untagged_alkene_unconverged_and_rmsd_oracles(
     monkeypatch: pytest.MonkeyPatch,

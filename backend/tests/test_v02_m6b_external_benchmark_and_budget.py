@@ -641,7 +641,7 @@ def test_audit_unit6_external_evaluator_oracles_pb_strictness_pr_auc_and_mutants
         pid: eval_mod.ParentScoreRecord(
             pid,
             True,
-            20.0 if pid in low_prev_actives else 50.0 - idx * 0.1,
+            100.0 if pid == "P001" else (10.0 if pid == "P000" else 50.0 - idx * 0.1),
         )
         for idx, pid in enumerate(low_prev_pids)
     }
@@ -656,9 +656,20 @@ def test_audit_unit6_external_evaluator_oracles_pb_strictness_pr_auc_and_mutants
     assert boot["valid_replicates"] == 80  # zero dropped replicates at 2% prevalence!
     assert boot["bootstrap_method"] == "stratified_fixed_class_paired_parent_bootstrap"
     assert boot["percentile_method"] == "linear_interpolated_n_minus_1"
+    assert boot["ankora"]["bedroc"] > 0.2 and boot["external"]["bedroc"] > 0.2
     expected_delta = boot["ankora"]["bedroc"] - boot["external"]["bedroc"]
     assert boot["point_delta_bedroc"] == pytest.approx(expected_delta, abs=1e-12)
     assert 0.0 < boot["bootstrap_se"] < 1.0  # kills M21 (mean_delta = sum * len blows SE up!)
+    # Single-replicate bootstrap must be accepted (kills replicates < 1 -> <= 1)
+    boot_one = eval_mod.paired_parent_bootstrap_delta(
+        parent_ids=low_prev_pids,
+        active_set=low_prev_actives,
+        ankora_records=ank_low,
+        external_records=ext_low,
+        replicates=1,
+        seed=42,
+    )
+    assert boot_one["valid_replicates"] == 1
     # Permutation invariance of stratified bootstrap
     boot_rev = eval_mod.paired_parent_bootstrap_delta(
         parent_ids=tuple(reversed(low_prev_pids)),

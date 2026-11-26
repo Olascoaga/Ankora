@@ -416,6 +416,61 @@ def test_mcs_core_rmsd_fails_closed_on_template_mismatch_and_bond_order_failure(
         )
     assert bo_exc.value.code == "ANALOG_MCS_BOND_ORDER_ASSIGNMENT_FAILED"
 
+    # 3. Non-finite z coordinate (with finite x, y) must fail closed (kills `and` -> `or`)
+    nan_z_pdbqt = _mol_to_pdbqt_block(toluene).splitlines()
+    for idx, line in enumerate(nan_z_pdbqt):
+        if line.startswith("ATOM  "):
+            nan_z_pdbqt[idx] = line[:46] + "     nan" + line[54:]
+            break
+    with pytest.raises(AnkoraDomainError) as nan_exc:
+        compute_receptor_frame_mcs_core_rmsd(
+            seed_pose_artifact_id="s-nan",
+            seed_pose_sha256="5" * 64,
+            seed_pose_pdbqt_text="\n".join(nan_z_pdbqt) + "\n",
+            seed_conformer_path=tol_sdf,
+            target_pose_artifact_id="t-nan",
+            target_pose_sha256="6" * 64,
+            target_pose_pdbqt_text=_mol_to_pdbqt_block(toluene),
+            target_conformer_path=tol_sdf,
+        )
+    assert nan_exc.value.code in {
+        "ANALOG_MCS_POSE_UNREADABLE",
+        "ANALOG_MCS_TOPOLOGY_MISMATCH",
+        "ANALOG_MCS_BOND_ORDER_ASSIGNMENT_FAILED",
+    }
+
+    # 4. Completely empty PDBQT (MolFromPDBBlock -> None / 0 atoms) must raise AnkoraDomainError
+    with pytest.raises(AnkoraDomainError):
+        compute_receptor_frame_mcs_core_rmsd(
+            seed_pose_artifact_id="s-empty",
+            seed_pose_sha256="7" * 64,
+            seed_pose_pdbqt_text="REMARK empty\n",
+            seed_conformer_path=tol_sdf,
+            target_pose_artifact_id="t-empty",
+            target_pose_sha256="8" * 64,
+            target_pose_pdbqt_text=_mol_to_pdbqt_block(toluene),
+            target_conformer_path=tol_sdf,
+        )
+
+    # 5. Zero common heavy atoms (H2O2 vs toluene) -> NOT_EVALUABLE (kills `mcs_atoms < 1 and ...`)
+    peroxide = Chem.AddHs(Chem.MolFromSmiles("OO"))
+    AllChem.EmbedMolecule(peroxide, randomSeed=5)
+    peroxide = Chem.RemoveHs(peroxide)
+    perox_sdf = tmp_path / "peroxide.sdf"
+    perox_sdf.write_text(Chem.MolToMolBlock(peroxide) + "\n$$$$\n", encoding="utf-8")
+    no_mcs = compute_receptor_frame_mcs_core_rmsd(
+        seed_pose_artifact_id="s-oo",
+        seed_pose_sha256="9" * 64,
+        seed_pose_pdbqt_text=_mol_to_pdbqt_block(peroxide),
+        seed_conformer_path=perox_sdf,
+        target_pose_artifact_id="t-tol",
+        target_pose_sha256="a" * 64,
+        target_pose_pdbqt_text=_mol_to_pdbqt_block(toluene),
+        target_conformer_path=tol_sdf,
+    )
+    assert no_mcs.status is McsCoreRmsdStatus.NO_COMMON_SUBSTRUCTURE
+    assert no_mcs.mcs_heavy_atom_count == 0
+
 
 def test_mcs_core_rmsd_preserves_meeko_cg0_macrocycle_and_pdb_cg1_cg2_carbons(
     tmp_path: Path,

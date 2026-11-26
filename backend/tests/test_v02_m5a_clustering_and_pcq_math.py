@@ -657,6 +657,24 @@ def test_pc_l2_strictly_convex_non_negative_fit_and_confirmation_promotion_gate(
         assert all(w >= 0.0 for w in model.weights.values())
         if not model.promoted:
             assert any(w.code is WarningCode.CONSENSUS_PCL2_UNPROMOTED for w in warnings)
+        if mode == "asymmetric_complementary" and not underpowered:
+            # Guardrails: l2_regularization <= 0.0 refused; exact 2 feature functions accepted
+            with pytest.raises(AnkoraDomainError):
+                fit_and_gate_pc_l2(
+                    calibration=split_run,
+                    reference_panel=panel,
+                    feature_functions=(ScoringFunctionId.VINA, ScoringFunctionId.AUTODOCK4),
+                    parent_details_by_id={d.parent_compound_id: d for d in out.parent_details},
+                    l2_regularization=0.0,
+                )
+            two_fn_model, _, _ = fit_and_gate_pc_l2(
+                calibration=split_run,
+                reference_panel=panel,
+                feature_functions=(ScoringFunctionId.VINA, ScoringFunctionId.AUTODOCK4),
+                parent_details_by_id={d.parent_compound_id: d for d in out.parent_details},
+                l2_regularization=0.1,
+            )
+            assert len(two_fn_model.feature_functions) == 2
         return model.promoted, model.promotion_verdict_text, model.weights
 
     promoted_asym, verdict_asym, weights_asym = _run_scenario(mode="asymmetric_complementary")
@@ -994,7 +1012,7 @@ def test_pcq_math_ranking_order_scale_invariance_metadata_and_nan_guards() -> No
     assert [e.rank for e in rk_100k.entries] == [1, 2]
 
 
-def test_pose_clustering_stereo_charge_meeko_error_macrocycle_and_3d_flex_oracles(
+def test_pose_clustering_flexres_stereo_charge_meeko_error_macrocycle_and_3d_oracles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """D1-009, D4-006, D4-012, D4-003 + pose_clustering mutation oracles."""
@@ -1175,3 +1193,62 @@ def test_pose_clustering_stereo_charge_meeko_error_macrocycle_and_3d_flex_oracle
     ]
     ordered = _ordered_autodock_runs(runs)
     assert [r.run for r in ordered] == [2, 3, 1]
+
+    # 7. Additional pose_clustering parser, fallback-validation, and flex-swap oracles
+    line_54 = "ATOM      1  C1  UNL     1       1.000   2.000   3.000"
+    assert len(line_54) == 54
+    line_78_g = (
+        "ATOM      2  G0  UNL     1       4.000   5.000   6.000  1.00  0.00    +0.000 G"
+    )
+    assert len(line_78_g) == 78
+    line_hd = (
+        "ATOM      3  H1  UNL     1       7.000   8.000   9.000  1.00  0.00    +0.000 HD\n"
+    )
+    assert [
+        xyz
+        for _, xyz in extract_heavy_atom_coords_from_pdbqt(
+            line_54 + "\n" + line_78_g + "\n" + line_hd
+        )
+    ] == [(1.0, 2.0, 3.0)]
+
+    def _meeko_fail(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("forced_fallback")
+
+    monkeypatch.setattr(meeko, "PDBQTMolecule", _meeko_fail)
+    res_fb_ok = cluster_parent_pose_complexes(
+        candidates=[
+            ClusterCandidatePose(
+                pose_id="fb-ok",
+                source_engine="vina",
+                primary_rank_order=1,
+                pose_complex=_pose_complex("fb-ok"),
+                ligand_pdbqt_text=pose_origin,
+            )
+        ],
+        reference_conformer_mol=template,
+        k_max=1,
+    )
+    assert len(res_fb_ok.retained_clusters) == 1
+    # Opposite enantiomer on fallback path has identical atom & bond counts, different 3D SMILES
+    # (exercises L156..L158: kills bool_or_to_and and neq_to_eq on bond count!)
+    with pytest.raises(AnkoraDomainError) as fb_stereo_exc:
+        cluster_parent_pose_complexes(
+            candidates=[
+                ClusterCandidatePose(
+                    pose_id="fb-s",
+                    source_engine="vina",
+                    primary_rank_order=1,
+                    pose_complex=_pose_complex("fb-s"),
+                    ligand_pdbqt_text=pdbqt_s,
+                )
+            ],
+            reference_conformer_mol=Chem.RemoveHs(mol_r),
+            k_max=1,
+        )
+    assert fb_stereo_exc.value.code == "CONSENSUS_POSE_TOPOLOGY_MISMATCH"
+    monkeypatch.undo()
+
+    partial_flex = {k_cg: (5.0, -3.0, 2.0), k_od1: (5.0, -3.0, 4.0)}
+    assert in_place_flex_sidechains_rmsd(partial_flex, partial_flex) == pytest.approx(
+        0.0, abs=1e-9
+    )
