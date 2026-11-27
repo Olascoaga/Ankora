@@ -1805,6 +1805,7 @@ def test_methods_report_and_export_vina_vinardo_and_autodock4_flex(
     )
 
 
+@pytest.mark.live_engine
 def test_live_real_gnina_flex_end_to_end_with_local_only_and_e8_complex(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

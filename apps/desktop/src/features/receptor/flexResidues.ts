@@ -32,11 +32,6 @@ export const RECOMMENDED_MAX_FLEX_CHI_TORSIONS = 12;
 /** The structured advisory emitted when either recommended budget is exceeded. */
 export const FLEXRES_DOF_HIGH_CODE = "DOCKING_FLEXRES_DOF_HIGH";
 
-export function isDisallowedFlexResidue(residueName: string): boolean {
-  return (DISALLOWED_FLEX_RESIDUE_NAMES as readonly string[])
-    .includes(residueName.trim().toUpperCase());
-}
-
 /** Why a residue cannot be freed, or null when it can. */
 export function flexResidueRejection(residueName: string): string | null {
   const name = residueName.trim().toUpperCase();

@@ -305,6 +305,7 @@ _BY_TOOL: dict[str, tuple[Reference, ...]] = {
     "P2Rank": (_P2RANK,),
     "RDKit": (_RDKIT,),
     "RDKit ETKDG/MMFF": (_RDKIT, _ETKDG, _ETKDG_V3, _MMFF94, _MMFF94S),
+    "PC-ECR": (_ECR_PALACIO_RODRIGUEZ,),
 }
 
 

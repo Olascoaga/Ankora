@@ -441,6 +441,7 @@ def test_pose_rescoring_batches_gnina_metrics_and_strips_staged_remarks_without_
     )
 
 
+@pytest.mark.live_engine
 def test_live_score_only_rigid_and_flex_cross_engine(tmp_path: Path) -> None:
     """Live Dual-OS integration test across Vina, Vinardo, AD4 epdb, Vina-AD4, and Linux GNINA.
 
@@ -735,15 +736,13 @@ def test_strip_pose_envelope_removes_autodock_dlg_user_and_ter_tags_on_staging()
         b"ENDMDL\n"
     )
     staged = rescoring_module._strip_pose_envelope_for_staging(raw)
-    assert b"MODEL" not in staged
-    assert b"ENDMDL" not in staged
-    assert b"USER" not in staged
-    assert b"NEWDPF" not in staged
-    assert b"\nTER\n" not in staged
-    assert b"REMARK VINA RESULT" not in staged
-    assert b"REMARK SMILES CCO\n" in staged
-    assert b"ATOM      1  C1" in staged
-    assert b"TORSDOF 0\n" in staged
+    assert staged == (
+        b"REMARK SMILES CCO\n"
+        b"ROOT\n"
+        b"ATOM      1  C1  UNL     1       1.000   2.000   3.000  1.00  0.00     0.000 C \n"
+        b"ENDROOT\n"
+        b"TORSDOF 0\n"
+    )
 
 
 def test_autodock4_epdb_bound_unbound_correction_preserves_raw_terms() -> None:

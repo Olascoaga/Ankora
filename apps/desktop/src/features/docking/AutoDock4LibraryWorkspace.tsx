@@ -95,7 +95,10 @@ export function AutoDock4LibraryWorkspace({
   const mapSetId = mapJob?.status === "completed"
     ? mapJob.map_set_id
     : batch?.map_set_id ?? null;
-  const toolsReady = Boolean(tools?.autogrid4.available && tools.autodock4.available);
+  const activeEngineTool =
+    backend === "autodock_gpu" ? tools?.autodock_gpu : tools?.autodock4;
+  const toolsReady = Boolean(tools?.autogrid4.available && activeEngineTool?.available);
+  const inputsReady = Boolean(receptorPdbqt && !bindingSite.stale);
   const selectedEntry = batch?.entries.find((e) => e.ligand_id === selectedLigandId) ?? null;
   const selectedPose = selectedEntry?.runs.find((r) => r.run === selectedRun) ?? null;
   const progressPercent = batch
@@ -132,8 +135,9 @@ export function AutoDock4LibraryWorkspace({
     filterRunId: libraryInput.filter_run_id,
   };
 
+  const historyEngine = backend === "autodock_gpu" ? "autodock_gpu" : "autodock4";
   const history = useCampaignHistory({
-    engine: "autodock4",
+    engine: historyEngine,
     receptorId: receptor.receptor_id,
     bindingSiteId: bindingSite.binding_site_id,
   });
@@ -206,16 +210,22 @@ export function AutoDock4LibraryWorkspace({
 
   useEffect(() => {
     if (!batch || TERMINAL.has(batch.status)) return;
+    const activeBatchId = batch.batch_id;
+    const activeBinding = bindingFor(backend);
     let disposed = false;
+    let refreshing = false;
     const timer = window.setInterval(() => {
+      if (refreshing) return;
+      refreshing = true;
       // Poll the cheap progress endpoint; only refetch the full record when
       // something actually changed, so a long campaign does not resend results.
-      void binding.getProgressRevision(batch.batch_id, revisionRef.current)
+      void activeBinding.getProgressRevision(activeBatchId, revisionRef.current)
         .then(async (revision) => {
           if (disposed || revision === null) return;
           revisionRef.current = revision;
-          const next = await binding.getBatch(batch.batch_id);
-          if (disposed) return;
+          const next = await activeBinding.getBatch(activeBatchId);
+          if (disposed || next.revision < revisionRef.current) return;
+          revisionRef.current = next.revision;
           setBatch(next);
           // A finished campaign changes what the history should report about
           // it: its final counts and its best energy.
@@ -223,10 +233,13 @@ export function AutoDock4LibraryWorkspace({
         })
         .catch((reason: unknown) => {
           if (!disposed) setError(asMessage(reason, "Campaign status could not be refreshed."));
+        })
+        .finally(() => {
+          refreshing = false;
         });
     }, 1000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [batch]);
+  }, [batch?.batch_id, batch?.status, backend]);
 
   useEffect(() => {
     if (!onActivityChange) return;
@@ -373,6 +386,11 @@ export function AutoDock4LibraryWorkspace({
             <strong>{mapJob.failure.message}</strong> <span>{mapJob.failure.code}</span>
           </div>
         ) : null}
+        {batch?.failure ? (
+          <div className="structure-error" role="alert">
+            <strong>{batch.failure.message}</strong> <span>{batch.failure.code}</span>
+          </div>
+        ) : null}
         {viewerSources.length ? (
           <MolecularViewer sources={viewerSources} selection={null} dockingBox={bindingSite.box} />
         ) : (
@@ -412,6 +430,13 @@ export function AutoDock4LibraryWorkspace({
         <section className="receptor-section">
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
+          <InputState
+            ready={!bindingSite.stale}
+            label="Binding site"
+            detail={bindingSite.stale
+              ? "Stale — confirm a current binding site before docking."
+              : `${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`}
+          />
           <InputState ready label="Applied selection" detail={`${libraryInput.selected_count} molecules · ${libraryInput.prepared_count} prepared`} />
           <ActiveFlexResBanner receptor={receptor} engineFamily="autodock4" />
         </section>
@@ -429,7 +454,7 @@ export function AutoDock4LibraryWorkspace({
               </small>
             </div>
           ) : null}
-          <button type="button" className="apply-plan" onClick={() => void generateMaps()} disabled={!toolsReady || mapsBusy || batchBusy}>
+          <button type="button" className="apply-plan" onClick={() => void generateMaps()} disabled={!toolsReady || !inputsReady || mapsBusy || batchBusy}>
             {mapJob?.status === "completed" ? "Regenerate affinity maps" : "Generate affinity maps"}
           </button>
         </section>
@@ -457,6 +482,7 @@ export function AutoDock4LibraryWorkspace({
                   onClick={() => {
                     setBackend(option.backend);
                     setParameters(defaultParameters(option.backend));
+                    setAcknowledged(false);
                   }}
                 >
                   <strong>{option.label}</strong>
@@ -476,10 +502,12 @@ export function AutoDock4LibraryWorkspace({
           ) : null}
         </section>
         <section className="receptor-section">
-          <div className="filter-heading"><span>4 · Search & scheduling</span><small>{tools?.autodock4.available ? tools.autodock4.version : "Unavailable"}</small></div>
-          <p className="field-note">
-            AutoDock4 4.2.6 has no OpenMP support, so each process uses one core and this count is the whole CPU budget.
-          </p>
+          <div className="filter-heading"><span>4 · Search & scheduling</span><small>{activeEngineTool?.available ? activeEngineTool.version : "Unavailable"}</small></div>
+          {!isGpuParameters(parameters) ? (
+            <p className="field-note">
+              AutoDock4 4.2.6 has no OpenMP support, so each process uses one core and this count is the whole CPU budget.
+            </p>
+          ) : null}
           {isGpuParameters(parameters) ? (
             <>
               <p className="field-note">
@@ -487,35 +515,35 @@ export function AutoDock4LibraryWorkspace({
                 device measured slower than one, so there is no parallelism to set.
               </p>
               <div className="docking-parameter-grid">
-                <NumberField label="Independent runs" value={parameters.runs} min={2} max={1000} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, runs: v }))} />
-                <NumberField label="Energy evaluations" value={parameters.energy_evaluations} min={1000} max={100000000} step={250000} disabled={batchBusy || parameters.heuristics} onChange={(v) => setParameters((c) => ({ ...c, energy_evaluations: v }))} />
-                <NumberField label="Population size" value={parameters.population_size} min={2} max={10000} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, population_size: v }))} />
-                <NumberField label="Cluster RMSD (Å)" value={parameters.cluster_rmsd_tolerance_angstrom} min={0.1} max={20} step={0.1} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, cluster_rmsd_tolerance_angstrom: v }))} />
-                <NumberField label="Seed 1" value={parameters.seed_1} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, seed_1: v }))} />
-                <NumberField label="Seed 2" value={parameters.seed_2} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, seed_2: v }))} />
-                <NumberField label="Seed 3" value={parameters.seed_3} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, seed_3: v }))} />
-                <NumberField label="Campaign timeout (min)" value={parameters.timeout_minutes} min={1} max={2880} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, timeout_minutes: v }))} />
+                <NumberField label="Independent runs" value={parameters.runs} min={2} max={1000} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, runs: v })); }} />
+                <NumberField label="Energy evaluations" value={parameters.energy_evaluations} min={1000} max={100000000} step={250000} disabled={batchBusy || parameters.heuristics} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, energy_evaluations: v })); }} />
+                <NumberField label="Population size" value={parameters.population_size} min={2} max={10000} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, population_size: v })); }} />
+                <NumberField label="Cluster RMSD (Å)" value={parameters.cluster_rmsd_tolerance_angstrom} min={0.1} max={20} step={0.1} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, cluster_rmsd_tolerance_angstrom: v })); }} />
+                <NumberField label="Seed 1" value={parameters.seed_1} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, seed_1: v })); }} />
+                <NumberField label="Seed 2" value={parameters.seed_2} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, seed_2: v })); }} />
+                <NumberField label="Seed 3" value={parameters.seed_3} min={0} max={2147483647} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, seed_3: v })); }} />
+                <NumberField label="Campaign timeout (min)" value={parameters.timeout_minutes} min={1} max={2880} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, timeout_minutes: v })); }} />
               </div>
               <label className="field-label" htmlFor="gpu-local-search">Local search</label>
               <select
                 id="gpu-local-search"
                 value={parameters.local_search_method}
                 disabled={batchBusy}
-                onChange={(e) => setParameters((c) => ({ ...c, local_search_method: e.target.value as typeof parameters.local_search_method }))}
+                onChange={(e) => { setAcknowledged(false); setParameters((c) => ({ ...c, local_search_method: e.target.value as typeof parameters.local_search_method })); }}
               >
                 <option value="ad">ADADELTA (tool default)</option>
                 <option value="sw">Solis-Wets (what the CPU protocol uses)</option>
                 <option value="fire">FIRE</option>
               </select>
               <label className="check-row">
-                <input type="checkbox" checked={parameters.heuristics} disabled={batchBusy} onChange={(e) => setParameters((c) => ({ ...c, heuristics: e.target.checked }))} />
+                <input type="checkbox" checked={parameters.heuristics} disabled={batchBusy} onChange={(e) => { setAcknowledged(false); setParameters((c) => ({ ...c, heuristics: e.target.checked })); }} />
                 <span>
                   <strong>Let the tool choose the evaluation count</strong>
                   <small>Its ligand-based heuristic. Faster, but the budget is no longer something you stated.</small>
                 </span>
               </label>
               <label className="check-row">
-                <input type="checkbox" checked={parameters.autostop} disabled={batchBusy} onChange={(e) => setParameters((c) => ({ ...c, autostop: e.target.checked }))} />
+                <input type="checkbox" checked={parameters.autostop} disabled={batchBusy} onChange={(e) => { setAcknowledged(false); setParameters((c) => ({ ...c, autostop: e.target.checked })); }} />
                 <span>
                   <strong>Stop early on convergence</strong>
                   <small>Halts a run once the best energies settle. Roughly twice as fast again.</small>
@@ -524,14 +552,14 @@ export function AutoDock4LibraryWorkspace({
             </>
           ) : (
             <div className="docking-parameter-grid">
-              <NumberField label="Parallel molecules" value={parameters.parallel_ligands} min={1} max={64} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, parallel_ligands: v }))} />
-              <NumberField label="Independent runs" value={parameters.ga_runs} min={2} max={256} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, ga_runs: v }))} />
-              <NumberField label="Energy evaluations" value={parameters.ga_energy_evaluations} min={1000} max={100000000} step={250000} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, ga_energy_evaluations: v }))} />
-              <NumberField label="Population size" value={parameters.ga_population_size} min={2} max={10000} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, ga_population_size: v }))} />
-              <NumberField label="Cluster RMSD (Å)" value={parameters.cluster_rmsd_tolerance_angstrom} min={0.1} max={20} step={0.1} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, cluster_rmsd_tolerance_angstrom: v }))} />
-              <NumberField label="Seed 1" value={parameters.seed_1} min={2} max={2147483647} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, seed_1: v }))} />
-              <NumberField label="Seed 2" value={parameters.seed_2} min={2} max={2147483647} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, seed_2: v }))} />
-              <NumberField label="Timeout per molecule (min)" value={parameters.timeout_minutes} min={1} max={2880} disabled={batchBusy} onChange={(v) => setParameters((c) => ({ ...c, timeout_minutes: v }))} />
+              <NumberField label="Parallel molecules" value={parameters.parallel_ligands} min={1} max={64} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, parallel_ligands: v })); }} />
+              <NumberField label="Independent runs" value={parameters.ga_runs} min={2} max={256} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, ga_runs: v })); }} />
+              <NumberField label="Energy evaluations" value={parameters.ga_energy_evaluations} min={1000} max={100000000} step={250000} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, ga_energy_evaluations: v })); }} />
+              <NumberField label="Population size" value={parameters.ga_population_size} min={2} max={10000} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, ga_population_size: v })); }} />
+              <NumberField label="Cluster RMSD (Å)" value={parameters.cluster_rmsd_tolerance_angstrom} min={0.1} max={20} step={0.1} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, cluster_rmsd_tolerance_angstrom: v })); }} />
+              <NumberField label="Seed 1" value={parameters.seed_1} min={2} max={2147483647} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, seed_1: v })); }} />
+              <NumberField label="Seed 2" value={parameters.seed_2} min={2} max={2147483647} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, seed_2: v })); }} />
+              <NumberField label="Timeout per molecule (min)" value={parameters.timeout_minutes} min={1} max={2880} disabled={batchBusy} onChange={(v) => { setAcknowledged(false); setParameters((c) => ({ ...c, timeout_minutes: v })); }} />
             </div>
           )}
         </section>
@@ -547,7 +575,7 @@ export function AutoDock4LibraryWorkspace({
           {batchBusy ? (
             <button type="button" className="danger-action docking-primary-action" onClick={() => void cancelCampaign()} disabled={batch?.status === "cancel_requested"}>Cancel campaign</button>
           ) : (
-            <button type="button" className="primary-action docking-primary-action" onClick={() => void startCampaign()} disabled={!mapSetId || !acknowledged || mapsBusy || restoring}>
+            <button type="button" className="primary-action docking-primary-action" onClick={() => void startCampaign()} disabled={!mapSetId || !acknowledged || !toolsReady || !inputsReady || mapsBusy || restoring}>
               {restoring ? "Checking campaign history…" : "Dock the applied selection"}
             </button>
           )}
@@ -559,7 +587,7 @@ export function AutoDock4LibraryWorkspace({
           ready={Boolean(batch && TERMINAL.has(batch.status))}
         />
         <CampaignHistoryPanel
-          engine="autodock4"
+          engine={historyEngine}
           campaigns={history.campaigns}
           loading={history.loading}
           error={history.error}

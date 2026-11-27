@@ -117,12 +117,3 @@ export function buildLigandFlexibilitySpec(
     local_only_refinement: false,
   };
 }
-
-/**
- * Engines that reject Meeko's macrocycle glue pseudoatoms.
- *
- * The AutoDock4 family cannot type `CG0`/`G0`, so a ligand prepared with
- * flexible pseudoatoms is usable with Vina and GNINA but refused by AutoDock4.
- * Stating this at selection time is the whole point of the control.
- */
-export const PSEUDOATOM_INCOMPATIBLE_ENGINES = "AutoDock4";

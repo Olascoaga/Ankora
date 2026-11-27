@@ -85,7 +85,7 @@ def test_an_unreadable_reply_is_refused_rather_than_guessed(
     usage = system_resources.collect_resource_usage()
 
     assert usage.gpu is None
-    assert usage.gpu_unavailable_reason is not None
+    assert usage.gpu_unavailable_reason == "The NVIDIA driver reported an unexpected format."
 
 
 def test_the_driver_is_asked_once_for_several_close_readings(

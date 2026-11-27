@@ -19,11 +19,32 @@ from ankora_backend.services.receptor_preparation import prepare_receptor
 from ankora_backend.services.structure_inspection import import_structure_bytes
 
 
+def _synthetic_ala_pdb_pair(tmp_path: Path, *, insertion: str = "") -> tuple[Path, Path]:
+    """Static pure-Gemmi synthetic ALA PDB pair (no OpenMM/PDBFixer dependency)."""
+    ins = insertion or " "
+    complete_lines = [
+        f"ATOM      1  N   ALA A 100{ins}      0.000   0.000   0.000  1.00 20.00           N  ",
+        f"ATOM      2  CA  ALA A 100{ins}      1.458   0.000   0.000  1.00 20.00           C  ",
+        f"ATOM      3  C   ALA A 100{ins}      2.009   1.420   0.000  1.00 20.00           C  ",
+        f"ATOM      4  O   ALA A 100{ins}      1.251   2.390   0.000  1.00 20.00           O  ",
+        f"ATOM      5  CB  ALA A 100{ins}      1.986  -0.760  -1.217  1.00 20.00           C  ",
+        f"ATOM      6  OXT ALA A 100{ins}      3.250   1.520   0.000  1.00 20.00           O  ",
+        "TER",
+        "END",
+    ]
+    incomplete_lines = [line for line in complete_lines if " CB " not in line]
+    complete = tmp_path / "synthetic_ala_complete.pdb"
+    incomplete = tmp_path / "synthetic_ala_incomplete.pdb"
+    complete.write_text("\n".join(complete_lines) + "\n", encoding="utf-8")
+    incomplete.write_text("\n".join(incomplete_lines) + "\n", encoding="utf-8")
+    return incomplete, complete
+
+
 @pytest.mark.parametrize("source_format", ["pdb", "mmcif"])
 def test_terminal_oxygen_candidates_are_advisory_and_keep_sources_unchanged(
     tmp_path: Path, source_format: str
 ) -> None:
-    _, complete = _template_pair(tmp_path, insertion="X")
+    _, complete = _synthetic_ala_pdb_pair(tmp_path, insertion="X")
     structure = gemmi.read_structure(str(complete))
     first = structure[0][0]
     if first[0].find_atom("OXT", "\x00"):
@@ -167,7 +188,7 @@ def test_standard_name_templates_match_native_pdbfixer_and_find_headerless_missi
 def test_template_check_handles_occupancy_altlocs_terminals_and_unsupported_residues(
     tmp_path: Path, variant: str
 ) -> None:
-    _, path = _template_pair(tmp_path)
+    _, path = _synthetic_ala_pdb_pair(tmp_path)
     structure = gemmi.read_structure(str(path))
     residue = structure[0][0][0]
     if variant == "zero_occupancy":
@@ -206,7 +227,7 @@ def test_template_check_handles_occupancy_altlocs_terminals_and_unsupported_resi
 def test_versioned_preparation_requires_inferred_issue_decisions_without_mutating_legacy(
     tmp_path: Path,
 ) -> None:
-    source, _ = _template_pair(tmp_path)
+    source, _ = _synthetic_ala_pdb_pair(tmp_path)
     structures = StructureArtifactStore(tmp_path / "data")
     imported = import_structure_bytes(
         content=source.read_bytes(),

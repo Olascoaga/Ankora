@@ -1976,7 +1976,7 @@ export interface EngineComparison {
  */
 export interface CampaignSummary {
   batch_id: string;
-  engine: "autodock_vina" | "autodock4";
+  engine: "autodock_vina" | "autodock4" | "autodock_gpu";
   engine_version: string;
   status: string;
   is_running: boolean;
@@ -1998,7 +1998,7 @@ export interface CampaignSummary {
 }
 
 export interface CampaignHistory {
-  engine: "autodock_vina" | "autodock4";
+  engine: "autodock_vina" | "autodock4" | "autodock_gpu";
   receptor_id: string;
   binding_site_id: string;
   campaigns: CampaignSummary[];
@@ -3455,26 +3455,6 @@ export interface RankingArtifact {
 }
 
 export type ConsensusVariantId = "pcq-core-v1" | "pcq-neural-v1";
-
-export interface PoseClusterMemberSummary {
-  pose_id: string;
-  source_engine: RescoreSourceEngine;
-  primary_rank_order: number;
-  pose_complex: PoseComplexIdentity;
-  canonical_coordinate_sha256: string;
-}
-
-export interface PoseClusterSummary {
-  cluster_id: string;
-  medoid_pose_id: string;
-  medoid_pose_complex: PoseComplexIdentity;
-  medoid_canonical_coordinate_sha256: string;
-  member_count: number;
-  max_intra_cluster_rmsd_angstrom: number;
-  best_primary_rank_order: number;
-  search_engines_present: RescoreSourceEngine[];
-  members: PoseClusterMemberSummary[];
-}
 
 export interface ReferencePanelEntry {
   parent_compound_id: string;

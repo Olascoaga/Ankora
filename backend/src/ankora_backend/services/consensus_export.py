@@ -297,7 +297,7 @@ def _resolve_source_library_ids(
         "vina_batch": ("results", "docking_batches"),
         "autodock4_batch": ("results", "autodock4_batches"),
         "autodock_gpu_batch": ("results", "autodock_gpu_batches"),
-        "gnina_screening": ("results", "gnina_screening"),
+        "gnina_screening": ("results", "gnina_screening_campaigns"),
     }
     resolved: list[str] = []
     for catalog_id in source_catalog_ids:
@@ -622,8 +622,11 @@ class ConsensusExportService:
             manifest_payload["analog_expansion_provenance"] = analog_provenance
             manifest_payload["recorded_evidence"]["analog_expansion_artifacts"] = analog_artifacts
         manifest_payload["dependency_freshness"] = freshness.to_dict()
+        warnings_list: list[dict[str, Any]] = [
+            warning.model_dump(mode="json") for warning in record.warnings
+        ]
         if freshness.stale:
-            manifest_payload["warnings"] = [
+            warnings_list.append(
                 {
                     "code": "STALE_SOURCE_ARTIFACT",
                     "stage": _STAGE,
@@ -633,7 +636,9 @@ class ConsensusExportService:
                     ),
                     "details": freshness.to_dict(),
                 }
-            ]
+            )
+        if warnings_list:
+            manifest_payload["warnings"] = warnings_list
 
         methods_markdown = render_consensus_methods(record)
         # Wire embedded M2 calibration, M3 pose quality, and M4 interaction rules
@@ -645,8 +650,14 @@ class ConsensusExportService:
                     f"{methods_markdown.rstrip()}\n\n"
                     + render_calibration_methods(cal_record)
                 )
-            except (AnkoraDomainError, OSError, ValueError):
-                pass
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                collection_warnings.append(
+                    {
+                        "kind": "calibration_methods_unreadable",
+                        "identity": record.pc_l2_model.calibration_id,
+                        "reason": str(error),
+                    }
+                )
         if pose_quality_assessments:
             from ankora_backend.schemas.pose_quality import PoseQualityRecord
 
@@ -657,7 +668,16 @@ class ConsensusExportService:
                     pq_records.append(
                         PoseQualityRecord.model_validate_json(pq_path.read_text(encoding="utf-8"))
                     )
-                except (OSError, ValueError):
+                except (OSError, ValueError) as error:
+                    collection_warnings.append(
+                        {
+                            "kind": "pose_quality_methods_unreadable",
+                            "identity": str(
+                                pq_entry.get("assessment_id", pq_entry.get("path", ""))
+                            ),
+                            "reason": str(error),
+                        }
+                    )
                     continue
             if pq_records:
                 methods_markdown = (
@@ -679,7 +699,14 @@ class ConsensusExportService:
                             rs_path.read_text(encoding="utf-8")
                         )
                     )
-                except (OSError, ValueError):
+                except (OSError, ValueError) as error:
+                    collection_warnings.append(
+                        {
+                            "kind": "interaction_rule_set_methods_unreadable",
+                            "identity": str(rs_entry.get("rule_set_id", rs_entry.get("path", ""))),
+                            "reason": str(error),
+                        }
+                    )
                     continue
             ev_records: list[InteractionRuleEvaluationRecord] = []
             for ev_entry in interaction_rule_evaluations:
@@ -690,7 +717,16 @@ class ConsensusExportService:
                             ev_path.read_text(encoding="utf-8")
                         )
                     )
-                except (OSError, ValueError):
+                except (OSError, ValueError) as error:
+                    collection_warnings.append(
+                        {
+                            "kind": "interaction_rule_evaluation_methods_unreadable",
+                            "identity": str(
+                                ev_entry.get("evaluation_id", ev_entry.get("path", ""))
+                            ),
+                            "reason": str(error),
+                        }
+                    )
                     continue
             if rs_records or ev_records:
                 methods_markdown = (

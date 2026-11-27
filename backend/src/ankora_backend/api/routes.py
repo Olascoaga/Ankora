@@ -1671,6 +1671,20 @@ def get_latest_autodock_gpu_batch(
 
 
 @router.get(
+    "/docking/autodock-gpu/batches/history",
+    response_model=CampaignHistory,
+)
+def get_autodock_gpu_campaign_history(
+    receptor_id: Annotated[str, Query(min_length=1)],
+    binding_site_id: Annotated[str, Query(min_length=1)],
+) -> CampaignHistory:
+    return CampaignHistoryService.from_environment().autodock_gpu_history(
+        receptor_id=receptor_id,
+        binding_site_id=binding_site_id,
+    )
+
+
+@router.get(
     "/docking/autodock-gpu/batches/{batch_id}",
     response_model=AutoDockGpuBatchRecord,
 )

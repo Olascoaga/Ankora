@@ -391,7 +391,7 @@ class AutoGridMapService:
                     ),
                     evidence_directory=_as_optional_str(error.details.get("evidence_directory")),
                 )
-        except Exception as error:  # noqa: BLE001 - final worker containment (D5-004)
+        except Exception as error:  # final worker containment (D5-004)
             logger.exception("Unexpected error in AutoGrid job %s", job_id)
             target = active_record or self._safe_load_job(job_id)
             if target is not None:
@@ -405,13 +405,13 @@ class AutoGridMapService:
                             details={"reason": str(error)},
                         ),
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Could not persist FAILED state for AutoGrid job %s", job_id)
         finally:
             if resource_lease is not None:
                 try:
                     resource_lease.release()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Failed releasing resource lease for AutoGrid job %s", job_id)
             if lease_acquired and self._leases is not None:
                 try:
@@ -425,7 +425,7 @@ class AutoGridMapService:
     def _safe_load_job(self, job_id: str) -> AutoGridMapJobRecord | None:
         try:
             return self._map_store.load_job(job_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logging.getLogger(__name__).exception(
                 "Could not load AutoGrid job %s during failure recovery", job_id
             )

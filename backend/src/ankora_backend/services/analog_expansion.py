@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import import_module
 from typing import Any
-from uuid import uuid4
 
 import httpx
 
@@ -679,7 +678,3 @@ class AnalogExpansionService:
             )
         canonical_iso = str(Chem.MolToSmiles(mol_check, isomericSmiles=True, canonical=True))
         return seed_name, state_id, canonical_iso
-
-
-def new_event_uuid() -> str:
-    return str(uuid4())

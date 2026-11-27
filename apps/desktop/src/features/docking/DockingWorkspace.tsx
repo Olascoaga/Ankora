@@ -156,6 +156,7 @@ function SingleLigandDockingWorkspace({
     tools?.vina.available
     && tools.vina.version === "1.2.7"
     && receptorPdbqt
+    && !bindingSite.stale
     && ligand
     && ligandPdbqt,
   );
@@ -323,7 +324,13 @@ function SingleLigandDockingWorkspace({
         <section className="receptor-section">
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-          <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å · ${bindingSite.binding_site_id.slice(0, 8)}…`} />
+          <InputState
+            ready={!bindingSite.stale}
+            label="Binding site"
+            detail={bindingSite.stale
+              ? "Stale — confirm a current binding site before docking."
+              : `${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å · ${bindingSite.binding_site_id.slice(0, 8)}…`}
+          />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand, minimize it, and generate PDBQT."} />
           <ActiveFlexResBanner receptor={receptor} engineFamily="vina" />
         </section>

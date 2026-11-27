@@ -43,13 +43,35 @@ for core_openmm_so in sorted(conda_lib_dir.glob("libOpenMM*.so*")):
     ):
         binaries.append((str(core_openmm_so.resolve()), "."))
 
+_EXCLUDED_ANKORA_MODULE_PREFIXES = (
+    "ankora_backend.validation.screening_benchmark_",
+)
+_EXCLUDED_ANKORA_MODULES = frozenset({
+    "ankora_backend.services.validation_evidence",
+})
+
+
+def _is_packaged_ankora_module(name: str) -> bool:
+    if name in _EXCLUDED_ANKORA_MODULES:
+        return False
+    return not any(name.startswith(prefix) for prefix in _EXCLUDED_ANKORA_MODULE_PREFIXES)
+
+
+_all_ankora_modules = collect_submodules("ankora_backend")
+_packaged_ankora_modules = [
+    name for name in _all_ankora_modules if _is_packaged_ankora_module(name)
+]
+_excluded_ankora_modules = [
+    name for name in _all_ankora_modules if not _is_packaged_ankora_module(name)
+]
+
 hiddenimports = [
     "uvicorn.lifespan.on",
     "uvicorn.logging",
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",
     "uvicorn.protocols.websockets.auto",
-    *collect_submodules("ankora_backend"),
+    *_packaged_ankora_modules,
 ]
 
 for package in (
@@ -163,7 +185,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[str(openmm_runtime_hook)],
-    excludes=["pytest", "mypy", "ruff", "tkinter", "_tkinter"],
+    excludes=["pytest", "mypy", "ruff", "tkinter", "_tkinter", *_excluded_ankora_modules],
     noarchive=False,
     optimize=1,
 )

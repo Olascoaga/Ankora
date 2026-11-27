@@ -2923,9 +2923,9 @@ class CampaignExportService:
         # The single job's or screening campaign's own preserved bytes: required
         # inputs, so a failure aborts the export before any partial bundle exists.
         source_files: list[dict[str, Any]] = []
-        if source_kind == "gnina_job":
+        if gnina_record is not None:
             source_files = collect_gnina_source_files(
-                record=gnina_record,  # type: ignore[arg-type]
+                record=gnina_record,
                 export_directory=directory,
                 preserved=preserved,
             )
@@ -2952,7 +2952,14 @@ class CampaignExportService:
                 evidence,
                 collection_warnings=[*evidence.collection_warnings, methods_warning],
             )
-        if analog_search is not None or analog_selection is not None or focused_site is not None:
+        if (
+            (analog_search is not None or analog_selection is not None or focused_site is not None)
+            and (
+                methods is None
+                or "### Hit-to-Analog Structural Similarity Expansion & Pose-Focused Re-Screening"
+                not in methods
+            )
+        ):
             from ankora_backend.services.methods_report import render_analog_expansion_methods
 
             analog_methods = render_analog_expansion_methods(

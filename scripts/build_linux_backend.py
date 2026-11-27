@@ -95,6 +95,23 @@ def ensure_isolated_packaging_site(
     return site_dir
 
 
+_EXCLUDED_ANKORA_MODULE_PREFIXES = (
+    "ankora_backend.validation.screening_benchmark_",
+)
+_EXCLUDED_ANKORA_MODULES = frozenset(
+    {
+        "ankora_backend.services.validation_evidence",
+    }
+)
+
+
+def is_packaged_ankora_module(name: str) -> bool:
+    """Return True when a module belongs in the offline desktop PyInstaller bundle."""
+    if name in _EXCLUDED_ANKORA_MODULES:
+        return False
+    return not any(name.startswith(prefix) for prefix in _EXCLUDED_ANKORA_MODULE_PREFIXES)
+
+
 def expected_ankora_modules(backend_src: Path = BACKEND_SRC) -> set[str]:
     pkg_root = backend_src / "ankora_backend"
     modules: set[str] = set()
@@ -103,7 +120,9 @@ def expected_ankora_modules(backend_src: Path = BACKEND_SRC) -> set[str]:
         parts = list(rel.parts)
         if parts[-1] == "__init__":
             parts = parts[:-1]
-        modules.add(".".join(parts))
+        module_name = ".".join(parts)
+        if is_packaged_ankora_module(module_name):
+            modules.add(module_name)
     return modules
 
 

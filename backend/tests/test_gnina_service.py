@@ -101,8 +101,12 @@ def test_cpu_job_validates_real_pose_fixture_and_preserves_engine_rank(tmp_path,
     result = store.load_job(job.job_id)
     assert result.status is DockingJobStatus.COMPLETED
     assert len(result.poses) == 2
-    assert result.poses[0].cnn_score > result.poses[1].cnn_score
-    assert result.poses[0].minimized_affinity_kcal_mol > result.poses[1].minimized_affinity_kcal_mol
+    assert result.poses[0].cnn_score == pytest.approx(0.266823769)
+    assert result.poses[1].cnn_score == pytest.approx(0.213049844)
+    assert result.poses[0].cnn_affinity == pytest.approx(6.34318495)
+    assert result.poses[1].cnn_affinity == pytest.approx(7.4227376)
+    assert result.poses[0].minimized_affinity_kcal_mol == pytest.approx(27.0064907)
+    assert result.poses[1].minimized_affinity_kcal_mol == pytest.approx(-9.32558155)
     assert store.output_path(job.job_id, "raw_poses.pdbqt").read_bytes() == raw
     assert store.pose_content_path(job.job_id, result.poses[0].artifact.artifact_id).is_file()
     assert not arbiter.snapshot().active_allocations
@@ -282,3 +286,82 @@ def test_cuda_mismatched_gpu_does_not_publish_poses(tmp_path, monkeypatch):
     assert not arbiter.snapshot().active_allocations
     leases.shutdown()
     service.shutdown()
+
+
+def test_start_rejects_stale_binding_site_with_real_stores(tmp_path, monkeypatch):
+    """D3-007: GninaDockingService.start() enforces real require_current_inputs on stale sites."""
+    from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
+    from ankora_backend.persistence.ligand_store import LigandArtifactStore
+    from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+    from ankora_backend.schemas.binding_sites import (
+        BindingSiteRecord,
+        BindingSiteRequest,
+        BindingSiteSource,
+    )
+    from ankora_backend.services.project_dependencies import ProjectDependencyService
+
+    receptors = ReceptorArtifactStore(tmp_path)
+    sites = BindingSiteArtifactStore(tmp_path)
+    ligands = LigandArtifactStore(tmp_path)
+    store = GninaJobStore(tmp_path)
+    leases = WorkLeaseManager(WorkLeaseStore(tmp_path))
+    capacity = 16 * 1024**3
+    arbiter = ResourceArbiter(
+        cpu_threads=4,
+        gpu_slots=1,
+        memory_total_bytes=capacity,
+        memory_reserve_bytes=0,
+        disk_path=tmp_path,
+        disk_total_bytes=capacity,
+        disk_reserve_bytes=0,
+        memory_available=lambda: capacity,
+        disk_free=lambda: capacity,
+    )
+    site_id = sites.new_binding_site_id()
+    box = BindingBox(center_x=0, center_y=0, center_z=0, size_x=15, size_y=15, size_z=15)
+    sites.save_record(
+        BindingSiteRecord(
+            binding_site_id=site_id,
+            receptor_id="rec-1",
+            source_artifact_id="src-1",
+            created_at=datetime.now(UTC),
+            decisions=BindingSiteRequest(source=BindingSiteSource.MANUAL, manual_box=box),
+            box=box,
+            stale=False,
+            warnings=[],
+            provenance=[],
+        )
+    )
+    ProjectDependencyService.for_project_root(sites.project_root).mark_stale(
+        site_id, reason="Synthetic stale site for D3-007"
+    )
+    monkeypatch.setattr("ankora_backend.services.gnina_docking._linux_host", lambda: True)
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_docking.probe_gnina",
+        lambda: GninaInstallation("/synthetic/gnina", "1.3.3", "a" * 64, "x86_64"),
+    )
+    service = GninaDockingService(
+        store=store,
+        receptors=receptors,
+        sites=sites,
+        ligands=ligands,
+        leases=leases,
+        resources=arbiter,
+    )
+    try:
+        with pytest.raises(AnkoraDomainError) as failure:
+            service.start(
+                GninaDockingRequest(
+                    receptor_id="rec-1",
+                    binding_site_id=site_id,
+                    ligand_id="lig-1",
+                    ligand_preparation_id="prep-1",
+                    parameters=GninaDockingParameters(compute="cpu"),
+                    acknowledge_inputs_and_scoring=True,
+                )
+            )
+        assert failure.value.status_code == 409
+        assert failure.value.code == "PROJECT_INPUT_STALE"
+    finally:
+        leases.shutdown()
+        service.shutdown()

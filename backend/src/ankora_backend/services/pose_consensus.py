@@ -141,12 +141,6 @@ class PoseConsensusService:
     def get_run(self, consensus_id: str) -> ConsensusRunRecord:
         return self._store.load_run(consensus_id)
 
-    def list_panels(self) -> list[ReferencePanelArtifact]:
-        return self._store.list_panels()
-
-    def get_panel(self, panel_id: str) -> ReferencePanelArtifact:
-        return self._store.load_panel(panel_id)
-
     def create_structured_consensus(
         self,
         request: CreateStructuredConsensusRequest,

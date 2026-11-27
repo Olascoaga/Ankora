@@ -54,7 +54,6 @@ from ankora_backend.schemas.autodock4 import (
 )
 from ankora_backend.schemas.autogrid import AutoGridMapKind, AutoGridMapSetRecord
 from ankora_backend.schemas.binding_sites import BindingSiteRecord
-from ankora_backend.schemas.ligand_library_preparation import LigandPreparationStatus
 from ankora_backend.schemas.provenance import ProvenanceEvent
 from ankora_backend.schemas.receptors import (
     ReceptorFlexMode,
@@ -70,7 +69,7 @@ from ankora_backend.services.autodock_inputs import (
     merge_ordered_atom_types,
     ordered_atom_types,
     resolve_docking_receptor_and_site,
-    resolve_selected_chemical_state,
+    resolve_selection,
     torsional_degrees_of_freedom,
     validate_map_set_applies,
 )
@@ -298,7 +297,7 @@ class AutoDock4DockingService:
                         code=error.code, message=error.message, details=dict(error.details)
                     ),
                 )
-        except Exception as error:  # noqa: BLE001 — final worker lifecycle containment (D1-005)
+        except Exception as error:  # final worker lifecycle containment (D1-005)
             logging.getLogger(__name__).exception(
                 "AutoDock4 job worker failed unexpectedly for %s", job_id
             )
@@ -332,7 +331,7 @@ class AutoDock4DockingService:
             return fallback
         try:
             return self._job_store.load_job(job_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logging.getLogger(__name__).exception(
                 "Could not load AutoDock4 job %s during failure recovery", job_id
             )
@@ -813,172 +812,55 @@ class AutoDock4DockingService:
             ),
             *flex_dof_warnings(docking_receptor.record),
         ]
+        selection = resolve_selection(
+            library_id=request.library_id,
+            filter_run_id=request.filter_run_id,
+            map_set=map_set,
+            ligand_store=self._ligand_store,
+            stage=_STAGE,
+            code_prefix="AUTODOCK4",
+        )
         filter_run = self._ligand_store.load_filter_run(request.library_id, request.filter_run_id)
-        if not filter_run.selected_ligand_ids:
-            raise self._input_error(
-                "AUTODOCK4_SELECTION_EMPTY",
-                "The applied ligand selection contains no molecules to dock.",
-                {"filter_run_id": request.filter_run_id},
-            )
-        library = self._ligand_store.load_library_record(request.library_id)
-        preparation = self._ligand_store.load_preparation_status(request.library_id)
-        indexed = {
-            entry.ligand.artifact.ligand_id: (entry.record_index, entry.ligand)
-            for entry in library.entries
-            if entry.ligand is not None
-        }
-        covered = {
-            artifact.atom_type
-            for artifact in map_set.artifacts
-            if artifact.kind is AutoGridMapKind.AFFINITY
-        }
         now = datetime.now(UTC)
-        entries: list[AutoDock4BatchLigandResult] = []
-        for ligand_id in filter_run.selected_ligand_ids:
-            source = indexed.get(ligand_id)
-            if source is None:
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        len(entries),
-                        "Unavailable library molecule",
-                        "The selected molecule is absent from its library record.",
-                        "AUTODOCK4_LIBRARY_LIGAND_MISSING",
-                        now,
+        entries = [
+            AutoDock4BatchLigandResult(
+                ligand_id=molecule.ligand_id,
+                parent_compound_id=molecule.parent_compound_id,
+                chemical_state_id=molecule.chemical_state_id,
+                chemical_state_formal_charge=molecule.chemical_state_formal_charge,
+                source_index=molecule.source_index,
+                name=molecule.name,
+                canonical_smiles=molecule.canonical_smiles,
+                molecular_weight_g_mol=molecule.molecular_weight_g_mol,
+                ligand_preparation_id=molecule.preparation_id,
+                ligand_sha256=molecule.sha256,
+                ligand_atom_types=list(molecule.atom_types),
+                status=(
+                    AutoDock4JobStatus.QUEUED if molecule.runnable else AutoDock4JobStatus.FAILED
+                ),
+                phase=(
+                    AutoDock4JobPhase.QUEUED if molecule.runnable else AutoDock4JobPhase.COMPLETE
+                ),
+                completed_at=None if molecule.runnable else now,
+                failure=(
+                    None
+                    if molecule.runnable
+                    else AutoDock4Failure(
+                        code=molecule.unavailable_code or "",
+                        message=molecule.unavailable_reason or "",
                     )
-                )
-                continue
-            source_index, ligand = source
-            try:
-                state = resolve_selected_chemical_state(
-                    ligand_id=ligand_id,
-                    ligand=ligand,
-                    filter_run=filter_run,
-                    ligand_store=self._ligand_store,
-                    stage=_STAGE,
-                    code_prefix="AUTODOCK4",
-                )
-            except AnkoraDomainError as error:
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        source_index,
-                        ligand.inspection.name,
-                        error.message,
-                        error.code,
-                        now,
-                        parent_compound_id=ligand_id,
-                    )
-                )
-                continue
-            status = preparation.entries.get(ligand_id)
-            if (
-                status is None
-                or status.status is not LigandPreparationStatus.PREPARED
-                or status.pdbqt_preparation_id is None
-            ):
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        source_index,
-                        state.inspection.name,
-                        "This molecule has no completed Meeko PDBQT preparation.",
-                        "AUTODOCK4_LIGAND_NOT_PREPARED",
-                        now,
-                        canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
-                        parent_compound_id=state.parent_compound_id,
-                        chemical_state_id=state.state_id,
-                        chemical_state_formal_charge=state.inspection.formal_charge,
-                    )
-                )
-                continue
-            if status.chemical_state_id != state.state_id:
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        source_index,
-                        state.inspection.name,
-                        (
-                            "The prepared PDBQT belongs to a different or unrecorded "
-                            "chemical state than the applied selection manifest."
-                        ),
-                        "AUTODOCK4_PREPARATION_STATE_MISMATCH",
-                        now,
-                        canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=(state.inspection.molecular_weight_g_mol),
-                        parent_compound_id=state.parent_compound_id,
-                        chemical_state_id=state.state_id,
-                        chemical_state_formal_charge=state.inspection.formal_charge,
-                    )
-                )
-                continue
-            try:
-                pdbqt = self._ligand_store.load_pdbqt_record(ligand_id, status.pdbqt_preparation_id)
-                path = self._ligand_store.pdbqt_content_path(ligand_id, status.pdbqt_preparation_id)
-                self._verify_hash(path, pdbqt.artifact.sha256)
-                document = path.read_text(encoding="utf-8", errors="replace")
-                atom_types = _ordered_atom_types(document)
-            except (AnkoraDomainError, ValueError) as error:
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        source_index,
-                        state.inspection.name,
-                        str(getattr(error, "message", error)),
-                        "AUTODOCK4_LIGAND_UNAVAILABLE",
-                        now,
-                        canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
-                        parent_compound_id=state.parent_compound_id,
-                        chemical_state_id=state.state_id,
-                        chemical_state_formal_charge=state.inspection.formal_charge,
-                    )
-                )
-                continue
-            missing = sorted(set(atom_types) - covered)
-            if missing:
-                entries.append(
-                    self._unavailable_entry(
-                        ligand_id,
-                        source_index,
-                        state.inspection.name,
-                        (
-                            "This molecule uses atom types the selected map set "
-                            f"does not cover: {', '.join(missing)}."
-                        ),
-                        "AUTODOCK4_LIGAND_TYPES_NOT_IN_MAP_SET",
-                        now,
-                        canonical_smiles=state.inspection.canonical_smiles,
-                        molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
-                        ligand_preparation_id=status.pdbqt_preparation_id,
-                        ligand_sha256=pdbqt.artifact.sha256,
-                        ligand_atom_types=list(atom_types),
-                        parent_compound_id=state.parent_compound_id,
-                        chemical_state_id=state.state_id,
-                        chemical_state_formal_charge=state.inspection.formal_charge,
-                    )
-                )
-                continue
-            entries.append(
-                AutoDock4BatchLigandResult(
-                    ligand_id=ligand_id,
-                    parent_compound_id=state.parent_compound_id,
-                    chemical_state_id=state.state_id,
-                    chemical_state_formal_charge=state.inspection.formal_charge,
-                    source_index=source_index,
-                    name=state.inspection.name,
-                    canonical_smiles=state.inspection.canonical_smiles,
-                    molecular_weight_g_mol=state.inspection.molecular_weight_g_mol,
-                    ligand_preparation_id=status.pdbqt_preparation_id,
-                    ligand_sha256=pdbqt.artifact.sha256,
-                    ligand_atom_types=list(atom_types),
-                    status=AutoDock4JobStatus.QUEUED,
-                    phase=AutoDock4JobPhase.QUEUED,
-                )
+                ),
             )
+            for molecule in selection
+        ]
         runnable = sum(1 for entry in entries if entry.status is AutoDock4JobStatus.QUEUED)
-        worker_count = max(1, min(request.parameters.parallel_ligands, runnable or 1))
+        if runnable == 0:
+            raise self._input_error(
+                "AUTODOCK4_NO_RUNNABLE_MOLECULES",
+                "No molecule in this selection can be docked against this map set.",
+                {"selected_count": len(entries)},
+            )
+        worker_count = max(1, min(request.parameters.parallel_ligands, runnable))
         flex_spec = docking_receptor.record.flex_spec
         flex_output = docking_receptor.flex_output
         record = AutoDock4BatchRecord(
@@ -1012,43 +894,6 @@ class AutoDock4DockingService:
         self._job_store.create_batch(record)
         return record
 
-    @staticmethod
-    def _unavailable_entry(
-        ligand_id: str,
-        source_index: int,
-        name: str,
-        message: str,
-        code: str,
-        completed_at: datetime,
-        *,
-        canonical_smiles: str | None = None,
-        molecular_weight_g_mol: float | None = None,
-        ligand_preparation_id: str | None = None,
-        ligand_sha256: str | None = None,
-        ligand_atom_types: list[str] | None = None,
-        parent_compound_id: str | None = None,
-        chemical_state_id: str | None = None,
-        chemical_state_formal_charge: int | None = None,
-    ) -> AutoDock4BatchLigandResult:
-        """An unusable molecule stays a visible row rather than disappearing."""
-        return AutoDock4BatchLigandResult(
-            ligand_id=ligand_id,
-            parent_compound_id=parent_compound_id,
-            chemical_state_id=chemical_state_id,
-            chemical_state_formal_charge=chemical_state_formal_charge,
-            source_index=source_index,
-            name=name,
-            canonical_smiles=canonical_smiles,
-            molecular_weight_g_mol=molecular_weight_g_mol,
-            ligand_preparation_id=ligand_preparation_id,
-            ligand_sha256=ligand_sha256,
-            ligand_atom_types=ligand_atom_types or [],
-            status=AutoDock4JobStatus.FAILED,
-            phase=AutoDock4JobPhase.COMPLETE,
-            completed_at=completed_at,
-            failure=AutoDock4Failure(code=code, message=message),
-        )
-
     def _run_batch(self, batch_id: str, cancel_event: threading.Event) -> None:
         resource_lease: ResourceLease | None = None
         lease_acquired = False
@@ -1068,21 +913,30 @@ class AutoDock4DockingService:
                     ),
                     cancel_event=cancel_event,
                 )
+            if cancel_event.is_set():
+                self._cancel_batch_entries(batch_id)
+                return
             require_current_inputs(
                 record.request,
                 binding_site_store=self._binding_site_store,
                 ligand_store=self._ligand_store,
             )
-            self._update_batch(
-                batch_id,
-                lambda current: current.model_copy(
-                    update={
-                        "status": AutoDock4JobStatus.RUNNING,
-                        "phase": AutoDock4JobPhase.DOCKING,
-                        "started_at": datetime.now(UTC),
-                    }
-                ),
-            )
+            with self._lock, self._batch_write_lock:
+                if cancel_event.is_set():
+                    self._cancel_batch_entries(batch_id)
+                    return
+                current = self._job_store.load_batch_overview(batch_id)
+                self._job_store.update_batch(
+                    current.model_copy(
+                        update={
+                            "status": AutoDock4JobStatus.RUNNING,
+                            "phase": AutoDock4JobPhase.DOCKING,
+                            "started_at": datetime.now(UTC),
+                            "revision": current.revision + 1,
+                        }
+                    ),
+                    changed_entries=[],
+                )
             pending = [
                 entry for entry in record.entries if entry.status is AutoDock4JobStatus.QUEUED
             ]
@@ -1099,31 +953,21 @@ class AutoDock4DockingService:
                             pending,
                         )
                     )
-            self._update_batch(
-                batch_id,
-                lambda current: current.model_copy(
-                    update={
-                        "status": (
-                            AutoDock4JobStatus.CANCELED
-                            if cancel_event.is_set()
-                            else AutoDock4JobStatus.COMPLETED
-                        ),
-                        "phase": AutoDock4JobPhase.COMPLETE,
-                        "completed_at": datetime.now(UTC),
-                    }
-                ),
-            )
+            if cancel_event.is_set():
+                self._cancel_batch_entries(batch_id)
+            else:
+                self._update_batch(
+                    batch_id,
+                    lambda current: current.model_copy(
+                        update={
+                            "status": AutoDock4JobStatus.COMPLETED,
+                            "phase": AutoDock4JobPhase.COMPLETE,
+                            "completed_at": datetime.now(UTC),
+                        }
+                    ),
+                )
         except ResourceRequestCanceled:
-            self._update_batch(
-                batch_id,
-                lambda current: current.model_copy(
-                    update={
-                        "status": AutoDock4JobStatus.CANCELED,
-                        "phase": AutoDock4JobPhase.COMPLETE,
-                        "completed_at": datetime.now(UTC),
-                    }
-                ),
-            )
+            self._cancel_batch_entries(batch_id)
         except AnkoraDomainError as error:
             failure = AutoDock4Failure(
                 code=error.code,
@@ -1142,11 +986,11 @@ class AutoDock4DockingService:
                         }
                     ),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logging.getLogger(__name__).exception(
                     "Could not persist AutoDock4 batch %s failure", batch_id
                 )
-        except Exception as error:  # noqa: BLE001 — final batch worker containment (D1-006)
+        except Exception as error:  # final batch worker containment (D1-006)
             logging.getLogger(__name__).exception(
                 "AutoDock4 batch worker failed unexpectedly for %s", batch_id
             )
@@ -1167,7 +1011,7 @@ class AutoDock4DockingService:
                         }
                     ),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logging.getLogger(__name__).exception(
                     "Could not persist AutoDock4 batch %s failure", batch_id
                 )
@@ -1175,10 +1019,57 @@ class AutoDock4DockingService:
             if resource_lease is not None:
                 resource_lease.release()
             if lease_acquired and self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK4_BATCH, batch_id)
+                try:
+                    self._leases.release(WorkKind.AUTODOCK4_BATCH, batch_id)
+                except OSError as error:
+                    logging.getLogger(__name__).warning(
+                        "Failed releasing work lease for AutoDock4 batch %s: %s",
+                        batch_id,
+                        error,
+                    )
             self._forget(batch_id)
             with self._batch_lock:
                 self._active_batch_id = None
+
+    def _cancel_batch_entries(self, batch_id: str) -> None:
+        """Transition all non-terminal batch entries to CANCELED before finalizing."""
+        terminal = {
+            AutoDock4JobStatus.COMPLETED,
+            AutoDock4JobStatus.FAILED,
+            AutoDock4JobStatus.CANCELED,
+        }
+        with self._lock, self._batch_write_lock:
+            record = self._job_store.load_batch(batch_id)
+            now = datetime.now(UTC)
+            next_revision = record.revision + 1
+            changed: list[AutoDock4BatchLigandResult] = []
+            updated_entries: list[AutoDock4BatchLigandResult] = []
+            for entry in record.entries:
+                if entry.status in terminal:
+                    updated_entries.append(entry)
+                    continue
+                canceled_entry = entry.model_copy(
+                    update={
+                        "status": AutoDock4JobStatus.CANCELED,
+                        "phase": AutoDock4JobPhase.COMPLETE,
+                        "completed_at": now,
+                        "revision": next_revision,
+                    }
+                )
+                changed.append(canceled_entry)
+                updated_entries.append(canceled_entry)
+            self._job_store.update_batch(
+                record.model_copy(
+                    update={
+                        "status": AutoDock4JobStatus.CANCELED,
+                        "phase": AutoDock4JobPhase.COMPLETE,
+                        "completed_at": now,
+                        "entries": updated_entries,
+                        "revision": next_revision,
+                    }
+                ),
+                changed_entries=changed,
+            )
 
     def _run_batch_entry(
         self, batch_id: str, ligand_id: str, cancel_event: threading.Event
@@ -1219,6 +1110,8 @@ class AutoDock4DockingService:
                 }
             ),
         )
+        evidence: AutoDock4ExecutionEvidence | None = None
+        command: list[str] | None = None
         try:
             map_set = self._map_store.load_record(batch.map_set_id)
             ligand_path = self._ligand_store.pdbqt_content_path(
@@ -1302,6 +1195,7 @@ class AutoDock4DockingService:
                 timeout_seconds=batch.request.parameters.timeout_minutes * 60,
                 cancel_event=cancel_event,
             )
+            command = execution.command
             log_path = directory / DOCKING_LOG_FILENAME
             log = (
                 log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
@@ -1400,11 +1294,13 @@ class AutoDock4DockingService:
                 batch_id,
                 ligand_id,
                 status=AutoDock4JobStatus.FAILED,
+                execution=evidence,
+                command=command,
                 failure=AutoDock4Failure(
                     code=error.code, message=error.message, details=dict(error.details)
                 ),
             )
-        except Exception as error:  # noqa: BLE001 — per-ligand batch isolation (D1-006)
+        except Exception as error:  # per-ligand batch isolation (D1-006)
             logging.getLogger(__name__).exception(
                 "AutoDock4 batch ligand worker failed unexpectedly for %s/%s",
                 batch_id,
@@ -1414,6 +1310,8 @@ class AutoDock4DockingService:
                 batch_id,
                 ligand_id,
                 status=AutoDock4JobStatus.FAILED,
+                execution=evidence,
+                command=command,
                 failure=AutoDock4Failure(
                     code="AUTODOCK4_BATCH_ENTRY_INTERNAL_ERROR",
                     message="Ankora could not complete AutoDock4 docking for this molecule.",

@@ -567,3 +567,27 @@ def test_pqr_connectivity_diagnosis_reports_unexpected_nonlocal_single_bond() ->
     assert [item["sequence_number"] for item in affected] == [296, 300]
     assert all(item["inter_residue_bond_count"] == 1 for item in affected)
     assert all(item["related_residue_keys"] == ["A:296", "A:300"] for item in affected)
+
+
+def test_real_meeko_pqr_content_diagnosis_reports_real_atom_names_without_mocks() -> None:
+    """D3-014: Exercise unmocked Meeko PQR connectivity diagnosis on a synthetic 2-residue clash."""
+    # Two synthetic non-adjacent GLY residues placed 0.9 A apart so real Meeko infers a clash bond.
+    pqr = (
+        "ATOM      1  N   GLY A  10       0.000   0.000   0.000 -0.4157 1.8240\n"
+        "ATOM      2  CA  GLY A  10       1.458   0.000   0.000 -0.0252 1.9080\n"
+        "ATOM      3  C   GLY A  10       2.009   1.420   0.000  0.5973 1.9080\n"
+        "ATOM      4  O   GLY A  10       1.251   2.390   0.000 -0.5679 1.6612\n"
+        "ATOM      5  N   GLY A  20       0.800   0.000   0.000 -0.4157 1.8240\n"
+        "ATOM      6  CA  GLY A  20       2.258   0.000   0.000 -0.0252 1.9080\n"
+        "ATOM      7  C   GLY A  20       2.809   1.420   0.000  0.5973 1.9080\n"
+        "ATOM      8  O   GLY A  20       2.051   2.390   0.000 -0.5679 1.6612\n"
+        "TER\n"
+    )
+    affected = diagnose_meeko_pqr_content(pqr)
+    assert [item["sequence_number"] for item in affected] == [10, 20]
+    assert all(item["chain_id"] == "A" and item["residue_name"] == "GLY" for item in affected)
+    assert all(item["inter_residue_bond_count"] >= 1 for item in affected)
+    for item in affected:
+        bonds = item["inter_residue_bonds"]
+        assert isinstance(bonds, list) and bonds
+        assert all("?" not in str(bond) for bond in bonds)

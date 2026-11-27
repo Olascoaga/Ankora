@@ -16,7 +16,7 @@ import { formatApplicationDateTime, formatScientificNumber } from "../../utils/f
  * every pose of every molecule and is measured in megabytes, so the full record
  * is fetched only for the campaign actually opened.
  */
-type CampaignEngine = "autodock_vina" | "autodock4";
+type CampaignEngine = "autodock_vina" | "autodock4" | "autodock_gpu";
 
 interface UseCampaignHistoryOptions {
   engine: CampaignEngine;
@@ -48,9 +48,11 @@ export function useCampaignHistory({
     setLoading(true);
     setError(null);
     try {
-      const history = engine === "autodock4"
-        ? await ankoraApi.autoDock4CampaignHistory(receptorId, bindingSiteId)
-        : await ankoraApi.vinaCampaignHistory(receptorId, bindingSiteId);
+      const history = engine === "autodock_gpu"
+        ? await ankoraApi.autoDockGpuCampaignHistory(receptorId, bindingSiteId)
+        : engine === "autodock4"
+          ? await ankoraApi.autoDock4CampaignHistory(receptorId, bindingSiteId)
+          : await ankoraApi.vinaCampaignHistory(receptorId, bindingSiteId);
       if (mountedRef.current && requestRef.current === request) {
         setCampaigns(history.campaigns);
       }
@@ -103,7 +105,7 @@ export function CampaignHistoryPanel({
   onOpen,
   onRefresh,
 }: CampaignHistoryPanelProps) {
-  const unit = engine === "autodock4" ? "energy" : "score";
+  const unit = engine === "autodock_vina" ? "score" : "energy";
   return (
     <section className="receptor-section">
       <div className="filter-heading">

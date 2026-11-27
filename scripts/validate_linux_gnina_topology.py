@@ -8,6 +8,8 @@ import shutil
 import signal
 import subprocess
 import time
+from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import Any
 
 from meeko import PDBQTMolecule, RDKitMolCreate
@@ -17,27 +19,50 @@ from validate_linux_gnina_binary import BINARY, HASHES, LOGS, sha, unique
 PROJECT = (
     "logs/linux-crystal-redocking-smoke/exploratory-followup-01/data/projects/default"
 )
-INPUTS = {
-    "binary": (BINARY, HASHES["binary"]),
-    "receptor": (
-        unique(PROJECT + "/derived/receptors/*/prepared_receptor.pdbqt"),
-        "da4cf4adb8d1af6ed05984bbe39b3b9f5a7bfb13530918741694091048704588",
-    ),
-    "ligand": (
-        unique(
-            PROJECT + "/derived/ligands/a3b23f57-e4ec-4b91-b309-462848305fa7/"
-            "preparations/*/MK1_prepared.pdbqt"
-        ),
-        "a578aa8d119e30c6c535e47911dc15f0af3d818f303797a051653c8c4709b9b8",
-    ),
-    "state": (
-        unique(
-            PROJECT + "/derived/ligands/a3b23f57-e4ec-4b91-b309-462848305fa7/"
-            "states/*/inspected_state.sdf"
-        ),
-        "0dfcb7d3d6024bbe5572c990ff57fdd38e46cfe20b928acb8601bae3ad550982",
-    ),
-}
+
+
+class _LazyInputs(Mapping[str, tuple[Path, str]]):
+    """Resolve local validation-log inputs lazily so importing this module stays safe."""
+
+    def __init__(self) -> None:
+        self._resolved: dict[str, tuple[Path, str]] | None = None
+
+    def _load(self) -> dict[str, tuple[Path, str]]:
+        if self._resolved is None:
+            self._resolved = {
+                "binary": (BINARY, HASHES["binary"]),
+                "receptor": (
+                    unique(PROJECT + "/derived/receptors/*/prepared_receptor.pdbqt"),
+                    "da4cf4adb8d1af6ed05984bbe39b3b9f5a7bfb13530918741694091048704588",
+                ),
+                "ligand": (
+                    unique(
+                        PROJECT + "/derived/ligands/a3b23f57-e4ec-4b91-b309-462848305fa7/"
+                        "preparations/*/MK1_prepared.pdbqt"
+                    ),
+                    "a578aa8d119e30c6c535e47911dc15f0af3d818f303797a051653c8c4709b9b8",
+                ),
+                "state": (
+                    unique(
+                        PROJECT + "/derived/ligands/a3b23f57-e4ec-4b91-b309-462848305fa7/"
+                        "states/*/inspected_state.sdf"
+                    ),
+                    "0dfcb7d3d6024bbe5572c990ff57fdd38e46cfe20b928acb8601bae3ad550982",
+                ),
+            }
+        return self._resolved
+
+    def __getitem__(self, key: str) -> tuple[Path, str]:
+        return self._load()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._load())
+
+    def __len__(self) -> int:
+        return len(self._load())
+
+
+INPUTS: Mapping[str, tuple[Path, str]] = _LazyInputs()
 
 
 def smiles(mol: Any) -> str:

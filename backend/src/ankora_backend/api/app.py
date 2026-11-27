@@ -1,9 +1,9 @@
 """FastAPI application factory for the local Ankora API."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -82,12 +82,18 @@ def create_app() -> FastAPI:
     project_runtime.publish(app.state)
 
     @app.middleware("http")
-    async def bind_active_project(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def bind_active_project(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         with project_scope(request.app.state.project_runtime.active_project_id):
             return await call_next(request)
 
     @app.middleware("http")
-    async def require_known_origin_for_uploads(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def require_known_origin_for_uploads(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         if _requires_known_origin(request.url.path) and request.method == "POST":
             origin = request.headers.get("origin")
             if origin not in _ALLOWED_ORIGINS:

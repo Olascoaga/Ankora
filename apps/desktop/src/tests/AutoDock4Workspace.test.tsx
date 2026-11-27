@@ -428,3 +428,83 @@ it("names the backend it is actually on, everywhere it names one", () => {
     screen.getByRole("heading", { name: /^AutoDock-GPU on one ligand$/ }),
   ).toBeInTheDocument();
 });
+
+it("D3-015: submits single-ligand AutoDock-GPU job with 3 seeds, local_search_method, and heuristics", async () => {
+  const readyMaps = mapJob({ status: "completed", phase: "complete", map_set_id: "map-set-1" });
+  let gpuPostBody: Record<string, unknown> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/autogrid/jobs") && init?.method === "POST") {
+      return json(readyMaps, 201);
+    }
+    if (url.endsWith("/docking/autodock-gpu/jobs") && init?.method === "POST") {
+      gpuPostBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return json(
+        {
+          job_id: "gpu-job-1",
+          backend: "autodock_gpu",
+          status: "completed",
+          phase: "complete",
+          created_at: "2026-08-24T00:00:00Z",
+          started_at: null,
+          completed_at: "2026-08-24T00:01:00Z",
+          request: gpuPostBody,
+          autodock_gpu: {
+            tool: { name: "AutoDock-GPU", version: "1.6" },
+            executable_path: "synthetic-gpu",
+            sha256: "1".repeat(64),
+            architecture: "x86_64",
+            build: "Release",
+            device_number: 1,
+            device_name: "Synthetic GPU",
+          },
+          receptor_id: receptor.receptor_id,
+          binding_site_id: bindingSite.binding_site_id,
+          map_set_id: readyMaps.map_set_id,
+          map_set_identity_key: readyMaps.identity_key,
+          ligand_sha256: ligandInput.pdbqt!.artifact.sha256,
+          ligand_atom_types: ["C", "OA"],
+          ligand_atom_count: 3,
+          torsional_degrees_of_freedom: 0,
+          bitwise_reproducible: false,
+          command: ["synthetic-gpu"],
+          execution: null,
+          clusters: [],
+          runs: [],
+          warnings: [],
+          failure: null,
+          provenance: null,
+        },
+        201,
+      );
+    }
+    return json({ detail: `Unexpected URL ${url}` }, 404);
+  });
+
+  renderWorkspace();
+  fireEvent.click(screen.getByRole("button", { name: "Generate affinity maps" }));
+  await screen.findByText(/Map set generated/);
+
+  chooseGpuBackend();
+  fireEvent.change(screen.getByLabelText("Local search"), { target: { value: "sw" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Let the tool choose the evaluation count/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Use these exact inputs and parameters/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Run AutoDock-GPU" }));
+
+  await waitFor(() => expect(gpuPostBody).not.toBeNull());
+  expect(gpuPostBody).toMatchObject({
+    receptor_id: receptor.receptor_id,
+    binding_site_id: bindingSite.binding_site_id,
+    map_set_id: readyMaps.map_set_id,
+    ligand_id: ligand.artifact.ligand_id,
+    ligand_preparation_id: ligandInput.pdbqt!.artifact.preparation_id,
+    acknowledge_inputs_and_scoring: true,
+    parameters: expect.objectContaining({
+      local_search_method: "sw",
+      heuristics: true,
+      seed_1: 20260826,
+      seed_2: 20260826,
+      seed_3: 20260826,
+    }),
+  });
+});

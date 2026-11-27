@@ -508,13 +508,18 @@ describe("M5c Desktop UI: ADR-030 PC-Q / PC-ECR / gated PC-L2 Consensus Workspac
     expect(within(tier1).getByText("3/3 engines")).toBeInTheDocument();
     expect(within(tier1).getByLabelText("Family block quantiles")).toBeInTheDocument();
 
-    // Expand parent row to verify native-unit scores stay paired with their native unit
+    // Expand parent row to verify native-unit scores stay paired with their native unit in each row
     fireEvent.click(within(tier1).getByRole("button", { name: /SYNTH_CMPD_1/ }));
     expect(within(tier1).getByText(/cl-1 · selected medoid c\*/)).toBeInTheDocument();
-    expect(within(tier1).getByText(/-9\.400/)).toBeInTheDocument();
-    expect(within(tier1).getByText(/7\.450/)).toBeInTheDocument();
-    expect(within(tier1).getAllByText("kcal/mol").length).toBeGreaterThanOrEqual(2);
-    expect(within(tier1).getByText("pK")).toBeInTheDocument();
+    const vinaRow = within(tier1).getByText("Vina", { selector: "dt" }).closest("div");
+    const ad4Row = within(tier1).getByText("AutoDock4", { selector: "dt" }).closest("div");
+    const gninaRow = within(tier1).getByText("GNINA CNN_VS", { selector: "dt" }).closest("div");
+    expect(vinaRow).not.toBeNull();
+    expect(vinaRow!).toHaveTextContent(/-9\.400\s+kcal\/mol/);
+    expect(ad4Row).not.toBeNull();
+    expect(ad4Row!).toHaveTextContent(/-8\.200\s+kcal\/mol/);
+    expect(gninaRow).not.toBeNull();
+    expect(gninaRow!).toHaveTextContent(/7\.450\s+pK/);
 
     // Tier 2 E6 partial_or_unscored explicitly retained unranked with failure code
     const tier2 = screen.getByRole("region", { name: "Tier 2 partial or unscored parents" });
@@ -631,6 +636,10 @@ describe("M5c Desktop UI: ADR-030 PC-Q / PC-ECR / gated PC-L2 Consensus Workspac
     expect(lastPcL2Body).toEqual({ calibration_id: "cal-synth-1", l2_regularization: 0.75 });
     expect(within(pcL2Region).getByText("PC-L2 Unpromoted (audit only)")).toBeInTheDocument();
     expect(within(pcL2Region).getByText("Includes 0")).toBeInTheDocument();
+    expect(pcL2Region).toHaveTextContent(/0\.612/);
+    expect(pcL2Region).toHaveTextContent(/0\.903/);
+    expect(pcL2Region).toHaveTextContent(/\+0\.0120/);
+    expect(pcL2Region).toHaveTextContent(/\[-0\.0680,\s*\+0\.0920\]/);
 
     // 2. Fit second PC-L2 -> Promoted verdict with CI > 0 (pass)
     fireEvent.click(screen.getByRole("button", { name: "Fit gated PC-L2 derivative" }));
@@ -640,5 +649,7 @@ describe("M5c Desktop UI: ADR-030 PC-Q / PC-ECR / gated PC-L2 Consensus Workspac
       expect(within(pcL2Region).getByText("PC-L2 Promoted")).toBeInTheDocument();
     });
     expect(within(pcL2Region).getByText("CI > 0 (pass)")).toBeInTheDocument();
+    expect(pcL2Region).toHaveTextContent(/\+0\.1850/);
+    expect(pcL2Region).toHaveTextContent(/\[\+0\.0950,\s*\+0\.2750\]/);
   });
 });

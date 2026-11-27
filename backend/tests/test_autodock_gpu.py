@@ -125,12 +125,15 @@ def test_the_cpu_parser_reads_real_gpu_output_unchanged() -> None:
     """ADR-015 called the shared .dlg format the decisive detail. It holds."""
     parsed = parse_autodock4_log(REAL_GPU_LOG.read_text(encoding="utf-8"))
 
-    assert parsed.clusters, "no clusters parsed from real AutoDock-GPU output"
-    assert parsed.ranking, "no ranking rows parsed from real AutoDock-GPU output"
-    assert parsed.poses, "no poses parsed from real AutoDock-GPU output"
+    assert len(parsed.clusters) == 3
+    assert len(parsed.ranking) == 10
+    assert len(parsed.poses) == 10
+    assert [c.lowest_binding_energy_kcal_mol for c in parsed.clusters] == [-3.33, -2.4, -2.4]
+    assert [c.mean_binding_energy_kcal_mol for c in parsed.clusters] == [-3.23, -2.39, -2.4]
+    assert [c.run_count for c in parsed.clusters] == [5, 4, 1]
+    assert [c.representative_run for c in parsed.clusters] == [9, 4, 2]
     # Cluster populations must account for every run the log ranked.
     assert sum(cluster.run_count for cluster in parsed.clusters) == len(parsed.ranking)
-    assert parsed.clusters[0].lowest_binding_energy_kcal_mol < 0
 
 
 def test_the_cpu_success_marker_is_absent_from_real_gpu_output() -> None:
@@ -158,11 +161,20 @@ def test_every_setting_that_governs_the_search_is_stated_explicitly() -> None:
     """
     arguments = _arguments()
 
-    for flag in (
-        "--nrun", "--seed", "--heuristics", "--autostop",
-        "--psize", "--lsmet", "--rmstol", "--nev", "--devnum",
-    ):
+    expected = {
+        "--nrun": "10",
+        "--seed": "2,3,4",
+        "--heuristics": "0",
+        "--autostop": "0",
+        "--psize": "150",
+        "--lsmet": "ad",
+        "--rmstol": "2",
+        "--nev": "2500000",
+        "--devnum": "1",
+    }
+    for flag, value in expected.items():
         assert flag in arguments, f"{flag} is not stated"
+        assert _value_after(arguments, flag) == value
 
 
 def test_the_heuristic_and_an_explicit_evaluation_count_are_mutually_exclusive() -> None:

@@ -558,6 +558,7 @@ def _seed_live_cross_engine_project(tmp_path: Path) -> dict[str, str]:
     }
 
 
+@pytest.mark.live_engine
 def test_live_cross_engine_campaign_consensus_panel_reuse_e4_stale_and_methods(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

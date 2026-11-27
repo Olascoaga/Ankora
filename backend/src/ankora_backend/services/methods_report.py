@@ -90,6 +90,7 @@ _SITE_SOURCE = {
     "manual": "manually entered coordinates",
     "full_protein_blind": "the entire prepared receptor (blind search)",
     "pocket_detected": "a computationally detected pocket",
+    "pose_focused": "a pose-focused box around a selected hit pose",
 }
 _LOCAL_SEARCH = {"ad": "ADADELTA", "sw": "Solis-Wets", "fire": "FIRE"}
 _ALERT_POLICY_EFFECT = {
@@ -535,6 +536,7 @@ class MethodsReportService:
             )
             return
 
+        self._site_origin_provenance(draft, site)
         decisions = site.decisions
         source = _SITE_SOURCE.get(str(decisions.source), str(decisions.source))
         detail = ""
@@ -1629,21 +1631,13 @@ class MethodsReportService:
                 )
         draft.say("")
 
-    def _site(self, draft: _Draft, entry: CatalogEntry) -> None:
-        draft.say("## Binding site definition\n")
-        site = _load(self._binding_sites.load_record, entry.binding_site_id)
-        if site is None:
-            draft.say(
-                "The binding-site record is no longer available. "
-                f"{draft.missing('binding site record')}\n"
-            )
-            return
-
-        decisions = site.decisions
+    def _site_origin_provenance(self, draft: _Draft, site: BindingSiteRecord) -> None:
+        """Walk parent binding-site lineage and cite computational pocket detection when present."""
         origin = site
         visited = {site.binding_site_id}
-        while getattr(origin.decisions, "parent_binding_site_id", None) and not getattr(
-            origin.decisions, "pocket_selection", None
+        while (
+            origin.decisions.parent_binding_site_id is not None
+            and origin.decisions.pocket_selection is None
         ):
             parent_id = origin.decisions.parent_binding_site_id
             parent = _load(self._binding_sites.load_record, parent_id)
@@ -1678,6 +1672,19 @@ class MethodsReportService:
                     gap = "pocket detection tool version"
             if gap:
                 draft.say(f"Pocket detection provenance was {draft.missing(gap)}.\n")
+
+    def _site(self, draft: _Draft, entry: CatalogEntry) -> None:
+        draft.say("## Binding site definition\n")
+        site = _load(self._binding_sites.load_record, entry.binding_site_id)
+        if site is None:
+            draft.say(
+                "The binding-site record is no longer available. "
+                f"{draft.missing('binding site record')}\n"
+            )
+            return
+
+        self._site_origin_provenance(draft, site)
+        decisions = site.decisions
         source = _SITE_SOURCE.get(str(decisions.source), str(decisions.source))
         detail = ""
         if decisions.ligand_origin is not None:
@@ -2031,7 +2038,7 @@ class MethodsReportService:
         draft.say("")
 
     def _v02_sections(self, draft: _Draft, entry: CatalogEntry) -> None:
-        """Append record-derived v0.2 M2/M3/M4 Methods sections when evidence exists (D5-018)."""
+        """Append record-derived v0.2 M2/M3/M4 & ADR-033 Methods sections when evidence exists."""
         project_root = self._project_root
         if project_root is None or not project_root.is_dir():
             return
@@ -2044,6 +2051,7 @@ class MethodsReportService:
                 try:
                     qrec = PoseQualityRecord.model_validate_json(path.read_text(encoding="utf-8"))
                 except (OSError, ValueError):
+                    draft.missing(f"unreadable pose quality record ({path.parent.name})")
                     continue
                 if qrec.catalog_id == entry.catalog_id:
                     quality_records.append(qrec)
@@ -2062,6 +2070,9 @@ class MethodsReportService:
                         path.read_text(encoding="utf-8")
                     )
                 except (OSError, ValueError):
+                    draft.missing(
+                        f"unreadable interaction rule evaluation record ({path.parent.name})"
+                    )
                     continue
                 if erec.catalog_id == entry.catalog_id:
                     rule_evals.append(erec)
@@ -2071,6 +2082,7 @@ class MethodsReportService:
         for rule_set_id in sorted(referenced_rule_set_ids):
             rs_path = rule_sets_dir / rule_set_id / "record.json"
             if not rs_path.is_file():
+                draft.missing(f"missing interaction rule set record ({rule_set_id})")
                 continue
             try:
                 rule_sets.append(
@@ -2079,6 +2091,7 @@ class MethodsReportService:
                     )
                 )
             except (OSError, ValueError):
+                draft.missing(f"unreadable interaction rule set record ({rule_set_id})")
                 continue
         if rule_sets or rule_evals:
             draft.say(render_interaction_rules_methods(rule_sets, rule_evals).rstrip())
@@ -2093,6 +2106,7 @@ class MethodsReportService:
                         path.read_text(encoding="utf-8")
                     )
                 except (OSError, ValueError):
+                    draft.missing(f"unreadable calibration record ({path.parent.name})")
                     continue
                 if (
                     cal.receptor_id == entry.receptor_id
@@ -2100,6 +2114,54 @@ class MethodsReportService:
                 ):
                     draft.say(render_calibration_methods(cal).rstrip())
                     draft.say("")
+
+        # ADR-033: Hit-to-Analog similarity expansion & pose-focused binding-site lineage
+        focused_site: BindingSiteRecord | None = None
+        if entry.binding_site_id:
+            site = _load(self._binding_sites.load_record, entry.binding_site_id)
+            if site is not None and site.decisions.source is BindingSiteSource.POSE_FOCUSED:
+                focused_site = site
+        analog_search: AnalogSearchRecord | None = None
+        analog_selection: AnalogSelectionRecord | None = None
+        if entry.library_id:
+            library = _load(self._ligands.load_library_record, entry.library_id)
+            if library is not None:
+                sel_id = library.artifact.origin_analog_selection_id
+                search_id = library.artifact.origin_analog_search_id
+                analog_root = project_root / "derived" / "analog_expansion"
+                if sel_id:
+                    sel_path = analog_root / "selections" / sel_id / "record.json"
+                    if not sel_path.is_file():
+                        draft.missing(f"missing analog selection record ({sel_id})")
+                    else:
+                        try:
+                            analog_selection = AnalogSelectionRecord.model_validate_json(
+                                sel_path.read_text(encoding="utf-8")
+                            )
+                            if not search_id:
+                                search_id = analog_selection.analog_search_id
+                        except (OSError, ValueError):
+                            draft.missing(f"unreadable analog selection record ({sel_id})")
+                if search_id:
+                    search_path = analog_root / "searches" / search_id / "record.json"
+                    if not search_path.is_file():
+                        draft.missing(f"missing analog search record ({search_id})")
+                    else:
+                        try:
+                            analog_search = AnalogSearchRecord.model_validate_json(
+                                search_path.read_text(encoding="utf-8")
+                            )
+                        except (OSError, ValueError):
+                            draft.missing(f"unreadable analog search record ({search_id})")
+        if analog_search is not None or analog_selection is not None or focused_site is not None:
+            draft.say(
+                render_analog_expansion_methods(
+                    search=analog_search,
+                    selection=analog_selection,
+                    focused_site=focused_site,
+                ).rstrip()
+            )
+            draft.say("")
 
     def _reproducibility_prose(self, draft: _Draft, entry: CatalogEntry) -> None:
         """The three repeat-behavior states, shared by every engine.
@@ -3397,6 +3459,12 @@ def render_consensus_methods(record: ConsensusRunRecord) -> str:
         else "in-place symmetry-aware ligand heavy-atom coordinates (never superposed)"
     )
 
+    ecr_ref = references_for("PC-ECR")[0]
+    ecr_citation = (
+        f"Palacio-Rodríguez et al., Sci. Rep. {ecr_ref.year}, {ecr_ref.volume}, "
+        f"{ecr_ref.pages}, DOI: {ecr_ref.doi}"
+    )
+
     lines: list[str] = [
         "### Rank-Space Pose-Concordant Consensus Prioritization (`PC-Q` & `PC-ECR`)",
         "",
@@ -3420,8 +3488,7 @@ def render_consensus_methods(record: ConsensusRunRecord) -> str:
             f"variant weights ({block_str}) onto the dimensionless `0–100` `PC-Q` scale together "
             f"with per-pose inter-family disagreement `D_ic`. Exponential consensus ranking "
             f"(`PC-ECR`, frozen `tau = {record.ecr_tau:g}`, `sigma = tau * N_panel`; "
-            f"Palacio-Rodríguez et al., Sci. Rep. 2019, 9, 5142, "
-            f"DOI: 10.1038/s41598-019-41594-3) was recorded in a separate column on its own "
+            f"{ecr_citation}) was recorded in a separate column on its own "
             f"`1/sigma` scale (`E5`) and was never blended with `PC-Q`. Neither `PC-Q` nor "
             f"`PC-ECR` is a measured or predicted binding affinity."
         ),

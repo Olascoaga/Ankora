@@ -544,12 +544,28 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
                         <strong>{entry.engine_label}</strong> · {entry.catalog_id} ·{" "}
                         {entry.succeeded_count}/{entry.selected_count} compounds
                         {entry.map_set_id ? ` · map ${shortHash(entry.map_set_id)}` : ""}
+                        {entry.stale ? (
+                          <em
+                            className="results-card-warning"
+                            title={entry.stale_reasons?.join("; ") || "Stale lineage"}
+                          >
+                            {" "}· stale lineage
+                          </em>
+                        ) : null}
                       </span>
                     </label>
                   );
                 })}
               </div>
             )}
+            {completedCampaigns.some(
+              (entry) => selectedCatalogIds.includes(entry.catalog_id) && entry.stale,
+            ) ? (
+              <p className="protonation-blocker" role="alert">
+                One or more selected source campaigns have stale upstream lineage (ADR-011).
+                Review or refresh before presenting consensus rankings as current.
+              </p>
+            ) : null}
           </fieldset>
 
           <div className="consensus-form-actions">

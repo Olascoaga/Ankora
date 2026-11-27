@@ -193,20 +193,58 @@ describe("M6.5f ADR-033 Hit-to-Analog Expansion & Export v6 UI", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Run offline similarity search/i }));
-    await waitFor(() => expect(offlineSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(offlineSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_catalog_id: "vina_job:job-1",
+          source_ligand_id: "lig-1",
+          source_pose_artifact_id: "pose-1",
+          analog_catalog_id: "cat-synth-1",
+        }),
+      ),
+    );
     expect(screen.getByText("fluoro_analog")).toBeInTheDocument();
     expect(screen.getByText(/multi-fragment\/salt/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Create derived mini-library/i }));
-    await waitFor(() => expect(selectSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(selectSpy).toHaveBeenCalledWith(
+        "search-synth-1",
+        expect.objectContaining({
+          selected_hit_ids: ["seed-control", "analog-1"],
+          include_seed_control: true,
+        }),
+      ),
+    );
     expect(screen.getByText(/lib-derived-1/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Preview POSE_FOCUSED box/i }));
-    await waitFor(() => expect(previewSiteSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(previewSiteSpy).toHaveBeenCalledWith(
+        "rec-1",
+        expect.objectContaining({
+          source: "pose_focused",
+          parent_binding_site_id: "site-parent-1",
+          pose_focused: expect.objectContaining({
+            source_catalog_id: "vina_job:job-1",
+            ligand_id: "lig-1",
+            pose_artifact_id: "pose-1",
+          }),
+        }),
+      ),
+    );
     expect(screen.getByText(/Preview box:/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Save POSE_FOCUSED binding site/i }));
-    await waitFor(() => expect(createSiteSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(createSiteSpy).toHaveBeenCalledWith(
+        "rec-1",
+        expect.objectContaining({
+          source: "pose_focused",
+          parent_binding_site_id: "site-parent-1",
+        }),
+      ),
+    );
     expect(screen.getByText(/site-focused-1/)).toBeInTheDocument();
   });
 
@@ -249,7 +287,16 @@ describe("M6.5f ADR-033 Hit-to-Analog Expansion & Export v6 UI", () => {
     expect(screen.queryByRole("button", { name: /Run opt-in online search/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /Review IP disclosure/i }));
-    await waitFor(() => expect(previewSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(previewSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_catalog_id: "vina_job:job-1",
+          source_ligand_id: "lig-1",
+          source_pose_artifact_id: "pose-1",
+          provider: "pubchem_pug_rest",
+        }),
+      ),
+    );
     expect(screen.getByText("CC(=O)Oc1ccccc1C(=O)O")).toBeInTheDocument();
 
     const runOnlineBtn = screen.getByRole("button", { name: /Run opt-in online search/i });
@@ -259,7 +306,22 @@ describe("M6.5f ADR-033 Hit-to-Analog Expansion & Export v6 UI", () => {
     expect(runOnlineBtn).not.toBeDisabled();
 
     fireEvent.click(runOnlineBtn);
-    await waitFor(() => expect(onlineSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(onlineSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_catalog_id: "vina_job:job-1",
+          source_ligand_id: "lig-1",
+          source_pose_artifact_id: "pose-1",
+          provider: "pubchem_pug_rest",
+          consent: {
+            provider: "pubchem_pug_rest",
+            query_canonical_smiles: "CC(=O)Oc1ccccc1C(=O)O",
+            consent_payload_sha256: "d".repeat(64),
+            acknowledge_external_transmission: true,
+          },
+        }),
+      ),
+    );
   });
 
   it("renders Export v6 badge for ADR-033 focused campaign bundles in ExportWorkspace", async () => {

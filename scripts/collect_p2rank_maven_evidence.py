@@ -125,7 +125,7 @@ def collect_one(jar: Path, output: Path) -> dict:
             raise ValueError("Maven binary differs from shipped bytes")
         row["coordinate"] = f"{group}:{artifact}:{version}{classifier}"
         row["binary_url"] = CENTRAL + base + classifier + ".jar"
-        for depth in range(12):
+        for _ in range(12):
             pom_path = maven_path(group, artifact, version) + ".pom"
             pom_file = fetch(pom_path, output)
             raw = pom_file.read_bytes()

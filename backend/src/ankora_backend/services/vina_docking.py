@@ -57,6 +57,7 @@ from ankora_backend.schemas.warnings import StructuredWarning, WarningCode
 from ankora_backend.schemas.work_recovery import WorkKind
 from ankora_backend.services.autodock_inputs import resolve_selected_chemical_state
 from ankora_backend.services.execution_freshness import require_current_inputs
+from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.resource_arbiter import (
     ResourceArbiter,
     ResourceLease,
@@ -307,6 +308,15 @@ class VinaDockingService:
                     "parent_pose_artifact_id": request.parent_pose_artifact_id,
                 },
             )
+
+        require_current_inputs(
+            parent_job.request,
+            binding_site_store=self._binding_site_store,
+            ligand_store=self._ligand_store,
+        )
+        ProjectDependencyService.for_project_root(
+            self._binding_site_store.project_root
+        ).require_current({parent_job.job_id, request.parent_pose_artifact_id})
 
         docking_receptor, binding_site = self._validate_receptor_and_site(
             parent_job.request.receptor_id, parent_job.request.binding_site_id
@@ -1032,6 +1042,7 @@ class VinaDockingService:
         output_path = self._docking_store.batch_output_path(
             batch_id, item.ligand_id, "vina_poses.pdbqt"
         )
+        evidence: DockingExecutionEvidence | None = None
         try:
             execution = execute_vina(
                 installation=installation,
@@ -1095,7 +1106,7 @@ class VinaDockingService:
             self._finish_batch_entry_failed(
                 batch_id,
                 current,
-                current.execution,
+                evidence or current.execution,
                 error.code,
                 error.message,
                 error.details,
@@ -1105,7 +1116,7 @@ class VinaDockingService:
             self._finish_batch_entry_failed(
                 batch_id,
                 current,
-                current.execution,
+                evidence or current.execution,
                 "VINA_JOB_INTERNAL_ERROR",
                 "Ankora could not complete this ligand docking job.",
                 {"reason": str(error)},

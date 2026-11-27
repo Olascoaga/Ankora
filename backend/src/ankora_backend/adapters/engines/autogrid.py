@@ -13,7 +13,7 @@ from ankora_backend.execution.cancellable_subprocess import (
     CancellableToolExecution,
     run_cancellable_tool,
 )
-from ankora_backend.execution.subprocess_runner import ToolExecution, run_tool
+from ankora_backend.execution.subprocess_runner import run_tool
 from ankora_backend.schemas.autogrid import AutoGridToolIdentity
 from ankora_backend.schemas.provenance import ToolIdentity
 
@@ -79,14 +79,25 @@ def probe_autogrid4() -> AutoGridInstallation:
     )
     output = f"{execution.stdout}\n{execution.stderr}"
     version = _VERSION_PATTERN.search(output)
+    max_receptor_types_match = _RECEPTOR_TYPES_PATTERN.search(output)
+    max_ligand_types_match = _LIGAND_TYPES_PATTERN.search(output)
+    max_maps_match = _MAPS_PATTERN.search(output)
+    max_grid_points_match = _GRID_POINTS_PATTERN.search(output)
     limits = {
-        "max_receptor_types": _RECEPTOR_TYPES_PATTERN.search(output),
-        "max_ligand_types": _LIGAND_TYPES_PATTERN.search(output),
-        "max_maps": _MAPS_PATTERN.search(output),
-        "max_grid_points": _GRID_POINTS_PATTERN.search(output),
+        "max_receptor_types": max_receptor_types_match,
+        "max_ligand_types": max_ligand_types_match,
+        "max_maps": max_maps_match,
+        "max_grid_points": max_grid_points_match,
     }
     missing = sorted(name for name, match in limits.items() if match is None)
-    if execution.exit_code != 0 or version is None or missing:
+    if (
+        execution.exit_code != 0
+        or version is None
+        or max_receptor_types_match is None
+        or max_ligand_types_match is None
+        or max_maps_match is None
+        or max_grid_points_match is None
+    ):
         raise AnkoraDomainError(
             code="AUTOGRID_VERSION_UNVERIFIED",
             stage=_STAGE,
@@ -127,10 +138,10 @@ def probe_autogrid4() -> AutoGridInstallation:
         version=version.group(1),
         sha256=discovered.sha256,
         architecture=discovered.architecture,
-        max_receptor_types=int(limits["max_receptor_types"].group(1)),  # type: ignore[union-attr]
-        max_ligand_types=int(limits["max_ligand_types"].group(1)),  # type: ignore[union-attr]
-        max_maps=int(limits["max_maps"].group(1)),  # type: ignore[union-attr]
-        max_grid_points=int(limits["max_grid_points"].group(1)),  # type: ignore[union-attr]
+        max_receptor_types=int(max_receptor_types_match.group(1)),
+        max_ligand_types=int(max_ligand_types_match.group(1)),
+        max_maps=int(max_maps_match.group(1)),
+        max_grid_points=int(max_grid_points_match.group(1)),
     )
 
 
@@ -204,22 +215,6 @@ def validate_against_autogrid_limits(
                 "max_maps": installation.max_maps,
             },
         )
-
-
-def execute_autogrid(
-    *,
-    installation: AutoGridInstallation,
-    job_directory: Path,
-    timeout_seconds: int,
-) -> ToolExecution:
-    """Run AutoGrid with relative filenames inside an ASCII-safe job directory."""
-    return run_tool(
-        executable=installation.executable,
-        arguments=["-p", GRID_PARAMETER_FILENAME, "-l", GRID_LOG_FILENAME],
-        cwd=job_directory,
-        stage=_STAGE,
-        timeout_seconds=timeout_seconds,
-    )
 
 
 def execute_autogrid_cancellable(

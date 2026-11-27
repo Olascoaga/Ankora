@@ -13,6 +13,28 @@ datas = []
 for name in ("synthetic_m1.pdb", "synthetic_ethanol.smi"):
     datas.append((str(repository_root / "backend/tests/fixtures" / name),
                   "smoke-fixtures/backend/tests/fixtures"))
+_EXCLUDED_ANKORA_MODULE_PREFIXES = (
+    "ankora_backend.validation.screening_benchmark_",
+)
+_EXCLUDED_ANKORA_MODULES = frozenset({
+    "ankora_backend.services.validation_evidence",
+})
+
+
+def _is_packaged_ankora_module(name: str) -> bool:
+    if name in _EXCLUDED_ANKORA_MODULES:
+        return False
+    return not any(name.startswith(prefix) for prefix in _EXCLUDED_ANKORA_MODULE_PREFIXES)
+
+
+_all_ankora_modules = collect_submodules("ankora_backend")
+_packaged_ankora_modules = [
+    name for name in _all_ankora_modules if _is_packaged_ankora_module(name)
+]
+_excluded_ankora_modules = [
+    name for name in _all_ankora_modules if not _is_packaged_ankora_module(name)
+]
+
 binaries = []
 hiddenimports = [
     "uvicorn.lifespan.on",
@@ -20,7 +42,7 @@ hiddenimports = [
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",
     "uvicorn.protocols.websockets.auto",
-    *collect_submodules("ankora_backend"),
+    *_packaged_ankora_modules,
 ]
 
 # These packages either load compiled extensions/data dynamically or are entered
@@ -67,7 +89,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["pytest", "mypy", "ruff"],
+    excludes=["pytest", "mypy", "ruff", "tkinter", "_tkinter", *_excluded_ankora_modules],
     noarchive=False,
     optimize=1,
 )

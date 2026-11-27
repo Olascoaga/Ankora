@@ -90,6 +90,7 @@ def test_current_guide_figures_match_recorded_refresh_evidence() -> None:
     )
     source = (ROOT / "docs/USER_GUIDE.md").read_text(encoding="utf-8")
     images = re.findall(r"!\[Figure \d+\.[^\]]+\]\((images/[^)]+)\)", source)
+    assert len(images) >= 20
     for relative in images:
         image = ROOT / "docs" / relative
         assert f"`{image.name}`" in evidence
