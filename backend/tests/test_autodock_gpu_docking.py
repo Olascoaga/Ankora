@@ -6,8 +6,10 @@ the ones the actual binary produces. Real end-to-end execution against the GPU
 is recorded separately as validation evidence.
 """
 
+import json
 import threading
 import time
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -266,7 +268,13 @@ def test_a_completed_job_reports_clusters_and_names_its_backend(
 
     assert record.status is AutoDockJobStatus.COMPLETED  # type: ignore[attr-defined]
     assert record.backend is AutoDockBackend.GPU  # type: ignore[attr-defined]
-    assert record.clusters and record.runs  # type: ignore[attr-defined]
+    assert len(record.clusters) == 3  # type: ignore[attr-defined]
+    assert len(record.runs) == 10  # type: ignore[attr-defined]
+    assert [c.lowest_binding_energy_kcal_mol for c in record.clusters] == [  # type: ignore[attr-defined]
+        -3.33, -2.4, -2.4
+    ]
+    assert [c.run_count for c in record.clusters] == [5, 4, 1]  # type: ignore[attr-defined]
+    assert [c.representative_run for c in record.clusters] == [9, 4, 2]  # type: ignore[attr-defined]
     assert record.provenance.parameters["execution_device_report"] == {  # type: ignore[attr-defined]
         "status": "reported", "runtime": "OpenCL", "device_name": "synthetic",
         "matches_probe": False,
@@ -452,14 +460,23 @@ def test_the_api_exposes_the_gpu_engine_on_its_own_paths() -> None:
     assert not any("autodock4" in path for path in gpu_paths)
 
 
-def test_a_pose_url_written_into_a_record_is_a_route_that_exists() -> None:
-    """The service composes these URLs by hand, so they can silently rot."""
-    specification = TestClient(create_app()).get("/api/openapi.json").json()
-
-    assert (
-        "/api/v1/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/content"
-        in specification["paths"]
-    )
+def test_a_pose_url_written_into_a_record_is_a_route_that_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D3-010: Service-emitted pose content_url resolves live over HTTP 200 with exact bytes."""
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    service, request = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", _replay_real_log)
+    record = _wait(service, service.start(request).job_id)
+    service.shutdown()
+    run = record.runs[0]  # type: ignore[attr-defined]
+    expected_bytes = service.pose_content_path(
+        record.job_id, run.artifact.artifact_id  # type: ignore[attr-defined]
+    ).read_bytes()
+    with TestClient(create_app()) as client:
+        response = client.get(f"/api/v1{run.artifact.content_url}")
+    assert response.status_code == 200
+    assert response.content == expected_bytes
 
 
 # --- library campaigns -----------------------------------------------------
@@ -601,7 +618,11 @@ def test_every_molecule_keeps_its_own_clustering(
     docked = [e for e in record.entries if e.status is AutoDockJobStatus.COMPLETED]
     assert docked, "no molecule was docked"
     for entry in docked:
-        assert entry.clusters and entry.runs
+        assert len(entry.clusters) == 3
+        assert len(entry.runs) == 10
+        assert [c.lowest_binding_energy_kcal_mol for c in entry.clusters] == [-3.33, -2.4, -2.4]
+        assert [c.run_count for c in entry.clusters] == [5, 4, 1]
+        assert [c.representative_run for c in entry.clusters] == [9, 4, 2]
         assert sum(c.run_count for c in entry.clusters) == len(entry.runs)
         for run in entry.runs:
             assert service.batch_pose_content_path(
@@ -698,19 +719,39 @@ def test_a_canceled_campaign_keeps_what_it_already_produced(
 def test_a_molecule_that_cannot_be_docked_stays_in_the_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A scientist must see that a molecule was selected and why it was not run."""
+    """D3-003: An incompatible ligand stays in the GPU campaign denominator with exact failure."""
     service, request = _batch_fixture(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        gpu_module, "execute_autodock_gpu_cancellable", _replay_filelist
-    )
+    ligand_store = LigandArtifactStore(tmp_path)
+    filter_run = ligand_store.load_filter_run(request.library_id, request.filter_run_id)
+    bad_id = filter_run.selected_ligand_ids[-1]
+    prep = ligand_store.load_preparation_status(request.library_id)
+    prep_id = prep.entries[bad_id].pdbqt_preparation_id
+    assert prep_id is not None
+    pdbqt_path = ligand_store.pdbqt_content_path(bad_id, prep_id)
+    mutated = pdbqt_path.read_bytes().replace(b" OA\n", b" Fe\n")
+    pdbqt_path.write_bytes(mutated)
+    record_json = pdbqt_path.parent / "record.json"
+    payload = json.loads(record_json.read_text(encoding="utf-8"))
+    payload["artifact"]["sha256"] = sha256(mutated).hexdigest()
+    payload["artifact"]["size_bytes"] = len(mutated)
+    record_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    monkeypatch.setattr(gpu_module, "execute_autodock_gpu_cancellable", _replay_filelist)
     record = _wait_batch(service, service.start_batch(request).batch_id)
-
-    assert record.selected_count == len(record.entries)
-    for entry in record.entries:
-        if entry.status is AutoDockJobStatus.FAILED:
-            assert entry.failure is not None and entry.failure.code
     service.shutdown()
+
+    assert record.selected_count == 2  # type: ignore[attr-defined]
+    assert len(record.entries) == 2  # type: ignore[attr-defined]
+    assert record.succeeded_count == 1  # type: ignore[attr-defined]
+    assert record.failed_count == 1  # type: ignore[attr-defined]
+    failed = [
+        entry for entry in record.entries  # type: ignore[attr-defined]
+        if entry.status is AutoDockJobStatus.FAILED
+    ]
+    assert len(failed) == 1
+    assert failed[0].ligand_id == bad_id
+    assert failed[0].failure is not None
+    assert failed[0].failure.code == "AUTODOCK_GPU_LIGAND_TYPES_NOT_IN_MAP_SET"
 
 
 def test_a_campaign_states_the_backend_and_its_irreproducibility(

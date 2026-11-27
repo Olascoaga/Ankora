@@ -4,6 +4,7 @@ from pathlib import Path
 from threading import Event
 from time import monotonic, sleep
 
+import pytest
 from fastapi.testclient import TestClient
 from test_gnina_campaign_link import _stub_input_stores
 from test_gnina_screening_preflight import one_prepared as one_prepared
@@ -184,7 +185,12 @@ def test_api_executes_synthetic_campaign_and_preserves_gnina_scores(
         job = client.get(f"/api/v1/docking/gnina/jobs/{entry['gnina_job_id']}").json()
         assert job["screening_campaign_id"] == campaign_id
         assert len(job["poses"]) == 2
-        assert job["poses"][0]["cnn_score"] > job["poses"][1]["cnn_score"]
+        assert job["poses"][0]["cnn_score"] == pytest.approx(0.266823769)
+        assert job["poses"][1]["cnn_score"] == pytest.approx(0.213049844)
+        assert job["poses"][0]["cnn_affinity"] == pytest.approx(6.34318495)
+        assert job["poses"][1]["cnn_affinity"] == pytest.approx(7.4227376)
+        assert job["poses"][0]["minimized_affinity_kcal_mol"] == pytest.approx(27.0064907)
+        assert job["poses"][1]["minimized_affinity_kcal_mol"] == pytest.approx(-9.32558155)
         assert (
             app.state.gnina_screening._store.jobs.output_path(
                 job["job_id"], "raw_poses.pdbqt"
@@ -200,3 +206,111 @@ def test_api_executes_synthetic_campaign_and_preserves_gnina_scores(
             ]
             == 0
         )
+
+
+def test_api_rejects_stale_gnina_screening_inputs_with_real_dependency_gate(
+    tmp_path, one_prepared, monkeypatch
+):
+    """D3-006: Verify unmodified ProjectDependencyService rejects stale screening inputs."""
+    from datetime import UTC, datetime
+    from hashlib import sha256
+
+    from ankora_backend.persistence.binding_site_store import BindingSiteArtifactStore
+    from ankora_backend.persistence.receptor_store import ReceptorArtifactStore
+    from ankora_backend.schemas.binding_sites import (
+        BindingBox,
+        BindingSiteRecord,
+        BindingSiteRequest,
+        BindingSiteSource,
+    )
+    from ankora_backend.schemas.receptors import (
+        ComponentAction,
+        ProtonationSettings,
+        ReceptorOutputArtifact,
+        ReceptorOutputStage,
+        ReceptorPreparationRecord,
+        ReceptorPreparationRequest,
+        ReceptorPreparationStatus,
+    )
+    from ankora_backend.services.project_dependencies import ProjectDependencyService
+
+    monkeypatch.setenv("ANKORA_DATA_DIR", str(tmp_path))
+    screening_data, _conformer, _pdbqt = one_prepared
+    _ligands, library, selection = screening_data
+    now = datetime.now(UTC)
+
+    receptors = ReceptorArtifactStore(tmp_path)
+    rec_id = receptors.new_receptor_id()
+    receptors.create_receptor(rec_id)
+    rec_bytes = b"REMARK synthetic receptor\n"
+    receptors.write_bytes(rec_id, "receptor.pdbqt", rec_bytes)
+    rec_out = ReceptorOutputArtifact(
+        artifact_id=f"{rec_id}-pdbqt",
+        stage=ReceptorOutputStage.PDBQT,
+        filename="receptor.pdbqt",
+        format="pdbqt",
+        sha256=sha256(rec_bytes).hexdigest(),
+        size_bytes=len(rec_bytes),
+        created_at=now,
+        content_url="/synthetic/receptor",
+    )
+    receptors.save_record(
+        ReceptorPreparationRecord(
+            receptor_id=rec_id,
+            source_artifact_id="src-1",
+            created_at=now,
+            status=ReceptorPreparationStatus.DOCKING_READY,
+            decisions=ReceptorPreparationRequest(
+                selected_chains=["A"],
+                water_action=ComponentAction.REMOVE,
+                component_decisions=[],
+                issue_decisions=[],
+                protonation=ProtonationSettings(enabled=True),
+                generate_pdbqt=True,
+            ),
+            outputs=[rec_out],
+            warnings=[],
+            provenance=[],
+            display_output_artifact_id=rec_out.artifact_id,
+        )
+    )
+    sites = BindingSiteArtifactStore(tmp_path)
+    site_id = sites.new_binding_site_id()
+    box = BindingBox(center_x=0, center_y=0, center_z=0, size_x=15, size_y=15, size_z=15)
+    sites.save_record(
+        BindingSiteRecord(
+            binding_site_id=site_id,
+            receptor_id=rec_id,
+            source_artifact_id="src-1",
+            created_at=now,
+            decisions=BindingSiteRequest(source=BindingSiteSource.MANUAL, manual_box=box),
+            box=box,
+            stale=False,
+            warnings=[],
+            provenance=[],
+        )
+    )
+    ProjectDependencyService.for_project_root(sites.project_root).mark_stale(
+        site_id, reason="Synthetic stale site for D3-006 gate test"
+    )
+    installation = GninaInstallation("/synthetic/gnina", "1.3.3", "a" * 64, "x86_64")
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_screening_admission._linux_host", lambda: True
+    )
+    monkeypatch.setattr(
+        "ankora_backend.services.gnina_screening_admission.probe_gnina", lambda: installation
+    )
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/docking/gnina/screenings",
+            json={
+                "receptor_id": rec_id,
+                "binding_site_id": site_id,
+                "library_id": library.artifact.library_id,
+                "filter_run_id": selection.artifact.filter_run_id,
+                "parameters": {"compute": "cpu", "cpu_threads": 1},
+                "acknowledge_inputs_and_scoring": True,
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["code"] == "PROJECT_INPUT_STALE"

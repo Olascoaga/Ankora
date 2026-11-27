@@ -385,7 +385,20 @@ describe("M2c Validation workspace switch and two-stage Protocol Calibration UI"
     );
     fireEvent.click(screen.getByRole("button", { name: "Create split and lock Confirmation" }));
 
-    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          receptor_id: "synth-rec-1",
+          binding_site_id: "synth-site-1",
+          compounds: [
+            { parent_id: "SYNTH_A1", canonical_smiles: "c1ccccc1O", is_active: true },
+            { parent_id: "SYNTH_A2", canonical_smiles: "c1ccncc1O", is_active: true },
+            { parent_id: "SYNTH_I1", canonical_smiles: "c1ccc2ccccc2c1", is_active: false },
+            { parent_id: "SYNTH_I2", canonical_smiles: "C1CCCCC1", is_active: false },
+          ],
+        }),
+      ),
+    );
     const stage1 = await screen.findByRole("region", {
       name: "Calibration split and bias audit",
     });
@@ -412,6 +425,9 @@ describe("M2c Validation workspace switch and two-stage Protocol Calibration UI"
     expect(
       within(stage2).getByText(/rigid baseline was retained/i),
     ).toBeInTheDocument();
+    expect(stage2).toHaveTextContent(/0\.710/);
+    expect(stage2).toHaveTextContent(/0\.740/);
+    expect(stage2).toHaveTextContent(/\[-0\.1200,\s*\+0\.1800\]/);
     expect(within(stage2).getAllByText("small-sample caution").length).toBeGreaterThanOrEqual(1);
     expect(within(stage2).getByText("1 / 1")).toBeInTheDocument();
 
@@ -432,6 +448,8 @@ describe("M2c Validation workspace switch and two-stage Protocol Calibration UI"
     render(<ProtocolCalibrationWorkspace />);
     const verdictBox = await screen.findByRole("status", { name: "Confirmation verdict" });
     expect(verdictBox).toHaveTextContent(INSUFFICIENT_EVIDENCE_TEXT);
+    expect(document.body).toHaveTextContent(/-0\.0400/);
+    expect(document.body).toHaveTextContent(/\[-0\.2100,\s*\+0\.1300\]/);
     expect(
       screen.getByText("Confirmation consumed — immutable"),
     ).toBeInTheDocument();
@@ -452,6 +470,7 @@ describe("M2c Validation workspace switch and two-stage Protocol Calibration UI"
     expect(verdictBox).toHaveTextContent("Preferred over baseline");
     expect(screen.getByText("Excludes zero positively")).toBeInTheDocument();
     expect(screen.getByText("+0.3700")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(/\[\+0\.1900,\s*\+0\.5500\]/);
   });
 });
 

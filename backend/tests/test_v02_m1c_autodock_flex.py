@@ -1448,6 +1448,7 @@ def _prepare_live_garymp_project(tmp_path: Path) -> dict[str, object]:
     }
 
 
+@pytest.mark.live_engine
 def test_live_real_autogrid4_and_autodock4_cpu_flex_end_to_end(tmp_path: Path) -> None:
     try:
         probe_autogrid4()
@@ -1510,6 +1511,7 @@ def test_live_real_autogrid4_and_autodock4_cpu_flex_end_to_end(tmp_path: Path) -
         service.shutdown()
 
 
+@pytest.mark.live_engine
 def test_live_real_autodock_gpu_flex_end_to_end(tmp_path: Path) -> None:
     try:
         probe_autogrid4()

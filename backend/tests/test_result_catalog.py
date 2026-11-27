@@ -531,6 +531,7 @@ def test_exact_vina_repeats_are_measured_reproducible() -> None:
     )
 
     entries = service.list_campaigns().entries
+    assert len(entries) == 2
     for entry in entries:
         assessment = entry.reproducibility
         assert assessment.status is ReproducibilityStatus.MEASURED_REPRODUCIBLE
@@ -551,6 +552,7 @@ def test_exact_gpu_repeats_with_different_outputs_are_measured_variable() -> Non
     )
 
     entries = service.list_campaigns().entries
+    assert len(entries) == 2
     for entry in entries:
         assessment = entry.reproducibility
         assert assessment.status is ReproducibilityStatus.MEASURED_VARIABLE
@@ -570,6 +572,7 @@ def test_different_binding_sites_are_not_compared_even_when_outputs_match() -> N
     )
 
     entries = service.list_campaigns().entries
+    assert len(entries) == 2
     assert all(
         entry.reproducibility.status is ReproducibilityStatus.NOT_ASSESSED
         for entry in entries

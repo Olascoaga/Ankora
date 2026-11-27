@@ -50,6 +50,9 @@ ankora_backend = ["py.typed"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "live_engine: Requires locally installed external scientific binaries (skipped in tool-less CI)",
+]
 
 [tool.ruff]
 target-version = "py312"

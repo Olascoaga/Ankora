@@ -194,7 +194,10 @@ def test_single_ligand_import_never_creates_a_library_status(tmp_path: Path) -> 
         store=store,
     )
 
-    assert ligand.artifact.library_id is None
+    reloaded = store.load_record(ligand.artifact.ligand_id)
+    assert reloaded.artifact.library_id is None
+    assert not list(tmp_path.rglob("preparation_status.json"))
+    assert not (tmp_path / "projects" / "default" / "original" / "ligand_libraries").exists()
 
 
 def test_preparation_endpoint_returns_the_aggregate_record(
