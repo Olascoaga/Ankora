@@ -398,33 +398,6 @@ def _make_morgan_generator(profile: AnalogFingerprintProfile) -> Any:
     )
 
 
-def compute_local_tanimoto_for_smiles(
-    *,
-    query_smiles: str,
-    candidate_smiles: str,
-    profile: AnalogFingerprintProfile,
-) -> tuple[float, str, str]:
-    """Compute exact local RDKit Morgan Tanimoto between query and candidate SMILES."""
-    q_mol = Chem.MolFromSmiles(query_smiles)
-    c_mol = Chem.MolFromSmiles(candidate_smiles)
-    if q_mol is None:
-        raise _error("ANALOG_QUERY_SMILES_INVALID", "Query SMILES could not be parsed by RDKit.")
-    if c_mol is None:
-        raise _error(
-            "ANALOG_CANDIDATE_SMILES_INVALID",
-            "Candidate SMILES could not be parsed by RDKit.",
-        )
-    _, q_search, _, _ = build_search_representation(q_mol, profile)
-    c_iso, c_search, _, _ = build_search_representation(c_mol, profile)
-    q_work = Chem.MolFromSmiles(q_search)
-    c_work = Chem.MolFromSmiles(c_search)
-    gen = _make_morgan_generator(profile)
-    sim = float(
-        DataStructs.TanimotoSimilarity(gen.GetFingerprint(q_work), gen.GetFingerprint(c_work))
-    )
-    return min(1.0, max(0.0, sim)), c_iso, c_search
-
-
 def run_offline_similarity_search(
     *,
     query_smiles: str,

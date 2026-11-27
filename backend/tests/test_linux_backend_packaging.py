@@ -15,6 +15,7 @@ from ankora_backend import __main__ as backend_entry
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
+WINDOWS_SPEC = ROOT / "backend/packaging/ankora_backend.spec"
 LINUX_SPEC = ROOT / "backend/packaging/ankora_backend_linux.spec"
 
 
@@ -171,3 +172,25 @@ def test_linux_spec_retains_required_science_and_excludes_driver_and_tk_bloat() 
     assert not retain_binary(("libnvidia-ml.so.1", "/usr/lib/libnvidia-ml.so.1", "BINARY"))
     assert not retain_binary(("libtcl8.6.so", "/src/libtcl8.6.so", "BINARY"))
     assert not retain_binary(("_tkinter.cpython-312-x86_64-linux-gnu.so", "/src/tk.so", "BINARY"))
+
+
+def test_windows_and_linux_specs_share_adr031_module_filter_and_tk_excludes() -> None:
+    expected = build_linux_backend.expected_ankora_modules()
+    assert "ankora_backend.validation.native_tool_smoke" in expected
+    assert "ankora_backend.installer_resources" in expected
+    assert "ankora_backend.validation.screening_benchmark_vina_execution" not in expected
+    assert "ankora_backend.services.validation_evidence" not in expected
+
+    for spec_path in (WINDOWS_SPEC, LINUX_SPEC):
+        text = spec_path.read_text(encoding="utf-8")
+        assert '"tkinter", "_tkinter", *_excluded_ankora_modules' in text
+        start = text.index("_EXCLUDED_ANKORA_MODULE_PREFIXES = (")
+        end = text.index("_all_ankora_modules = collect_submodules")
+        ns: dict[str, object] = {}
+        exec(text[start:end], ns)
+        predicate = ns["_is_packaged_ankora_module"]
+        assert callable(predicate)
+        assert predicate("ankora_backend.validation.native_tool_smoke") is True
+        assert predicate("ankora_backend.installer_resources") is True
+        assert predicate("ankora_backend.validation.screening_benchmark_vina_execution") is False
+        assert predicate("ankora_backend.services.validation_evidence") is False

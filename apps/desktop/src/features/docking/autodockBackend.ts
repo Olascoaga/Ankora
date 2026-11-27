@@ -107,12 +107,6 @@ export function isGpuParameters(
   return "local_search_method" in parameters;
 }
 
-export function isCpuParameters(
-  parameters: BackendParameters,
-): parameters is AutoDock4BatchParameters {
-  return "ga_generations" in parameters;
-}
-
 // --- CPU -------------------------------------------------------------------
 
 function cpuDefaults(): AutoDock4BatchParameters {

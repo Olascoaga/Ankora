@@ -2923,9 +2923,9 @@ class CampaignExportService:
         # The single job's or screening campaign's own preserved bytes: required
         # inputs, so a failure aborts the export before any partial bundle exists.
         source_files: list[dict[str, Any]] = []
-        if source_kind == "gnina_job":
+        if gnina_record is not None:
             source_files = collect_gnina_source_files(
-                record=gnina_record,  # type: ignore[arg-type]
+                record=gnina_record,
                 export_directory=directory,
                 preserved=preserved,
             )

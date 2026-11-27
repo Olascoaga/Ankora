@@ -297,7 +297,7 @@ class AutoDock4DockingService:
                         code=error.code, message=error.message, details=dict(error.details)
                     ),
                 )
-        except Exception as error:  # noqa: BLE001 — final worker lifecycle containment (D1-005)
+        except Exception as error:  # final worker lifecycle containment (D1-005)
             logging.getLogger(__name__).exception(
                 "AutoDock4 job worker failed unexpectedly for %s", job_id
             )
@@ -331,7 +331,7 @@ class AutoDock4DockingService:
             return fallback
         try:
             return self._job_store.load_job(job_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logging.getLogger(__name__).exception(
                 "Could not load AutoDock4 job %s during failure recovery", job_id
             )
@@ -986,11 +986,11 @@ class AutoDock4DockingService:
                         }
                     ),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logging.getLogger(__name__).exception(
                     "Could not persist AutoDock4 batch %s failure", batch_id
                 )
-        except Exception as error:  # noqa: BLE001 — final batch worker containment (D1-006)
+        except Exception as error:  # final batch worker containment (D1-006)
             logging.getLogger(__name__).exception(
                 "AutoDock4 batch worker failed unexpectedly for %s", batch_id
             )
@@ -1011,7 +1011,7 @@ class AutoDock4DockingService:
                         }
                     ),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logging.getLogger(__name__).exception(
                     "Could not persist AutoDock4 batch %s failure", batch_id
                 )
@@ -1300,7 +1300,7 @@ class AutoDock4DockingService:
                     code=error.code, message=error.message, details=dict(error.details)
                 ),
             )
-        except Exception as error:  # noqa: BLE001 — per-ligand batch isolation (D1-006)
+        except Exception as error:  # per-ligand batch isolation (D1-006)
             logging.getLogger(__name__).exception(
                 "AutoDock4 batch ligand worker failed unexpectedly for %s/%s",
                 batch_id,

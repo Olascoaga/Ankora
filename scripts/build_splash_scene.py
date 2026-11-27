@@ -151,7 +151,7 @@ def build_scene() -> dict[str, Any]:
 
     # Polar contacts the deposited pose makes — geometry only, no interaction claim.
     contacts = []
-    for li, (lp, le) in enumerate(zip(lig_xyz, lig_el)):
+    for li, (lp, le) in enumerate(zip(lig_xyz, lig_el, strict=True)):
         if le not in ("N", "O", "Cl"):
             continue
         for ri in pocket:
@@ -178,7 +178,7 @@ def build_scene() -> dict[str, Any]:
             "ligand_sha256": EXPECTED[LIGAND],
             "generator": "scripts/build_splash_scene.py",
         },
-        "ligand": {"atoms": [[*tf(p), e] for p, e in zip(lig_xyz, lig_el)], "bonds": bonds},
+        "ligand": {"atoms": [[*tf(p), e] for p, e in zip(lig_xyz, lig_el, strict=True)], "bonds": bonds},
         "dots": [[*tf(p), polar] for p, polar in dots],
         "edges": [list(e) for e in sorted(edges)],
         "contacts": [[li, *tf(p), label, dist] for li, p, label, dist in contacts],

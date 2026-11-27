@@ -89,7 +89,7 @@ def _load_pose_heavy_mol(*, pose_pdbqt_text: str, conformer_sdf_path: Path) -> A
         )
     try:
         assigned = AllChem.AssignBondOrdersFromTemplate(template, pose_mol)
-    except Exception as error:  # noqa: BLE001 — RDKit raises bare ValueError/RuntimeError
+    except Exception as error:  # RDKit raises bare ValueError/RuntimeError
         raise AnkoraDomainError(
             code="ANALOG_MCS_BOND_ORDER_ASSIGNMENT_FAILED",
             stage=_STAGE,

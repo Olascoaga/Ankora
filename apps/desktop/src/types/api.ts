@@ -3456,26 +3456,6 @@ export interface RankingArtifact {
 
 export type ConsensusVariantId = "pcq-core-v1" | "pcq-neural-v1";
 
-export interface PoseClusterMemberSummary {
-  pose_id: string;
-  source_engine: RescoreSourceEngine;
-  primary_rank_order: number;
-  pose_complex: PoseComplexIdentity;
-  canonical_coordinate_sha256: string;
-}
-
-export interface PoseClusterSummary {
-  cluster_id: string;
-  medoid_pose_id: string;
-  medoid_pose_complex: PoseComplexIdentity;
-  medoid_canonical_coordinate_sha256: string;
-  member_count: number;
-  max_intra_cluster_rmsd_angstrom: number;
-  best_primary_rank_order: number;
-  search_engines_present: RescoreSourceEngine[];
-  members: PoseClusterMemberSummary[];
-}
-
 export interface ReferencePanelEntry {
   parent_compound_id: string;
   parent_state_id: string;

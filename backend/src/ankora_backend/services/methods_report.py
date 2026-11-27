@@ -3459,6 +3459,12 @@ def render_consensus_methods(record: ConsensusRunRecord) -> str:
         else "in-place symmetry-aware ligand heavy-atom coordinates (never superposed)"
     )
 
+    ecr_ref = references_for("PC-ECR")[0]
+    ecr_citation = (
+        f"Palacio-Rodríguez et al., Sci. Rep. {ecr_ref.year}, {ecr_ref.volume}, "
+        f"{ecr_ref.pages}, DOI: {ecr_ref.doi}"
+    )
+
     lines: list[str] = [
         "### Rank-Space Pose-Concordant Consensus Prioritization (`PC-Q` & `PC-ECR`)",
         "",
@@ -3482,8 +3488,7 @@ def render_consensus_methods(record: ConsensusRunRecord) -> str:
             f"variant weights ({block_str}) onto the dimensionless `0–100` `PC-Q` scale together "
             f"with per-pose inter-family disagreement `D_ic`. Exponential consensus ranking "
             f"(`PC-ECR`, frozen `tau = {record.ecr_tau:g}`, `sigma = tau * N_panel`; "
-            f"Palacio-Rodríguez et al., Sci. Rep. 2019, 9, 5142, "
-            f"DOI: 10.1038/s41598-019-41594-3) was recorded in a separate column on its own "
+            f"{ecr_citation}) was recorded in a separate column on its own "
             f"`1/sigma` scale (`E5`) and was never blended with `PC-Q`. Neither `PC-Q` nor "
             f"`PC-ECR` is a measured or predicted binding affinity."
         ),

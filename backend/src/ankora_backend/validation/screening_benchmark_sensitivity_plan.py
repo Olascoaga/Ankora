@@ -326,19 +326,28 @@ def verify_sensitivity_plan(
         microstate_service_path,
     )
     if any(value is not None for value in rebuild_paths):
-        if not all(value is not None for value in rebuild_paths):
+        if (
+            spec_path is None
+            or geometry_manifest_path is None
+            or final_receptor_manifest_path is None
+            or primary_plan_path is None
+            or primary_result_path is None
+            or primary_metrics_path is None
+            or microstate_schema_path is None
+            or microstate_service_path is None
+        ):
             raise ScreeningBenchmarkSensitivityPlanError(
                 "Complete dependencies are required to rebuild the plan."
             )
         expected = build_sensitivity_plan(
-            spec_path=spec_path,  # type: ignore[arg-type]
-            geometry_manifest_path=geometry_manifest_path,  # type: ignore[arg-type]
-            final_receptor_manifest_path=final_receptor_manifest_path,  # type: ignore[arg-type]
-            primary_plan_path=primary_plan_path,  # type: ignore[arg-type]
-            primary_result_path=primary_result_path,  # type: ignore[arg-type]
-            primary_metrics_path=primary_metrics_path,  # type: ignore[arg-type]
-            microstate_schema_path=microstate_schema_path,  # type: ignore[arg-type]
-            microstate_service_path=microstate_service_path,  # type: ignore[arg-type]
+            spec_path=spec_path,
+            geometry_manifest_path=geometry_manifest_path,
+            final_receptor_manifest_path=final_receptor_manifest_path,
+            primary_plan_path=primary_plan_path,
+            primary_result_path=primary_result_path,
+            primary_metrics_path=primary_metrics_path,
+            microstate_schema_path=microstate_schema_path,
+            microstate_service_path=microstate_service_path,
             final_receptor_evidence_root=final_receptor_evidence_root,
         )
         if recorded != expected:

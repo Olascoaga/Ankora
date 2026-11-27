@@ -847,7 +847,7 @@ def require_matching_topology(pose: GninaPdbqtPose, conformer_sdf: bytes) -> Non
             Chem.AssignStereochemistryFrom3D(template_check)
         ligand_smiles = Chem.MolToSmiles(Chem.RemoveHs(ligand_check), isomericSmiles=True)
         expected_smiles = Chem.MolToSmiles(Chem.RemoveHs(template_check), isomericSmiles=True)
-    except Exception as error:  # noqa: BLE001 - normalize third-party parsing failures
+    except Exception as error:  # Normalize third-party parsing failures.
         raise _error(
             "GNINA_POSE_TOPOLOGY_UNVERIFIED",
             "GNINA pose topology could not be reconstructed.",

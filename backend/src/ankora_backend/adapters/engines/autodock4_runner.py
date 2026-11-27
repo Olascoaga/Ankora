@@ -74,13 +74,22 @@ def probe_autodock4() -> AutoDock4Installation:
     )
     output = f"{execution.stdout}\n{execution.stderr}"
     version = _VERSION_PATTERN.search(output)
+    max_torsions_match = _TORSIONS_PATTERN.search(output)
+    max_atoms_match = _ATOMS_PATTERN.search(output)
+    max_maps_match = _MAPS_PATTERN.search(output)
     limits = {
-        "max_torsions": _TORSIONS_PATTERN.search(output),
-        "max_atoms": _ATOMS_PATTERN.search(output),
-        "max_maps": _MAPS_PATTERN.search(output),
+        "max_torsions": max_torsions_match,
+        "max_atoms": max_atoms_match,
+        "max_maps": max_maps_match,
     }
     missing = sorted(name for name, match in limits.items() if match is None)
-    if execution.exit_code != 0 or version is None or missing:
+    if (
+        execution.exit_code != 0
+        or version is None
+        or max_torsions_match is None
+        or max_atoms_match is None
+        or max_maps_match is None
+    ):
         raise AnkoraDomainError(
             code="AUTODOCK4_VERSION_UNVERIFIED",
             stage=_STAGE,
@@ -121,9 +130,9 @@ def probe_autodock4() -> AutoDock4Installation:
         version=version.group(1),
         sha256=discovered.sha256,
         architecture=discovered.architecture,
-        max_torsions=int(limits["max_torsions"].group(1)),  # type: ignore[union-attr]
-        max_atoms=int(limits["max_atoms"].group(1)),  # type: ignore[union-attr]
-        max_maps=int(limits["max_maps"].group(1)),  # type: ignore[union-attr]
+        max_torsions=int(max_torsions_match.group(1)),
+        max_atoms=int(max_atoms_match.group(1)),
+        max_maps=int(max_maps_match.group(1)),
     )
 
 

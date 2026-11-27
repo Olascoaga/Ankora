@@ -12,6 +12,7 @@ judgements themselves are stated once.
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import TypedDict
 
 from ankora_backend.adapters.engines.autodock4 import collect_autodock_atom_types
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -185,26 +186,6 @@ def resolve_docking_receptor_and_site(
     )
 
 
-def resolve_receptor_and_site(
-    *,
-    receptor_id: str,
-    binding_site_id: str,
-    receptor_store: ReceptorArtifactStore,
-    binding_site_store: BindingSiteArtifactStore,
-    stage: str,
-    code_prefix: str,
-) -> tuple[ReceptorOutputArtifact, BindingSiteRecord]:
-    docking_receptor, binding_site = resolve_docking_receptor_and_site(
-        receptor_id=receptor_id,
-        binding_site_id=binding_site_id,
-        receptor_store=receptor_store,
-        binding_site_store=binding_site_store,
-        stage=stage,
-        code_prefix=code_prefix,
-    )
-    return docking_receptor.rigid_output, binding_site
-
-
 def validate_map_set_applies(
     map_set: AutoGridMapSetRecord,
     *,
@@ -354,6 +335,17 @@ def torsional_degrees_of_freedom(document: str) -> int:
     return 0
 
 
+class _SelectedMoleculeCommon(TypedDict):
+    ligand_id: str
+    parent_compound_id: str | None
+    chemical_state_id: str | None
+    chemical_state_formal_charge: int | None
+    source_index: int
+    name: str
+    canonical_smiles: str | None
+    molecular_weight_g_mol: float | None
+
+
 @dataclass(frozen=True, slots=True)
 class SelectedMolecule:
     """One molecule of an applied selection, resolved for either backend.
@@ -477,7 +469,7 @@ def resolve_selection(
                 )
             )
             continue
-        common: dict[str, object] = {
+        common: _SelectedMoleculeCommon = {
             "ligand_id": ligand_id,
             "parent_compound_id": ligand_id,
             "chemical_state_id": state.state_id,
@@ -495,7 +487,7 @@ def resolve_selection(
         ):
             resolved.append(
                 SelectedMolecule(
-                    **common,  # type: ignore[arg-type]
+                    **common,
                     unavailable_code=f"{code_prefix}_LIGAND_NOT_PREPARED",
                     unavailable_reason=(
                         "This molecule has no completed Meeko PDBQT preparation."
@@ -506,7 +498,7 @@ def resolve_selection(
         if status.chemical_state_id != state.state_id:
             resolved.append(
                 SelectedMolecule(
-                    **common,  # type: ignore[arg-type]
+                    **common,
                     unavailable_code=f"{code_prefix}_PREPARATION_STATE_MISMATCH",
                     unavailable_reason=(
                         "The prepared PDBQT belongs to a different or unrecorded "
@@ -530,7 +522,7 @@ def resolve_selection(
         except (AnkoraDomainError, ValueError) as error:
             resolved.append(
                 SelectedMolecule(
-                    **common,  # type: ignore[arg-type]
+                    **common,
                     unavailable_code=f"{code_prefix}_LIGAND_UNAVAILABLE",
                     unavailable_reason=str(getattr(error, "message", error)),
                 )
@@ -540,7 +532,7 @@ def resolve_selection(
         if missing:
             resolved.append(
                 SelectedMolecule(
-                    **common,  # type: ignore[arg-type]
+                    **common,
                     preparation_id=status.pdbqt_preparation_id,
                     sha256=pdbqt.artifact.sha256,
                     atom_types=atom_types,
@@ -554,7 +546,7 @@ def resolve_selection(
             continue
         resolved.append(
             SelectedMolecule(
-                **common,  # type: ignore[arg-type]
+                **common,
                 preparation_id=status.pdbqt_preparation_id,
                 sha256=pdbqt.artifact.sha256,
                 atom_types=atom_types,
