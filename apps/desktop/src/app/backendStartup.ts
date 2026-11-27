@@ -6,9 +6,16 @@ export const BACKEND_STARTUP_TIMEOUT_MS = 120_000;
 const HEALTH_ATTEMPT_TIMEOUT_MS = 3_000;
 const RETRY_INTERVAL_MS = 750;
 
+function desktopShellActive(): boolean {
+  try {
+    return isTauri();
+  } catch {
+    return false;
+  }
+}
+
 async function readDesktopBackendStartupError(): Promise<string | null> {
   try {
-    if (!isTauri()) return null;
     const message = await invoke<string | null>("backend_startup_error");
     return typeof message === "string" && message.trim().length > 0 ? message : null;
   } catch {
@@ -34,9 +41,11 @@ function pause(signal: AbortSignal): Promise<void> {
 /** Only read-only health probes retry; scientific operations never do. */
 export async function loadBackend(signal: AbortSignal) {
   signal.throwIfAborted();
-  const shellError = await readDesktopBackendStartupError();
-  if (shellError) {
-    throw new Error(shellError);
+  if (desktopShellActive()) {
+    const shellError = await readDesktopBackendStartupError();
+    if (shellError) {
+      throw new Error(shellError);
+    }
   }
   const startup = new AbortController();
   const cancel = () => startup.abort(signal.reason);

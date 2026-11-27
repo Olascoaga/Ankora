@@ -135,7 +135,7 @@ it("renders the connected backend and tool states", async () => {
   expect(screen.getByRole("button", { name: "Spectra Quartz" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Light" }));
   expect(document.documentElement).toHaveAttribute("data-theme", "light");
-  fireEvent.click(screen.getByText("Tools"));
+  fireEvent.click(screen.getByText("Tools", { selector: "summary" }));
   fireEvent.click(screen.getByRole("button", { name: "Scientific tool readiness" }));
   expect(screen.getByText("Python 3.12.1 · ankora-dev")).toBeInTheDocument();
   const rescanButton = await screen.findByRole("button", { name: "Rescan tools" });
