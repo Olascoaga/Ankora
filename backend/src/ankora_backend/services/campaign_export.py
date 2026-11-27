@@ -2952,7 +2952,14 @@ class CampaignExportService:
                 evidence,
                 collection_warnings=[*evidence.collection_warnings, methods_warning],
             )
-        if analog_search is not None or analog_selection is not None or focused_site is not None:
+        if (
+            (analog_search is not None or analog_selection is not None or focused_site is not None)
+            and (
+                methods is None
+                or "### Hit-to-Analog Structural Similarity Expansion & Pose-Focused Re-Screening"
+                not in methods
+            )
+        ):
             from ankora_backend.services.methods_report import render_analog_expansion_methods
 
             analog_methods = render_analog_expansion_methods(
