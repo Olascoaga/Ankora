@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { ankoraApi } from "../../api/client";
 import {
@@ -69,6 +69,11 @@ export function CampaignExportPanel({
   const canBrowse = folderChooserAvailable();
   const isGninaJob = sourceKind === "gnina_job";
   const isGninaScreening = sourceKind === "gnina_screening";
+
+  useEffect(() => {
+    setBundle(null);
+    setError(null);
+  }, [sourceKind, sourceId]);
 
   async function browse() {
     setError(null);
@@ -186,7 +191,7 @@ export function CampaignExportPanel({
             : "A campaign has to finish before it can be exported."}
         </p>
       ) : null}
-      {bundle ? (
+      {bundle && bundle.source_id === sourceId && bundle.source_kind === sourceKind ? (
         <div className="state-resolved-note">
           <strong>
             {bundle.display_name

@@ -436,6 +436,7 @@ def test_the_api_exposes_the_gpu_engine_on_its_own_paths() -> None:
         "/api/v1/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/content",
         "/api/v1/docking/autodock-gpu/jobs/{job_id}/poses/{artifact_id}/flex",
         "/api/v1/docking/autodock-gpu/batches",
+        "/api/v1/docking/autodock-gpu/batches/history",
         "/api/v1/docking/autodock-gpu/batches/latest",
         "/api/v1/docking/autodock-gpu/batches/{batch_id}",
         "/api/v1/docking/autodock-gpu/batches/{batch_id}/progress",

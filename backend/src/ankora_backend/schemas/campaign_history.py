@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CampaignEngine(StrEnum):
     AUTODOCK_VINA = "autodock_vina"
     AUTODOCK4 = "autodock4"
+    AUTODOCK_GPU = "autodock_gpu"
 
 
 class CampaignSummary(BaseModel):

@@ -18,6 +18,16 @@ from ankora_backend.schemas.autodock4 import (
     AutoDock4JobStatus,
     AutoDock4ToolIdentity,
 )
+from ankora_backend.schemas.autodock_gpu import (
+    AutoDockClusterResult,
+    AutoDockGpuBatchLigandResult,
+    AutoDockGpuBatchParameters,
+    AutoDockGpuBatchRecord,
+    AutoDockGpuBatchRequest,
+    AutoDockGpuToolIdentity,
+    AutoDockJobPhase,
+    AutoDockJobStatus,
+)
 from ankora_backend.schemas.binding_sites import BindingBox
 from ankora_backend.schemas.campaign_history import CampaignEngine
 from ankora_backend.schemas.docking import (
@@ -233,10 +243,19 @@ class _FakeAutoDock4Store:
         return list(self._records)
 
 
+class _FakeAutoDockGpuStore:
+    def __init__(self, records: list[AutoDockGpuBatchRecord]) -> None:
+        self._records = records
+
+    def list_batches(self) -> list[AutoDockGpuBatchRecord]:
+        return list(self._records)
+
+
 def _service(
     *,
     vina: list[VinaBatchDockingRecord] | None = None,
     autodock4: list[AutoDock4BatchRecord] | None = None,
+    autodock_gpu: list[AutoDockGpuBatchRecord] | None = None,
     boxes: dict[str, BindingBox] | None = None,
 ) -> CampaignHistoryService:
     return CampaignHistoryService(
@@ -245,6 +264,7 @@ def _service(
         binding_site_store=_FakeBindingSiteStore(  # type: ignore[arg-type]
             boxes or {SITE: BOX, SITE_TWIN: BOX, OTHER_SITE: ELSEWHERE}
         ),
+        autodock_gpu_store=_FakeAutoDockGpuStore(autodock_gpu or []),  # type: ignore[arg-type]
     )
 
 
@@ -408,3 +428,77 @@ def test_history_is_empty_rather_than_an_error_when_nothing_has_been_run() -> No
         ).campaigns
         == []
     )
+    assert (
+        service.autodock_gpu_history(
+            receptor_id=RECEPTOR, binding_site_id=SITE
+        ).campaigns
+        == []
+    )
+
+
+def test_autodock_gpu_history_is_listed_separately_from_cpu_autodock4() -> None:
+    gpu_batch = AutoDockGpuBatchRecord(
+        batch_id="gpu-batch-1",
+        status=AutoDockJobStatus.COMPLETED,
+        phase=AutoDockJobPhase.COMPLETE,
+        created_at=BASE_TIME + timedelta(minutes=15),
+        request=AutoDockGpuBatchRequest(
+            receptor_id=RECEPTOR,
+            binding_site_id=SITE,
+            map_set_id="maps-1",
+            library_id=LIBRARY,
+            filter_run_id=FILTER_RUN,
+            parameters=AutoDockGpuBatchParameters(),
+            acknowledge_inputs_and_scoring=True,
+        ),
+        autodock_gpu=AutoDockGpuToolIdentity(
+            tool=ToolIdentity(name="AutoDock-GPU", version="1.6"),
+            executable_path="synthetic-gpu",
+            sha256="f" * 64,
+            architecture="x86_64",
+            build="Release",
+            device_number=1,
+            device_name="Synthetic GPU",
+        ),
+        receptor_id=RECEPTOR,
+        binding_site_id=SITE,
+        map_set_id="maps-1",
+        map_set_identity_key="e" * 64,
+        selection_manifest_sha256=MANIFEST,
+        selected_count=1,
+        worker_count=1,
+        completed_count=1,
+        succeeded_count=1,
+        failed_count=0,
+        canceled_count=0,
+        entries=[
+            AutoDockGpuBatchLigandResult(
+                ligand_id="lig-1",
+                source_index=0,
+                name="GPU Hit",
+                canonical_smiles="CC",
+                status=AutoDockJobStatus.COMPLETED,
+                phase=AutoDockJobPhase.COMPLETE,
+                clusters=[
+                    AutoDockClusterResult(
+                        cluster_rank=1,
+                        lowest_binding_energy_kcal_mol=-6.8,
+                        mean_binding_energy_kcal_mol=-6.7,
+                        run_count=4,
+                        representative_run=1,
+                        runs=[1, 2, 3, 4],
+                    )
+                ],
+            )
+        ],
+    )
+    service = _service(
+        autodock4=[_autodock4("cpu-batch-1", [-5.4])],
+        autodock_gpu=[gpu_batch],
+    )
+    gpu_history = service.autodock_gpu_history(receptor_id=RECEPTOR, binding_site_id=SITE)
+    cpu_history = service.autodock4_history(receptor_id=RECEPTOR, binding_site_id=SITE)
+    assert gpu_history.engine is CampaignEngine.AUTODOCK_GPU
+    assert [item.batch_id for item in gpu_history.campaigns] == ["gpu-batch-1"]
+    assert gpu_history.campaigns[0].best_result_kcal_mol == -6.8
+    assert [item.batch_id for item in cpu_history.campaigns] == ["cpu-batch-1"]

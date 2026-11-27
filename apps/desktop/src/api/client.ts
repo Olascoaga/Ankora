@@ -845,6 +845,14 @@ getStructure: (structureId: string): Promise<StructureRecord> =>
       `/docking/autodock4/batches/history?${campaignHistoryQuery(receptorId, bindingSiteId)}`,
     ),
 
+  autoDockGpuCampaignHistory: (
+    receptorId: string,
+    bindingSiteId: string,
+  ): Promise<CampaignHistory> =>
+    getJson<CampaignHistory>(
+      `/docking/autodock-gpu/batches/history?${campaignHistoryQuery(receptorId, bindingSiteId)}`,
+    ),
+
   getAutoDock4Batch: (batchId: string): Promise<AutoDock4BatchRecord> =>
     getJson<AutoDock4BatchRecord>(`/docking/autodock4/batches/${batchId}`),
 

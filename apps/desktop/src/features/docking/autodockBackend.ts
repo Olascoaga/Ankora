@@ -69,6 +69,7 @@ export interface CampaignView {
   canceled_count: number;
   entries: CampaignEntryView[];
   warnings: StructuredWarning[];
+  failure: { code: string; message: string } | null;
 }
 
 export interface CampaignInputs {
@@ -147,6 +148,7 @@ function fromCpuRecord(record: AutoDock4BatchRecord): CampaignView {
     failed_count: record.failed_count,
     canceled_count: record.canceled_count,
     warnings: record.warnings,
+    failure: record.failure,
     entries: record.entries.map((entry) => ({
       ligand_id: entry.ligand_id,
       source_index: entry.source_index,
@@ -182,7 +184,7 @@ export const cpuBinding: AutoDockBackendBinding = {
   getBatch: async (batchId) => fromCpuRecord(await ankoraApi.getAutoDock4Batch(batchId)),
   getProgressRevision: async (batchId, afterRevision) => {
     const progress = await ankoraApi.getAutoDock4BatchProgress(batchId, afterRevision);
-    return progress.revision === afterRevision ? null : progress.revision;
+    return progress.revision <= afterRevision ? null : progress.revision;
   },
   cancelBatch: async (batchId) => {
     await ankoraApi.cancelAutoDock4Batch(batchId);
@@ -236,6 +238,7 @@ function fromGpuRecord(record: AutoDockGpuBatchRecord): CampaignView {
     failed_count: record.failed_count,
     canceled_count: record.canceled_count,
     warnings: record.warnings,
+    failure: record.failure,
     entries: record.entries.map((entry) => ({
       ligand_id: entry.ligand_id,
       source_index: entry.source_index,
@@ -273,7 +276,7 @@ export const gpuBinding: AutoDockBackendBinding = {
     fromGpuRecord(await ankoraApi.getAutoDockGpuBatch(batchId)),
   getProgressRevision: async (batchId, afterRevision) => {
     const progress = await ankoraApi.getAutoDockGpuBatchProgress(batchId);
-    return progress.revision === afterRevision ? null : progress.revision;
+    return progress.revision <= afterRevision ? null : progress.revision;
   },
   cancelBatch: async (batchId) => {
     await ankoraApi.cancelAutoDockGpuBatch(batchId);

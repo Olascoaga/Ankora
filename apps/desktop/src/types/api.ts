@@ -1976,7 +1976,7 @@ export interface EngineComparison {
  */
 export interface CampaignSummary {
   batch_id: string;
-  engine: "autodock_vina" | "autodock4";
+  engine: "autodock_vina" | "autodock4" | "autodock_gpu";
   engine_version: string;
   status: string;
   is_running: boolean;
@@ -1998,7 +1998,7 @@ export interface CampaignSummary {
 }
 
 export interface CampaignHistory {
-  engine: "autodock_vina" | "autodock4";
+  engine: "autodock_vina" | "autodock4" | "autodock_gpu";
   receptor_id: string;
   binding_site_id: string;
   campaigns: CampaignSummary[];

@@ -637,6 +637,11 @@ function CampaignBrowser({
                 </small>
               </p>
             )}
+            {entry.stale ? (
+              <p className="results-card-warning">
+                Stale lineage{entry.stale_reasons?.length ? ` · ${entry.stale_reasons[0]}` : ""}
+              </p>
+            ) : null}
             {(entry.warnings ?? []).some((warning) => warning.code === "GNINA_CNN_VS_NONPOSITIVE_AFFINITY") ? (
               <p className="results-card-warning">CNN_VS includes non-positive CNNaffinity (≤ 0 pK)</p>
             ) : null}
@@ -850,6 +855,16 @@ function Evidence({ entry }: { entry: CatalogEntry }) {
             ? <div><dt>Finished</dt><dd>{formatApplicationDateTime(entry.completed_at)}</dd></div>
             : null}
         </dl>
+        {entry.stale ? (
+          <div className="protonation-blocker" role="alert">
+            <strong>STALE_SOURCE_ARTIFACT</strong>
+            <small>
+              {entry.stale_reasons?.length
+                ? entry.stale_reasons.join("; ")
+                : "Upstream artifact changed after this result ran; do not present as current."}
+            </small>
+          </div>
+        ) : null}
         {(entry.warnings ?? []).length > 0 ? (
           <div className="protonation-blocker" role="alert">
             {(entry.warnings ?? []).map((warning, index) => (

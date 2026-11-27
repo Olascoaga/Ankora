@@ -77,10 +77,14 @@ export function AutoDock4Workspace({
   const mapsBusy = Boolean(mapJob && !TERMINAL.has(mapJob.status));
   const dockingBusy = Boolean(job && !TERMINAL.has(job.status));
   const mapSetId = mapJob?.status === "completed" ? mapJob.map_set_id : null;
+  const activeEngineTool =
+    backend === "autodock_gpu" ? tools?.autodock_gpu : tools?.autodock4;
   const toolsReady = Boolean(
-    tools?.autogrid4.available && tools.autodock4.available,
+    tools?.autogrid4.available && activeEngineTool?.available,
   );
-  const inputsReady = Boolean(receptorPdbqt && ligand && ligandPdbqt);
+  const inputsReady = Boolean(
+    receptorPdbqt && !bindingSite.stale && ligand && ligandPdbqt,
+  );
   const selectedPose = job?.runs.find((item) => item.run === selectedRun) ?? null;
 
   const viewerSources = useMemo<ViewerSource[]>(() => {
@@ -214,6 +218,7 @@ export function AutoDock4Workspace({
 
   function updateParameter(name: string, value: number) {
     setParameters((current) => ({ ...current, [name]: value }));
+    setAcknowledged(false);
   }
 
   return (
@@ -278,7 +283,13 @@ export function AutoDock4Workspace({
         <section className="receptor-section">
           <div className="filter-heading"><span>1 · Scientific inputs</span></div>
           <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-          <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
+          <InputState
+            ready={!bindingSite.stale}
+            label="Binding site"
+            detail={bindingSite.stale
+              ? "Stale — confirm a current binding site before docking."
+              : `${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`}
+          />
           <InputState ready={Boolean(ligandPdbqt)} label="Ligand PDBQT" detail={ligandPdbqt ? `${ligand?.inspection.name ?? "Ligand"} · ${ligandPdbqt.artifact.sha256.slice(0, 12)}…` : "Return to Ligand and generate PDBQT."} />
           <ActiveFlexResBanner receptor={receptor} engineFamily="autodock4" />
         </section>
@@ -332,6 +343,7 @@ export function AutoDock4Workspace({
                   onClick={() => {
                     setBackend(option.backend);
                     setParameters(defaultParameters(option.backend));
+                    setAcknowledged(false);
                   }}
                 >
                   <strong>{option.label}</strong>
@@ -353,7 +365,7 @@ export function AutoDock4Workspace({
         <section className="receptor-section">
           <div className="filter-heading">
             <span>4 · Search</span>
-            <small>{tools?.autodock4.available ? tools.autodock4.version : "Unavailable"}</small>
+            <small>{activeEngineTool?.available ? activeEngineTool.version : "Unavailable"}</small>
           </div>
           {isGpuJobParameters(parameters) ? (
             <>
@@ -372,21 +384,24 @@ export function AutoDock4Workspace({
                 id="gpu-job-local-search"
                 value={parameters.local_search_method}
                 disabled={dockingBusy}
-                onChange={(event) => setParameters((current) => ({ ...current, local_search_method: event.target.value as typeof parameters.local_search_method }))}
+                onChange={(event) => {
+                  setParameters((current) => ({ ...current, local_search_method: event.target.value as typeof parameters.local_search_method }));
+                  setAcknowledged(false);
+                }}
               >
                 <option value="ad">ADADELTA (tool default)</option>
                 <option value="sw">Solis-Wets (what the CPU protocol uses)</option>
                 <option value="fire">FIRE</option>
               </select>
               <label className="check-row">
-                <input type="checkbox" checked={parameters.heuristics} disabled={dockingBusy} onChange={(event) => setParameters((current) => ({ ...current, heuristics: event.target.checked }))} />
+                <input type="checkbox" checked={parameters.heuristics} disabled={dockingBusy} onChange={(event) => { setParameters((current) => ({ ...current, heuristics: event.target.checked })); setAcknowledged(false); }} />
                 <span>
                   <strong>Let the tool choose the evaluation count</strong>
                   <small>Its ligand-based heuristic. Faster, but the budget is no longer something you stated.</small>
                 </span>
               </label>
               <label className="check-row">
-                <input type="checkbox" checked={parameters.autostop} disabled={dockingBusy} onChange={(event) => setParameters((current) => ({ ...current, autostop: event.target.checked }))} />
+                <input type="checkbox" checked={parameters.autostop} disabled={dockingBusy} onChange={(event) => { setParameters((current) => ({ ...current, autostop: event.target.checked })); setAcknowledged(false); }} />
                 <span>
                   <strong>Stop early on convergence</strong>
                   <small>Halts a run once the best energies settle. Roughly twice as fast again.</small>
@@ -418,7 +433,7 @@ export function AutoDock4Workspace({
           {dockingBusy ? (
             <button type="button" className="danger-action docking-primary-action" onClick={() => void cancelDocking()} disabled={job?.status === "cancel_requested"}>Cancel docking</button>
           ) : (
-            <button type="button" className="primary-action docking-primary-action" onClick={() => void startDocking()} disabled={!mapSetId || !acknowledged || mapsBusy}>
+            <button type="button" className="primary-action docking-primary-action" onClick={() => void startDocking()} disabled={!mapSetId || !acknowledged || mapsBusy || !toolsReady || !inputsReady}>
               {backend === "autodock_gpu" ? "Run AutoDock-GPU" : "Run AutoDock4"}
             </button>
           )}

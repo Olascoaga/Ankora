@@ -104,6 +104,7 @@ export function LibraryDockingWorkspace({
     tools?.vina.available
     && tools.vina.version === "1.2.7"
     && receptorPdbqt
+    && !bindingSite.stale
     && preparedCount > 0,
   );
   const requestedWorkers = Math.min(
@@ -198,7 +199,7 @@ export function LibraryDockingWorkspace({
       refreshing = true;
       void ankoraApi.getDockingBatchProgress(batch.batch_id, revisionRef.current)
         .then((progress) => {
-          if (disposed) return;
+          if (disposed || progress.revision < revisionRef.current) return;
           revisionRef.current = progress.revision;
           setBatch((current) => current?.batch_id === progress.batch_id
             ? mergeBatchProgress(current, progress)
@@ -371,7 +372,13 @@ export function LibraryDockingWorkspace({
       <section className="receptor-section">
         <div className="filter-heading"><span>1 · Scientific inputs</span></div>
         <InputState ready={Boolean(receptorPdbqt)} label="Receptor PDBQT" detail={receptorPdbqt ? `${receptorPdbqt.filename} · ${receptorPdbqt.sha256.slice(0, 12)}…` : "Return to Receptor and generate PDBQT."} />
-        <InputState ready label="Binding site" detail={`${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`} />
+        <InputState
+          ready={!bindingSite.stale}
+          label="Binding site"
+          detail={bindingSite.stale
+            ? "Stale — confirm a current binding site before docking."
+            : `${formatScientificNumber(bindingSite.box.size_x, 1)} × ${formatScientificNumber(bindingSite.box.size_y, 1)} × ${formatScientificNumber(bindingSite.box.size_z, 1)} Å`}
+        />
         <InputState ready={preparedCount > 0} label="Applied library selection" detail={`${preparedCount} / ${libraryInput.selected_count} selected molecules prepared · ${libraryInput.library_name}`} />
         <ActiveFlexResBanner receptor={receptor} engineFamily="vina" />
         {unavailableCount > 0 ? <div className="protonation-blocker"><strong>{unavailableCount} selected {unavailableCount === 1 ? "molecule is" : "molecules are"} not docking-ready</strong><small>The complete manifest remains in the campaign. Ready molecules will run; every unavailable molecule will be retained as an explicit preflight failure.</small></div> : null}
