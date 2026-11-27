@@ -1648,9 +1648,16 @@ def collect_analog_expansion_evidence(
         for cand_lib_id in candidate_library_ids:
             try:
                 lib = lig_store.load_library_record(cand_lib_id)
-            except AnkoraDomainError:
-                lib = None
-            if lib is None or not (
+            except AnkoraDomainError as error:
+                warnings.append(
+                    {
+                        "kind": "analog_library_unreadable",
+                        "identity": cand_lib_id,
+                        "reason": str(error),
+                    }
+                )
+                continue
+            if not (
                 lib.artifact.origin_analog_selection_id or lib.artifact.origin_analog_search_id
             ):
                 continue
@@ -1665,7 +1672,15 @@ def collect_analog_expansion_evidence(
                     / sel_id
                     / "record.json"
                 )
-                if sel_path.is_file():
+                if not sel_path.is_file():
+                    warnings.append(
+                        {
+                            "kind": "analog_selection_missing",
+                            "identity": sel_id,
+                            "reason": "Referenced analog selection record was not found on disk.",
+                        }
+                    )
+                else:
                     try:
                         loaded_sel = analog_store.load_selection(sel_id)
                         if selection_rec is None:
@@ -1713,7 +1728,15 @@ def collect_analog_expansion_evidence(
                     / search_id
                     / "record.json"
                 )
-                if search_path.is_file():
+                if not search_path.is_file():
+                    warnings.append(
+                        {
+                            "kind": "analog_search_missing",
+                            "identity": search_id,
+                            "reason": "Referenced analog search record was not found on disk.",
+                        }
+                    )
+                else:
                     try:
                         loaded_search = analog_store.load_search(search_id)
                         if search_rec is None:
@@ -1775,7 +1798,18 @@ def collect_analog_expansion_evidence(
                                 / cat_id
                                 / "record.json"
                             )
-                            if cat_path.is_file():
+                            if not cat_path.is_file():
+                                warnings.append(
+                                    {
+                                        "kind": "analog_catalog_missing",
+                                        "identity": cat_id,
+                                        "reason": (
+                                            "Referenced analog catalog record was not found "
+                                            "on disk."
+                                        ),
+                                    }
+                                )
+                            else:
                                 cat_rec = analog_store.load_catalog(cat_id)
                                 cat_target = (
                                     destination
@@ -2908,8 +2942,16 @@ class CampaignExportService:
             )
 
         # The Methods section this campaign's own records support. Rendered
-        # before manifest.json so its SHA-256 is recorded in bundle_files.
-        methods = _methods_markdown(source_kind, batch_id)
+        # from self._root (never process env, D5-007) before manifest.json so
+        # its SHA-256 is recorded in bundle_files and failures surface explicitly.
+        methods, methods_warning = _methods_markdown(
+            self._root, self._project_root.name, source_kind, batch_id
+        )
+        if methods_warning is not None:
+            evidence = replace(
+                evidence,
+                collection_warnings=[*evidence.collection_warnings, methods_warning],
+            )
         if analog_search is not None or analog_selection is not None or focused_site is not None:
             from ankora_backend.services.methods_report import render_analog_expansion_methods
 
@@ -3293,17 +3335,27 @@ def _normalize_display_name(value: str | None) -> str | None:
     return normalized
 
 
-def _methods_markdown(source_kind: str, batch_id: str) -> str | None:
-    """The campaign's Methods section, or nothing if it cannot be rendered.
+def _methods_markdown(
+    root: Path, project_id: str, source_kind: str, batch_id: str
+) -> tuple[str | None, dict[str, str] | None]:
+    """Render the campaign's Methods section rooted at `root`, returning any failure warning.
 
     Imported inside the function: the renderer reaches into every store the
     campaign touched, and an export must not fail because one of those records
-    has been removed since.
+    has been removed since, while never dropping methods.md silently (D5-007).
     """
     from ankora_backend.services.methods_report import MethodsReportService
 
+    catalog_id = f"{source_kind}:{batch_id}"
     try:
-        report = MethodsReportService.from_environment().render(f"{source_kind}:{batch_id}")
-    except (AnkoraDomainError, OSError, ValueError):
-        return None
-    return report.markdown
+        report = MethodsReportService.from_root(root, project_id=project_id).render(catalog_id)
+    except (AnkoraDomainError, OSError, ValueError) as error:
+        return (
+            None,
+            {
+                "kind": "methods_report_unavailable",
+                "identity": catalog_id,
+                "reason": str(error),
+            },
+        )
+    return report.markdown, None

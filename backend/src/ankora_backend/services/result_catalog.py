@@ -10,6 +10,7 @@ what keeps the interface from growing its own opinion about where results live.
 """
 
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from ankora_backend.domain.errors import AnkoraDomainError
@@ -106,6 +107,20 @@ class ResultCatalogService:
             ligand_store=LigandArtifactStore.from_environment(),
             gnina_store=GninaJobStore.from_environment(),
             gnina_screening_store=GninaScreeningStore.from_environment(),
+        )
+
+    @classmethod
+    def from_root(cls, root: Path, project_id: str | None = None) -> "ResultCatalogService":
+        """Bind every catalog store to an explicit data root (D5-007)."""
+        resolved = root.resolve()
+        return cls(
+            docking_store=DockingArtifactStore(resolved, project_id=project_id),
+            autodock4_store=AutoDock4JobStore(resolved, project_id=project_id),
+            autodock_gpu_store=AutoDockGpuJobStore(resolved, project_id=project_id),
+            binding_site_store=BindingSiteArtifactStore(resolved, project_id=project_id),
+            ligand_store=LigandArtifactStore(resolved, project_id=project_id),
+            gnina_store=GninaJobStore(resolved, project_id=project_id),
+            gnina_screening_store=GninaScreeningStore(resolved, project_id=project_id),
         )
 
     # --- listing ----------------------------------------------------------

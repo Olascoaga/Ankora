@@ -17,10 +17,23 @@ Two boundaries the shapes enforce:
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ankora_backend.schemas.results_catalog import ReproducibilityAssessment
+
+
+class ConsensusReproducibilityMetadata(BaseModel):
+    """Typed reproducibility metadata recorded on ADR-030 consensus export bundles (D7-012)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["deterministic_rank_space_consensus"] = "deterministic_rank_space_consensus"
+    reference_panel_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    tie_policy: str | None = None
+    failure_policy: str | None = None
+    note: str | None = None
 
 
 class ExportKind(StrEnum):
@@ -60,10 +73,10 @@ class ExportEntry(BaseModel):
     archive_filename: str | None = None
     analysis_id: str | None = None
     ligand_id: str | None = None
-    # New campaign manifests carry comparison evidence. The boolean remains
-    # readable only so pre-assessment exports can still be catalogued; it is
-    # never promoted into a measured claim.
-    reproducibility: ReproducibilityAssessment | None = None
+    # New campaign manifests carry comparison evidence; consensus manifests carry
+    # deterministic rank-space metadata (D7-012). The boolean remains readable only
+    # so pre-assessment exports can still be catalogued.
+    reproducibility: ReproducibilityAssessment | ConsensusReproducibilityMetadata | None = None
     bitwise_reproducible: bool | None = None
 
     directory: str = Field(min_length=1)

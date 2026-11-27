@@ -220,6 +220,7 @@ class MethodsReportService:
         autodock_gpu: AutoDockGpuJobStore,
         gnina: GninaJobStore | None = None,
         gnina_screening: GninaScreeningStore | None = None,
+        project_root: Path | None = None,
     ) -> None:
         self._catalog = catalog
         self._structures = structures
@@ -233,14 +234,16 @@ class MethodsReportService:
         self._autodock_gpu = autodock_gpu
         self._gnina = gnina
         self._gnina_screening = gnina_screening
+        self._project_root = project_root
 
     @classmethod
     def from_environment(cls) -> "MethodsReportService":
+        binding_sites = BindingSiteArtifactStore.from_environment()
         return cls(
             catalog=ResultCatalogService.from_environment(),
             structures=StructureArtifactStore.from_environment(),
             receptors=ReceptorArtifactStore.from_environment(),
-            binding_sites=BindingSiteArtifactStore.from_environment(),
+            binding_sites=binding_sites,
             pockets=PocketDetectionArtifactStore.from_environment(),
             ligands=LigandArtifactStore.from_environment(),
             maps=AutoGridMapStore.from_environment(),
@@ -249,6 +252,28 @@ class MethodsReportService:
             autodock_gpu=AutoDockGpuJobStore.from_environment(),
             gnina=GninaJobStore.from_environment(),
             gnina_screening=GninaScreeningStore.from_environment(),
+            project_root=binding_sites.project_root,
+        )
+
+    @classmethod
+    def from_root(cls, root: Path, project_id: str | None = None) -> "MethodsReportService":
+        """Bind every Methods store to an explicit data root instead of process env (D5-007)."""
+        resolved = root.resolve()
+        binding_sites = BindingSiteArtifactStore(resolved, project_id=project_id)
+        return cls(
+            catalog=ResultCatalogService.from_root(resolved, project_id=project_id),
+            structures=StructureArtifactStore(resolved, project_id=project_id),
+            receptors=ReceptorArtifactStore(resolved, project_id=project_id),
+            binding_sites=binding_sites,
+            pockets=PocketDetectionArtifactStore(resolved, project_id=project_id),
+            ligands=LigandArtifactStore(resolved, project_id=project_id),
+            maps=AutoGridMapStore(resolved, project_id=project_id),
+            docking=DockingArtifactStore(resolved, project_id=project_id),
+            autodock4=AutoDock4JobStore(resolved, project_id=project_id),
+            autodock_gpu=AutoDockGpuJobStore(resolved, project_id=project_id),
+            gnina=GninaJobStore(resolved, project_id=project_id),
+            gnina_screening=GninaScreeningStore(resolved, project_id=project_id),
+            project_root=binding_sites.project_root,
         )
 
     def render(self, catalog_id: str) -> MethodsReport:
@@ -272,6 +297,7 @@ class MethodsReportService:
             self._ligands_section(draft, entry)
             self._docking_section(draft, entry)
             self._outcome(draft, entry)
+        self._v02_sections(draft, entry)
         self._software_section(draft)
 
         return MethodsReport(
@@ -2003,6 +2029,77 @@ class MethodsReportService:
             )
         self._reproducibility_prose(draft, entry)
         draft.say("")
+
+    def _v02_sections(self, draft: _Draft, entry: CatalogEntry) -> None:
+        """Append record-derived v0.2 M2/M3/M4 Methods sections when evidence exists (D5-018)."""
+        project_root = self._project_root
+        if project_root is None or not project_root.is_dir():
+            return
+
+        # M3: Coupled pose-quality assessments for this campaign
+        quality_records: list[PoseQualityRecord] = []
+        quality_dir = project_root / "analysis" / "pose_quality"
+        if quality_dir.is_dir():
+            for path in sorted(quality_dir.glob("*/record.json")):
+                try:
+                    qrec = PoseQualityRecord.model_validate_json(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if qrec.catalog_id == entry.catalog_id:
+                    quality_records.append(qrec)
+        if quality_records:
+            draft.say(render_pose_quality_methods(quality_records).rstrip())
+            draft.say("")
+
+        # M4: Declarative interaction-rule evaluations & referenced rule sets
+        rule_evals: list[InteractionRuleEvaluationRecord] = []
+        referenced_rule_set_ids: set[str] = set()
+        evals_dir = project_root / "analysis" / "interaction_rule_evaluations"
+        if evals_dir.is_dir():
+            for path in sorted(evals_dir.glob("*/record.json")):
+                try:
+                    erec = InteractionRuleEvaluationRecord.model_validate_json(
+                        path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    continue
+                if erec.catalog_id == entry.catalog_id:
+                    rule_evals.append(erec)
+                    referenced_rule_set_ids.add(erec.rule_set_id)
+        rule_sets: list[InteractionRuleSetRecord] = []
+        rule_sets_dir = project_root / "analysis" / "interaction_rule_sets"
+        for rule_set_id in sorted(referenced_rule_set_ids):
+            rs_path = rule_sets_dir / rule_set_id / "record.json"
+            if not rs_path.is_file():
+                continue
+            try:
+                rule_sets.append(
+                    InteractionRuleSetRecord.model_validate_json(
+                        rs_path.read_text(encoding="utf-8")
+                    )
+                )
+            except (OSError, ValueError):
+                continue
+        if rule_sets or rule_evals:
+            draft.say(render_interaction_rules_methods(rule_sets, rule_evals).rstrip())
+            draft.say("")
+
+        # M2: Out-of-sample protocol calibration runs matching this receptor + binding site
+        cal_dir = project_root / "calibrations"
+        if cal_dir.is_dir() and entry.receptor_id and entry.binding_site_id:
+            for path in sorted(cal_dir.glob("*/record.json")):
+                try:
+                    cal = CalibrationRunRecord.model_validate_json(
+                        path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    continue
+                if (
+                    cal.receptor_id == entry.receptor_id
+                    and cal.binding_site_id == entry.binding_site_id
+                ):
+                    draft.say(render_calibration_methods(cal).rstrip())
+                    draft.say("")
 
     def _reproducibility_prose(self, draft: _Draft, entry: CatalogEntry) -> None:
         """The three repeat-behavior states, shared by every engine.

@@ -24,6 +24,7 @@ from typing import Any
 from uuid import uuid4
 
 from ankora_backend import __version__
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.calibration_store import CalibrationArtifactStore
 from ankora_backend.persistence.consensus_store import ConsensusArtifactStore
@@ -44,7 +45,10 @@ from ankora_backend.services.export_destinations import (
 )
 from ankora_backend.services.methods_report import (
     render_analog_expansion_methods,
+    render_calibration_methods,
     render_consensus_methods,
+    render_interaction_rules_methods,
+    render_pose_quality_methods,
 )
 from ankora_backend.services.project_dependencies import (
     ArtifactFreshness,
@@ -632,6 +636,67 @@ class ConsensusExportService:
             ]
 
         methods_markdown = render_consensus_methods(record)
+        # Wire embedded M2 calibration, M3 pose quality, and M4 interaction rules
+        # into consensus methods.md whenever those artifacts were bundled (D5-018).
+        if record.pc_l2_model is not None:
+            try:
+                cal_record = self._calibration_store.get_run(record.pc_l2_model.calibration_id)
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_calibration_methods(cal_record)
+                )
+            except (AnkoraDomainError, OSError, ValueError):
+                pass
+        if pose_quality_assessments:
+            from ankora_backend.schemas.pose_quality import PoseQualityRecord
+
+            pq_records: list[PoseQualityRecord] = []
+            for pq_entry in pose_quality_assessments:
+                pq_path = directory / str(pq_entry["path"])
+                try:
+                    pq_records.append(
+                        PoseQualityRecord.model_validate_json(pq_path.read_text(encoding="utf-8"))
+                    )
+                except (OSError, ValueError):
+                    continue
+            if pq_records:
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_pose_quality_methods(pq_records)
+                )
+        if interaction_rule_sets or interaction_rule_evaluations:
+            from ankora_backend.schemas.interaction_rules import (
+                InteractionRuleEvaluationRecord,
+                InteractionRuleSetRecord,
+            )
+
+            rs_records: list[InteractionRuleSetRecord] = []
+            for rs_entry in interaction_rule_sets:
+                rs_path = directory / str(rs_entry["path"])
+                try:
+                    rs_records.append(
+                        InteractionRuleSetRecord.model_validate_json(
+                            rs_path.read_text(encoding="utf-8")
+                        )
+                    )
+                except (OSError, ValueError):
+                    continue
+            ev_records: list[InteractionRuleEvaluationRecord] = []
+            for ev_entry in interaction_rule_evaluations:
+                ev_path = directory / str(ev_entry["path"])
+                try:
+                    ev_records.append(
+                        InteractionRuleEvaluationRecord.model_validate_json(
+                            ev_path.read_text(encoding="utf-8")
+                        )
+                    )
+                except (OSError, ValueError):
+                    continue
+            if rs_records or ev_records:
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_interaction_rules_methods(rs_records, ev_records)
+                )
         if analog_search is not None or analog_selection is not None or focused_site is not None:
             methods_markdown = (
                 f"{methods_markdown.rstrip()}\n\n"
