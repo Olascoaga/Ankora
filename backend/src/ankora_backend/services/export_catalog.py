@@ -20,6 +20,7 @@ from uuid import UUID
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.exports import (
+    ConsensusReproducibilityMetadata,
     ExportEntry,
     ExportFile,
     ExportKind,
@@ -231,10 +232,17 @@ def _manifest(path: Path) -> dict[str, Any] | None:
     return loaded if isinstance(loaded, dict) else None
 
 
-def _assessment(value: Any) -> ReproducibilityAssessment | None:
-    """Read evidence-aware manifests without upgrading legacy booleans."""
+def _assessment(
+    value: Any,
+) -> ReproducibilityAssessment | ConsensusReproducibilityMetadata | None:
+    """Read evidence-aware campaign and consensus reproducibility sections (D7-012)."""
     if not isinstance(value, dict) or "status" not in value:
         return None
+    if value.get("status") == "deterministic_rank_space_consensus":
+        try:
+            return ConsensusReproducibilityMetadata.model_validate(value)
+        except ValueError:
+            return None
     evidence = {key: item for key, item in value.items() if key != "note"}
     try:
         return ReproducibilityAssessment.model_validate(evidence)

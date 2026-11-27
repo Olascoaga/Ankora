@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -16,6 +17,8 @@ from ankora_backend.schemas.analog_expansion import (
     AnalogSearchRecord,
     AnalogSelectionRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 _STAGE = "analog_expansion_storage"
@@ -98,7 +101,13 @@ class AnalogExpansionStore:
                 continue
             try:
                 rec = self.load_catalog(entry.name)
-            except (AnkoraDomainError, OSError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable analog expansion record %s: %s (%s)",
+                    entry,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             summaries.append(
                 AnalogCatalogSummary(
@@ -163,7 +172,13 @@ class AnalogExpansionStore:
                 continue
             try:
                 records.append(self.load_search(entry.name))
-            except (AnkoraDomainError, OSError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable analog expansion record %s: %s (%s)",
+                    entry,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         records.sort(key=lambda item: (item.created_at, item.analog_search_id), reverse=True)
         return records
@@ -195,7 +210,13 @@ class AnalogExpansionStore:
                 continue
             try:
                 records.append(self.load_selection(entry.name))
-            except (AnkoraDomainError, OSError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable analog expansion record %s: %s (%s)",
+                    entry,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         records.sort(key=lambda item: (item.created_at, item.analog_selection_id), reverse=True)
         return records

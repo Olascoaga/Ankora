@@ -93,7 +93,12 @@ from ankora_backend.schemas.docking import (
     VinaLocalRefinementRequest,
 )
 from ankora_backend.schemas.engine_comparison import EngineComparison
-from ankora_backend.schemas.exports import ExportKind, ExportPage
+from ankora_backend.schemas.exports import (
+    CampaignExportResponse,
+    ConsensusExportResponse,
+    ExportKind,
+    ExportPage,
+)
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
 from ankora_backend.schemas.gnina import (
     GninaDockingRequest,
@@ -403,7 +408,9 @@ def retry_recovered_work(
     request: Request,
 ) -> WorkRetryResponse:
     """Launch a reconciled request again under a fresh immutable identity."""
-    return _work_retry_service(request).retry(work_kind, work_id, retry_request)
+    return _project_runtime(request).run_locked(
+        lambda: _work_retry_service(request).retry(work_kind, work_id, retry_request)
+    )
 
 
 @router.get("/tools", response_model=ToolsResponse)
@@ -1104,7 +1111,9 @@ def create_gnina_docking_job(
     request: GninaDockingRequest,
     http_request: Request,
 ) -> GninaJobRecord:
-    return _gnina_docking_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _gnina_docking_service(http_request).start(request)
+    )
 
 
 @router.post(
@@ -1179,7 +1188,9 @@ def create_vina_docking_job(
     request: VinaDockingRequest,
     http_request: Request,
 ) -> VinaDockingJobRecord:
-    return _vina_docking_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _vina_docking_service(http_request).start(request)
+    )
 
 
 def _pose_file_response(path: Path | None) -> FileResponse:
@@ -1278,7 +1289,9 @@ def get_gnina_pose_flex(job_id: str, artifact_id: str, request: Request) -> File
 def create_vina_refinement(
     request: VinaLocalRefinementRequest, http_request: Request
 ) -> VinaLocalRefinementRecord:
-    return _vina_docking_service(http_request).refine_pose_local_only(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _vina_docking_service(http_request).refine_pose_local_only(request)
+    )
 
 
 @router.get("/docking/refinements/{refinement_id}", response_model=VinaLocalRefinementRecord)
@@ -1318,7 +1331,9 @@ def get_vina_refinement_pose_flex(
 def create_gnina_refinement(
     request: GninaLocalRefinementRequest, http_request: Request
 ) -> GninaLocalRefinementRecord:
-    return _gnina_docking_service(http_request).refine_pose_local_only(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _gnina_docking_service(http_request).refine_pose_local_only(request)
+    )
 
 
 @router.get("/docking/gnina/refinements/{refinement_id}", response_model=GninaLocalRefinementRecord)
@@ -1392,7 +1407,9 @@ def create_vina_docking_batch(
     batch_request: VinaBatchDockingRequest,
     request: Request,
 ) -> VinaBatchDockingRecord:
-    return _vina_docking_service(request).start_batch(batch_request)
+    return _project_runtime(request).run_locked(
+        lambda: _vina_docking_service(request).start_batch(batch_request)
+    )
 
 
 @router.get("/docking/batches/latest", response_model=VinaBatchDockingRecord)
@@ -1468,7 +1485,9 @@ def ensure_autogrid_map_set(
     request: AutoGridMapSetRequest,
     http_request: Request,
 ) -> AutoGridMapSetSummary:
-    return _autogrid_map_service(http_request).ensure_map_set(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autogrid_map_service(http_request).ensure_map_set(request)
+    )
 
 
 @router.post(
@@ -1480,7 +1499,9 @@ def start_autogrid_job(
     request: AutoGridMapSetRequest,
     http_request: Request,
 ) -> AutoGridMapJobRecord:
-    return _autogrid_map_service(http_request).start_map_set(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autogrid_map_service(http_request).start_map_set(request)
+    )
 
 
 @router.get("/autogrid/jobs/{job_id}", response_model=AutoGridMapJobRecord)
@@ -1531,7 +1552,9 @@ def create_autodock4_job(
     request: AutoDock4DockingRequest,
     http_request: Request,
 ) -> AutoDock4DockingJobRecord:
-    return _autodock4_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock4_service(http_request).start(request)
+    )
 
 
 @router.get(
@@ -1577,7 +1600,9 @@ def create_autodock_gpu_job(
     request: AutoDockGpuDockingRequest,
     http_request: Request,
 ) -> AutoDockGpuDockingJobRecord:
-    return _autodock_gpu_service(http_request).start(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock_gpu_service(http_request).start(request)
+    )
 
 
 @router.get(
@@ -1623,7 +1648,9 @@ def create_autodock_gpu_batch(
     request: AutoDockGpuBatchRequest,
     http_request: Request,
 ) -> AutoDockGpuBatchRecord:
-    return _autodock_gpu_service(http_request).start_batch(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock_gpu_service(http_request).start_batch(request)
+    )
 
 
 @router.get(
@@ -1695,7 +1722,9 @@ def create_autodock4_batch(
     request: AutoDock4BatchRequest,
     http_request: Request,
 ) -> AutoDock4BatchRecord:
-    return _autodock4_service(http_request).start_batch(request)
+    return _project_runtime(http_request).run_locked(
+        lambda: _autodock4_service(http_request).start_batch(request)
+    )
 
 
 @router.get(
@@ -1865,24 +1894,25 @@ def list_exports(
     )
 
 
-@router.post("/exports/campaigns", status_code=201)
+@router.post("/exports/campaigns", response_model=CampaignExportResponse, status_code=201)
 def export_campaign(
     source_kind: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str, Query(min_length=1)],
     destination: Annotated[str | None, Query(min_length=1)] = None,
     display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-) -> dict[str, object]:
+) -> CampaignExportResponse:
     """Write a reproducible bundle for a campaign that already ran.
 
     The bundle is preserved in the project rather than streamed away, so an
     export is itself something that happened and can be found again.
     """
-    return CampaignExportService.from_environment().export_campaign(
+    payload = CampaignExportService.from_environment().export_campaign(
         source_kind=source_kind,
         batch_id=source_id,
         destination=destination,
         display_name=display_name,
     )
+    return CampaignExportResponse.model_validate(payload)
 
 
 @router.get("/exports/{export_id}/{filename}", response_class=FileResponse)
@@ -2292,18 +2322,23 @@ def fit_consensus_pc_l2(
     return PoseConsensusService.from_environment().fit_pc_l2(consensus_id, payload)
 
 
-@router.post("/consensus/runs/{consensus_id}/export", status_code=201)
+@router.post(
+    "/consensus/runs/{consensus_id}/export",
+    response_model=ConsensusExportResponse,
+    status_code=201,
+)
 def export_consensus_run(
     consensus_id: str,
     destination: Annotated[str | None, Query(min_length=1)] = None,
     display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-) -> dict[str, object]:
+) -> ConsensusExportResponse:
     """Write a self-contained Export v5/v6 bundle for an immutable ADR-030 consensus run."""
-    return ConsensusExportService.from_environment().export_consensus_run(
+    payload = ConsensusExportService.from_environment().export_consensus_run(
         consensus_id,
         destination=destination,
         display_name=display_name,
     )
+    return ConsensusExportResponse.model_validate(payload)
 
 
 # ---------------------------------------------------------------------------

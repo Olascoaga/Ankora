@@ -18,11 +18,13 @@ import json
 import os
 import shutil
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from ankora_backend import __version__
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.persistence.calibration_store import CalibrationArtifactStore
 from ankora_backend.persistence.consensus_store import ConsensusArtifactStore
@@ -43,7 +45,14 @@ from ankora_backend.services.export_destinations import (
 )
 from ankora_backend.services.methods_report import (
     render_analog_expansion_methods,
+    render_calibration_methods,
     render_consensus_methods,
+    render_interaction_rules_methods,
+    render_pose_quality_methods,
+)
+from ankora_backend.services.project_dependencies import (
+    ArtifactFreshness,
+    ProjectDependencyService,
 )
 
 _STAGE = "consensus_export"
@@ -82,12 +91,27 @@ def consensus_results_csv(record: ConsensusRunRecord) -> str:
     """Render two-tier E6 consensus table preserving unranked parents in denominator."""
     columns = consensus_table_columns(record)
     details_by_parent = {detail.parent_compound_id: detail for detail in record.parent_details}
+    core_entries_by_parent = (
+        {entry.parent_compound_id: entry for entry in record.core_ranking.entries}
+        if record.core_ranking is not None
+        else {}
+    )
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
 
     for entry in record.ranking.entries:
         detail = details_by_parent.get(entry.parent_compound_id)
+        core_entry = core_entries_by_parent.get(entry.parent_compound_id)
+        core_score_val: float | None = None
+        if (
+            core_entry is not None
+            and core_entry.tier == "full_profile"
+            and core_entry.score_value is not None
+        ):
+            core_score_val = core_entry.score_value
+        elif detail is not None and detail.pcq_core_score is not None:
+            core_score_val = detail.pcq_core_score
         if entry.tier == "full_profile":
             row: dict[str, Any] = {
                 "tier": "full_profile",
@@ -95,11 +119,7 @@ def consensus_results_csv(record: ConsensusRunRecord) -> str:
                 "parent_compound_id": entry.parent_compound_id,
                 "parent_state_id": entry.parent_state_id,
                 "pcq_score": f"{entry.score_value:.6f}" if entry.score_value is not None else "",
-                "pcq_core_score": (
-                    f"{detail.pcq_core_score:.6f}"
-                    if detail is not None and detail.pcq_core_score is not None
-                    else ""
-                ),
+                "pcq_core_score": f"{core_score_val:.6f}" if core_score_val is not None else "",
                 "pc_ecr_score_inv_sigma": (
                     f"{detail.pc_ecr_score:.8f}"
                     if detail is not None and detail.pc_ecr_score is not None
@@ -139,13 +159,16 @@ def consensus_results_csv(record: ConsensusRunRecord) -> str:
                 "failure_or_exclusion_codes": "",
             }
         else:
+            # Preserve primary E6 anti-imputation (blank rank and pcq_score) while
+            # retaining independent non-neural pcq_core_score when core_ranking scored
+            # this parent (e.g. GNINA failed while Vina/Vinardo/AD4 succeeded, D7-001).
             row = {
                 "tier": "partial_or_unscored",
                 "rank": "",
                 "parent_compound_id": entry.parent_compound_id,
                 "parent_state_id": entry.parent_state_id,
                 "pcq_score": "",
-                "pcq_core_score": "",
+                "pcq_core_score": f"{core_score_val:.6f}" if core_score_val is not None else "",
                 "pc_ecr_score_inv_sigma": "",
                 "inter_family_disagreement": "",
                 "search_convergence_count": "",
@@ -214,15 +237,32 @@ def _consensus_bundle_name(
 def _consensus_readme(
     record: ConsensusRunRecord,
     *,
+    export_format: int,
     exported_at: datetime,
     archive_filename: str,
     input_identity_sha256: str,
     bundle_identity_sha256: str,
+    freshness: ArtifactFreshness | None = None,
 ) -> str:
+    header = f"Ankora Export v{export_format} — ADR-030 Rank-Space Consensus Bundle"
     lines = [
-        "Ankora Export v5 — ADR-030 Rank-Space Consensus Bundle",
-        "=" * 56,
+        header,
+        "=" * len(header),
         "",
+    ]
+    if freshness is not None and freshness.stale:
+        reasons_text = (
+            "; ".join(freshness.stale_reasons) or "upstream artifact modified"
+        )
+        lines += [
+            "WARNING: STALE ARTIFACT (ADR-011)",
+            "-" * 33,
+            "This exported consensus run was marked STALE at export time and must",
+            "not be presented as current.",
+            f"Reasons: {reasons_text}",
+            "",
+        ]
+    lines += [
         f"Run name: {record.name}",
         f"Consensus ID: {record.consensus_id}",
         f"Variant: {record.variant_id.value}",
@@ -240,10 +280,47 @@ def _consensus_readme(
         "  under tier='partial_or_unscored' with zero score imputation and no rank (E6).",
         "",
         "Independent verification (Python 3.12 stdlib, zero dependencies):",
-        f"  python scripts/verify_export_bundle.py {archive_filename} --require-format 5",
+        (
+            f"  python scripts/verify_export_bundle.py {archive_filename} "
+            f"--require-format {export_format}"
+        ),
         "",
     ]
     return "\n".join(lines)
+
+
+def _resolve_source_library_ids(
+    project_root: Path, source_catalog_ids: list[str]
+) -> list[str]:
+    """Resolve all distinct originating ligand library_ids from consensus sources (D5-017)."""
+    folder_by_kind = {
+        "vina_batch": ("results", "docking_batches"),
+        "autodock4_batch": ("results", "autodock4_batches"),
+        "autodock_gpu_batch": ("results", "autodock_gpu_batches"),
+        "gnina_screening": ("results", "gnina_screening"),
+    }
+    resolved: list[str] = []
+    for catalog_id in source_catalog_ids:
+        if ":" not in catalog_id:
+            continue
+        kind, record_id = catalog_id.split(":", 1)
+        rel_parts = folder_by_kind.get(kind)
+        if rel_parts is None:
+            continue
+        record_path = project_root.joinpath(*rel_parts, record_id, "record.json")
+        if not record_path.is_file():
+            continue
+        try:
+            payload = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        req = payload.get("request") if isinstance(payload, dict) else None
+        lib_id = req.get("library_id") if isinstance(req, dict) else None
+        if isinstance(lib_id, str) and lib_id.strip():
+            cleaned = lib_id.strip()
+            if cleaned not in resolved:
+                resolved.append(cleaned)
+    return resolved
 
 
 class ConsensusExportService:
@@ -280,6 +357,7 @@ class ConsensusExportService:
     ) -> dict[str, Any]:
         record = self._consensus_store.load_run(consensus_id)
         normalized_name = _normalize_display_name(display_name)
+        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         export_id = str(uuid4())
         directory = (self._project_root / "exports" / export_id).resolve()
         directory.mkdir(parents=True, exist_ok=False)
@@ -407,6 +485,9 @@ class ConsensusExportService:
         )
         collection_warnings.extend(v02_warnings)
 
+        source_library_ids = _resolve_source_library_ids(
+            self._project_root, list(record.source_catalog_ids)
+        )
         (
             analog_artifacts,
             analog_provenance,
@@ -417,11 +498,21 @@ class ConsensusExportService:
         ) = collect_analog_expansion_evidence(
             root=self._root,
             binding_site_id=record.binding_site_id,
-            library_id=None,
+            library_id=source_library_ids[0] if source_library_ids else None,
+            library_ids=source_library_ids,
             export_directory=directory,
         )
         collection_warnings.extend(analog_warnings)
         export_format = 6 if (analog_artifacts and analog_provenance) else 5
+        freshness = ProjectDependencyService(
+            root=self._root, project_id=self._project_root.name
+        ).freshness_for(
+            [
+                record.consensus_id,
+                f"consensus_run:{record.consensus_id}",
+                *record.source_catalog_ids,
+            ]
+        )
 
         columns = consensus_table_columns(record)
         manifest_payload: dict[str, Any] = {
@@ -530,8 +621,82 @@ class ConsensusExportService:
         if export_format >= 6 and analog_provenance is not None:
             manifest_payload["analog_expansion_provenance"] = analog_provenance
             manifest_payload["recorded_evidence"]["analog_expansion_artifacts"] = analog_artifacts
+        manifest_payload["dependency_freshness"] = freshness.to_dict()
+        if freshness.stale:
+            manifest_payload["warnings"] = [
+                {
+                    "code": "STALE_SOURCE_ARTIFACT",
+                    "stage": _STAGE,
+                    "message": (
+                        "This exported consensus run was marked stale at export time (ADR-011) "
+                        "and must not be presented as current."
+                    ),
+                    "details": freshness.to_dict(),
+                }
+            ]
 
         methods_markdown = render_consensus_methods(record)
+        # Wire embedded M2 calibration, M3 pose quality, and M4 interaction rules
+        # into consensus methods.md whenever those artifacts were bundled (D5-018).
+        if record.pc_l2_model is not None:
+            try:
+                cal_record = self._calibration_store.get_run(record.pc_l2_model.calibration_id)
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_calibration_methods(cal_record)
+                )
+            except (AnkoraDomainError, OSError, ValueError):
+                pass
+        if pose_quality_assessments:
+            from ankora_backend.schemas.pose_quality import PoseQualityRecord
+
+            pq_records: list[PoseQualityRecord] = []
+            for pq_entry in pose_quality_assessments:
+                pq_path = directory / str(pq_entry["path"])
+                try:
+                    pq_records.append(
+                        PoseQualityRecord.model_validate_json(pq_path.read_text(encoding="utf-8"))
+                    )
+                except (OSError, ValueError):
+                    continue
+            if pq_records:
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_pose_quality_methods(pq_records)
+                )
+        if interaction_rule_sets or interaction_rule_evaluations:
+            from ankora_backend.schemas.interaction_rules import (
+                InteractionRuleEvaluationRecord,
+                InteractionRuleSetRecord,
+            )
+
+            rs_records: list[InteractionRuleSetRecord] = []
+            for rs_entry in interaction_rule_sets:
+                rs_path = directory / str(rs_entry["path"])
+                try:
+                    rs_records.append(
+                        InteractionRuleSetRecord.model_validate_json(
+                            rs_path.read_text(encoding="utf-8")
+                        )
+                    )
+                except (OSError, ValueError):
+                    continue
+            ev_records: list[InteractionRuleEvaluationRecord] = []
+            for ev_entry in interaction_rule_evaluations:
+                ev_path = directory / str(ev_entry["path"])
+                try:
+                    ev_records.append(
+                        InteractionRuleEvaluationRecord.model_validate_json(
+                            ev_path.read_text(encoding="utf-8")
+                        )
+                    )
+                except (OSError, ValueError):
+                    continue
+            if rs_records or ev_records:
+                methods_markdown = (
+                    f"{methods_markdown.rstrip()}\n\n"
+                    + render_interaction_rules_methods(rs_records, ev_records)
+                )
         if analog_search is not None or analog_selection is not None or focused_site is not None:
             methods_markdown = (
                 f"{methods_markdown.rstrip()}\n\n"
@@ -541,17 +706,39 @@ class ConsensusExportService:
                     focused_site=focused_site,
                 )
             )
-        files = {
+        if freshness.stale:
+            reasons_text = (
+                "; ".join(freshness.stale_reasons) or "upstream artifact modified"
+            )
+            methods_markdown = (
+                f"> **WARNING — STALE ARTIFACT (ADR-011):** This consensus run was marked stale "
+                f"at export time and must not be presented as current ({reasons_text}).\n\n"
+                + methods_markdown
+            )
+        core_files = {
             "results.csv": consensus_results_csv(record),
-            "manifest.json": json.dumps(manifest_payload, indent=2, ensure_ascii=False) + "\n",
             "methods.md": methods_markdown,
             "README.txt": _consensus_readme(
                 record,
+                export_format=export_format,
                 exported_at=exported_at,
                 archive_filename=archive_filename,
                 input_identity_sha256=input_identity_sha256,
                 bundle_identity_sha256=bundle_identity_sha256,
+                freshness=freshness,
             ),
+        }
+        manifest_payload["bundle_files"] = [
+            {
+                "path": name,
+                "sha256": sha256(content.encode("utf-8")).hexdigest(),
+                "size_bytes": len(content.encode("utf-8")),
+            }
+            for name, content in sorted(core_files.items())
+        ]
+        files = {
+            **core_files,
+            "manifest.json": json.dumps(manifest_payload, indent=2, ensure_ascii=False) + "\n",
         }
         for name, content in files.items():
             with (directory / name).open("x", encoding="utf-8", newline="\n") as stream:
@@ -559,7 +746,6 @@ class ConsensusExportService:
 
         portable = _write_portable_bundle(directory, archive_filename)
 
-        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         written_to = directory
         if chosen is not None:
             written_to = free_directory(
@@ -595,4 +781,6 @@ class ConsensusExportService:
             "outside_project": chosen is not None,
             "record_directory": str(directory),
             "files": sorted([*files, portable.name]),
+            "stale": freshness.stale,
+            "stale_reasons": list(freshness.stale_reasons),
         }

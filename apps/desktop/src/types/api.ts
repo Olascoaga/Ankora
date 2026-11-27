@@ -234,7 +234,11 @@ export type DependencyNodeKind =
   | "autogrid_map_set"
   | "docking_campaign"
   | "validation"
+  | "calibration"
   | "pose_analysis"
+  | "analog_catalog"
+  | "analog_search"
+  | "analog_selection"
   | "export"
   | "unknown";
 
@@ -580,6 +584,8 @@ export interface LigandLibraryArtifact {
   size_bytes: number;
   record_count: number;
   created_at: string;
+  origin_analog_selection_id?: string | null;
+  origin_analog_search_id?: string | null;
 }
 
 /**
@@ -1189,6 +1195,13 @@ export interface GninaPoseResult {
   artifact: GninaPoseArtifact;
 }
 
+export interface GninaExecutionEvidence extends DockingExecutionEvidence {
+  gpu_process_observed: boolean;
+  gpu_observation: string | null;
+  requested_gpu_uuid: string | null;
+  observed_gpu_uuid: string | null;
+}
+
 export interface GninaDockingJobRecord {
   job_id: string;
   engine: "gnina";
@@ -1211,13 +1224,9 @@ export interface GninaDockingJobRecord {
   ligand_sha256: string;
   conformer_sha256: string;
   command: string[];
-  execution: (DockingExecutionEvidence & {
-    gpu_process_observed: boolean;
-    gpu_observation: string | null;
-    requested_gpu_uuid: string | null;
-    observed_gpu_uuid: string | null;
-  }) | null;
+  execution: GninaExecutionEvidence | null;
   poses: GninaPoseResult[];
+  warnings?: StructuredWarning[];
   failure: { code: string; message: string; details: Record<string, unknown> } | null;
 }
 
@@ -1306,6 +1315,10 @@ export interface GninaScreeningCampaignRecord {
   selection: GninaScreeningSelection;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   box: BindingBox;
   /** One job at a time: a recorded fact of the run, not a setting. */
   worker_count: number;
@@ -1423,6 +1436,10 @@ export interface VinaBatchDockingRecord {
   tool: { name: string; version: string };
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
   selection_manifest_artifact_id: string;
   selection_manifest_sha256: string;
   selected_count: number;
@@ -1538,16 +1555,16 @@ export interface GninaLocalRefinementRecord {
   receptor_flex_mode?: ReceptorFlexMode;
   flex_residues?: ResidueLocator[];
   tool: { version: string; sha256: string; architecture: "x86_64" };
-  cnn_model_identity?: GninaCnnModelIdentity | null;
+  cnn_model_identity: GninaCnnModelIdentity;
   command: string[];
   minimized_affinity_kcal_mol: number;
-  cnn_score?: number | null;
-  cnn_affinity?: number | null;
+  cnn_score: number;
+  cnn_affinity: number;
   cnn_vs?: number | null;
   cnn_vs_source?: GninaCnnVsSource | null;
   cnn_affinity_variance?: number | null;
   refined_pose: GninaPoseArtifact;
-  execution: DockingExecutionEvidence;
+  execution: GninaExecutionEvidence;
 }
 
 export interface ErrorResponse {
@@ -1607,6 +1624,8 @@ export interface AutoGridLigandPreflightRow {
 export interface AutoGridPreflight {
   receptor_atom_types: string[];
   ligand_atom_types: string[];
+  flex_atom_types?: string[];
+  ligand_only_atom_types?: string[] | null;
   selected_count: number;
   prepared_count: number;
   compatible_count: number;
@@ -1652,6 +1671,11 @@ export interface AutoGridMapSetRecord {
   receptor_id: string;
   receptor_output_artifact_id: string;
   receptor_sha256: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
+  flex_atom_types?: string[];
   binding_site_id: string;
   box: BindingBox;
   geometry: AutoGridGeometry;
@@ -1663,6 +1687,11 @@ export interface AutoGridMapSetRecord {
   artifacts: AutoGridMapArtifact[];
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
+}
+
+export interface AutoGridMapSetSummary {
+  reused_existing_map_set: boolean;
+  record: AutoGridMapSetRecord;
 }
 
 export interface AutoGridMapJobRecord {
@@ -1780,6 +1809,11 @@ export interface AutoDock4DockingJobRecord {
   binding_site_id: string;
   map_set_id: string;
   map_set_identity_key: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
+  flex_atom_types?: string[];
   ligand_sha256: string;
   ligand_atom_types: string[];
   ligand_atom_count: number;
@@ -1853,6 +1887,11 @@ export interface AutoDock4BatchRecord {
   binding_site_id: string;
   map_set_id: string;
   map_set_identity_key: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
+  flex_atom_types?: string[];
   selection_manifest_sha256: string;
   selected_count: number;
   worker_count: number;
@@ -2043,6 +2082,11 @@ export interface AutoDockGpuDockingJobRecord {
   binding_site_id: string;
   map_set_id: string;
   map_set_identity_key: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
+  flex_atom_types?: string[];
   ligand_sha256: string;
   ligand_atom_types: string[];
   ligand_atom_count: number;
@@ -2103,6 +2147,11 @@ export interface AutoDockGpuBatchRecord {
   binding_site_id: string;
   map_set_id: string;
   map_set_identity_key: string;
+  receptor_flex_mode?: ReceptorFlexMode;
+  receptor_flex_output_artifact_id?: string | null;
+  receptor_flex_sha256?: string | null;
+  flex_residues?: ResidueLocator[];
+  flex_atom_types?: string[];
   selection_manifest_sha256: string;
   worker_count: number;
   bitwise_reproducible: boolean;
@@ -2239,6 +2288,7 @@ export interface CampaignExport {
   row_count: number;
   interaction_analysis_count: number;
   figure_count: number;
+  redocking_validation_count: number;
   /** Where the bundle was written. */
   directory: string;
   /** True when `directory` is a folder the scientist chose. */
@@ -2246,6 +2296,8 @@ export interface CampaignExport {
   /** The project's own copy, which is what it can serve back. */
   record_directory: string;
   files: string[];
+  stale?: boolean;
+  stale_reasons?: string[];
 }
 
 /**
@@ -2299,6 +2351,8 @@ export interface CatalogEntry {
   hit_ranking_metric?: GninaHitRankingMetric | null;
   warnings?: StructuredWarning[];
   best_molecule: string | null;
+  stale?: boolean;
+  stale_reasons?: string[];
 }
 
 export interface CatalogPage {
@@ -2360,7 +2414,7 @@ export interface CompoundPage {
 
 export type PoseKind = "vina_mode" | "autodock_run" | "gnina_mode";
 
-export interface PoseReference extends PoseFlexIdentity {
+export interface PoseReference extends Omit<PoseFlexIdentity, "flex_filename"> {
   artifact_id: string;
   kind: PoseKind;
   ordinal: number;
@@ -2554,6 +2608,14 @@ export interface ExportFile {
   content_url: string | null;
 }
 
+export interface ConsensusReproducibilityMetadata {
+  status: "deterministic_rank_space_consensus";
+  reference_panel_sha256?: string | null;
+  tie_policy?: string | null;
+  failure_policy?: string | null;
+  note?: string | null;
+}
+
 export interface ExportEntry {
   export_id: string;
   kind: ExportKind;
@@ -2569,7 +2631,7 @@ export interface ExportEntry {
   archive_filename: string | null;
   analysis_id: string | null;
   ligand_id: string | null;
-  reproducibility: ReproducibilityAssessment | null;
+  reproducibility: ReproducibilityAssessment | ConsensusReproducibilityMetadata | null;
   /** Legacy campaign manifests only; never interpreted as measured evidence. */
   bitwise_reproducible: boolean | null;
   directory: string;
@@ -2580,7 +2642,7 @@ export interface ExportEntry {
 
 export interface ConsensusExport {
   exported_at: string;
-  ankora_export_format: 5;
+  ankora_export_format: 5 | 6;
   source_kind: "consensus_run";
   source_id: string;
   export_id: string;
@@ -2599,6 +2661,8 @@ export interface ConsensusExport {
   outside_project: boolean;
   record_directory: string;
   files: string[];
+  stale?: boolean;
+  stale_reasons?: string[];
 }
 
 export interface ExportPage {
@@ -3475,6 +3539,7 @@ export interface PcL2ModelArtifact {
   promoted: boolean;
   promotion_verdict_text: string;
   confirmation_deltas_vs_single_engines: Record<string, PairedBootstrapDelta>;
+  confirmation_delta_vs_pcq?: PairedBootstrapDelta | null;
 }
 
 export interface ConsensusParentDetail {
@@ -3556,6 +3621,7 @@ export interface CreateCampaignConsensusRequest {
   k_max: number;
   rmsd_threshold_angstrom?: number;
   reference_panel_id?: string | null;
+  rescore_workers?: number | null;
 }
 
 export interface FitPcL2Request {
@@ -3644,8 +3710,23 @@ export interface AnalogCatalogSummary {
   invalid_records: number;
 }
 
+export interface AnalogCatalogEntry {
+  record_index: number;
+  identifier: string;
+  raw_smiles: string | null;
+  canonical_isomeric_smiles: string | null;
+  search_smiles: string | null;
+  had_multiple_fragments: boolean;
+  undefined_stereocenter_count: number;
+  molecular_weight_g_mol: number | null;
+  heavy_atom_count: number | null;
+  rotatable_bond_count: number | null;
+  parse_error: string | null;
+}
+
 export interface AnalogCatalogRecord extends AnalogCatalogSummary {
   csv_schema: CsvCatalogSchema | null;
+  entries: AnalogCatalogEntry[];
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
 }
@@ -3748,6 +3829,7 @@ export interface RunOfflineAnalogSearchRequest {
   min_tanimoto?: number;
   top_k?: number;
   smarts_filter?: string | null;
+  fingerprint_profile?: AnalogFingerprintProfile;
 }
 
 export interface RunOnlineAnalogSearchRequest {
@@ -3761,7 +3843,15 @@ export interface RunOnlineAnalogSearchRequest {
   min_local_rdkit_tanimoto?: number;
   max_candidates?: number;
   smarts_filter?: string | null;
+  fingerprint_profile?: AnalogFingerprintProfile;
   consent: ExternalTransmissionConsent;
+}
+
+export interface AnalogSelectionDecision {
+  hit_id: string;
+  selected: boolean;
+  role: AnalogCandidateRole;
+  reason: string | null;
 }
 
 export interface CreateAnalogSelectionRequest {
@@ -3782,6 +3872,7 @@ export interface AnalogSelectionRecord {
   include_seed_control: boolean;
   selected_count: number;
   excluded_count: number;
+  decisions: AnalogSelectionDecision[];
   warnings: StructuredWarning[];
   provenance: ProvenanceEvent;
 }

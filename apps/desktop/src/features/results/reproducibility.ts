@@ -1,6 +1,14 @@
-import type { ReproducibilityAssessment } from "../../types/api";
+import type {
+  ConsensusReproducibilityMetadata,
+  ReproducibilityAssessment,
+} from "../../types/api";
 
-export function reproducibilityTitle(assessment: ReproducibilityAssessment | null): string {
+export function reproducibilityTitle(
+  assessment: ReproducibilityAssessment | ConsensusReproducibilityMetadata | null,
+): string {
+  if (assessment?.status === "deterministic_rank_space_consensus") {
+    return "Deterministic rank-space consensus";
+  }
   if (assessment?.status === "measured_reproducible") {
     return "Exact recorded repeats reproduced these outputs";
   }

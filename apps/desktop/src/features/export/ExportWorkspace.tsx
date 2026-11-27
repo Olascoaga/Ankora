@@ -59,6 +59,7 @@ export function ExportWorkspace() {
   const [revision, setRevision] = useState(0);
 
   const [campaigns, setCampaigns] = useState<CatalogEntry[]>([]);
+  const [campaignLoadError, setCampaignLoadError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string>("");
 
   useEffect(() => {
@@ -85,6 +86,7 @@ export function ExportWorkspace() {
   // Only finished campaigns and completed individual GNINA jobs can be bundled.
   useEffect(() => {
     let disposed = false;
+    setCampaignLoadError(null);
     void ankoraApi.listResultCampaigns({ limit: 200, status: "completed" })
       .then((page) => {
         if (disposed) return;
@@ -97,7 +99,15 @@ export function ExportWorkspace() {
           ),
         );
       })
-      .catch(() => { if (!disposed) setCampaigns([]); });
+      .catch((reason: unknown) => {
+        if (disposed) return;
+        setCampaigns([]);
+        setCampaignLoadError(
+          reason instanceof Error
+            ? reason.message
+            : "Completed campaigns could not be listed for export.",
+        );
+      });
     return () => { disposed = true; };
   }, []);
 
@@ -204,7 +214,12 @@ export function ExportWorkspace() {
             Completed screening batches and individual single-ligand GNINA results can be
             bundled here.
           </p>
-          {campaigns.length === 0 ? (
+          {campaignLoadError ? (
+            <p className="protonation-blocker" role="alert">
+              {campaignLoadError}
+            </p>
+          ) : null}
+          {!campaignLoadError && campaigns.length === 0 ? (
             <p className="field-note">
               No completed campaign is recorded yet. Figures and complexes are exported
               from the pose they belong to, in Results.

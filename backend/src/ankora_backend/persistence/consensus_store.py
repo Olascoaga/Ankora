@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -10,6 +11,8 @@ from uuid import UUID, uuid4
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.consensus import ConsensusRunRecord, ReferencePanelArtifact
+
+_LOG = logging.getLogger(__name__)
 
 _STAGE = "consensus_storage"
 
@@ -56,7 +59,13 @@ class ConsensusArtifactStore:
                 panels.append(
                     ReferencePanelArtifact.model_validate_json(path.read_text(encoding="utf-8"))
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable consensus artifact %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return sorted(panels, key=lambda item: (item.created_at, item.panel_id), reverse=True)
 
@@ -84,7 +93,13 @@ class ConsensusArtifactStore:
                 records.append(
                     ConsensusRunRecord.model_validate_json(path.read_text(encoding="utf-8"))
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable consensus artifact %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return sorted(records, key=lambda item: (item.created_at, item.consensus_id), reverse=True)
 

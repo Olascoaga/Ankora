@@ -317,7 +317,12 @@ class AutoDock4DockingService:
             if resource_lease is not None:
                 resource_lease.release()
             if lease_acquired and self._leases is not None:
-                self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
+                try:
+                    self._leases.release(WorkKind.AUTODOCK4_JOB, job_id)
+                except OSError as error:
+                    logging.getLogger(__name__).warning(
+                        "Failed releasing work lease for AutoDock4 job %s: %s", job_id, error
+                    )
             self._forget(job_id)
 
     def _safe_load_job(
@@ -755,7 +760,7 @@ class AutoDock4DockingService:
         return AutoDock4BatchProgress.model_validate(payload)
 
     def cancel_batch(self, batch_id: str) -> AutoDock4CancelResponse:
-        with self._lock:
+        with self._lock, self._batch_write_lock:
             record = self._job_store.load_batch_overview(batch_id)
             if record.status in {
                 AutoDock4JobStatus.CANCELED,

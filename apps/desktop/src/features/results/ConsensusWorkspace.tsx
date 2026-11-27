@@ -13,6 +13,7 @@ import {
   type ConsensusRunRecord,
   type ConsensusVariantId,
   type MedoidConsensusBreakdown,
+  type PairedBootstrapDelta,
   type PcL2ModelArtifact,
   type RankingEntry,
   type ScoreObservationFamily,
@@ -112,6 +113,7 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
   // Opt-in gated PC-L2 calibration state (`ADR-030 §3`).
   const [pcL2Open, setPcL2Open] = useState(false);
   const [calibrations, setCalibrations] = useState<CalibrationRunRecord[] | null>(null);
+  const [calibrationsError, setCalibrationsError] = useState<string | null>(null);
   const [calibrationIdInput, setCalibrationIdInput] = useState("");
   const [l2RegInput, setL2RegInput] = useState("1.0");
   const [fittingPcL2, setFittingPcL2] = useState(false);
@@ -155,6 +157,7 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
   useEffect(() => {
     if (!pcL2Open || calibrations !== null) return;
     let disposed = false;
+    setCalibrationsError(null);
     void ankoraApi
       .listCalibrations()
       .then((items) => {
@@ -164,8 +167,14 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
           setCalibrationIdInput(items[0].calibration_id);
         }
       })
-      .catch(() => {
-        if (!disposed) setCalibrations([]);
+      .catch((reason: unknown) => {
+        if (disposed) return;
+        setCalibrations([]);
+        setCalibrationsError(
+          reason instanceof Error
+            ? reason.message
+            : "Calibration runs could not be loaded; enter a calibration run ID manually.",
+        );
       });
     return () => {
       disposed = true;
@@ -615,7 +624,7 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
               disabled={exportingBundle}
               onClick={() => void handleExportBundle()}
             >
-              {exportingBundle ? "Exporting v5 bundle…" : "Export v5 bundle"}
+              {exportingBundle ? "Exporting consensus bundle…" : "Export consensus bundle"}
             </button>
           </div>
 
@@ -629,7 +638,7 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
             <div
               className="consensus-provenance"
               role="status"
-              aria-label="Export v5 consensus bundle"
+              aria-label={`Export v${exportedBundle.ankora_export_format} consensus bundle`}
             >
               <div className="consensus-chip-row">
                 <span className="read-only-badge">Export v{exportedBundle.ankora_export_format}</span>
@@ -640,6 +649,13 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
                   Bundle {shortHash(exportedBundle.bundle_identity_sha256)}
                 </span>
               </div>
+              {exportedBundle.stale ? (
+                <p className="protonation-blocker" role="alert">
+                  Stale lineage:{" "}
+                  {exportedBundle.stale_reasons?.join("; ") ||
+                    "Upstream artifact changed after this consensus run was created."}
+                </p>
+              ) : null}
               <div className="export-files">
                 {exportedBundle.files.map((filename) => (
                   <a
@@ -947,6 +963,11 @@ export function ConsensusWorkspace({ campaigns }: ConsensusWorkspaceProps) {
                     {pcL2Error}
                   </div>
                 ) : null}
+                {calibrationsError ? (
+                  <p className="protonation-blocker" role="alert">
+                    {calibrationsError}
+                  </p>
+                ) : null}
                 <div className="consensus-form-grid">
                   <label>
                     Calibration run ID (M2)
@@ -1143,7 +1164,24 @@ function MedoidDrawer({
 }
 
 function PcL2AuditCard({ model }: { model: PcL2ModelArtifact }) {
-  const deltaEntries = Object.entries(model.confirmation_deltas_vs_single_engines);
+  const deltaRows: Array<{ id: string; label: string; isCode: boolean; delta: PairedBootstrapDelta }> = [
+    ...Object.entries(model.confirmation_deltas_vs_single_engines).map(([baselineId, delta]) => ({
+      id: baselineId,
+      label: baselineId,
+      isCode: true,
+      delta,
+    })),
+    ...(model.confirmation_delta_vs_pcq
+      ? [
+          {
+            id: "pcq_consensus",
+            label: "PC-Q (zero-fit consensus)",
+            isCode: false,
+            delta: model.confirmation_delta_vs_pcq,
+          },
+        ]
+      : []),
+  ];
   return (
     <div
       className={
@@ -1176,12 +1214,12 @@ function PcL2AuditCard({ model }: { model: PcL2ModelArtifact }) {
         ))}
       </div>
 
-      {deltaEntries.length > 0 ? (
+      {deltaRows.length > 0 ? (
         <div className="consensus-table-scroll">
           <table className="consensus-table">
             <thead>
               <tr>
-                <th>Baseline single scoring function</th>
+                <th>Confirmation baseline</th>
                 <th>Confirmation Δ BEDROC_20</th>
                 <th>95% paired parent-bootstrap CI</th>
                 <th>SE</th>
@@ -1189,10 +1227,10 @@ function PcL2AuditCard({ model }: { model: PcL2ModelArtifact }) {
               </tr>
             </thead>
             <tbody>
-              {deltaEntries.map(([baselineId, delta]) => (
-                <tr key={baselineId}>
+              {deltaRows.map(({ id, label, isCode, delta }) => (
+                <tr key={id}>
                   <td>
-                    <code>{baselineId}</code>
+                    {isCode ? <code>{label}</code> : <strong>{label}</strong>}
                   </td>
                   <td className="numeric-cell">
                     {formatSignedScientificNumber(delta.point_delta, 4)}

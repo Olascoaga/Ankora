@@ -83,3 +83,27 @@ it("bounds tool discovery too and does not retry a failed scan", async () => {
   expect(tools).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("surfaces a Tauri desktop backend startup error immediately instead of waiting 120s (D5-020)", async () => {
+  const { health } = mockReady();
+  const host = (typeof window !== "undefined" ? window : globalThis) as unknown as Record<string, unknown>;
+  const previousInternals = host.__TAURI_INTERNALS__;
+  const previousIsTauri = host.isTauri;
+  host.isTauri = true;
+  host.__TAURI_INTERNALS__ = {
+    invoke: vi.fn().mockResolvedValue(
+      "Could not start the bundled Ankora backend: 127.0.0.1:8765 is already in use",
+    ),
+  };
+  try {
+    await expect(loadBackend(new AbortController().signal)).rejects.toThrow(
+      "127.0.0.1:8765 is already in use",
+    );
+    expect(health).not.toHaveBeenCalled();
+  } finally {
+    if (previousInternals === undefined) delete host.__TAURI_INTERNALS__;
+    else host.__TAURI_INTERNALS__ = previousInternals;
+    if (previousIsTauri === undefined) delete host.isTauri;
+    else host.isTauri = previousIsTauri;
+  }
+});

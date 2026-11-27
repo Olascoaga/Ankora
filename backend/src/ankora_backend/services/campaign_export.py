@@ -94,6 +94,10 @@ from ankora_backend.services.export_destinations import (
 )
 from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
 from ankora_backend.services.gnina_screening_selection import verified_screening_selection
+from ankora_backend.services.project_dependencies import (
+    ArtifactFreshness,
+    ProjectDependencyService,
+)
 from ankora_backend.services.reproducibility import ReproducibilityService
 
 _STAGE = "campaign_export"
@@ -177,6 +181,8 @@ class ExportedCampaign:
     selected_count: int | None = None
     succeeded_count: int | None = None
     failed_count: int | None = None
+    canceled_count: int | None = None
+    campaign_status: str | None = None
     # One row per pose of one ligand rather than one row per molecule. The
     # table shape is a property of what was run, so it travels with the data
     # instead of being re-derived from the engine name.
@@ -190,6 +196,7 @@ class ExportedCampaign:
     receptor_flex_sha256: str | None = None
     flex_residues: list[dict[str, Any]] = field(default_factory=list)
     flex_atom_types: list[str] = field(default_factory=list)
+    dependency_freshness: ArtifactFreshness | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +327,7 @@ def manifest(
     source_id: str | None = None,
     bundle_identity: CampaignBundleIdentity | None = None,
     source_files: list[dict[str, Any]] | None = None,
+    bundle_files: list[dict[str, Any]] | None = None,
 ) -> str:
     """Everything needed to know what the table is, and to ask for it again."""
     moment = exported_at or datetime.now(UTC)
@@ -380,10 +388,27 @@ def manifest(
         }
     if export_format >= 6 and resolved_evidence.analog_expansion_provenance is not None:
         payload["analog_expansion_provenance"] = resolved_evidence.analog_expansion_provenance
-    if campaign.warnings:
-        payload["warnings"] = campaign.warnings
+    warnings_list = list(campaign.warnings)
+    if campaign.dependency_freshness is not None:
+        payload["dependency_freshness"] = campaign.dependency_freshness.to_dict()
+        if campaign.dependency_freshness.stale:
+            warnings_list.append(
+                {
+                    "code": "STALE_SOURCE_ARTIFACT",
+                    "stage": _STAGE,
+                    "message": (
+                        "This exported campaign was marked stale at export time (ADR-011) "
+                        "and must not be presented as current."
+                    ),
+                    "details": campaign.dependency_freshness.to_dict(),
+                }
+            )
+    if warnings_list:
+        payload["warnings"] = warnings_list
     if bundle_identity is not None:
         payload["bundle"] = bundle_identity.manifest_payload()
+    if bundle_files:
+        payload["bundle_files"] = bundle_files
     if source_files:
         if source_kind == "gnina_screening":
             source_notes = [
@@ -437,11 +462,16 @@ def _campaign_counts(campaign: ExportedCampaign) -> dict[str, Any]:
     """What was counted, without inventing a selection that never existed."""
     if campaign.row_kind == "pose":
         return {"ligands": 1, "poses": campaign.pose_count}
-    return {
+    counts: dict[str, Any] = {
         "selected": campaign.selected_count,
         "succeeded": campaign.succeeded_count,
         "failed": campaign.failed_count,
     }
+    if campaign.canceled_count:
+        counts["canceled"] = campaign.canceled_count
+    if campaign.campaign_status == "canceled":
+        counts["status"] = "canceled"
+    return counts
 
 
 def _gnina_ensemble_and_refinement_notes(campaign: ExportedCampaign) -> list[str]:
@@ -627,8 +657,21 @@ def readme(
         "Ankora campaign export",
         "=" * 22,
         "",
-        f"Engine        {campaign.engine} {campaign.engine_version}",
     ]
+    if campaign.dependency_freshness is not None and campaign.dependency_freshness.stale:
+        reasons_text = (
+            "; ".join(campaign.dependency_freshness.stale_reasons)
+            or "upstream artifact modified"
+        )
+        lines += [
+            "WARNING: STALE ARTIFACT (ADR-011)",
+            "-" * 33,
+            "This exported campaign was marked STALE at export time and must not",
+            "be presented as current.",
+            f"Reasons: {reasons_text}",
+            "",
+        ]
+    lines.append(f"Engine        {campaign.engine} {campaign.engine_version}")
     if campaign.device_name:
         lines.append(f"Device        {campaign.device_name}")
     if campaign.cnn_model_identity is not None:
@@ -863,6 +906,10 @@ def from_vina_batch(
         selected_count=record.selected_count,
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
+        canceled_count=sum(
+            1 for entry in record.entries if entry.status.value == "canceled"
+        ),
+        campaign_status=record.status.value,
         rows=rows,
         warnings=_record_warnings(record),
         **_flex_export_fields(record),
@@ -919,6 +966,10 @@ def from_autodock4_batch(
         selected_count=record.selected_count,
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
+        canceled_count=sum(
+            1 for entry in record.entries if entry.status.value == "canceled"
+        ),
+        campaign_status=record.status.value,
         rows=_autodock_rows(list(record.entries)),
         warnings=_record_warnings(record),
         **_flex_export_fields(record),
@@ -951,6 +1002,10 @@ def from_autodock_gpu_batch(
         selected_count=record.selected_count,
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
+        canceled_count=sum(
+            1 for entry in record.entries if entry.status.value == "canceled"
+        ),
+        campaign_status=record.status.value,
         rows=_autodock_rows(list(record.entries)),
         warnings=_record_warnings(record),
         **_flex_export_fields(record),
@@ -1199,6 +1254,10 @@ def from_gnina_screening(
         selected_count=record.selected_count,
         succeeded_count=record.succeeded_count,
         failed_count=record.failed_count,
+        canceled_count=sum(
+            1 for entry in record.entries if entry.status.value == "canceled"
+        ),
+        campaign_status=record.status.value,
         rows=rows,
         ranking_metric=ranking_column,
         cnn_model_identity=(
@@ -1507,6 +1566,7 @@ def collect_analog_expansion_evidence(
     binding_site_id: str | None,
     library_id: str | None,
     export_directory: Path,
+    library_ids: list[str] | None = None,
 ) -> tuple[
     list[dict[str, Any]],
     dict[str, Any] | None,
@@ -1520,11 +1580,18 @@ def collect_analog_expansion_evidence(
     destination = export_directory.resolve()
     project_root = resolve_project_root(resolved_root)
     artifacts: list[dict[str, Any]] = []
+    seen_artifact_paths: set[str] = set()
     warnings: list[dict[str, str]] = []
     provenance_summary: dict[str, Any] = {}
     focused_site: BindingSiteRecord | None = None
     selection_rec: AnalogSelectionRecord | None = None
     search_rec: AnalogSearchRecord | None = None
+
+    def _record_artifact(entry: dict[str, Any]) -> None:
+        rel = str(entry["path"])
+        if rel not in seen_artifact_paths:
+            seen_artifact_paths.add(rel)
+            artifacts.append(entry)
 
     if binding_site_id:
         site_path = project_root / "derived" / "binding_sites" / binding_site_id / "record.json"
@@ -1542,7 +1609,7 @@ def collect_analog_expansion_evidence(
                         / "record.json"
                     )
                     digest, size = _copy_preserved(site_path, target)
-                    artifacts.append(
+                    _record_artifact(
                         {
                             "kind": "pose_focused_binding_site",
                             "artifact_id": binding_site_id,
@@ -1568,16 +1635,32 @@ def collect_analog_expansion_evidence(
                     }
                 )
 
-    if library_id:
+    candidate_library_ids: list[str] = []
+    for raw_lib_id in [*(library_ids or []), *([library_id] if library_id else [])]:
+        if isinstance(raw_lib_id, str):
+            cleaned_lib = raw_lib_id.strip()
+            if cleaned_lib and cleaned_lib not in candidate_library_ids:
+                candidate_library_ids.append(cleaned_lib)
+
+    if candidate_library_ids:
         lig_store = LigandArtifactStore(root=resolved_root)
         analog_store = AnalogExpansionStore(root=resolved_root)
-        try:
-            lib = lig_store.load_library_record(library_id)
-        except AnkoraDomainError:
-            lib = None
-        if lib is not None and (
-            lib.artifact.origin_analog_selection_id or lib.artifact.origin_analog_search_id
-        ):
+        for cand_lib_id in candidate_library_ids:
+            try:
+                lib = lig_store.load_library_record(cand_lib_id)
+            except AnkoraDomainError as error:
+                warnings.append(
+                    {
+                        "kind": "analog_library_unreadable",
+                        "identity": cand_lib_id,
+                        "reason": str(error),
+                    }
+                )
+                continue
+            if not (
+                lib.artifact.origin_analog_selection_id or lib.artifact.origin_analog_search_id
+            ):
+                continue
             sel_id = lib.artifact.origin_analog_selection_id
             search_id = lib.artifact.origin_analog_search_id
             if sel_id:
@@ -1589,9 +1672,19 @@ def collect_analog_expansion_evidence(
                     / sel_id
                     / "record.json"
                 )
-                if sel_path.is_file():
+                if not sel_path.is_file():
+                    warnings.append(
+                        {
+                            "kind": "analog_selection_missing",
+                            "identity": sel_id,
+                            "reason": "Referenced analog selection record was not found on disk.",
+                        }
+                    )
+                else:
                     try:
-                        selection_rec = analog_store.load_selection(sel_id)
+                        loaded_sel = analog_store.load_selection(sel_id)
+                        if selection_rec is None:
+                            selection_rec = loaded_sel
                         target = (
                             destination
                             / "evidence"
@@ -1600,22 +1693,24 @@ def collect_analog_expansion_evidence(
                             / sel_id
                             / "record.json"
                         )
-                        digest, size = _copy_preserved(sel_path, target)
-                        artifacts.append(
-                            {
-                                "kind": "analog_selection",
-                                "artifact_id": sel_id,
-                                "path": _relative(target, destination),
-                                "sha256": digest,
-                                "size_bytes": size,
-                            }
-                        )
-                        provenance_summary["analog_selection_id"] = sel_id
-                        provenance_summary["include_seed_control"] = (
-                            selection_rec.include_seed_control
+                        rel_target = _relative(target, destination)
+                        if rel_target not in seen_artifact_paths:
+                            digest, size = _copy_preserved(sel_path, target)
+                            _record_artifact(
+                                {
+                                    "kind": "analog_selection",
+                                    "artifact_id": sel_id,
+                                    "path": rel_target,
+                                    "sha256": digest,
+                                    "size_bytes": size,
+                                }
+                            )
+                        provenance_summary.setdefault("analog_selection_id", sel_id)
+                        provenance_summary.setdefault(
+                            "include_seed_control", loaded_sel.include_seed_control
                         )
                         if not search_id:
-                            search_id = selection_rec.analog_search_id
+                            search_id = loaded_sel.analog_search_id
                     except (AnkoraDomainError, OSError, ValueError) as error:
                         warnings.append(
                             {
@@ -1633,9 +1728,19 @@ def collect_analog_expansion_evidence(
                     / search_id
                     / "record.json"
                 )
-                if search_path.is_file():
+                if not search_path.is_file():
+                    warnings.append(
+                        {
+                            "kind": "analog_search_missing",
+                            "identity": search_id,
+                            "reason": "Referenced analog search record was not found on disk.",
+                        }
+                    )
+                else:
                     try:
-                        search_rec = analog_store.load_search(search_id)
+                        loaded_search = analog_store.load_search(search_id)
+                        if search_rec is None:
+                            search_rec = loaded_search
                         target = (
                             destination
                             / "evidence"
@@ -1644,19 +1749,23 @@ def collect_analog_expansion_evidence(
                             / search_id
                             / "record.json"
                         )
-                        digest, size = _copy_preserved(search_path, target)
-                        artifacts.append(
-                            {
-                                "kind": "analog_search",
-                                "artifact_id": search_id,
-                                "path": _relative(target, destination),
-                                "sha256": digest,
-                                "size_bytes": size,
-                            }
+                        rel_target = _relative(target, destination)
+                        if rel_target not in seen_artifact_paths:
+                            digest, size = _copy_preserved(search_path, target)
+                            _record_artifact(
+                                {
+                                    "kind": "analog_search",
+                                    "artifact_id": search_id,
+                                    "path": rel_target,
+                                    "sha256": digest,
+                                    "size_bytes": size,
+                                }
+                            )
+                        provenance_summary.setdefault("analog_search_id", search_id)
+                        provenance_summary.setdefault("search_mode", loaded_search.mode.value)
+                        provenance_summary.setdefault(
+                            "rdkit_version", loaded_search.rdkit_version
                         )
-                        provenance_summary["analog_search_id"] = search_id
-                        provenance_summary["search_mode"] = search_rec.mode.value
-                        provenance_summary["rdkit_version"] = search_rec.rdkit_version
                         raw_resp = analog_store.search_raw_response_path(search_id)
                         if raw_resp is not None and raw_resp.is_file():
                             raw_target = (
@@ -1667,18 +1776,20 @@ def collect_analog_expansion_evidence(
                                 / search_id
                                 / raw_resp.name
                             )
-                            r_sha, r_size = _copy_preserved(raw_resp, raw_target)
-                            artifacts.append(
-                                {
-                                    "kind": "external_provider_raw_response",
-                                    "artifact_id": search_id,
-                                    "path": _relative(raw_target, destination),
-                                    "sha256": r_sha,
-                                    "size_bytes": r_size,
-                                }
-                            )
-                        if search_rec.analog_catalog_id:
-                            cat_id = search_rec.analog_catalog_id
+                            rel_raw = _relative(raw_target, destination)
+                            if rel_raw not in seen_artifact_paths:
+                                r_sha, r_size = _copy_preserved(raw_resp, raw_target)
+                                _record_artifact(
+                                    {
+                                        "kind": "external_provider_raw_response",
+                                        "artifact_id": search_id,
+                                        "path": rel_raw,
+                                        "sha256": r_sha,
+                                        "size_bytes": r_size,
+                                    }
+                                )
+                        if loaded_search.analog_catalog_id:
+                            cat_id = loaded_search.analog_catalog_id
                             cat_path = (
                                 project_root
                                 / "derived"
@@ -1687,7 +1798,18 @@ def collect_analog_expansion_evidence(
                                 / cat_id
                                 / "record.json"
                             )
-                            if cat_path.is_file():
+                            if not cat_path.is_file():
+                                warnings.append(
+                                    {
+                                        "kind": "analog_catalog_missing",
+                                        "identity": cat_id,
+                                        "reason": (
+                                            "Referenced analog catalog record was not found "
+                                            "on disk."
+                                        ),
+                                    }
+                                )
+                            else:
                                 cat_rec = analog_store.load_catalog(cat_id)
                                 cat_target = (
                                     destination
@@ -1697,16 +1819,18 @@ def collect_analog_expansion_evidence(
                                     / cat_id
                                     / "record.json"
                                 )
-                                c_sha, c_size = _copy_preserved(cat_path, cat_target)
-                                artifacts.append(
-                                    {
-                                        "kind": "analog_catalog_record",
-                                        "artifact_id": cat_id,
-                                        "path": _relative(cat_target, destination),
-                                        "sha256": c_sha,
-                                        "size_bytes": c_size,
-                                    }
-                                )
+                                rel_cat = _relative(cat_target, destination)
+                                if rel_cat not in seen_artifact_paths:
+                                    c_sha, c_size = _copy_preserved(cat_path, cat_target)
+                                    _record_artifact(
+                                        {
+                                            "kind": "analog_catalog_record",
+                                            "artifact_id": cat_id,
+                                            "path": rel_cat,
+                                            "sha256": c_sha,
+                                            "size_bytes": c_size,
+                                        }
+                                    )
                                 raw_cat = analog_store.catalog_content_path(cat_id)
                                 if raw_cat.stat().st_size <= 5 * 1024 * 1024:
                                     raw_cat_dst = (
@@ -1717,23 +1841,27 @@ def collect_analog_expansion_evidence(
                                         / cat_id
                                         / raw_cat.name
                                     )
-                                    rc_sha, rc_size = _copy_preserved(raw_cat, raw_cat_dst)
-                                    artifacts.append(
-                                        {
-                                            "kind": "analog_catalog_snapshot",
-                                            "artifact_id": cat_id,
-                                            "path": _relative(raw_cat_dst, destination),
-                                            "sha256": rc_sha,
-                                            "size_bytes": rc_size,
-                                        }
-                                    )
-                                    provenance_summary["catalog_snapshot_embedded"] = True
+                                    rel_raw_cat = _relative(raw_cat_dst, destination)
+                                    if rel_raw_cat not in seen_artifact_paths:
+                                        rc_sha, rc_size = _copy_preserved(raw_cat, raw_cat_dst)
+                                        _record_artifact(
+                                            {
+                                                "kind": "analog_catalog_snapshot",
+                                                "artifact_id": cat_id,
+                                                "path": rel_raw_cat,
+                                                "sha256": rc_sha,
+                                                "size_bytes": rc_size,
+                                            }
+                                        )
+                                    provenance_summary.setdefault("catalog_snapshot_embedded", True)
                                 else:
-                                    provenance_summary["catalog_snapshot_embedded"] = False
-                                    provenance_summary["catalog_snapshot_omitted_size_policy"] = (
-                                        True
+                                    provenance_summary.setdefault(
+                                        "catalog_snapshot_embedded", False
                                     )
-                                    provenance_summary["catalog_sha256"] = cat_rec.sha256
+                                    provenance_summary.setdefault(
+                                        "catalog_snapshot_omitted_size_policy", True
+                                    )
+                                    provenance_summary.setdefault("catalog_sha256", cat_rec.sha256)
                     except (AnkoraDomainError, OSError, ValueError) as error:
                         warnings.append(
                             {
@@ -2748,9 +2876,13 @@ class CampaignExportService:
         campaign = replace(
             campaign,
             reproducibility=self._reproducibility.assessment(f"{source_kind}:{batch_id}"),
+            dependency_freshness=ProjectDependencyService(
+                root=self._root, project_id=self._project_root.name
+            ).freshness_for([batch_id, f"{source_kind}:{batch_id}"]),
         )
         campaign = self._with_box(campaign)
         normalized_name = _normalize_display_name(display_name)
+        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
         export_id = str(uuid4())
         directory = self._export_dir(export_id)
         directory.mkdir(parents=True, exist_ok=False)
@@ -2809,28 +2941,17 @@ class CampaignExportService:
                 export_directory=directory,
             )
 
-        files = {
-            "results.csv": results_csv(campaign),
-            "manifest.json": manifest(
-                campaign,
-                exported_at=exported_at,
-                evidence=evidence,
-                source_kind=source_kind,
-                source_id=batch_id,
-                bundle_identity=bundle_identity,
-                source_files=source_files,
-            ),
-            "README.txt": readme(
-                campaign,
-                evidence=evidence,
-                exported_at=exported_at,
-                bundle_identity=bundle_identity,
-            ),
-        }
         # The Methods section this campaign's own records support. Rendered
-        # here rather than left for the author to reconstruct from the
-        # manifest, and omitted rather than faked if it cannot be produced.
-        methods = _methods_markdown(source_kind, batch_id)
+        # from self._root (never process env, D5-007) before manifest.json so
+        # its SHA-256 is recorded in bundle_files and failures surface explicitly.
+        methods, methods_warning = _methods_markdown(
+            self._root, self._project_root.name, source_kind, batch_id
+        )
+        if methods_warning is not None:
+            evidence = replace(
+                evidence,
+                collection_warnings=[*evidence.collection_warnings, methods_warning],
+            )
         if analog_search is not None or analog_selection is not None or focused_site is not None:
             from ankora_backend.services.methods_report import render_analog_expansion_methods
 
@@ -2842,17 +2963,61 @@ class CampaignExportService:
             methods = (
                 f"{methods.rstrip()}\n\n{analog_methods}" if methods is not None else analog_methods
             )
+        if (
+            methods is not None
+            and campaign.dependency_freshness is not None
+            and campaign.dependency_freshness.stale
+            and "WARNING — STALE ARTIFACT (ADR-011)" not in methods
+        ):
+            reasons_text = (
+                "; ".join(campaign.dependency_freshness.stale_reasons)
+                or "upstream artifact modified"
+            )
+            methods = (
+                f"> **WARNING — STALE ARTIFACT (ADR-011):** This campaign was marked stale "
+                f"at export time and must not be presented as current ({reasons_text}).\n\n"
+                + methods
+            )
+
+        core_files: dict[str, str] = {
+            "results.csv": results_csv(campaign),
+            "README.txt": readme(
+                campaign,
+                evidence=evidence,
+                exported_at=exported_at,
+                bundle_identity=bundle_identity,
+            ),
+        }
         if methods is not None:
-            files["methods.md"] = methods
+            core_files["methods.md"] = methods
+        bundle_files_meta = [
+            {
+                "path": name,
+                "sha256": sha256(content.encode("utf-8")).hexdigest(),
+                "size_bytes": len(content.encode("utf-8")),
+            }
+            for name, content in sorted(core_files.items())
+        ]
+        files: dict[str, str] = {
+            **core_files,
+            "manifest.json": manifest(
+                campaign,
+                exported_at=exported_at,
+                evidence=evidence,
+                source_kind=source_kind,
+                source_id=batch_id,
+                bundle_identity=bundle_identity,
+                source_files=source_files,
+                bundle_files=bundle_files_meta,
+            ),
+        }
         for name, content in files.items():
             with (directory / name).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(content)
         portable = _write_portable_bundle(directory, bundle_identity.archive_filename)
 
-        # The bundle is assembled in the project first, so the record and the
-        # files it serves back exist whatever happens next; a chosen folder
-        # then receives a complete copy under a name that says what it is.
-        chosen = validated_destination(destination, stage=_STAGE, prefix="EXPORT")
+        # Destination was already validated before creating the export directory
+        # (D5-021) so invalid destinations never leave orphan folders behind.
         written_to = directory
         if chosen is not None:
             written_to = free_directory(
@@ -2876,6 +3041,16 @@ class CampaignExportService:
             "outside_project": chosen is not None,
             "record_directory": str(directory),
             "files": sorted([*files, portable.name]),
+            "stale": (
+                campaign.dependency_freshness.stale
+                if campaign.dependency_freshness is not None
+                else False
+            ),
+            "stale_reasons": (
+                list(campaign.dependency_freshness.stale_reasons)
+                if campaign.dependency_freshness is not None
+                else []
+            ),
         }
 
     def file_path(self, export_id: str, filename: str) -> Path:
@@ -3170,17 +3345,27 @@ def _normalize_display_name(value: str | None) -> str | None:
     return normalized
 
 
-def _methods_markdown(source_kind: str, batch_id: str) -> str | None:
-    """The campaign's Methods section, or nothing if it cannot be rendered.
+def _methods_markdown(
+    root: Path, project_id: str, source_kind: str, batch_id: str
+) -> tuple[str | None, dict[str, str] | None]:
+    """Render the campaign's Methods section rooted at `root`, returning any failure warning.
 
     Imported inside the function: the renderer reaches into every store the
     campaign touched, and an export must not fail because one of those records
-    has been removed since.
+    has been removed since, while never dropping methods.md silently (D5-007).
     """
     from ankora_backend.services.methods_report import MethodsReportService
 
+    catalog_id = f"{source_kind}:{batch_id}"
     try:
-        report = MethodsReportService.from_environment().render(f"{source_kind}:{batch_id}")
-    except (AnkoraDomainError, OSError, ValueError):
-        return None
-    return report.markdown
+        report = MethodsReportService.from_root(root, project_id=project_id).render(catalog_id)
+    except (AnkoraDomainError, OSError, ValueError) as error:
+        return (
+            None,
+            {
+                "kind": "methods_report_unavailable",
+                "identity": catalog_id,
+                "reason": str(error),
+            },
+        )
+    return report.markdown, None

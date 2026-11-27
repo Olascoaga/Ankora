@@ -30,6 +30,7 @@ from ankora_backend.schemas.results_catalog import (
     TrashResultCampaignsRequest,
     TrashResultCampaignsResponse,
 )
+from ankora_backend.services.project_dependencies import ProjectDependencyService
 from ankora_backend.services.result_catalog import ResultCatalogService
 
 _STAGE = "results_deletion"
@@ -105,10 +106,17 @@ class ResultDeletionService:
             operation_dir = self._trash_root() / operation_id
             moves, child_catalog_ids = self._campaign_moves(entries, operation_dir)
             dependent_ids = set(request.catalog_ids) | child_catalog_ids
+            trashed_record_ids = {cid.partition(":")[2] for cid in dependent_ids if ":" in cid}
             interaction_moves = self._interaction_moves(dependent_ids, operation_dir)
             validation_moves = self._validation_moves(dependent_ids, operation_dir)
+            v02_moves, stale_targets = self._v02_dependent_moves(
+                dependent_ids=dependent_ids,
+                trashed_record_ids=trashed_record_ids,
+                operation_dir=operation_dir,
+            )
             moves.extend(interaction_moves)
             moves.extend(validation_moves)
+            moves.extend(v02_moves)
 
             operation_dir.mkdir(parents=True, exist_ok=False)
             manifest = {
@@ -117,6 +125,7 @@ class ResultDeletionService:
                 "trashed_at": trashed_at.isoformat(),
                 "campaigns": [entry.model_dump(mode="json") for entry in entries],
                 "moves": [self._move_manifest(item) for item in moves],
+                "stale_marked_node_ids": sorted(stale_targets),
                 "exports_preserved": True,
             }
             self._write_manifest(operation_dir, manifest)
@@ -156,6 +165,16 @@ class ResultDeletionService:
                         "error": str(error),
                     },
                 ) from error
+
+            if stale_targets:
+                deps = ProjectDependencyService(
+                    root=self._root, project_id=self._project.name
+                )
+                for node_id, reason in sorted(stale_targets.items()):
+                    try:
+                        deps.mark_stale(node_id, reason)
+                    except AnkoraDomainError:
+                        continue
 
             return TrashResultCampaignsResponse(
                 operation_id=operation_id,
@@ -345,6 +364,158 @@ class ResultDeletionService:
             ),
         )
 
+    def _v02_dependent_moves(
+        self,
+        *,
+        dependent_ids: set[str],
+        trashed_record_ids: set[str],
+        operation_dir: Path,
+    ) -> tuple[list[_Move], dict[str, str]]:
+        """Discover all v0.2 dependents of trashed campaigns (D5-006).
+
+        Single-campaign derivatives (pose quality, interaction rule evaluations,
+        local refinements, analog searches, and single-source consensus runs) move
+        atomically with the trashed campaign. Shared records referencing surviving
+        inputs (multi-source consensus runs, pose-focused sites, and rule sets) are
+        marked stale via ADR-011 instead of being deleted out from under other runs.
+        """
+        moves: list[_Move] = []
+        stale_targets: dict[str, str] = {}
+        trashed_summary = ", ".join(sorted(dependent_ids))
+
+        moves.extend(
+            self._dependent_moves(
+                source_root=self._project / "analysis" / "pose_quality",
+                destination_root=operation_dir / "dependencies" / "pose_quality",
+                category="pose_quality",
+                matches=lambda data: data.get("catalog_id") in dependent_ids,
+                require_uuid=False,
+            )
+        )
+        moves.extend(
+            self._dependent_moves(
+                source_root=self._project / "analysis" / "interaction_rule_evaluations",
+                destination_root=operation_dir / "dependencies" / "interaction_rule_evaluations",
+                category="interaction_rule_evaluation",
+                matches=lambda data: data.get("catalog_id") in dependent_ids,
+                require_uuid=False,
+            )
+        )
+        moves.extend(
+            self._dependent_moves(
+                source_root=self._project / "results" / "docking_refinements",
+                destination_root=operation_dir / "dependencies" / "docking_refinements",
+                category="docking_refinement",
+                matches=lambda data: (
+                    data.get("parent_job_id") in trashed_record_ids
+                    or data.get("catalog_id") in dependent_ids
+                    or (
+                        isinstance(data.get("request"), dict)
+                        and data["request"].get("parent_job_id") in trashed_record_ids
+                    )
+                ),
+                require_uuid=False,
+            )
+        )
+        moves.extend(
+            self._dependent_moves(
+                source_root=self._project / "results" / "gnina_refinements",
+                destination_root=operation_dir / "dependencies" / "gnina_refinements",
+                category="gnina_refinement",
+                matches=lambda data: (
+                    data.get("parent_job_id") in trashed_record_ids
+                    or data.get("catalog_id") in dependent_ids
+                    or (
+                        isinstance(data.get("request"), dict)
+                        and data["request"].get("parent_job_id") in trashed_record_ids
+                    )
+                ),
+                require_uuid=False,
+            )
+        )
+        moves.extend(
+            self._dependent_moves(
+                source_root=self._project / "derived" / "analog_expansion" / "searches",
+                destination_root=operation_dir / "dependencies" / "analog_searches",
+                category="analog_search",
+                matches=lambda data: (
+                    data.get("source_catalog_id") in dependent_ids
+                    or (
+                        isinstance(data.get("seed"), dict)
+                        and data["seed"].get("source_catalog_id") in dependent_ids
+                    )
+                ),
+                require_uuid=False,
+            )
+        )
+
+        # Consensus runs: cascade-trash when all sources are removed; mark stale when
+        # other surviving source campaigns still belong to the same consensus run.
+        consensus_root = self._project / "analysis" / "consensus"
+        if consensus_root.is_dir():
+            for record_path in sorted(consensus_root.glob("*/record.json")):
+                try:
+                    data = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                raw_sources = data.get("source_catalog_ids")
+                if not isinstance(raw_sources, list):
+                    continue
+                source_set = {str(item) for item in raw_sources if isinstance(item, str) and item}
+                if not (source_set & dependent_ids):
+                    continue
+                identity = record_path.parent.name
+                if source_set <= dependent_ids:
+                    moves.append(
+                        _Move(
+                            source=self._safe(record_path.parent),
+                            destination=operation_dir / "dependencies" / "consensus" / identity,
+                            category="consensus_run",
+                            identity=identity,
+                        )
+                    )
+                else:
+                    stale_targets[identity] = (
+                        f"Source campaign(s) removed to Trash: {trashed_summary}."
+                    )
+
+        # Shared rule sets & pose-focused binding sites pointing to a trashed campaign
+        rule_sets_root = self._project / "analysis" / "interaction_rule_sets"
+        if rule_sets_root.is_dir():
+            for record_path in sorted(rule_sets_root.glob("*/record.json")):
+                try:
+                    data = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                ref_ifp = data.get("reference_ifp") if isinstance(data, dict) else None
+                if (
+                    isinstance(ref_ifp, dict)
+                    and ref_ifp.get("source_catalog_id") in dependent_ids
+                ):
+                    stale_targets[record_path.parent.name] = (
+                        f"Reference pose source removed to Trash: {trashed_summary}."
+                    )
+
+        sites_root = self._project / "derived" / "binding_sites"
+        if sites_root.is_dir():
+            for record_path in sorted(sites_root.glob("*/record.json")):
+                try:
+                    data = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                pf = data.get("pose_focused_evidence") if isinstance(data, dict) else None
+                if isinstance(pf, dict) and (
+                    pf.get("source_catalog_id") in dependent_ids
+                    or pf.get("catalog_id") in dependent_ids
+                ):
+                    stale_targets[record_path.parent.name] = (
+                        f"Pose-focused seed campaign removed to Trash: {trashed_summary}."
+                    )
+
+        return moves, stale_targets
+
     def _dependent_moves(
         self,
         *,
@@ -352,6 +523,7 @@ class ResultDeletionService:
         destination_root: Path,
         category: str,
         matches: Callable[[dict[str, Any]], bool],
+        require_uuid: bool = True,
     ) -> list[_Move]:
         if not source_root.is_dir():
             return []
@@ -363,7 +535,9 @@ class ResultDeletionService:
                 continue
             if not isinstance(data, dict) or not matches(data):
                 continue
-            identity = self._uuid(record_path.parent.name)
+            identity = (
+                self._uuid(record_path.parent.name) if require_uuid else record_path.parent.name
+            )
             source = self._safe(record_path.parent)
             moves.append(
                 _Move(
@@ -413,8 +587,14 @@ class ResultDeletionService:
 
     @staticmethod
     def _write_manifest(directory: Path, payload: dict[str, Any]) -> None:
+        # `directory` is an exclusively created per-operation UUID folder under `_TRASH_LOCK`.
         temporary = directory / "operation.json.tmp"
-        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-            json.dump(payload, stream, indent=2, ensure_ascii=False)
-            stream.write("\n")
-        os.replace(temporary, directory / "operation.json")
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                json.dump(payload, stream, indent=2, ensure_ascii=False)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, directory / "operation.json")
+        finally:
+            temporary.unlink(missing_ok=True)

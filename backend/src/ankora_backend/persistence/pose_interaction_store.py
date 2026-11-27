@@ -1,6 +1,7 @@
 """Create-only storage for pose interaction analyses (M9)."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -9,6 +10,7 @@ from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
 from ankora_backend.schemas.pose_interactions import InteractionAnalysisRecord
 
+_LOG = logging.getLogger(__name__)
 _STAGE = "pose_interaction_storage"
 
 
@@ -51,7 +53,13 @@ class PoseInteractionStore:
                 record = InteractionAnalysisRecord.model_validate_json(
                     path.read_text(encoding="utf-8")
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable pose interaction record %s: %s (%s)",
+                    path,
+                    type(error).__name__,
+                    error,
+                )
                 continue
             if (
                 record.catalog_id == catalog_id

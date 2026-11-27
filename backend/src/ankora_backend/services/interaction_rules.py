@@ -42,6 +42,7 @@ from ankora_backend.schemas.pose_interactions import InteractionContact, Interac
 from ankora_backend.schemas.provenance import ProvenanceEvent, ToolIdentity
 from ankora_backend.schemas.receptors import ReceptorFlexMode, ReceptorOutputStage, ResidueLocator
 from ankora_backend.schemas.v02_contracts import PoseComplexIdentity
+from ankora_backend.services.execution_freshness import require_current_for_store
 from ankora_backend.services.pose_interactions import PoseInteractionService, VerifiedPoseInputs
 
 _STAGE = "interaction_rules"
@@ -86,6 +87,16 @@ class InteractionRulesService:
     def create_rule_set(
         self, request: CreateInteractionRuleSetRequest
     ) -> InteractionRuleSetRecord:
+        check_ids: list[str] = [request.receptor_id]
+        if request.reference_pose is not None:
+            check_ids.extend(
+                (
+                    request.reference_pose.catalog_id,
+                    request.reference_pose.ligand_id,
+                    request.reference_pose.pose_artifact_id,
+                )
+            )
+        require_current_for_store(self._rule_sets, check_ids)
         receptor_record = self._receptors.load_record(request.receptor_id)
         analysis_output = next(
             (
@@ -220,6 +231,18 @@ class InteractionRulesService:
             catalog_id, ligand_id, pose_artifact_id
         )
         resolved = verified.resolved
+        require_current_for_store(
+            self._evaluations,
+            (
+                request.rule_set_id,
+                catalog_id,
+                resolved.record_id,
+                ligand_id,
+                pose_artifact_id,
+                resolved.receptor_id,
+                resolved.ligand_preparation_id,
+            ),
+        )
         if verified.analysis_output.sha256 != rule_set.receptor_protonated_sha256:
             raise _failure(
                 "INTERACTION_RULE_RECEPTOR_MISMATCH",

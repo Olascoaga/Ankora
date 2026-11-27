@@ -1,8 +1,27 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+
 import { ankoraApi, ApiError } from "../api/client";
 
 export const BACKEND_STARTUP_TIMEOUT_MS = 120_000;
 const HEALTH_ATTEMPT_TIMEOUT_MS = 3_000;
 const RETRY_INTERVAL_MS = 750;
+
+function desktopShellActive(): boolean {
+  try {
+    return isTauri();
+  } catch {
+    return false;
+  }
+}
+
+async function readDesktopBackendStartupError(): Promise<string | null> {
+  try {
+    const message = await invoke<string | null>("backend_startup_error");
+    return typeof message === "string" && message.trim().length > 0 ? message : null;
+  } catch {
+    return null;
+  }
+}
 
 function pause(signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -22,6 +41,12 @@ function pause(signal: AbortSignal): Promise<void> {
 /** Only read-only health probes retry; scientific operations never do. */
 export async function loadBackend(signal: AbortSignal) {
   signal.throwIfAborted();
+  if (desktopShellActive()) {
+    const shellError = await readDesktopBackendStartupError();
+    if (shellError) {
+      throw new Error(shellError);
+    }
+  }
   const startup = new AbortController();
   const cancel = () => startup.abort(signal.reason);
   signal.addEventListener("abort", cancel, { once: true });

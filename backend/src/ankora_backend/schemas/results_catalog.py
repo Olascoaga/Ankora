@@ -153,6 +153,8 @@ class CatalogEntry(BaseModel):
     hit_ranking_metric: Literal["cnn_score", "cnn_vs"] | None = None
     warnings: list[StructuredWarning] = Field(default_factory=list)
     best_molecule: str | None = None
+    stale: bool = False
+    stale_reasons: list[str] = Field(default_factory=list)
 
 
 class CatalogPage(BaseModel):

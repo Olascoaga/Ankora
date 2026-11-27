@@ -561,7 +561,12 @@ class GninaScreeningStore:
         return self.load_progress(campaign_id)
 
     def recover_interrupted_campaign(
-        self, campaign_id: str, *, interrupted_at: datetime
+        self,
+        campaign_id: str,
+        *,
+        interrupted_at: datetime,
+        lease_owner_instance_id: str | None = None,
+        lease_heartbeat_at: datetime | None = None,
     ) -> GninaScreeningProgress:
         """Mark an abandoned campaign interrupted without retrying or hiding work.
 
@@ -651,14 +656,19 @@ class GninaScreeningStore:
                     summary["phase"] = DockingJobPhase.COMPLETE.value
                     summary["completed_at"] = interrupted_at.isoformat()
                     summary["revision"] = revision + 1
+                    failure_details: dict[str, Any] = {
+                        "interrupted_entry_count": interrupted,
+                        "unlinked_job_count": len(unlinked),
+                        "unlinked_job_ids": unlinked[:20],
+                    }
+                    if lease_owner_instance_id is not None:
+                        failure_details["previous_owner_instance_id"] = lease_owner_instance_id
+                    if lease_heartbeat_at is not None:
+                        failure_details["last_heartbeat_at"] = lease_heartbeat_at.isoformat()
                     summary["failure"] = DockingFailure(
                         code="GNINA_SCREENING_CAMPAIGN_INTERRUPTED",
                         message="The campaign was interrupted; no automatic retry was started.",
-                        details={
-                            "interrupted_entry_count": interrupted,
-                            "unlinked_job_count": len(unlinked),
-                            "unlinked_job_ids": unlinked[:20],
-                        },
+                        details=failure_details,
                     ).model_dump(mode="json")
                     self._apply_exact_counters(database, summary)
                     self._write_summary(database, summary)

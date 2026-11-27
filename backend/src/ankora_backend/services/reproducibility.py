@@ -111,8 +111,11 @@ def _execution(engine_key: str, record: Any) -> _Execution:
 def _input_payload(engine_key: str, record: Any) -> dict[str, Any]:
     request = record.request.model_dump(mode="json")
     request.pop("acknowledge_inputs_and_scoring", None)
+    flex_mode_raw = getattr(record, "receptor_flex_mode", None)
+    flex_mode = _text(flex_mode_raw) if flex_mode_raw is not None else None
+    flex_sha = getattr(record, "receptor_flex_sha256", None)
     if engine_key in {_VINA_BATCH, _VINA_JOB}:
-        payload = {
+        payload: dict[str, Any] = {
             "engine_key": engine_key,
             "tool": record.tool.model_dump(mode="json"),
             "request": request,
@@ -122,6 +125,9 @@ def _input_payload(engine_key: str, record: Any) -> dict[str, Any]:
             payload["selection_manifest_sha256"] = record.selection_manifest_sha256
         else:
             payload["ligand_sha256"] = record.ligand_sha256
+        if flex_mode == "sidechain_flex" or flex_sha is not None:
+            payload["receptor_flex_mode"] = flex_mode
+            payload["receptor_flex_sha256"] = flex_sha
         return payload
 
     identity = (
@@ -138,6 +144,9 @@ def _input_payload(engine_key: str, record: Any) -> dict[str, Any]:
         payload["selection_manifest_sha256"] = record.selection_manifest_sha256
     else:
         payload["ligand_sha256"] = record.ligand_sha256
+    if flex_mode == "sidechain_flex" or flex_sha is not None:
+        payload["receptor_flex_mode"] = flex_mode
+        payload["receptor_flex_sha256"] = flex_sha
     return payload
 
 
@@ -174,25 +183,41 @@ def _output_payload(engine_key: str, record: Any) -> dict[str, Any]:
 
 
 def _vina_pose(pose: Any) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "mode": pose.mode,
         "affinity_kcal_mol": pose.affinity_kcal_mol,
         "rmsd_lower_bound_angstrom": pose.rmsd_lower_bound_angstrom,
         "rmsd_upper_bound_angstrom": pose.rmsd_upper_bound_angstrom,
         "artifact_sha256": pose.artifact.sha256,
     }
+    flex_sha = getattr(pose.artifact, "pose_flex_sidechains_sha256", None)
+    flex_name = getattr(pose.artifact, "flex_filename", None)
+    complex_sha = getattr(pose.artifact, "pose_complex_identity_sha256", None)
+    if flex_sha is not None or flex_name is not None or complex_sha is not None:
+        payload["pose_flex_sidechains_sha256"] = flex_sha
+        payload["flex_filename"] = flex_name
+        payload["pose_complex_identity_sha256"] = complex_sha
+    return payload
 
 
 def _autodock_result(result: Any) -> dict[str, Any]:
+    runs_payload: list[dict[str, Any]] = []
+    for run in result.runs:
+        item: dict[str, Any] = {
+            **run.model_dump(mode="json", exclude={"artifact"}),
+            "artifact_sha256": run.artifact.sha256,
+        }
+        flex_sha = getattr(run.artifact, "pose_flex_sidechains_sha256", None)
+        flex_name = getattr(run.artifact, "flex_filename", None)
+        complex_sha = getattr(run.artifact, "pose_complex_identity_sha256", None)
+        if flex_sha is not None or flex_name is not None or complex_sha is not None:
+            item["pose_flex_sidechains_sha256"] = flex_sha
+            item["flex_filename"] = flex_name
+            item["pose_complex_identity_sha256"] = complex_sha
+        runs_payload.append(item)
     return {
         "clusters": [cluster.model_dump(mode="json") for cluster in result.clusters],
-        "runs": [
-            {
-                **run.model_dump(mode="json", exclude={"artifact"}),
-                "artifact_sha256": run.artifact.sha256,
-            }
-            for run in result.runs
-        ],
+        "runs": runs_payload,
     }
 
 

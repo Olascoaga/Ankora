@@ -81,12 +81,22 @@ def _record_pb_status(
             table[key] = None
 
 
-def _load_secondary_consensus_pose_shas(
+@dataclass(frozen=True, slots=True)
+class _SecondaryConsensusEntry:
+    """Per-parent ranking entry resolved from embedded consensus record.json (D7-001)."""
+
+    tier: str
+    score_value: float | None
+    pose_complex_sha256: str
+    failure_code: str | None
+
+
+def _load_secondary_consensus_entries(
     bundle_path: Path,
     manifest: dict[str, Any],
     score_column: str,
-) -> dict[str, str]:
-    """Resolve per-parent selected pose_complex_sha256 for secondary consensus rankings."""
+) -> dict[str, _SecondaryConsensusEntry]:
+    """Resolve per-parent tier, score, pose SHA, and failure code for secondary rankings."""
     ranking_key = _SECONDARY_CONSENSUS_RANKING_KEYS.get(score_column)
     if ranking_key is None:
         return {}
@@ -99,22 +109,46 @@ def _load_secondary_consensus_pose_shas(
         return {}
     try:
         rec_payload = json.loads(_read_bundle_file(bundle_path, rec_path).decode("utf-8"))
-    except (KeyError, OSError, json.JSONDecodeError, zipfile.BadZipFile):
+    except (KeyError, OSError, UnicodeDecodeError, json.JSONDecodeError, zipfile.BadZipFile):
         return {}
     ranking = rec_payload.get(ranking_key)
     if not isinstance(ranking, dict):
         return {}
-    pose_shas: dict[str, str] = {}
+    resolved: dict[str, _SecondaryConsensusEntry] = {}
     for entry in ranking.get("entries") or []:
         if not isinstance(entry, dict):
             continue
         pid = entry.get("parent_compound_id")
+        if not isinstance(pid, str) or not pid.strip():
+            continue
+        tier_raw = entry.get("tier")
+        tier = tier_raw.strip() if isinstance(tier_raw, str) else ""
+        score_raw = entry.get("score_value")
+        score_val: float | None = None
+        if isinstance(score_raw, (int, float)) and not isinstance(score_raw, bool):
+            parsed = float(score_raw)
+            if math.isfinite(parsed):
+                score_val = parsed
+        pose_sha = ""
         pose_complex = entry.get("selected_pose_complex")
-        if isinstance(pid, str) and isinstance(pose_complex, dict):
+        if isinstance(pose_complex, dict):
             sha = pose_complex.get("complex_identity_sha256")
-            if isinstance(sha, str) and sha:
-                pose_shas[pid] = sha
-    return pose_shas
+            if isinstance(sha, str) and sha.strip():
+                pose_sha = sha.strip()
+        fcodes = entry.get("failure_or_exclusion_codes")
+        fcode: str | None = None
+        if isinstance(fcodes, list):
+            cleaned = [str(c).strip() for c in fcodes if isinstance(c, str) and c.strip()]
+            fcode = ";".join(cleaned) or None
+        elif isinstance(fcodes, str) and fcodes.strip():
+            fcode = fcodes.strip()
+        resolved[pid.strip()] = _SecondaryConsensusEntry(
+            tier=tier,
+            score_value=score_val,
+            pose_complex_sha256=pose_sha,
+            failure_code=fcode,
+        )
+    return resolved
 
 
 def _load_bundle_verifier() -> ModuleType:
@@ -206,8 +240,8 @@ def load_ankora_export_scores(
             _record_pb_status(pb_by_ligand_id, lig_id.strip(), overall)
 
     row_kind = verification["row_kind"]
-    secondary_pose_shas = (
-        _load_secondary_consensus_pose_shas(bundle_path, manifest, score_column)
+    secondary_entries = (
+        _load_secondary_consensus_entries(bundle_path, manifest, score_column)
         if row_kind == "consensus_parent"
         else {}
     )
@@ -225,15 +259,34 @@ def load_ankora_export_scores(
                     f"Duplicate parent_compound_id in Ankora export results.csv: {parent_id!r}"
                 )
             if score_column in _SECONDARY_CONSENSUS_RANKING_KEYS:
-                selected_pose_sha = secondary_pose_shas.get(parent_id, "")
+                sec = secondary_entries.get(parent_id)
+                if sec is not None:
+                    effective_tier = sec.tier
+                    selected_pose_sha = sec.pose_complex_sha256
+                    effective_codes = sec.failure_code or codes
+                    if not raw_val and sec.tier == "full_profile" and sec.score_value is not None:
+                        raw_val = repr(sec.score_value)
+                else:
+                    # Fallback when bundle omits consensus record.json (e.g. legacy synthetic
+                    # fixture): independent pcq_core_score emitted on partial primary rows is
+                    # scored when present (D7-001).
+                    effective_tier = (
+                        "full_profile"
+                        if (score_column == "pcq_core_score" and raw_val)
+                        else tier
+                    )
+                    selected_pose_sha = ""
+                    effective_codes = codes
             else:
+                effective_tier = tier
                 selected_pose_sha = (row.get("selected_pose_complex_sha256") or "").strip()
+                effective_codes = codes
             pb_flag = (
                 pb_by_pose_complex_sha.get(selected_pose_sha)
                 if selected_pose_sha
                 else None
             )
-            if tier == "full_profile" and raw_val:
+            if effective_tier == "full_profile" and raw_val:
                 val = _parse_finite_float(
                     raw_val, context=f"Ankora export ({bundle_path.name}, {parent_id})"
                 )
@@ -250,7 +303,7 @@ def load_ankora_export_scores(
                     parent_id=parent_id,
                     scored=False,
                     oriented_score=None,
-                    failure_code=codes or "PARTIAL_OR_UNSCORED",
+                    failure_code=effective_codes or "PARTIAL_OR_UNSCORED",
                     posebusters_pass=pb_flag,
                 )
         else:

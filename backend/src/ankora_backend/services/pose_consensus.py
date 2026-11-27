@@ -65,6 +65,7 @@ from ankora_backend.schemas.v02_contracts import (
     ScoringFunctionId,
     canonical_contract_sha256,
 )
+from ankora_backend.services.execution_freshness import require_current_for_store
 from ankora_backend.services.pose_interactions import PoseInteractionService
 from ankora_backend.services.pose_rescoring import PoseRescoringService
 from ankora_backend.services.result_catalog import (
@@ -153,6 +154,10 @@ class PoseConsensusService:
         source_catalog_ids: Sequence[str] = (),
     ) -> ConsensusRunRecord:
         """Compute & persist immutable PC-Q + PC-ECR over verified pose-first observations."""
+        check_ids: list[str] = [request.receptor_id, request.binding_site_id, *source_catalog_ids]
+        if request.reference_panel_id is not None:
+            check_ids.append(request.reference_panel_id)
+        require_current_for_store(self._store, check_ids)
         if request.reference_panel_id is not None:
             panel = self._store.load_panel(request.reference_panel_id)
             self._verify_reused_panel_context(
@@ -255,6 +260,13 @@ class PoseConsensusService:
         """End-to-end Pose-First consensus directly across saved Ankora campaign(s) / job(s)."""
         source_catalog_ids = tuple(dict.fromkeys(src.catalog_id for src in request.sources))
         enabled_functions = _enabled_functions_for_campaign_request(request)
+        campaign_check_ids: list[str] = [
+            *source_catalog_ids,
+            request.autogrid_map_set_id,
+        ]
+        if request.reference_panel_id is not None:
+            campaign_check_ids.append(request.reference_panel_id)
+        require_current_for_store(self._store, campaign_check_ids)
 
         # 1. Load catalog entries and enforce E4 shared receptor + binding box across all sources.
         entries = [self._catalog.get_campaign(cid) for cid in source_catalog_ids]
@@ -687,6 +699,16 @@ class PoseConsensusService:
     def fit_pc_l2(self, consensus_id: str, request: FitPcL2Request) -> ConsensusRunRecord:
         """Create a new derivative ConsensusRunRecord carrying gated PC-L2 calibration."""
         base = self._store.load_run(consensus_id)
+        require_current_for_store(
+            self._store,
+            (
+                consensus_id,
+                request.calibration_id,
+                base.receptor_id,
+                base.binding_site_id,
+                *base.source_catalog_ids,
+            ),
+        )
         calibration = self._calibrations.get_run(request.calibration_id)
         if calibration.receptor_id != base.receptor_id:
             raise _consensus_error(

@@ -387,10 +387,15 @@ export function App() {
     try {
       const activated = await ankoraApi.activateProject(project.project_id);
       resetScientificWorkspace();
+      let recoveryFailure: string | null = null;
       const [catalog, graph, recovery, savedReceptor] = await Promise.all([
         ankoraApi.projects(),
         ankoraApi.projectDependencies(0, projectGraphLimit),
-        ankoraApi.workRecovery().catch(() => null),
+        ankoraApi.workRecovery().catch((error: unknown) => {
+          recoveryFailure =
+            error instanceof Error ? error.message : "Startup recovery could not be inspected";
+          return null;
+        }),
         ankoraApi.latestReceptor().catch((error: unknown) => {
           if (error instanceof ApiError && error.status === 404) return null;
           throw error;
@@ -402,7 +407,12 @@ export function App() {
       setProjectCatalog(catalog);
       setProjectGraph(graph);
       setLatestReceptor(savedReceptor);
-      if (recovery && Array.isArray(recovery.items)) setWorkRecovery(recovery);
+      if (recovery && Array.isArray(recovery.items)) {
+        setWorkRecovery(recovery);
+        setRecoveryLoadError(null);
+      } else {
+        setRecoveryLoadError(recoveryFailure);
+      }
       setProjectError(null);
       if (activated.project_id !== catalog.active_project_id) {
         throw new Error("The backend did not retain the selected project.");

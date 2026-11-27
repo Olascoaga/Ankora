@@ -20,6 +20,7 @@ import posixpath
 import re
 import sys
 import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
@@ -112,9 +113,12 @@ class _BundleSource:
         safe = _validate_safe_relpath(rel_path)
         if safe not in self._members:
             raise BundleVerificationError(f"Missing required file in bundle: {safe}")
-        if self._zip is not None:
-            return self._zip.read(safe)
-        return (self.target / safe).read_bytes()
+        try:
+            if self._zip is not None:
+                return self._zip.read(safe)
+            return (self.target / safe).read_bytes()
+        except (zipfile.BadZipFile, zlib.error, OSError, RuntimeError) as err:
+            raise BundleVerificationError(f"Unable to read bundle member {safe}: {err}") from err
 
     def sha256_and_size(self, rel_path: str) -> tuple[str, int]:
         safe = _validate_safe_relpath(rel_path)
@@ -122,17 +126,32 @@ class _BundleSource:
             raise BundleVerificationError(f"Missing referenced file in bundle: {safe}")
         digest = hashlib.sha256()
         total = 0
-        if self._zip is not None:
-            with self._zip.open(safe, "r") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-                    total += len(chunk)
-        else:
-            with (self.target / safe).open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-                    total += len(chunk)
+        try:
+            if self._zip is not None:
+                with self._zip.open(safe, "r") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        total += len(chunk)
+            else:
+                with (self.target / safe).open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        total += len(chunk)
+        except (zipfile.BadZipFile, zlib.error, OSError, RuntimeError) as err:
+            raise BundleVerificationError(f"Unable to hash bundle member {safe}: {err}") from err
         return digest.hexdigest(), total
+
+
+def _is_strict_int(value: Any) -> bool:
+    """Return True only for genuine integers (rejecting bool, which subclasses int)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _decode_utf8(raw: bytes, label: str) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as err:
+        raise BundleVerificationError(f"{label} is not valid UTF-8: {err}") from err
 
 
 def _verify_hash_field(value: Any, label: str) -> str:
@@ -148,12 +167,12 @@ def _verify_referenced_blob(
     expected_sha256: Any,
     expected_size: Any,
     label: str,
-) -> None:
+) -> str:
     if not isinstance(rel_path, str):
         raise BundleVerificationError(f"Missing string path for {label}")
     safe_path = _validate_safe_relpath(rel_path)
     want_sha = _verify_hash_field(expected_sha256, f"{label} ({safe_path})")
-    if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size < 0:
+    if not _is_strict_int(expected_size) or expected_size < 0:
         raise BundleVerificationError(f"Invalid size_bytes for {label} ({safe_path}): {expected_size!r}")
     got_sha, got_size = source.sha256_and_size(safe_path)
     if got_size != expected_size:
@@ -164,9 +183,15 @@ def _verify_referenced_blob(
         raise BundleVerificationError(
             f"SHA-256 mismatch for {label} ({safe_path}): expected {want_sha}, observed {got_sha}"
         )
+    return safe_path
 
 
-def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[str, Any]:
+def verify_bundle(
+    target: Path,
+    *,
+    require_format: int | None = None,
+    require_core_hashes: bool = False,
+) -> dict[str, Any]:
     """Verify structural, tabular, and SHA-256 integrity of an Ankora export bundle."""
     with _BundleSource(target) as source:
         for required in ("manifest.json", "results.csv", "README.txt"):
@@ -181,7 +206,7 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             raise BundleVerificationError("manifest.json root must be a JSON object")
 
         fmt = manifest.get("ankora_export_format")
-        if not isinstance(fmt, int) or isinstance(fmt, bool) or fmt not in SUPPORTED_EXPORT_FORMATS:
+        if not _is_strict_int(fmt) or fmt not in SUPPORTED_EXPORT_FORMATS:
             raise BundleVerificationError(f"Unsupported ankora_export_format: {fmt!r}")
         if require_format is not None and fmt != require_format:
             raise BundleVerificationError(
@@ -208,13 +233,18 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
         if not isinstance(engine.get("version"), str) or not engine["version"].strip():
             raise BundleVerificationError("manifest.json engine.version must be a non-empty string")
 
-        readme_text = source.read_bytes("README.txt").decode("utf-8")
+        readme_text = _decode_utf8(source.read_bytes("README.txt"), "README.txt")
         if not readme_text.strip():
             raise BundleVerificationError("README.txt is empty")
-        if source.has_file("methods.md"):
-            methods_text = source.read_bytes("methods.md").decode("utf-8")
+        has_methods = source.has_file("methods.md")
+        if has_methods:
+            methods_text = _decode_utf8(source.read_bytes("methods.md"), "methods.md")
             if not methods_text.strip():
                 raise BundleVerificationError("methods.md is present but empty")
+
+        referenced_files: set[str] = {"manifest.json", "results.csv", "README.txt"}
+        if has_methods:
+            referenced_files.add("methods.md")
 
         # Verify cryptographic bundle & input identities (Format >= 3 or whenever bundle is present)
         bundle_section = manifest.get("bundle")
@@ -267,7 +297,7 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                 )
 
         # Verify results.csv header, row count, and status accounting
-        csv_text = source.read_bytes("results.csv").decode("utf-8")
+        csv_text = _decode_utf8(source.read_bytes("results.csv"), "results.csv")
         reader = csv.DictReader(io.StringIO(csv_text))
         if reader.fieldnames is None:
             raise BundleVerificationError("results.csv has no header row")
@@ -310,12 +340,12 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             full_profile = counts.get("full_profile")
             partial_unscored = counts.get("partial_or_unscored")
             if (
-                not isinstance(total_parents, int)
-                or isinstance(total_parents, bool)
-                or not isinstance(full_profile, int)
-                or isinstance(full_profile, bool)
-                or not isinstance(partial_unscored, int)
-                or isinstance(partial_unscored, bool)
+                not _is_strict_int(total_parents)
+                or not _is_strict_int(full_profile)
+                or not _is_strict_int(partial_unscored)
+                or total_parents < 0
+                or full_profile < 0
+                or partial_unscored < 0
                 or total_parents != full_profile + partial_unscored
                 or len(rows) != total_parents
             ):
@@ -370,7 +400,14 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                     f"disagree with manifest counts {counts}"
                 )
         elif row_kind == "pose":
-            if counts.get("ligands") != 1 or counts.get("poses") != len(rows):
+            ligands_count = counts.get("ligands")
+            poses_count = counts.get("poses")
+            if (
+                not _is_strict_int(ligands_count)
+                or not _is_strict_int(poses_count)
+                or ligands_count != 1
+                or poses_count != len(rows)
+            ):
                 raise BundleVerificationError(
                     f"Pose row count ({len(rows)}) disagrees with manifest counts {counts}"
                 )
@@ -378,150 +415,187 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             selected = counts.get("selected")
             succeeded = counts.get("succeeded")
             failed = counts.get("failed")
+            canceled = counts.get("canceled", 0)
             if (
-                not isinstance(selected, int)
-                or not isinstance(succeeded, int)
-                or not isinstance(failed, int)
-                or selected != succeeded + failed
+                not _is_strict_int(selected)
+                or not _is_strict_int(succeeded)
+                or not _is_strict_int(failed)
+                or not _is_strict_int(canceled)
+                or selected < 0
+                or succeeded < 0
+                or failed < 0
+                or canceled < 0
+                or selected != succeeded + failed + canceled
                 or len(rows) != selected
             ):
                 raise BundleVerificationError(
                     f"Molecule row count ({len(rows)}) disagrees with manifest counts {counts}"
                 )
             completed_rows = sum(1 for r in rows if r.get("status") == "completed")
-            non_completed_rows = len(rows) - completed_rows
-            if completed_rows != succeeded or non_completed_rows != failed:
+            canceled_rows = sum(1 for r in rows if r.get("status") == "canceled")
+            failed_rows = len(rows) - completed_rows - canceled_rows
+            if (
+                completed_rows != succeeded
+                or failed_rows != failed
+                or canceled_rows != canceled
+            ):
                 raise BundleVerificationError(
-                    f"results.csv status breakdown (completed={completed_rows}, other={non_completed_rows}) "
-                    f"disagrees with manifest counts (succeeded={succeeded}, failed={failed})"
+                    f"results.csv status breakdown (completed={completed_rows}, "
+                    f"failed={failed_rows}, canceled={canceled_rows}) "
+                    f"disagrees with manifest counts (succeeded={succeeded}, "
+                    f"failed={failed}, canceled={canceled})"
                 )
 
         # Verify recorded M9 evidence files (pose interactions, figures, redocking verdicts)
         verified_evidence_files = 0
         evidence = manifest["recorded_evidence"]
         for item in evidence.get("pose_interaction_analyses") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"pose_interaction {item.get('analysis_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"pose_interaction {item.get('analysis_id')}",
+                )
             )
             verified_evidence_files += 1
 
         for fig in evidence.get("figures") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=fig.get("record_path"),
-                expected_sha256=fig.get("record_sha256"),
-                expected_size=fig.get("record_size_bytes"),
-                label=f"figure record {fig.get('figure_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=fig.get("record_path"),
+                    expected_sha256=fig.get("record_sha256"),
+                    expected_size=fig.get("record_size_bytes"),
+                    label=f"figure record {fig.get('figure_id')}",
+                )
             )
             verified_evidence_files += 1
             for fitem in fig.get("files") or []:
-                _verify_referenced_blob(
-                    source,
-                    rel_path=fitem.get("path"),
-                    expected_sha256=fitem.get("sha256"),
-                    expected_size=fitem.get("size_bytes"),
-                    label=f"figure file {fig.get('figure_id')}/{fitem.get('filename')}",
+                referenced_files.add(
+                    _verify_referenced_blob(
+                        source,
+                        rel_path=fitem.get("path"),
+                        expected_sha256=fitem.get("sha256"),
+                        expected_size=fitem.get("size_bytes"),
+                        label=f"figure file {fig.get('figure_id')}/{fitem.get('filename')}",
+                    )
                 )
                 verified_evidence_files += 1
 
         for val in evidence.get("redocking_validations") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=val.get("path"),
-                expected_sha256=val.get("sha256"),
-                expected_size=val.get("size_bytes"),
-                label=f"redocking validation {val.get('validation_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=val.get("path"),
+                    expected_sha256=val.get("sha256"),
+                    expected_size=val.get("size_bytes"),
+                    label=f"redocking validation {val.get('validation_id')}",
+                )
             )
             verified_evidence_files += 1
             ref = val.get("reference")
             if isinstance(ref, dict):
-                _verify_referenced_blob(
-                    source,
-                    rel_path=ref.get("path"),
-                    expected_sha256=ref.get("sha256"),
-                    expected_size=ref.get("size_bytes"),
-                    label=f"redocking reference {val.get('validation_id')}",
+                referenced_files.add(
+                    _verify_referenced_blob(
+                        source,
+                        rel_path=ref.get("path"),
+                        expected_sha256=ref.get("sha256"),
+                        expected_size=ref.get("size_bytes"),
+                        label=f"redocking reference {val.get('validation_id')}",
+                    )
                 )
                 verified_evidence_files += 1
 
         # Verify v0.2 M2/M3/M4/M5 recorded evidence files (Export v5)
         v02_verified_evidence_files = 0
         for item in evidence.get("pose_quality_assessments") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"pose_quality {item.get('assessment_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"pose_quality {item.get('assessment_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
 
         for item in evidence.get("interaction_rule_evaluations") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"interaction_rule_evaluation {item.get('evaluation_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"interaction_rule_evaluation {item.get('evaluation_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
 
         for item in evidence.get("interaction_rule_sets") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"interaction_rule_set {item.get('rule_set_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"interaction_rule_set {item.get('rule_set_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
 
         for item in evidence.get("consensus_records") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"consensus_record {item.get('consensus_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"consensus_record {item.get('consensus_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
 
         for item in evidence.get("reference_panels") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"reference_panel {item.get('panel_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"reference_panel {item.get('panel_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
 
         for item in evidence.get("calibration_records") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"calibration_record {item.get('calibration_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"calibration_record {item.get('calibration_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
             for stage_item in item.get("stage_files") or []:
-                _verify_referenced_blob(
-                    source,
-                    rel_path=stage_item.get("path"),
-                    expected_sha256=stage_item.get("sha256"),
-                    expected_size=stage_item.get("size_bytes"),
-                    label=f"calibration stage {item.get('calibration_id')}/{stage_item.get('filename')}",
+                referenced_files.add(
+                    _verify_referenced_blob(
+                        source,
+                        rel_path=stage_item.get("path"),
+                        expected_sha256=stage_item.get("sha256"),
+                        expected_size=stage_item.get("size_bytes"),
+                        label=f"calibration stage {item.get('calibration_id')}/{stage_item.get('filename')}",
+                    )
                 )
                 verified_evidence_files += 1
                 v02_verified_evidence_files += 1
@@ -529,12 +603,14 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
         # Verify ADR-033 Hit-to-Analog & POSE_FOCUSED artifacts (Export v6)
         analog_verified_files = 0
         for item in evidence.get("analog_expansion_artifacts") or []:
-            _verify_referenced_blob(
-                source,
-                rel_path=item.get("path"),
-                expected_sha256=item.get("sha256"),
-                expected_size=item.get("size_bytes"),
-                label=f"analog_expansion {item.get('kind')}:{item.get('artifact_id')}",
+            referenced_files.add(
+                _verify_referenced_blob(
+                    source,
+                    rel_path=item.get("path"),
+                    expected_sha256=item.get("sha256"),
+                    expected_size=item.get("size_bytes"),
+                    label=f"analog_expansion {item.get('kind')}:{item.get('artifact_id')}",
+                )
             )
             verified_evidence_files += 1
             v02_verified_evidence_files += 1
@@ -568,12 +644,14 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                     raise BundleVerificationError(
                         f"Invalid source_files integrity mode {integrity!r} for {sfile.get('path')!r}"
                     )
-                _verify_referenced_blob(
-                    source,
-                    rel_path=sfile.get("path"),
-                    expected_sha256=sfile.get("sha256"),
-                    expected_size=sfile.get("size_bytes"),
-                    label=f"source_file {sfile.get('path')}",
+                referenced_files.add(
+                    _verify_referenced_blob(
+                        source,
+                        rel_path=sfile.get("path"),
+                        expected_sha256=sfile.get("sha256"),
+                        expected_size=sfile.get("size_bytes"),
+                        label=f"source_file {sfile.get('path')}",
+                    )
                 )
                 rec_sha = sfile.get("recorded_sha256")
                 if integrity == "matches_recorded_sha256":
@@ -594,7 +672,8 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                 verified_source_files += 1
 
         # When verifying an export directory that holds its portable .zip archive,
-        # cross-check that the embedded ZIP matches the directory contents byte-for-byte.
+        # cross-check that the embedded ZIP matches the directory contents byte-for-byte
+        # before per-file core-hash verification so directory-only drift reports cleanly.
         embedded_zip_verified = False
         if source.kind == "directory" and isinstance(bundle_section, dict):
             archive_name = bundle_section.get("archive_filename")
@@ -611,7 +690,75 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
                             raise BundleVerificationError(
                                 f"Embedded archive {archive_name} differs from directory on {member}"
                             )
+                referenced_files.add(archive_name)
                 embedded_zip_verified = True
+
+        # Verify cryptographic digests of core bundle files (results.csv, README.txt, methods.md)
+        # whenever manifest['bundle_files'] is recorded (D5-009).
+        verified_bundle_files = 0
+        bundle_files_section = manifest.get("bundle_files")
+        if bundle_files_section is not None:
+            if not isinstance(bundle_files_section, list) or not bundle_files_section:
+                raise BundleVerificationError("manifest.json bundle_files must be a non-empty list")
+            hashed_core_paths: set[str] = set()
+            for bfile in bundle_files_section:
+                if not isinstance(bfile, dict):
+                    raise BundleVerificationError("manifest.json bundle_files entry must be an object")
+                safe_bpath = _verify_referenced_blob(
+                    source,
+                    rel_path=bfile.get("path"),
+                    expected_sha256=bfile.get("sha256"),
+                    expected_size=bfile.get("size_bytes"),
+                    label="bundle_file",
+                )
+                if safe_bpath in hashed_core_paths:
+                    raise BundleVerificationError(
+                        f"Duplicate bundle_files entry in manifest.json: {safe_bpath}"
+                    )
+                hashed_core_paths.add(safe_bpath)
+                referenced_files.add(safe_bpath)
+                verified_bundle_files += 1
+            required_hashed = {"results.csv", "README.txt"}
+            if has_methods:
+                required_hashed.add("methods.md")
+            missing_hashed = sorted(required_hashed - hashed_core_paths)
+            if missing_hashed:
+                raise BundleVerificationError(
+                    f"manifest.json bundle_files omits required core file(s): {missing_hashed}"
+                )
+        elif require_core_hashes:
+            raise BundleVerificationError(
+                "Bundle manifest lacks cryptographic bundle_files digests (--require-core-hashes)"
+            )
+
+        # Reject any unexpected unmanifested extra files in the archive or directory (D5-009).
+        extra_files = sorted(source.files() - referenced_files)
+        if extra_files:
+            raise BundleVerificationError(
+                f"Bundle contains unexpected unmanifested file(s): {extra_files}"
+            )
+
+        # Surface ADR-011 dependency staleness metadata if present (D5-001).
+        stale_flag = False
+        stale_reasons: list[str] = []
+        freshness_section = manifest.get("dependency_freshness")
+        if freshness_section is not None:
+            if not isinstance(freshness_section, dict):
+                raise BundleVerificationError("manifest.json dependency_freshness must be an object")
+            raw_stale = freshness_section.get("stale")
+            if not isinstance(raw_stale, bool):
+                raise BundleVerificationError(
+                    f"manifest.json dependency_freshness.stale must be boolean, got {raw_stale!r}"
+                )
+            raw_reasons = freshness_section.get("stale_reasons") or []
+            if not isinstance(raw_reasons, list) or not all(
+                isinstance(reason, str) for reason in raw_reasons
+            ):
+                raise BundleVerificationError(
+                    "manifest.json dependency_freshness.stale_reasons must be a list of strings"
+                )
+            stale_flag = raw_stale
+            stale_reasons = list(raw_reasons)
 
         return {
             "verified": True,
@@ -628,12 +775,15 @@ def verify_bundle(target: Path, *, require_format: int | None = None) -> dict[st
             "row_count": len(rows),
             "input_identity_sha256": computed_input_sha256,
             "bundle_identity_sha256": computed_bundle_sha256,
+            "verified_bundle_files": verified_bundle_files,
             "verified_evidence_files": verified_evidence_files,
             "v02_verified_evidence_files": v02_verified_evidence_files,
             "analog_verified_evidence_files": analog_verified_files,
             "verified_source_files": verified_source_files,
             "matched_recorded_hashes": matched_recorded_hashes,
             "embedded_zip_verified": embedded_zip_verified,
+            "stale": stale_flag,
+            "stale_reasons": stale_reasons,
         }
 
 
@@ -652,6 +802,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Require an exact ankora_export_format version (e.g. 4).",
     )
     parser.add_argument(
+        "--require-core-hashes",
+        action="store_true",
+        help="Require manifest.json bundle_files SHA-256 digests for results.csv, README.txt, and methods.md.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Emit machine-readable JSON verification report.",
@@ -659,7 +814,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        report = verify_bundle(args.bundle, require_format=args.require_format)
+        report = verify_bundle(
+            args.bundle,
+            require_format=args.require_format,
+            require_core_hashes=args.require_core_hashes,
+        )
     except BundleVerificationError as err:
         if args.json:
             print(json.dumps({"verified": False, "error": str(err)}, indent=2))
@@ -674,10 +833,17 @@ def main(argv: list[str] | None = None) -> int:
             f"VERIFIED OK: {Path(report['target']).name} "
             f"(format v{report['ankora_export_format']}, {report['engine']}, "
             f"{report['row_count']} {report['row_kind']} row(s), "
+            f"{report['verified_bundle_files']} core file hash(es), "
             f"{report['verified_source_files']} source file(s), "
             f"{report['verified_evidence_files']} evidence file(s), "
             f"inputs_sha256={report['input_identity_sha256'][:12]}...)"
         )
+        if report.get("stale"):
+            reasons = "; ".join(report.get("stale_reasons") or []) or "upstream artifact modified"
+            print(
+                f"WARNING [ADR-011 STALE ARTIFACT]: exported source was marked stale ({reasons})",
+                file=sys.stderr,
+            )
     return 0
 
 

@@ -39,6 +39,7 @@ from ankora_backend.schemas.redocking import (
     RedockingRunRecord,
     RedockingValidationRequest,
 )
+from ankora_backend.services.execution_freshness import require_current_for_store
 
 _STAGE = "redocking_validation"
 
@@ -324,6 +325,16 @@ class RedockingValidationService:
 
     def validate(self, request: RedockingValidationRequest) -> RedockingRunRecord:
         source = self._load_source(request.source_kind, request.source_id)
+        require_current_for_store(
+            self._store,
+            (
+                f"{request.source_kind}:{request.source_id}",
+                request.source_id,
+                request.reference_ligand_id,
+                source.receptor_id,
+                source.binding_site_id,
+            ),
+        )
         self._require_complete(source)
         if not source.runs:
             raise AnkoraDomainError(

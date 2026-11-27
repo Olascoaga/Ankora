@@ -1,8 +1,11 @@
 """Reconcile durable records left active by an exited Ankora backend."""
 
+import logging
+import sqlite3
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.persistence.autodock4_store import AutoDock4JobStore
 from ankora_backend.persistence.autodock_gpu_store import AutoDockGpuJobStore
 from ankora_backend.persistence.autogrid_store import AutoGridMapStore
@@ -36,6 +39,7 @@ from ankora_backend.schemas.work_recovery import (
     WorkRecoverySummary,
 )
 
+_LOG = logging.getLogger(__name__)
 _ACTIVE = {"queued", "running", "cancel_requested"}
 
 
@@ -84,9 +88,17 @@ class InterruptedWorkRecovery:
             *self._reconcile_gnina(reconciled_at, lease_index),
             *self._reconcile_gnina_screening(reconciled_at, lease_index),
         ]
-        for item in items:
-            lease = lease_index.get((item.work_kind, item.work_id))
-            if lease is not None:
+        # Close every previously active lease from exited processes, including zombie
+        # leases whose terminal job/batch record was already written before crash (D5-010).
+        reconciled_keys = {(item.work_kind, item.work_id) for item in items}
+        for key, lease in lease_index.items():
+            if key not in reconciled_keys:
+                _LOG.warning(
+                    "Sweeping orphaned active lease for already-terminal or missing work %s:%s",
+                    key[0].value,
+                    key[1],
+                )
+            try:
                 self._leases.write(
                     lease.model_copy(
                         update={
@@ -94,6 +106,13 @@ class InterruptedWorkRecovery:
                             "released_at": reconciled_at,
                         }
                     )
+                )
+            except OSError as error:
+                _LOG.warning(
+                    "Could not mark lease %s:%s reconciled during startup recovery: %s",
+                    key[0].value,
+                    key[1],
+                    error,
                 )
         return WorkRecoverySummary(reconciled_at=reconciled_at, items=items)
 
@@ -105,24 +124,37 @@ class InterruptedWorkRecovery:
         if self._gnina is None:
             return []
         items: list[RecoveredWorkItem] = []
-        for record in self._gnina.list_jobs():
+        try:
+            jobs = self._gnina.list_jobs()
+        except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+            _LOG.warning("Skipping corrupt GNINA job index during startup recovery: %s", error)
+            return []
+        for record in jobs:
             if record.status.value not in _ACTIVE:
                 continue
             lease = leases.get((WorkKind.GNINA_JOB, record.job_id))
-            self._gnina.update_job(
-                record.model_copy(
-                    update={
-                        "status": DockingJobStatus.FAILED,
-                        "phase": DockingJobPhase.COMPLETE,
-                        "completed_at": now,
-                        "failure": DockingFailure(
-                            code="GNINA_EXECUTION_INTERRUPTED",
-                            message=_INTERRUPTED_MESSAGE,
-                            details=_failure_details(record.status.value, lease, now),
-                        ),
-                    }
+            try:
+                self._gnina.update_job(
+                    record.model_copy(
+                        update={
+                            "status": DockingJobStatus.FAILED,
+                            "phase": DockingJobPhase.COMPLETE,
+                            "completed_at": now,
+                            "failure": DockingFailure(
+                                code="GNINA_EXECUTION_INTERRUPTED",
+                                message=_INTERRUPTED_MESSAGE,
+                                details=_failure_details(record.status.value, lease, now),
+                            ),
+                        }
+                    )
                 )
-            )
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping corrupt GNINA job %s during startup recovery: %s",
+                    record.job_id,
+                    error,
+                )
+                continue
             items.append(
                 _item(
                     WorkKind.GNINA_JOB,
@@ -142,14 +174,35 @@ class InterruptedWorkRecovery:
         if self._gnina_screening is None:
             return []
         items: list[RecoveredWorkItem] = []
-        for campaign_id in self._gnina_screening.list_campaign_ids():
-            before = self._gnina_screening.load_progress(campaign_id)
-            if before.status.value not in _ACTIVE:
-                continue
-            after = self._gnina_screening.recover_interrupted_campaign(
-                campaign_id, interrupted_at=now
+        try:
+            campaign_ids = self._gnina_screening.list_campaign_ids()
+        except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+            _LOG.warning(
+                "Skipping unreadable GNINA screening directory during startup recovery: %s",
+                error,
             )
-            lease = leases.get((WorkKind.GNINA_SCREENING, campaign_id))
+            return []
+        for campaign_id in campaign_ids:
+            try:
+                before = self._gnina_screening.load_progress(campaign_id)
+                if before.status.value not in _ACTIVE:
+                    continue
+                lease = leases.get((WorkKind.GNINA_SCREENING, campaign_id))
+                lease_owner = lease.owner_instance_id if lease is not None else None
+                lease_hb = lease.heartbeat_at if lease is not None else None
+                after = self._gnina_screening.recover_interrupted_campaign(
+                    campaign_id,
+                    interrupted_at=now,
+                    lease_owner_instance_id=lease_owner,
+                    lease_heartbeat_at=lease_hb,
+                )
+            except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+                _LOG.warning(
+                    "Skipping corrupt GNINA screening campaign %s during startup recovery: %s",
+                    campaign_id,
+                    error,
+                )
+                continue
             interrupted = (
                 after.failed_count
                 - before.failed_count

@@ -1,7 +1,9 @@
 """Storage for docking job state, raw evidence, and immutable pose artifacts."""
 
 import json
+import logging
 import os
+import sqlite3
 import threading
 from collections.abc import Sequence
 from hashlib import sha256
@@ -10,6 +12,7 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.atomic_io import atomic_write_json
 from ankora_backend.persistence.incremental_batch_store import IncrementalBatchStore
 from ankora_backend.schemas.docking import (
     VinaBatchDockingRecord,
@@ -17,6 +20,8 @@ from ankora_backend.schemas.docking import (
     VinaDockingJobRecord,
     VinaLocalRefinementRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 def _best_vina_result(entry: VinaBatchLigandResult) -> float | None:
@@ -58,11 +63,7 @@ class DockingArtifactStore:
             directory = self._job_dir(record.job_id)
             if not directory.is_dir():
                 raise self._not_found(record.job_id)
-            temporary = directory / "record.json.tmp"
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
-                stream.write("\n")
-            os.replace(temporary, directory / "record.json")
+            atomic_write_json(directory / "record.json", record.model_dump(mode="json"))
 
     def load_record(self, job_id: str) -> VinaDockingJobRecord:
         with self._record_lock:
@@ -211,7 +212,13 @@ class DockingArtifactStore:
                 continue
             try:
                 records.append(self.load_batch_record(candidate.name))
-            except AnkoraDomainError:
+            except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable Vina batch %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -225,7 +232,13 @@ class DockingArtifactStore:
                 continue
             try:
                 records.append(self.load_batch_overview(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, sqlite3.Error, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable Vina batch overview %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 
@@ -244,7 +257,13 @@ class DockingArtifactStore:
                 continue
             try:
                 records.append(self.load_record(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable Vina job %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         return records
 

@@ -9,6 +9,7 @@ stages and is replaced atomically.
 """
 
 import json
+import logging
 import os
 import threading
 from pathlib import Path
@@ -16,11 +17,14 @@ from uuid import UUID, uuid4
 
 from ankora_backend.domain.errors import AnkoraDomainError
 from ankora_backend.domain.project_context import resolve_project_root
+from ankora_backend.persistence.atomic_io import atomic_write_json
 from ankora_backend.schemas.calibration import (
     CalibrationRunRecord,
     CalibrationSelectionRecord,
     ConfirmationEvaluationRecord,
 )
+
+_LOG = logging.getLogger(__name__)
 
 _STAGE = "protocol_calibration_storage"
 _RECORD_FILENAME = "record.json"
@@ -138,7 +142,13 @@ class CalibrationArtifactStore:
                 continue
             try:
                 records.append(self.get_run(candidate.name))
-            except (AnkoraDomainError, ValueError):
+            except (AnkoraDomainError, OSError, ValueError) as error:
+                _LOG.warning(
+                    "Skipping unreadable calibration run %s: %s (%s)",
+                    candidate,
+                    type(error).__name__,
+                    error,
+                )
                 continue
         records.sort(key=lambda record: (record.created_at, record.calibration_id), reverse=True)
         return records
@@ -186,11 +196,7 @@ class CalibrationArtifactStore:
             stream.write("\n")
 
     def _replace_record(self, directory: Path, record: CalibrationRunRecord) -> None:
-        temporary = directory / f"{_RECORD_FILENAME}.tmp"
-        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-            json.dump(record.model_dump(mode="json"), stream, indent=2, ensure_ascii=False)
-            stream.write("\n")
-        os.replace(temporary, directory / _RECORD_FILENAME)
+        atomic_write_json(directory / _RECORD_FILENAME, record.model_dump(mode="json"))
 
     def _run_dir(self, calibration_id: str) -> Path:
         try:

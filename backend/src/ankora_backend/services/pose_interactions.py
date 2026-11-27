@@ -38,6 +38,7 @@ from ankora_backend.schemas.receptors import (
     ReceptorOutputStage,
     ReceptorPreparationRecord,
 )
+from ankora_backend.services.execution_freshness import require_current_for_store
 from ankora_backend.services.gnina_screening_evidence import verified_campaign_entry_job
 from ankora_backend.services.result_catalog import (
     AUTODOCK4_BATCH,
@@ -259,6 +260,18 @@ class PoseInteractionService:
     ) -> InteractionAnalysisRecord:
         verified = self.resolve_verified_pose_inputs(catalog_id, ligand_id, pose_artifact_id)
         resolved = verified.resolved
+        require_current_for_store(
+            self._interactions,
+            (
+                catalog_id,
+                resolved.record_id,
+                ligand_id,
+                pose_artifact_id,
+                resolved.receptor_id,
+                resolved.ligand_preparation_id,
+                verified.conformer.artifact.conformer_id,
+            ),
+        )
         analysis_output = verified.analysis_output
         receptor_path = verified.receptor_path
         preparation = verified.preparation
