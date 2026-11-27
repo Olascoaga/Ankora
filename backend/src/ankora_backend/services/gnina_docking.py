@@ -680,7 +680,10 @@ class GninaDockingService:
             return bool(self._events)
 
     def shutdown(self) -> None:
-        self._executor.shutdown(wait=True)
+        with self._lock:
+            for event in self._events.values():
+                event.set()
+        self._executor.shutdown(wait=True, cancel_futures=True)
 
     def _finish(self, job_id: str, status: DockingJobStatus, **updates: object) -> None:
         with self._lock:

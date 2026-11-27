@@ -401,6 +401,24 @@ def resolve_selection(
     is a fact about the inputs rather than about the executable.
     """
     filter_run = ligand_store.load_filter_run(library_id, filter_run_id)
+    if filter_run.artifact.library_id != library_id:
+        raise _rejected(
+            f"{code_prefix}_LIBRARY_FILTER_MISMATCH",
+            "The applied filter selection belongs to a different ligand library.",
+            {
+                "library_id": library_id,
+                "filter_library_id": filter_run.artifact.library_id,
+            },
+            stage,
+        )
+    manifest_path = ligand_store.filter_run_content_path(library_id, filter_run_id)
+    verify_hash(
+        manifest_path,
+        filter_run.artifact.sha256,
+        stage=stage,
+        code_prefix=code_prefix,
+        label="selection manifest",
+    )
     if not filter_run.selected_ligand_ids:
         raise _rejected(
             f"{code_prefix}_SELECTION_EMPTY",

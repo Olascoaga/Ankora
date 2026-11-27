@@ -83,6 +83,7 @@ from ankora_backend.services.autodock_inputs import (
     resolve_selection,
     torsional_degrees_of_freedom,
     validate_map_set_applies,
+    verify_hash,
 )
 from ankora_backend.services.execution_freshness import require_current_inputs
 from ankora_backend.services.resource_arbiter import (
@@ -172,6 +173,7 @@ class AutoDockGpuDockingService:
         # One device, one worker. See the module docstring for the measurement.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ankora-autodock-gpu")
         self._cancel_events: dict[str, threading.Event] = {}
+        self._live_completed_count: dict[str, int] = {}
         self._lock = threading.RLock()
         self._batch_lock = threading.Lock()
         self._active_batch_id: str | None = None
@@ -629,6 +631,12 @@ class AutoDockGpuDockingService:
         ligand_path = self._ligand_store.pdbqt_content_path(
             request.ligand_id, request.ligand_preparation_id
         )
+        verify_hash(
+            ligand_path,
+            pdbqt.artifact.sha256,
+            stage=_STAGE,
+            code_prefix=_CODE_PREFIX,
+        )
         document = ligand_path.read_text(encoding="utf-8", errors="replace")
         atom_types = ordered_atom_types(document)
         atom_lines = [
@@ -728,6 +736,7 @@ class AutoDockGpuDockingService:
     def _forget(self, job_id: str) -> None:
         with self._lock:
             self._cancel_events.pop(job_id, None)
+            self._live_completed_count.pop(job_id, None)
 
     @staticmethod
     def _require_ascii_job_directory(job_directory: Path) -> None:
@@ -795,7 +804,20 @@ class AutoDockGpuDockingService:
         return self._job_store.load_batch(batch_id)
 
     def get_batch_progress(self, batch_id: str) -> AutoDockGpuBatchProgress:
-        summary = self._job_store.load_batch_summary(batch_id)
+        with self._lock:
+            summary = self._job_store.load_batch_summary(batch_id)
+            live_completed = self._live_completed_count.get(batch_id)
+        if live_completed is not None and summary.get("status") in {
+            AutoDockJobStatus.RUNNING.value,
+            AutoDockJobStatus.CANCEL_REQUESTED.value,
+        }:
+            selected_raw = summary.get("selected_count")
+            completed_raw = summary.get("completed_count")
+            if isinstance(selected_raw, int) and isinstance(completed_raw, int):
+                summary = dict(summary)
+                summary["completed_count"] = min(
+                    selected_raw, max(completed_raw, live_completed)
+                )
         return AutoDockGpuBatchProgress.model_validate(
             {
                 key: value
@@ -856,11 +878,15 @@ class AutoDockGpuDockingService:
                     "filter_run_id": filter_run_id,
                 },
             )
+        with self._batch_lock:
+            active_id = self._active_batch_id
+        active = [record for record in matching if record.batch_id == active_id]
         successful = [record for record in matching if record.succeeded_count > 0]
-        return max(
-            successful or matching,
+        chosen = max(
+            active or successful or matching,
             key=lambda record: (record.created_at, record.batch_id),
         )
+        return self._job_store.load_batch(chosen.batch_id)
 
     def batch_pose_content_path(self, batch_id: str, ligand_id: str, artifact_id: str) -> Path:
         return self._job_store.batch_pose_content_path(batch_id, ligand_id, artifact_id)
@@ -1005,6 +1031,9 @@ class AutoDockGpuDockingService:
                     autodock_gpu_claim(batch_id, ligand_count=len(prepared.molecules)),
                     cancel_event=cancel_event,
                 )
+            if cancel_event.is_set():
+                self._cancel_batch_entries(batch_id)
+                return
             current = self._job_store.load_batch_overview(batch_id)
             require_current_inputs(
                 current.request,
@@ -1013,18 +1042,7 @@ class AutoDockGpuDockingService:
             )
             self._execute_batch(batch_id, prepared, cancel_event)
         except ResourceRequestCanceled:
-            current = self._job_store.load_batch_overview(batch_id)
-            self._job_store.update_batch(
-                current.model_copy(
-                    update={
-                        "status": AutoDockJobStatus.CANCELED,
-                        "phase": AutoDockJobPhase.COMPLETE,
-                        "completed_at": datetime.now(UTC),
-                        "revision": current.revision + 1,
-                    }
-                ),
-                changed_entries=[],
-            )
+            self._cancel_batch_entries(batch_id)
         except AnkoraDomainError as error:
             current = self._job_store.load_batch_overview(batch_id)
             self._job_store.update_batch(
@@ -1069,7 +1087,54 @@ class AutoDockGpuDockingService:
                     self._active_batch_id = None
                 self._forget(batch_id)
                 if self._leases is not None:
-                    self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
+                    try:
+                        self._leases.release(WorkKind.AUTODOCK_GPU_BATCH, batch_id)
+                    except OSError as error:
+                        _LOGGER.warning(
+                            "Failed releasing work lease for AutoDock-GPU batch %s: %s",
+                            batch_id,
+                            error,
+                        )
+
+    def _cancel_batch_entries(self, batch_id: str) -> None:
+        """Transition all non-terminal batch entries to CANCELED before finalizing."""
+        terminal = {
+            AutoDockJobStatus.COMPLETED,
+            AutoDockJobStatus.FAILED,
+            AutoDockJobStatus.CANCELED,
+        }
+        with self._lock:
+            record = self._job_store.load_batch(batch_id)
+            now = datetime.now(UTC)
+            next_revision = record.revision + 1
+            changed: list[AutoDockGpuBatchLigandResult] = []
+            updated_entries: list[AutoDockGpuBatchLigandResult] = []
+            for entry in record.entries:
+                if entry.status in terminal:
+                    updated_entries.append(entry)
+                    continue
+                canceled_entry = entry.model_copy(
+                    update={
+                        "status": AutoDockJobStatus.CANCELED,
+                        "phase": AutoDockJobPhase.COMPLETE,
+                        "completed_at": now,
+                        "revision": next_revision,
+                    }
+                )
+                changed.append(canceled_entry)
+                updated_entries.append(canceled_entry)
+            self._job_store.update_batch(
+                record.model_copy(
+                    update={
+                        "status": AutoDockJobStatus.CANCELED,
+                        "phase": AutoDockJobPhase.COMPLETE,
+                        "completed_at": now,
+                        "entries": updated_entries,
+                        "revision": next_revision,
+                    }
+                ),
+                changed_entries=changed,
+            )
 
     def _execute_batch(
         self,
@@ -1113,18 +1178,23 @@ class AutoDockGpuDockingService:
         # A file list replaces the single ligand and its output name.
         arguments = _as_filelist_arguments(arguments)
 
-        self._job_store.update_batch(
-            record.model_copy(
-                update={
-                    "status": AutoDockJobStatus.RUNNING,
-                    "phase": AutoDockJobPhase.DOCKING,
-                    "started_at": datetime.now(UTC),
-                    "command": arguments,
-                    "revision": record.revision + 1,
-                }
-            ),
-            changed_entries=[],
-        )
+        with self._lock:
+            if cancel_event.is_set():
+                self._cancel_batch_entries(batch_id)
+                return
+            current = self._job_store.load_batch_overview(batch_id)
+            self._job_store.update_batch(
+                current.model_copy(
+                    update={
+                        "status": AutoDockJobStatus.RUNNING,
+                        "phase": AutoDockJobPhase.DOCKING,
+                        "started_at": datetime.now(UTC),
+                        "command": arguments,
+                        "revision": current.revision + 1,
+                    }
+                ),
+                changed_entries=[],
+            )
         # AutoDock-GPU writes each molecule's log as it finishes, so progress is
         # read from the directory while the single process is still running.
         progress_stop = threading.Event()
@@ -1196,19 +1266,18 @@ class AutoDockGpuDockingService:
             done = len(parsed_files)
             if done != seen:
                 seen = done
-                current = self._job_store.load_batch_overview(batch_id)
-                if current.status is not AutoDockJobStatus.RUNNING:
-                    return
-                unavailable = current.selected_count - total
-                self._job_store.update_batch(
-                    current.model_copy(
-                        update={
-                            "completed_count": unavailable + done,
-                            "revision": current.revision + 1,
-                        }
-                    ),
-                    changed_entries=[],
-                )
+                with self._lock:
+                    current = self._job_store.load_batch_overview(batch_id)
+                    if current.status is not AutoDockJobStatus.RUNNING:
+                        return
+                    unavailable = current.selected_count - total
+                    self._live_completed_count[batch_id] = unavailable + done
+                    self._job_store.update_batch(
+                        current.model_copy(
+                            update={"revision": current.revision + 1}
+                        ),
+                        changed_entries=[],
+                    )
             if done >= total:
                 return
             stop_event.wait(0.5)
