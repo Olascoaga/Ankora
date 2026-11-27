@@ -129,6 +129,30 @@ def _parent_process_alive(
     return True
 
 
+def _terminate_descendant_processes(grace_seconds: float = 2.0) -> None:
+    """Terminate active descendant workers/engines before parent-watchdog exit (D5-020)."""
+    try:
+        children = psutil.Process(os.getpid()).children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return
+    if not children:
+        return
+    for child in children:
+        try:
+            child.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    try:
+        _, alive = psutil.wait_procs(children, timeout=grace_seconds)
+    except Exception:
+        alive = children
+    for child in alive:
+        try:
+            child.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+
 def _exit_when_parent_stops(parent_pid: int) -> None:
     expected_create_time, was_direct_parent, expected_ticks = _capture_parent_identity(parent_pid)
     while _parent_process_alive(
@@ -138,6 +162,7 @@ def _exit_when_parent_stops(parent_pid: int) -> None:
         expected_starttime_ticks=expected_ticks,
     ):
         time.sleep(0.5)
+    _terminate_descendant_processes()
     os._exit(0)
 
 

@@ -24,9 +24,27 @@ const BACKEND_PORT: u16 = 8765;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Default)]
-pub(crate) struct BackendRuntime(Mutex<Option<Child>>);
+pub(crate) struct BackendRuntime {
+    child: Mutex<Option<Child>>,
+    startup_error: Mutex<Option<String>>,
+}
 
 impl BackendRuntime {
+    #[cfg(any(target_os = "windows", target_os = "linux", test))]
+    pub(crate) fn record_startup_error(&self, message: String) {
+        *self
+            .startup_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
+    }
+
+    pub(crate) fn startup_error(&self) -> Option<String> {
+        self.startup_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     pub(crate) fn start(&self, resource_dir: &Path, app_data_dir: &Path) -> io::Result<()> {
         if backend_port_is_in_use() {
@@ -84,21 +102,31 @@ impl BackendRuntime {
 
         let child = command.spawn()?;
         *self
-            .0
+            .child
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(child);
+        *self
+            .startup_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         Ok(())
     }
 
     pub(crate) fn stop(&self) {
         let mut process = self
-            .0
+            .child
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(child) = process.as_mut() {
             terminate_child(child);
         }
         *process = None;
+    }
+}
+
+impl Drop for BackendRuntime {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -124,7 +152,29 @@ fn terminate_child(child: &mut Child) {
     let _ = child.wait();
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn terminate_child(child: &mut Child) {
+    if let Ok(Some(_)) = child.try_wait() {
+        return;
+    }
+    // Terminate the entire backend process tree (including active vina,
+    // autodock4, autogrid4, or worker grandchildren) so closing Ankora never
+    // leaves orphaned scientific subprocesses locking project files.
+    let pid = child.id().to_string();
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid, "/T", "/F"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if !matches!(child.try_wait(), Ok(Some(_))) {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
+#[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
 fn terminate_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
@@ -186,7 +236,41 @@ mod tests {
         let runtime = BackendRuntime::default();
         runtime.stop();
         let guard = runtime
-            .0
+            .child
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert!(guard.is_none());
+    }
+
+    #[test]
+    fn startup_error_round_trips_for_gui_diagnostics() {
+        let runtime = BackendRuntime::default();
+        assert!(runtime.startup_error().is_none());
+        runtime.record_startup_error("127.0.0.1:8765 is already in use".to_string());
+        assert_eq!(
+            runtime.startup_error().as_deref(),
+            Some("127.0.0.1:8765 is already in use")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn stop_terminates_windows_process_tree_and_clears_handle() {
+        let child = Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn ping");
+        let runtime = BackendRuntime {
+            child: Mutex::new(Some(child)),
+            startup_error: Mutex::new(None),
+        };
+        runtime.stop();
+        let guard = runtime
+            .child
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert!(guard.is_none());
@@ -227,10 +311,13 @@ mod tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep");
-        let runtime = BackendRuntime(Mutex::new(Some(child)));
+        let runtime = BackendRuntime {
+            child: Mutex::new(Some(child)),
+            startup_error: Mutex::new(None),
+        };
         runtime.stop();
         let guard = runtime
-            .0
+            .child
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert!(guard.is_none());
