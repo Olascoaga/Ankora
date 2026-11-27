@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "measured_at_commit": "4a94c44",
+  "policy": "Monotonic technical-debt ratchet: observed counts must never exceed these ceilings; tighten them whenever debt is retired.",
+  "frozen_invariants": {
+    "vina_adapter": {
+      "path": "backend/src/ankora_backend/adapters/engines/vina.py",
+      "sha256": "e13e32f5b6c401966debe80fe0049f4ae87f1cc3c8eb31f4566c57c1acc50993"
+    }
+  },
+  "backend_src": {
+    "ruff_zero_rules": {
+      "S110": 0,
+      "S112": 0,
+      "B905": 0,
+      "SIM105": 0,
+      "F841": 0,
+      "F811": 0,
+      "F401": 0,
+      "NPY002": 0,
+      "E722": 0,
+      "B006": 0,
+      "B023": 0,
+      "S602": 0,
+      "RUF100": 0
+    },
+    "ruff_capped_rules": {
+      "BLE001": 20,
+      "T201": 11
+    },
+    "max_type_ignore": 1,
+    "max_broad_or_bare_except": 63,
+    "max_functions_gt_300_lines": 6,
+    "max_functions_ge_400_lines": 4,
+    "max_functions_cc_ge_50": 8,
+    "max_functions_cc_ge_100": 0
+  },
+  "scripts": {
+    "ruff_zero_rules": {
+      "B905": 0,
+      "SIM105": 0,
+      "B007": 0,
+      "S110": 0,
+      "S112": 0,
+      "E722": 0,
+      "S602": 0
+    }
+  },
+  "typescript_frontend": {
+    "max_any_escapes": 0,
+    "max_suppressions": 0,
+    "max_empty_catch_blocks": 0
+  },
+  "rust_shell": {
+    "max_non_test_unwrap": 0,
+    "max_non_test_expect": 0,
+    "max_non_test_unsafe": 0
+  }
+}
