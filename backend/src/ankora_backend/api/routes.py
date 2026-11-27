@@ -93,7 +93,12 @@ from ankora_backend.schemas.docking import (
     VinaLocalRefinementRequest,
 )
 from ankora_backend.schemas.engine_comparison import EngineComparison
-from ankora_backend.schemas.exports import ExportKind, ExportPage
+from ankora_backend.schemas.exports import (
+    CampaignExportResponse,
+    ConsensusExportResponse,
+    ExportKind,
+    ExportPage,
+)
 from ankora_backend.schemas.figures import FigureExport, FigureExportRequest
 from ankora_backend.schemas.gnina import (
     GninaDockingRequest,
@@ -1889,24 +1894,25 @@ def list_exports(
     )
 
 
-@router.post("/exports/campaigns", status_code=201)
+@router.post("/exports/campaigns", response_model=CampaignExportResponse, status_code=201)
 def export_campaign(
     source_kind: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str, Query(min_length=1)],
     destination: Annotated[str | None, Query(min_length=1)] = None,
     display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-) -> dict[str, object]:
+) -> CampaignExportResponse:
     """Write a reproducible bundle for a campaign that already ran.
 
     The bundle is preserved in the project rather than streamed away, so an
     export is itself something that happened and can be found again.
     """
-    return CampaignExportService.from_environment().export_campaign(
+    payload = CampaignExportService.from_environment().export_campaign(
         source_kind=source_kind,
         batch_id=source_id,
         destination=destination,
         display_name=display_name,
     )
+    return CampaignExportResponse.model_validate(payload)
 
 
 @router.get("/exports/{export_id}/{filename}", response_class=FileResponse)
@@ -2316,18 +2322,23 @@ def fit_consensus_pc_l2(
     return PoseConsensusService.from_environment().fit_pc_l2(consensus_id, payload)
 
 
-@router.post("/consensus/runs/{consensus_id}/export", status_code=201)
+@router.post(
+    "/consensus/runs/{consensus_id}/export",
+    response_model=ConsensusExportResponse,
+    status_code=201,
+)
 def export_consensus_run(
     consensus_id: str,
     destination: Annotated[str | None, Query(min_length=1)] = None,
     display_name: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-) -> dict[str, object]:
+) -> ConsensusExportResponse:
     """Write a self-contained Export v5/v6 bundle for an immutable ADR-030 consensus run."""
-    return ConsensusExportService.from_environment().export_consensus_run(
+    payload = ConsensusExportService.from_environment().export_consensus_run(
         consensus_id,
         destination=destination,
         display_name=display_name,
     )
+    return ConsensusExportResponse.model_validate(payload)
 
 
 # ---------------------------------------------------------------------------

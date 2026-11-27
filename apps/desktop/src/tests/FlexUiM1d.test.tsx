@@ -389,6 +389,12 @@ describe("M1d coupled FlexRes viewer overlay and create-only --local_only trigge
       receptor_sha256: SHA_A,
       receptor_flex_mode: "sidechain_flex",
       tool: { version: "1.3.3", sha256: SHA_A, architecture: "x86_64" },
+      cnn_model_identity: {
+        selector: "default_1_3_ensemble",
+        cli_argument: null,
+        member_names: ["dense_1_3"],
+        member_count: 1,
+      },
       command: ["gnina", "--local_only"],
       minimized_affinity_kcal_mol: -6.85,
       cnn_score: 0.89,
@@ -407,7 +413,18 @@ describe("M1d coupled FlexRes viewer overlay and create-only --local_only trigge
         flex_content_url: "/docking/gnina/refinements/ref-gnina-1/poses/gnina-ref-pose-1/flex",
         pose_complex_identity_sha256: SHA_C,
       },
-      execution: { command: ["gnina", "--local_only"], exit_code: 0, stdout: "", stderr: "", timed_out: false, canceled: false },
+      execution: {
+        command: ["gnina", "--local_only"],
+        exit_code: 0,
+        stdout: "",
+        stderr: "",
+        timed_out: false,
+        canceled: false,
+        gpu_process_observed: false,
+        gpu_observation: null,
+        requested_gpu_uuid: null,
+        observed_gpu_uuid: null,
+      },
     };
     const refineSpy = vi.spyOn(ankoraApi, "refineGninaPoseLocalOnly").mockResolvedValue(gninaRefined);
 

@@ -140,6 +140,10 @@ describe("M6.5f ADR-033 Hit-to-Analog Expansion & Export v6 UI", () => {
         include_seed_control: true,
         selected_count: 2,
         excluded_count: 0,
+        decisions: [
+          { hit_id: "hit-seed-0", selected: true, role: "seed_control", reason: null },
+          { hit_id: "hit-1", selected: true, role: "analog", reason: null },
+        ],
         warnings: [],
         provenance: SYNTH_SEARCH.provenance,
       } satisfies AnalogSelectionRecord);

@@ -94,3 +94,61 @@ class ExportPage(BaseModel):
     total: int = Field(ge=0)
     offset: int = Field(ge=0)
     limit: int = Field(ge=1)
+
+
+class CampaignExportResponse(BaseModel):
+    """Typed receipt returned by POST /api/v1/exports/campaigns (D7-005)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exported_at: datetime
+    source_kind: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    export_id: str = Field(min_length=1)
+    catalog_id: str = Field(min_length=1)
+    display_name: str | None = None
+    input_identity_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bundle_identity_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    archive_filename: str = Field(min_length=1)
+    engine: str = Field(min_length=1)
+    engine_version: str = Field(min_length=1)
+    reproducibility: ReproducibilityAssessment
+    row_count: int = Field(ge=0)
+    interaction_analysis_count: int = Field(ge=0)
+    figure_count: int = Field(ge=0)
+    redocking_validation_count: int = Field(ge=0)
+    directory: str = Field(min_length=1)
+    outside_project: bool = False
+    record_directory: str = Field(min_length=1)
+    files: list[str] = Field(default_factory=list)
+    stale: bool = False
+    stale_reasons: list[str] = Field(default_factory=list)
+
+
+class ConsensusExportResponse(BaseModel):
+    """Typed receipt returned by POST /api/v1/consensus/runs/{consensus_id}/export (D7-004)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exported_at: datetime
+    ankora_export_format: Literal[5, 6]
+    source_kind: Literal["consensus_run"] = "consensus_run"
+    source_id: str = Field(min_length=1)
+    export_id: str = Field(min_length=1)
+    catalog_id: str = Field(min_length=1)
+    display_name: str | None = None
+    input_identity_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bundle_identity_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    archive_filename: str = Field(min_length=1)
+    variant_id: str = Field(min_length=1)
+    row_count: int = Field(ge=0)
+    full_profile_count: int = Field(ge=0)
+    partial_or_unscored_count: int = Field(ge=0)
+    pose_quality_count: int = Field(ge=0)
+    interaction_rule_evaluation_count: int = Field(ge=0)
+    directory: str = Field(min_length=1)
+    outside_project: bool = False
+    record_directory: str = Field(min_length=1)
+    files: list[str] = Field(default_factory=list)
+    stale: bool = False
+    stale_reasons: list[str] = Field(default_factory=list)

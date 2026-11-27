@@ -210,6 +210,11 @@ export function CampaignExportPanel({
           <small>
             {bundle.interaction_analysis_count} pose analyses · {bundle.figure_count} saved figures
           </small>
+          {bundle.stale ? (
+            <p className="protonation-blocker" role="alert">
+              Stale lineage: {bundle.stale_reasons?.join("; ") || "Upstream artifact changed after this campaign ran."}
+            </p>
+          ) : null}
           <div className="export-files">
             {bundle.files.map((filename) => (
               <a

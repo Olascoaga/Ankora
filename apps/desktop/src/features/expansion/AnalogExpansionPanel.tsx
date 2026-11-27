@@ -79,16 +79,26 @@ export function AnalogExpansionPanel({
 
   useEffect(() => {
     let active = true;
+    const loadErrors: string[] = [];
     Promise.all([
-      ankoraApi.listAnalogCatalogs().catch(() => [] as AnalogCatalogSummary[]),
+      ankoraApi.listAnalogCatalogs().catch((err: unknown) => {
+        loadErrors.push(`Analog catalogs could not be loaded: ${describeError(err)}`);
+        return [] as AnalogCatalogSummary[];
+      }),
       ankoraApi
         .listLigandLibraries()
         .then((page) => page.libraries)
-        .catch(() => [] as LigandLibrarySummary[]),
+        .catch((err: unknown) => {
+          loadErrors.push(`Project libraries could not be loaded: ${describeError(err)}`);
+          return [] as LigandLibrarySummary[];
+        }),
     ]).then(([cats, libs]) => {
       if (!active) return;
       setCatalogs(cats);
       setProjectLibraries(libs);
+      if (loadErrors.length > 0) {
+        setError(loadErrors.join(" "));
+      }
       if (cats.length > 0) {
         setSelectedCatalogId((prev) => prev || cats[0].analog_catalog_id);
       }

@@ -131,6 +131,8 @@ export function LigandWorkspace({
   );
   const [operation, setOperation] = useState<Operation>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [bulkWarning, setBulkWarning] = useState<string | null>(null);
   const [library, setLibrary] = useState<LigandLibraryRecord | null>(null);
   const [libraries, setLibraries] = useState<LigandLibrarySummary[]>([]);
   const [filterPlan, setFilterPlan] = useState<LigandLibraryFilterPlan>(DEFAULT_FILTER_PLAN);
@@ -229,7 +231,11 @@ export function LigandWorkspace({
         }
         return next;
       });
-    }).catch(() => undefined);
+    }).catch((reason: unknown) => {
+      if (!active) return;
+      if (reason instanceof ApiError && reason.status === 404) return;
+      setError(asError(reason, "Persisted ligand library preparation status could not be loaded"));
+    });
     return () => { active = false; };
   }, [library?.artifact.library_id]);
 
@@ -387,10 +393,22 @@ export function LigandWorkspace({
 
   useEffect(() => {
     let disposed = false;
+    setCatalogError(null);
     void ankoraApi.listLigandLibraries({ limit: 200 })
-      .then((page) => { if (!disposed) setLibraries(page.libraries); })
-      // A catalog that cannot be read must not stop an import from working.
-      .catch(() => { if (!disposed) setLibraries([]); });
+      .then((page) => {
+        if (disposed) return;
+        setLibraries(page.libraries);
+        setCatalogError(null);
+      })
+      .catch((reason: unknown) => {
+        if (disposed) return;
+        setLibraries([]);
+        setCatalogError(
+          reason instanceof Error
+            ? reason.message
+            : "Saved ligand libraries could not be loaded.",
+        );
+      });
     return () => { disposed = true; };
   }, [library]);
 
@@ -468,7 +486,10 @@ export function LigandWorkspace({
           rdkit_version: run.rdkit_version,
           worker_count: run.worker_count,
         });
-      } catch {
+      } catch (filterError: unknown) {
+        if (!(filterError instanceof ApiError && filterError.status === 404)) {
+          throw filterError;
+        }
         // A library with no applied selection reopens unfiltered, which is
         // exactly what it was.
         const preview = await ankoraApi.previewLigandLibraryFilters(libraryId, {
@@ -607,8 +628,10 @@ export function LigandWorkspace({
     setOperation("bulk-resolving");
     setError(null);
     try {
+      setBulkWarning(null);
       const nextResolvedStates = { ...resolvedStates };
       let nextIndex = 0;
+      let failedCount = 0;
       async function resolveOne(ligand: LigandRecord) {
         try {
           const stateId = ligand.state!.state_id;
@@ -633,9 +656,9 @@ export function LigandWorkspace({
           nextResolvedStates[ligand.artifact.ligand_id] = resolved;
         } catch {
           // One ligand failing to resolve (network hiccup, transient error)
-          // must not abort the rest of the selected group - it just stays
-          // needs-decision for individual review, same as any other case a
-          // bulk default cannot safely cover.
+          // must not abort the rest of the selected group - count it and
+          // surface a warning so it stays visible for individual review.
+          failedCount += 1;
         }
       }
       async function worker() {
@@ -647,6 +670,11 @@ export function LigandWorkspace({
       }
       await Promise.all(Array.from({ length: libraryWorkerCount(targets.length) }, worker));
       setResolvedStates(nextResolvedStates);
+      if (failedCount > 0) {
+        setBulkWarning(
+          `${failedCount} ligand${failedCount === 1 ? "" : "s"} failed bulk fragment resolution and remain${failedCount === 1 ? "s" : ""} marked for individual review.`,
+        );
+      }
       const preview = await ankoraApi.previewLigandLibraryFilters(
         library.artifact.library_id,
         filterRequest(filterPlan, microstatePlan, nextResolvedStates, microstateStates),
@@ -1242,6 +1270,7 @@ export function LigandWorkspace({
         aria-valuenow={operation === "batch-preparing" ? batchProgress.completed : undefined}
       ><span className={operation === "batch-preparing" ? "determinate" : ""} style={operation === "batch-preparing" ? { width: `${batchProgress.total ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` } : undefined} /><p>{operationLabel(operation, forceField)}{operation === "batch-preparing" ? ` ${batchProgress.completed}/${batchProgress.total} · ${batchProgress.workers} parallel workers` : ""}</p></div> : null}
       {error ? <ErrorBanner error={error} /> : null}
+      {bulkWarning ? <div className="protonation-blocker" role="status">{bulkWarning}</div> : null}
       {filterPreview && needsDecisionCount > 0 ? (
         <div className="protonation-blocker needs-decision-notice" role="alert">
           <p><strong>{needsDecisionCount} ligand{needsDecisionCount === 1 ? "" : "s"} need{needsDecisionCount === 1 ? "s" : ""} a decision.</strong> Their component/stereochemistry is ambiguous, so they are never included in a filtered selection - resolving or excluding them now, before applying filters, is what gets them into the batch. Resolve each individually in the table below, or act on all {needsDecisionCount} at once:</p>
@@ -1269,7 +1298,7 @@ export function LigandWorkspace({
     </section>
     <aside className="inspector ligand-inspector" aria-label="Ligand inspector">
       <div className="inspector-heading"><span className="section-label">Ligand preparation</span><h2>{inspection?.name ?? structure.metadata.entry_id ?? "New ligand"}</h2><p className="inspector-subtitle">Every decision creates a linked derivative; the original never changes.</p></div>
-      <SourceSection candidates={candidates} selected={selected} sourceMode={sourceMode} operation={operation} hasRecord={Boolean(record)} screening={workspaceMode === "screening"} onModeChange={setSourceMode} onSelect={setSelected} onExtract={() => void extract()} onImport={importFile} libraries={libraries} onOpenLibrary={(id) => void openLibrary(id)} />
+      <SourceSection candidates={candidates} selected={selected} sourceMode={sourceMode} operation={operation} hasRecord={Boolean(record)} screening={workspaceMode === "screening"} onModeChange={setSourceMode} onSelect={setSelected} onExtract={() => void extract()} onImport={importFile} libraries={libraries} catalogError={catalogError} onOpenLibrary={(id) => void openLibrary(id)} />
       {library ? <LibraryFilterControls
         plan={filterPlan}
         preview={filterPreview}
@@ -1464,6 +1493,7 @@ interface SourceSectionProps {
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
   /** Libraries already in the project, so one need not be imported twice. */
   libraries: LigandLibrarySummary[];
+  catalogError: string | null;
   onOpenLibrary: (libraryId: string) => void;
 }
 
@@ -1669,6 +1699,7 @@ function SourceSection(props: SourceSectionProps) {
   return <InspectorStage title="1 · Source" className="ligand-source-section" defaultOpen={!props.hasRecord} summary={props.hasRecord ? props.screening ? "Library loaded" : "Ligand selected" : "Required"}>
     {!props.screening ? <div className="source-tabs"><button type="button" className={props.sourceMode === "crystallographic" ? "selected" : ""} onClick={() => props.onModeChange("crystallographic")}>Crystallographic</button><button type="button" className={props.sourceMode === "local" ? "selected" : ""} onClick={() => props.onModeChange("local")}>Local file</button></div> : null}
     {!props.screening && props.sourceMode === "crystallographic" ? <><div className="selection-list compact-list">{props.candidates.map((candidate) => <button type="button" key={`${candidate.chain_id}-${candidate.name}-${candidate.sequence_number}`} className={props.selected === candidate ? "selected" : ""} onClick={() => props.onSelect(candidate)}><span className="heterogen-dot ligand" /><span><strong>{candidate.name} {candidate.chain_id}:{candidate.sequence_number}</strong><small>{candidate.atom_count} observed atoms</small></span></button>)}</div>{!props.candidates.length ? <p className="empty-list">No ligand-class component is available in this structure.</p> : null}<button type="button" className="apply-plan" disabled={!props.selected || Boolean(props.operation)} onClick={props.onExtract}>{props.hasRecord ? "Extract another immutable reference" : `Extract ${props.selected?.name ?? "selected ligand"}`}</button></> : <label className={`ligand-file-action ${props.operation ? "disabled" : ""}`}><strong>{props.screening ? "Open compound library" : "Open local ligand"}</strong><small>SDF, MOL, SMI, or SMILES · {props.screening ? "up to 10,000 records" : "single or multi-record input"} · max 100 MB</small><input type="file" accept=".sdf,.mol,.smi,.smiles,chemical/x-mdl-sdfile,chemical/x-daylight-smiles" disabled={Boolean(props.operation)} onChange={props.onImport} /></label>}
+    {props.screening && props.catalogError ? <p className="protonation-blocker" role="alert">{props.catalogError}</p> : null}
     {props.screening ? <LibraryShelf libraries={props.libraries} busy={Boolean(props.operation)} onOpen={props.onOpenLibrary} /> : null}
   </InspectorStage>;
 }

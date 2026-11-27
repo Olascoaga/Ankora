@@ -240,7 +240,7 @@ describe("M6c Desktop UI: Export v5 consensus bundles & Export Catalog", () => {
     // Opt-in: no export call until user clicks the button
     expect(exportPostUrl).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Export v5 bundle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export consensus bundle" }));
     const banner = await screen.findByRole("status", { name: "Export v5 consensus bundle" });
     expect(exportPostUrl).toContain("/consensus/runs/cons-m6c-synth-1/export");
     expect(within(banner).getByText("Export v5")).toBeInTheDocument();

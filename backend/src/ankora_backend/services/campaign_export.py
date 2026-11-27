@@ -3041,6 +3041,16 @@ class CampaignExportService:
             "outside_project": chosen is not None,
             "record_directory": str(directory),
             "files": sorted([*files, portable.name]),
+            "stale": (
+                campaign.dependency_freshness.stale
+                if campaign.dependency_freshness is not None
+                else False
+            ),
+            "stale_reasons": (
+                list(campaign.dependency_freshness.stale_reasons)
+                if campaign.dependency_freshness is not None
+                else []
+            ),
         }
 
     def file_path(self, export_id: str, filename: str) -> Path:

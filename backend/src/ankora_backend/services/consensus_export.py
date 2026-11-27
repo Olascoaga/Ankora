@@ -781,4 +781,6 @@ class ConsensusExportService:
             "outside_project": chosen is not None,
             "record_directory": str(directory),
             "files": sorted([*files, portable.name]),
+            "stale": freshness.stale,
+            "stale_reasons": list(freshness.stale_reasons),
         }

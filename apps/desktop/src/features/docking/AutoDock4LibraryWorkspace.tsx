@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { ankoraApi } from "../../api/client";
+import { ankoraApi, ApiError } from "../../api/client";
 import type { WorkspaceActivity } from "../../app/activity";
 import type {
   AutoDock4BatchParameters,
@@ -157,9 +157,12 @@ export function AutoDock4LibraryWorkspace({
         setBatch(next);
         revisionRef.current = next.revision;
       })
-      .catch(() => {
+      .catch((reason: unknown) => {
+        if (disposed) return;
         // No campaign for these inputs on this backend is the normal first-run
         // state, not an error worth showing.
+        if (reason instanceof ApiError && reason.status === 404) return;
+        setError(asMessage(reason, "Saved campaign could not be restored."));
       })
       .finally(() => { if (!disposed) setRestoring(false); });
     return () => { disposed = true; };
